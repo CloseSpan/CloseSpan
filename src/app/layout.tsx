@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "FeedbackFlow AI", template: "%s · FeedbackFlow AI" },
+  title: { default: "Feelow AI", template: "%s · Feelow AI" },
   description: "Evidence-driven customer feedback intelligence and resolution operations.",
-  applicationName: "FeedbackFlow AI",
+  applicationName: "Feelow AI",
   robots: { index: false, follow: false },
 };
 export const viewport: Viewport = { themeColor: "#111a2d", colorScheme: "light" };

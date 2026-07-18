@@ -12,7 +12,7 @@ export const navigationItems = [
 export function Sidebar() {
   const pathname = usePathname();
   return <aside className="sidebar">
-    <Link className="brand" href="/" aria-label="FeedbackFlow AI home"><div className="brandmark">F</div><span>FeedbackFlow AI</span></Link>
+    <Link className="brand" href="/" aria-label="Feelow AI home"><div className="brandmark">F</div><span>Feelow AI</span></Link>
     <div className="workspace">Northstar workspace</div>
     <nav className="nav" aria-label="Primary navigation">{navigationItems.map(([Icon, label, href]) => { const active = pathname === href || pathname.startsWith(`${href}/`); return <Link href={href} className={active ? "active" : ""} aria-current={active ? "page" : undefined} aria-label={label} title={label} key={label}><Icon aria-hidden="true"/><span>{label}</span></Link>})}</nav>
     <div className="demo-label"><strong>SIMULATED WORKSPACE</strong>Seeded data · no external systems connected</div>
