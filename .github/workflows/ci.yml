@@ -12,6 +12,24 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://feedbackflow:feedbackflow_ci@localhost:5432/feedbackflow
+      DATABASE_SSL: "false"
+      PERSISTENCE_MODE: postgres
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: feedbackflow
+          POSTGRES_USER: feedbackflow
+          POSTGRES_PASSWORD: feedbackflow_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U feedbackflow -d feedbackflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,6 +37,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run db:migrate
+      - run: npm run db:seed
+      - run: npm run db:verify
       - run: npm run lint
       - run: npm test
       - run: npm run build

@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as approve } from "./approve/route";
 import { POST as advance } from "./advance/route";
+import { POST as analyze } from "../ai/analyze/route";
 import { resetDemoState } from "@/lib/store";
+import { authorizeAdminMutation } from "@/lib/request-security";
 
 const request = (path: string, options: { orgId?: string; key?: string; origin?: string } = {}) => new NextRequest(`http://localhost${path}`, {
   method: "POST",
@@ -15,7 +17,7 @@ const request = (path: string, options: { orgId?: string; key?: string; origin?:
 
 describe("workflow API boundary", () => {
   beforeEach(() => { resetDemoState(); process.env.APP_MODE = "demo"; });
-  afterEach(() => { delete process.env.AUTH_TRUSTED_PROXY; delete process.env.TRUSTED_PROXY_SECRET; });
+  afterEach(() => { delete process.env.AUTH_TRUSTED_PROXY; delete process.env.TRUSTED_PROXY_SECRET; delete process.env.XAI_API_KEY; });
 
   it("rejects actions without organization scope", async () => {
     const response = await approve(request("/api/workflow/approve", { key: "approve_001" }));
@@ -29,6 +31,17 @@ describe("workflow API boundary", () => {
 
   it("rejects cross-origin mutations", async () => {
     const response = await approve(request("/api/workflow/approve", { orgId: "org_northstar", key: "approve_001", origin: "https://evil.example" }));
+    expect(response.status).toBe(403);
+  });
+
+  it("accepts loopback port normalization only in demo mode", async () => {
+    const response = await approve(request("/api/workflow/approve", { orgId:"org_northstar", key:"approve_loopback", origin:"http://localhost:3001" }));
+    expect(response.status).toBe(200);
+  });
+
+  it("does not allow the loopback proxy exception in production", async () => {
+    process.env.APP_MODE = "production";
+    const response = await approve(request("/api/workflow/approve", { orgId:"org_northstar", key:"approve_loopback_prod", origin:"http://localhost:3001" }));
     expect(response.status).toBe(403);
   });
 
@@ -53,5 +66,25 @@ describe("workflow API boundary", () => {
     const response = await approve(request("/api/workflow/approve", { orgId: "org_northstar", key: "approve_001" }));
     expect(response.status).toBe(503);
     process.env.APP_MODE = "demo";
+  });
+
+  it("requires an administrator role for credential mutations", () => {
+    process.env.APP_MODE = "production";
+    process.env.AUTH_TRUSTED_PROXY = "true";
+    process.env.TRUSTED_PROXY_SECRET = "trusted-test-secret";
+    const secured = new NextRequest("http://localhost/api/ai/config",{
+      method:"PUT",
+      headers:{
+        "x-feedbackflow-proxy-secret":"trusted-test-secret","x-organization-id":"org_northstar","x-user-id":"user_viewer",
+        "x-user-name":"Viewer","x-user-role":"Viewer","idempotency-key":"admin_guard_001",
+      },
+    });
+    expect(() => authorizeAdminMutation(secured)).toThrow("Administrator permission is required");
+  });
+
+  it("fails clearly without exposing a placeholder AI result when no provider is configured", async () => {
+    const response = await analyze(request("/api/ai/analyze", { orgId:"org_northstar", key:"grok_test_001" }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error:"xAI Grok is not configured. Add its API key in Settings." });
   });
 });

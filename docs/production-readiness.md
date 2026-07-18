@@ -8,9 +8,9 @@ FeedbackFlow has two explicit operating modes.
 
 ## Production mode
 
-`APP_MODE=production` fails closed for mutating API calls unless an authenticated trusted proxy is configured with `AUTH_TRUSTED_PROXY=true` and `TRUSTED_PROXY_SECRET`. Production Node processes default to this mode when `APP_MODE` is omitted. The proxy must strip all inbound identity headers, verify an OIDC session and authorization policy, and then supply authenticated user and organization headers.
+`APP_MODE=production` fails closed for mutating API calls unless an authenticated trusted proxy is configured with `AUTH_TRUSTED_PROXY=true` and `TRUSTED_PROXY_SECRET`. Production Node processes default to this mode when `APP_MODE` is omitted. The proxy must strip all inbound identity headers, verify an OIDC session and authorization policy, and then supply authenticated user, organization, and role headers. AI credential mutations additionally require the trusted `Admin` role.
 
-This guard prevents accidental deployment of the demo identity model. It is not a substitute for the target PostgreSQL/RLS persistence and OIDC membership implementation described in `production-architecture.md`.
+This guard prevents accidental deployment of the demo identity model. PostgreSQL persistence is implemented, but application tenant filters are not a substitute for the target PostgreSQL RLS policies and OIDC membership implementation described in `production-architecture.md`.
 
 ## Release gates
 
@@ -18,7 +18,10 @@ This guard prevents accidental deployment of the demo identity model. It is not 
 - Build the multi-stage Docker image as a non-root user.
 - Verify `/api/health` behind the load balancer.
 - Inject secrets from KMS; never environment files baked into the image.
+- Store `AI_CREDENTIAL_ENCRYPTION_KEY` in KMS/Secrets Manager, restrict access to the application runtime identity, and document rotation. Never store it beside encrypted provider credentials.
+- Confirm every enabled provider's data-retention terms for the deployment region. OpenAI and xAI Responses calls disable provider-side response storage; Anthropic and OpenRouter use their documented structured-output boundaries.
+- Confirm AI requests use structured outputs, no model tools, bounded input/output, redaction, tenant-scoped model-run records, and human review for cluster changes.
 - Confirm CSP, HSTS, frame, MIME, referrer, and permissions headers.
-- Run database migrations as a separate one-shot job once persistence is enabled.
+- Run `npm run db:migrate` as a separate one-shot deployment job before rolling out application instances. Run `db:seed` only in demonstration environments.
 - Exercise approval idempotency, cross-tenant denial, rollback, and audit export in staging.
 - Verify backup restore and tenant deletion before accepting customer data.

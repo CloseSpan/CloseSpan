@@ -3,6 +3,6 @@ import { rejectAction } from "@/lib/store";
 import { authorizeMutation, errorResponse, noStoreHeaders } from "@/lib/request-security";
 
 export async function POST(request: NextRequest) {
-  try { const context = authorizeMutation(request); return NextResponse.json({ state: rejectAction(context.orgId, context) }, { headers: noStoreHeaders }); }
+  try { const context = authorizeMutation(request); return NextResponse.json({ state: await rejectAction(context.orgId, context) }, { headers: noStoreHeaders }); }
   catch (error) { return errorResponse(error); }
 }

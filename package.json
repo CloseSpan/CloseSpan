@@ -8,7 +8,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && node scripts/prepare-standalone.mjs",
-    "start": "node .next/standalone/server.js",
+    "start": "node --env-file-if-exists=.env.local .next/standalone/server.js",
+    "db:up": "docker-compose up -d postgres",
+    "db:down": "docker-compose down",
+    "db:migrate": "node --env-file-if-exists=.env.local scripts/db-runner.mjs migrate",
+    "db:seed": "node --env-file-if-exists=.env.local scripts/db-runner.mjs seed",
+    "db:verify": "node --env-file-if-exists=.env.local scripts/db-verify.mjs",
+    "db:setup": "npm run db:up && npm run db:migrate && npm run db:seed",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -16,13 +22,19 @@
     "check": "npm run lint && npm test && npm run build && npm run typecheck"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.1",
+    "framer-motion": "^12.42.2",
     "lucide-react": "^0.468.0",
     "next": "16.2.10",
+    "openai": "^6.47.0",
+    "pg": "^8.22.0",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "26.1.1",
+    "@types/pg": "^8.20.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.5",

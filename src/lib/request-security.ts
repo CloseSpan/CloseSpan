@@ -10,6 +10,7 @@ export interface RequestContext {
   orgId: string;
   actorId: string;
   actorName: string;
+  role: string;
   idempotencyKey: string;
   traceId: string;
 }
@@ -21,9 +22,18 @@ function safeEqual(left: string, right: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function enforceSameOrigin(request: NextRequest): void {
+function enforceSameOrigin(request: NextRequest, mode: string): void {
   const origin = request.headers.get("origin");
-  if (origin && new URL(origin).host !== request.nextUrl.host) throw new HttpError(403, "Cross-origin action rejected");
+  if (!origin) return;
+  const source = new URL(origin);
+  if (source.origin === request.nextUrl.origin) return;
+  const loopback = new Set(["localhost", "127.0.0.1", "::1"]);
+  // The Codex in-app browser and some local reverse proxies rewrite the
+  // destination host while preserving the browser's loopback Origin header.
+  // This exception is intentionally demo-only; production still requires an
+  // exact origin match before any mutation is authorized.
+  const demoLoopbackProxy = mode !== "production" && loopback.has(source.hostname);
+  if (!demoLoopbackProxy) throw new HttpError(403, "Cross-origin action rejected");
 }
 
 function enforceRateLimit(request: NextRequest, actorId: string): void {
@@ -36,11 +46,12 @@ function enforceRateLimit(request: NextRequest, actorId: string): void {
 }
 
 export function authorizeMutation(request: NextRequest): RequestContext {
-  enforceSameOrigin(request);
   const mode = process.env.APP_MODE ?? (process.env.NODE_ENV === "production" ? "production" : "demo");
+  enforceSameOrigin(request,mode);
   let orgId = request.headers.get("x-org-id") ?? "";
   let actorId = "demo_user_avery";
   let actorName = "Avery Chen";
+  let role = "Admin";
 
   if (mode === "production") {
     const expected = process.env.TRUSTED_PROXY_SECRET;
@@ -50,14 +61,22 @@ export function authorizeMutation(request: NextRequest): RequestContext {
     orgId = request.headers.get("x-organization-id") ?? "";
     actorId = request.headers.get("x-user-id") ?? "";
     actorName = request.headers.get("x-user-name") ?? "Authenticated user";
+    role = request.headers.get("x-user-role") ?? "";
     if (!actorId) throw new HttpError(401, "Authenticated user context is required");
+    if (!role) throw new HttpError(403, "Authenticated role context is required");
   }
 
   if (orgId !== ORG_ID) throw new HttpError(403, "Organization scope is required");
   const idempotencyKey = request.headers.get("idempotency-key") ?? "";
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) throw new HttpError(400, "A valid idempotency key is required");
   enforceRateLimit(request, actorId);
-  return { orgId, actorId, actorName, idempotencyKey, traceId: request.headers.get("x-request-id") ?? crypto.randomUUID() };
+  return { orgId, actorId, actorName, role, idempotencyKey, traceId: request.headers.get("x-request-id") ?? crypto.randomUUID() };
+}
+
+export function authorizeAdminMutation(request: NextRequest): RequestContext {
+  const context = authorizeMutation(request);
+  if (context.role !== "Admin") throw new HttpError(403,"Administrator permission is required");
+  return context;
 }
 
 export function authorizeRead(request: NextRequest): Pick<RequestContext, "orgId" | "actorId" | "actorName" | "traceId"> {

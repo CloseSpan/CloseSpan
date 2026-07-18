@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { AlertTriangle, ArrowRight, Check, ChevronRight, CircleHelp, Download, ExternalLink, FileCode2, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
-import { calculateImpact, type Stage } from "@/lib/domain";
+import { calculateImpact, type FeedbackItem, type ProductProblem, type Recommendation, type Stage } from "@/lib/domain";
 import type { DemoState } from "@/lib/store";
-import { feedback, primaryProblem, recommendation } from "@/lib/seed";
 
 const stages: Stage[] = ["Detected", "Needs review", "Approved", "Planned", "In progress", "Released", "Verified", "Closed"];
 
-export function ProblemWorkspace({ initialState }: { initialState: DemoState }) {
+export function ProblemWorkspace({ initialState, problem: primaryProblem, feedbackItems: feedback, investigation: recommendation }: { initialState: DemoState; problem: ProductProblem; feedbackItems: FeedbackItem[]; investigation: Recommendation }) {
   const [state, setState] = useState(initialState);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; message: string }>();
