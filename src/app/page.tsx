@@ -40,6 +40,9 @@ export const metadata: Metadata = {
 
 const pilotHref =
   "mailto:shanmukhsain@gmail.com?subject=Feelow%20AI%20Design%20Partner%20Pilot";
+const workspaceLoginHref = "/login?callbackUrl=%2Foverview";
+const problemLoginHref =
+  "/login?callbackUrl=%2Fproblems%2Fprob_export";
 
 const integrations = [
   "Intercom",
@@ -121,8 +124,8 @@ export default function LandingPage() {
             <a href="#pricing">Pricing</a>
           </nav>
           <div className="landing-actions">
-            <Link className="btn landing-secondary" href="/overview">
-              View sandbox
+            <Link className="btn landing-secondary" href="/login">
+              Sign in
             </Link>
             <a className="btn primary" href={pilotHref}>
               Apply for pilot <ArrowRight aria-hidden="true" size={14} />
@@ -136,7 +139,7 @@ export default function LandingPage() {
                 <a href="#workflow">How it works</a>
                 <a href="#trust">Trust</a>
                 <a href="#pricing">Pricing</a>
-                <Link href="/overview">View sandbox</Link>
+                <Link href="/login">Sign in</Link>
               </nav>
             </details>
           </div>
@@ -161,8 +164,8 @@ export default function LandingPage() {
                 Apply for a design-partner pilot
                 <ArrowRight aria-hidden="true" size={16} />
               </a>
-              <Link className="btn large landing-secondary" href="/overview">
-                Explore the sandbox
+              <Link className="btn large landing-secondary" href={workspaceLoginHref}>
+                Continue with Google
               </Link>
             </div>
             <div className="hero-proof" aria-label="Product safeguards">
@@ -173,7 +176,7 @@ export default function LandingPage() {
                 <Check aria-hidden="true" size={14} /> Evidence stays inspectable
               </span>
               <span>
-                <Check aria-hidden="true" size={14} /> Simulated sandbox available
+                <Check aria-hidden="true" size={14} /> Google sign-in required
               </span>
             </div>
           </div>
@@ -181,8 +184,8 @@ export default function LandingPage() {
           <ProductPreview />
         </section>
 
-        <div className="hero-sandbox-proof" aria-label="Seeded sandbox snapshot">
-          <span>Seeded sandbox snapshot</span>
+        <div className="hero-product-proof" aria-label="Product workspace snapshot">
+          <span>Product workspace snapshot</span>
           <div>
             <strong>5</strong>
             <small>feedback signals</small>
@@ -246,8 +249,8 @@ export default function LandingPage() {
               shared source of truth before a recurring defect becomes a lost
               renewal.
             </p>
-            <Link className="text-link" href="/problems/prob_export">
-              Open the seeded problem workspace
+            <Link className="text-link" href={problemLoginHref}>
+              Sign in to view the problem workspace
               <ChevronRight aria-hidden="true" size={15} />
             </Link>
           </div>
@@ -353,8 +356,8 @@ export default function LandingPage() {
             <span>Early-access pricing</span>
             <h2>Free to evaluate. Paid when it owns a real workflow.</h2>
             <p>
-              Explore the sandbox, then prove accuracy and operational ROI in one
-              tightly scoped design-partner pilot.
+              Sign in with Google to evaluate the workflow, then prove accuracy
+              and operational ROI in one tightly scoped design-partner pilot.
             </p>
           </div>
           <div className="pricing-grid">
@@ -396,16 +399,16 @@ export default function LandingPage() {
             <span>Start with evidence</span>
             <h2>See one customer defect move from signal to verified resolution.</h2>
             <p>
-              Explore the simulated workspace now, or apply for a design-partner
-              pilot built around one high-value workflow.
+              Sign in with Google to enter the workspace, or apply for a
+              design-partner pilot built around one high-value workflow.
             </p>
           </div>
           <div className="landing-cta-actions">
             <a className="btn primary large" href={pilotHref}>
               Apply for pilot <ArrowRight aria-hidden="true" size={16} />
             </a>
-            <Link className="btn large" href="/overview">
-              Explore sandbox
+            <Link className="btn large" href={workspaceLoginHref}>
+              Continue with Google
             </Link>
           </div>
         </section>
@@ -420,7 +423,7 @@ export default function LandingPage() {
         </Link>
         <p>Customer-reported problem to verified fix.</p>
         <div>
-          <Link href="/overview">Sandbox</Link>
+          <Link href="/login">Sign in</Link>
           <a href="#pricing">Pricing</a>
           <a href="#trust">Trust</a>
           <a href="mailto:shanmukhsain@gmail.com">Contact</a>

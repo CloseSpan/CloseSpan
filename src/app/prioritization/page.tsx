@@ -1,4 +1,4 @@
 import { AppShell } from "@/components/app-shell"; import { PrioritizationScreen } from "@/components/screens";
-import { getWorkspaceData } from "@/lib/workspace-repository"; import { ORG_ID } from "@/lib/seed";
+import { requireWorkspaceUser } from "@/lib/auth-user"; import { getWorkspaceData } from "@/lib/workspace-repository";
 export const dynamic="force-dynamic";
-export default async function Page(){const data=await getWorkspaceData(ORG_ID);return <AppShell section="Prioritization"><PrioritizationScreen analytics={data.analytics} focusProblem={data.primaryProblem}/></AppShell>}
+export default async function Page(){const user=await requireWorkspaceUser();const data=await getWorkspaceData(user.orgId);return <AppShell section="Prioritization" user={user}><PrioritizationScreen analytics={data.analytics} focusProblem={data.primaryProblem}/></AppShell>}

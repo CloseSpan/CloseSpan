@@ -63,11 +63,12 @@ Defer general roadmap planning, public voting portals, autonomous code changes, 
 
 ## Launch pricing hypothesis
 
-There is no free production workspace. The free product is a seeded sandbox with no customer data and no external writes.
+There is no free production workspace. The free product is an authenticated,
+seeded evaluation workspace with no customer data and no external writes.
 
 | Offer | Price | Purpose |
 | --- | ---: | --- |
-| Interactive sandbox | $0 | Let a buyer inspect the workflow without credentials or risk. |
+| Authenticated workspace | $0 | Let a buyer inspect the workflow after verified Google sign-in without connecting customer systems. |
 | Six-week design-partner pilot | $1,500 one time | Validate one real feedback-to-fix workflow, accuracy, and ROI. Credit the fee toward an annual plan. |
 | Expected Team continuation | About $499/month | Starting hypothesis after a successful pilot, with unlimited viewers and predictable feedback-volume limits. |
 | Scale | Custom | CRM/observability enrichment, multiple products and repositories, SSO, advanced RBAC, retention, and SLA. |
@@ -128,4 +129,4 @@ If support values the evidence but engineering ignores it, narrow to support-esc
 
 ## Production gates before live pilots
 
-Do not accept unredacted customer data until authentication, tenant isolation, durable PostgreSQL persistence, OAuth token security, deletion/retention workflows, audit export, integration idempotency, and a signed data-processing agreement are operational. Until then, the public sandbox remains simulated and pilot recruitment is a design-partner application rather than self-serve activation.
+Do not accept unredacted customer data until authentication, tenant isolation, durable PostgreSQL persistence, OAuth token security, deletion/retention workflows, audit export, integration idempotency, and a signed data-processing agreement are operational. Until then, the authenticated evaluation workspace remains simulated and pilot recruitment is a design-partner application rather than self-serve activation.

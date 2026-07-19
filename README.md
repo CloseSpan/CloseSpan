@@ -14,7 +14,38 @@ npm run db:setup
 npm run dev
 ```
 
-`db:setup` starts PostgreSQL 16 with pgvector, applies idempotent SQL migrations, and inserts the explicitly simulated demo tenant. Open `http://localhost:3000` for the public product landing page, or `http://localhost:3000/overview` to enter the seeded workspace. No credentials are required. Every connector and external work item is clearly marked as simulated.
+`db:setup` starts PostgreSQL 16 with pgvector, applies idempotent SQL migrations, and inserts the explicitly simulated demo tenant. Open `http://localhost:3000` for the public product landing page, or `http://localhost:3000/overview` to enter the seeded workspace. Every connector and external work item is clearly marked as simulated.
+
+### Configure Google sign-in
+
+Google is the only authentication provider. Create an OAuth 2.0 Web
+application in Google Cloud and add this local authorized redirect URI:
+
+```text
+http://localhost:3000/api/auth/callback/google
+```
+
+Copy `.env.example` to `.env.local`, then configure:
+
+```bash
+AUTH_SECRET=<random 32-byte secret>
+AUTH_TRUST_HOST=true
+AUTH_URL=http://localhost:3000
+AUTH_GOOGLE_ID=<Google OAuth client ID>
+AUTH_GOOGLE_SECRET=<Google OAuth client secret>
+```
+
+Use `openssl rand -hex 32` to generate `AUTH_SECRET`. In demo mode, any verified
+Google account can enter the simulated tenant. In production mode, the
+Google email must match a row in `workspace_members`; that row supplies the
+organization, member ID, display name, and role. Add the production callback
+`https://your-domain.example/api/auth/callback/google` in Google Cloud before
+deployment.
+
+`AUTH_TRUST_HOST=true` is required for the standalone Docker/reverse-proxy
+deployment. Only enable it when the proxy overwrites untrusted
+`Host`/`X-Forwarded-Host` headers with the canonical application host.
+Set `AUTH_URL` to the exact canonical HTTPS origin in production.
 
 ### Configure an AI provider
 
@@ -86,16 +117,20 @@ All workspace business data is persisted in PostgreSQL: feedback, problems, acco
 
 ## Current limitations
 
-- One seeded organization; no authentication UI yet.
-- Authentication and PostgreSQL row-level-security policies are not enabled yet; application queries are tenant-scoped, but production identity enforcement remains a launch gate.
+- One seeded organization; multi-workspace selection and invitations are not implemented yet.
+- Google identity and database-backed membership enforcement are enabled, but PostgreSQL row-level-security policies are not enabled yet.
 - Feedback classification is real when a supported provider key is configured; embeddings, repository search, and external integrations remain deterministic simulations.
 - No production data should be used with this phase.
 - Non-AI demo policy controls are still browser-local and reset between sessions; AI provider configuration is durable in PostgreSQL.
 
 ## Deployment safety
 
-The application defaults to demo behavior in development. A production Node process defaults to `APP_MODE=production` and rejects mutations until an authenticated trusted proxy is configured. This prevents accidental use of the seeded identity model with real customer data. See [Production readiness contract](docs/production-readiness.md) and [Production architecture](docs/architecture/production-architecture.md).
+The application defaults to demo behavior in development. A production Node
+process defaults to `APP_MODE=production`, requires a signed Google session,
+and rejects users whose verified email is not present in `workspace_members`.
+See [Production readiness contract](docs/production-readiness.md) and
+[Production architecture](docs/architecture/production-architecture.md).
 
-The repository includes durable PostgreSQL persistence, pgvector readiness, a non-root multi-stage `Dockerfile`, a database-aware `/api/health`, strict response security headers, and a GitHub Actions quality workflow. PostgreSQL RLS, OIDC membership enforcement, encrypted connector tokens, and real connector credentials remain mandatory gates before accepting real customer data.
+The repository includes durable PostgreSQL persistence, pgvector readiness, a non-root multi-stage `Dockerfile`, a database-aware `/api/health`, Google OIDC membership enforcement, strict response security headers, and a GitHub Actions quality workflow. PostgreSQL RLS, encrypted connector tokens, and real connector credentials remain mandatory gates before accepting real customer data.
 
 See [Production architecture](docs/architecture/production-architecture.md) for the hardening sequence and connector design.

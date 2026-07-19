@@ -32,7 +32,7 @@ const requestSchema = z
 export async function POST(request: NextRequest) {
   let run: { orgId: string; runId: string } | undefined;
   try {
-    const context = authorizeMutation(request);
+    const context = await authorizeMutation(request);
     const configuration = await getAiRuntimeConfiguration(context.orgId);
     if (!configuration.configured || !configuration.apiKey)
       throw new HttpError(

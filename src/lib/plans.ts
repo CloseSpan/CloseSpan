@@ -1,4 +1,4 @@
-export type PlanId = "sandbox" | "design-partner" | "scale";
+export type PlanId = "workspace" | "design-partner" | "scale";
 
 export type LaunchPlan = {
   id: PlanId;
@@ -16,19 +16,21 @@ const pilotEmail = "mailto:shanmukhsain@gmail.com?subject=Feedback-to-Fix%20Desi
 
 export const launchPlans: readonly LaunchPlan[] = [
   {
-    id: "sandbox",
-    name: "Interactive sandbox",
+    id: "workspace",
+    name: "Authenticated workspace",
     price: "$0",
-    cadence: "No card · seeded data",
-    description: "Evaluate the complete workflow without connecting customer systems.",
+    cadence: "Google sign-in · no card",
+    description:
+      "Evaluate the complete workflow in a private workspace without connecting customer systems.",
     features: [
-      "Realistic simulated customer signals",
+      "Google-verified account access",
+      "Seeded sample customer signals",
       "Problem clustering and impact evidence",
       "Approval, release, and follow-up workflow",
       "No external writes or live customer data",
     ],
-    callToAction: "Explore sandbox",
-    href: "/overview",
+    callToAction: "Continue with Google",
+    href: "/login?callbackUrl=%2Foverview",
   },
   {
     id: "design-partner",

@@ -6,21 +6,33 @@ import { POST as analyze } from "../ai/analyze/route";
 import { resetDemoState } from "@/lib/store";
 import { authorizeAdminMutation } from "@/lib/request-security";
 
-const request = (path: string, options: { orgId?: string; key?: string; origin?: string } = {}) => new NextRequest(`http://localhost${path}`, {
+const request = (path: string, options: { orgId?: string; key?: string; origin?: string; authenticated?: boolean; role?: string } = {}) => new NextRequest(`http://localhost${path}`, {
   method: "POST",
   headers: {
     ...(options.orgId ? { "x-org-id": options.orgId } : {}),
     ...(options.key ? { "idempotency-key": options.key } : {}),
     ...(options.origin ? { origin: options.origin } : {}),
+    ...(options.authenticated === false ? { "x-test-auth": "none" } : {}),
+    ...(options.role ? { "x-test-user-role": options.role } : {}),
   },
 });
 
 describe("workflow API boundary", () => {
   beforeEach(() => { resetDemoState(); process.env.APP_MODE = "demo"; });
-  afterEach(() => { delete process.env.AUTH_TRUSTED_PROXY; delete process.env.TRUSTED_PROXY_SECRET; delete process.env.XAI_API_KEY; });
+  afterEach(() => { delete process.env.XAI_API_KEY; });
 
-  it("rejects actions without organization scope", async () => {
+  it("derives organization scope from the authenticated user", async () => {
     const response = await approve(request("/api/workflow/approve", { key: "approve_001" }));
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects unauthenticated actions", async () => {
+    const response = await approve(request("/api/workflow/approve", { authenticated:false, key:"approve_001" }));
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects a conflicting organization header", async () => {
+    const response = await approve(request("/api/workflow/approve", { orgId:"org_other", key:"approve_001" }));
     expect(response.status).toBe(403);
   });
 
@@ -61,25 +73,31 @@ describe("workflow API boundary", () => {
     expect((await response.json()).state.problemStage).toBe("Planned");
   });
 
-  it("fails closed when production authentication is not configured", async () => {
+  it("requires an authenticated session in production", async () => {
     process.env.APP_MODE = "production";
-    const response = await approve(request("/api/workflow/approve", { orgId: "org_northstar", key: "approve_001" }));
-    expect(response.status).toBe(503);
+    const response = await approve(request("/api/workflow/approve", { authenticated:false, orgId: "org_northstar", key: "approve_001" }));
+    expect(response.status).toBe(401);
     process.env.APP_MODE = "demo";
   });
 
-  it("requires an administrator role for credential mutations", () => {
-    process.env.APP_MODE = "production";
-    process.env.AUTH_TRUSTED_PROXY = "true";
-    process.env.TRUSTED_PROXY_SECRET = "trusted-test-secret";
-    const secured = new NextRequest("http://localhost/api/ai/config",{
-      method:"PUT",
-      headers:{
-        "x-feedbackflow-proxy-secret":"trusted-test-secret","x-organization-id":"org_northstar","x-user-id":"user_viewer",
-        "x-user-name":"Viewer","x-user-role":"Viewer","idempotency-key":"admin_guard_001",
-      },
+  it("requires an administrator role for credential mutations", async () => {
+    const secured = request("/api/ai/config", {
+      orgId:"org_northstar",
+      key:"admin_guard_001",
+      role:"Contributor",
     });
-    expect(() => authorizeAdminMutation(secured)).toThrow("Administrator permission is required");
+    await expect(authorizeAdminMutation(secured)).rejects.toThrow(
+      "Administrator permission is required",
+    );
+  });
+
+  it("prevents viewers from mutating workflow state", async () => {
+    const response = await approve(request("/api/workflow/approve", {
+      orgId:"org_northstar",
+      key:"viewer_guard_001",
+      role:"Viewer",
+    }));
+    expect(response.status).toBe(403);
   });
 
   it("fails clearly without exposing a placeholder AI result when no provider is configured", async () => {

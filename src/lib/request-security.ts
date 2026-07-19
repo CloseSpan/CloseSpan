@@ -1,5 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
+import type { WorkspaceUser } from "./auth-user";
 import { ORG_ID } from "./seed";
 
 export class HttpError extends Error {
@@ -16,11 +16,6 @@ export interface RequestContext {
 }
 
 const rateLimits = new Map<string, { count: number; resetAt: number }>();
-
-function safeEqual(left: string, right: string): boolean {
-  const a = Buffer.from(left); const b = Buffer.from(right);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 function enforceSameOrigin(request: NextRequest, mode: string): void {
   const origin = request.headers.get("origin");
@@ -45,44 +40,84 @@ function enforceRateLimit(request: NextRequest, actorId: string): void {
   current.count += 1;
 }
 
-export function authorizeMutation(request: NextRequest): RequestContext {
-  const mode = process.env.APP_MODE ?? (process.env.NODE_ENV === "production" ? "production" : "demo");
-  enforceSameOrigin(request,mode);
-  let orgId = request.headers.get("x-org-id") ?? "";
-  let actorId = "demo_user_avery";
-  let actorName = "Avery Chen";
-  let role = "Admin";
-
-  if (mode === "production") {
-    const expected = process.env.TRUSTED_PROXY_SECRET;
-    if (process.env.AUTH_TRUSTED_PROXY !== "true" || !expected) throw new HttpError(503, "Production authentication is not configured");
-    const provided = request.headers.get("x-feedbackflow-proxy-secret") ?? "";
-    if (!safeEqual(provided, expected)) throw new HttpError(401, "Authentication required");
-    orgId = request.headers.get("x-organization-id") ?? "";
-    actorId = request.headers.get("x-user-id") ?? "";
-    actorName = request.headers.get("x-user-name") ?? "Authenticated user";
-    role = request.headers.get("x-user-role") ?? "";
-    if (!actorId) throw new HttpError(401, "Authenticated user context is required");
-    if (!role) throw new HttpError(403, "Authenticated role context is required");
-  }
-
-  if (orgId !== ORG_ID) throw new HttpError(403, "Organization scope is required");
-  const idempotencyKey = request.headers.get("idempotency-key") ?? "";
-  if (!/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) throw new HttpError(400, "A valid idempotency key is required");
-  enforceRateLimit(request, actorId);
-  return { orgId, actorId, actorName, role, idempotencyKey, traceId: request.headers.get("x-request-id") ?? crypto.randomUUID() };
+function testUser(request: NextRequest): WorkspaceUser | null | undefined {
+  if (process.env.NODE_ENV !== "test") return undefined;
+  if (request.headers.get("x-test-auth") === "none") return null;
+  return {
+    id: request.headers.get("x-test-user-id") ?? "demo_user_avery",
+    orgId: ORG_ID,
+    name: request.headers.get("x-test-user-name") ?? "Avery Chen",
+    email: request.headers.get("x-test-user-email") ?? "avery@example.com",
+    role: request.headers.get("x-test-user-role") ?? "Admin",
+  };
 }
 
-export function authorizeAdminMutation(request: NextRequest): RequestContext {
-  const context = authorizeMutation(request);
+async function authenticatedUser(request: NextRequest): Promise<WorkspaceUser> {
+  const testIdentity = testUser(request);
+  if (testIdentity !== undefined) {
+    if (!testIdentity) throw new HttpError(401, "Authentication required");
+    return testIdentity;
+  }
+
+  const { resolveWorkspaceAccess } = await import("./auth-user");
+  const access = await resolveWorkspaceAccess();
+  if (access.status === "unauthenticated")
+    throw new HttpError(401, "Authentication required");
+  if (access.status === "denied")
+    throw new HttpError(403, "Workspace membership is required");
+  return access.user;
+}
+
+function enforceOrganizationScope(
+  request: NextRequest,
+  user: WorkspaceUser,
+): void {
+  const requestedOrgId = request.headers.get("x-org-id");
+  if (requestedOrgId && requestedOrgId !== user.orgId)
+    throw new HttpError(403, "Organization scope is invalid");
+}
+
+export async function authorizeMutation(
+  request: NextRequest,
+): Promise<RequestContext> {
+  const mode = process.env.APP_MODE ?? (process.env.NODE_ENV === "production" ? "production" : "demo");
+  enforceSameOrigin(request, mode);
+  const user = await authenticatedUser(request);
+  enforceOrganizationScope(request, user);
+  if (!["Admin", "Contributor"].includes(user.role))
+    throw new HttpError(403, "Contributor permission is required");
+  const idempotencyKey = request.headers.get("idempotency-key") ?? "";
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) throw new HttpError(400, "A valid idempotency key is required");
+  enforceRateLimit(request, user.id);
+  return {
+    orgId: user.orgId,
+    actorId: user.id,
+    actorName: user.name,
+    role: user.role,
+    idempotencyKey,
+    traceId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
+  };
+}
+
+export async function authorizeAdminMutation(
+  request: NextRequest,
+): Promise<RequestContext> {
+  const context = await authorizeMutation(request);
   if (context.role !== "Admin") throw new HttpError(403,"Administrator permission is required");
   return context;
 }
 
-export function authorizeRead(request: NextRequest): Pick<RequestContext, "orgId" | "actorId" | "actorName" | "traceId"> {
-  const synthetic = new Headers(request.headers);
-  synthetic.set("idempotency-key", "read_request");
-  return authorizeMutation(new NextRequest(request.url, { method: "POST", headers: synthetic }));
+export async function authorizeRead(
+  request: NextRequest,
+): Promise<Pick<RequestContext, "orgId" | "actorId" | "actorName" | "traceId">> {
+  const user = await authenticatedUser(request);
+  enforceOrganizationScope(request, user);
+  return {
+    orgId: user.orgId,
+    actorId: user.id,
+    actorName: user.name,
+    traceId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
+  };
 }
 
 export function errorResponse(error: unknown): Response {

@@ -1,4 +1,4 @@
 import { AppShell } from "@/components/app-shell"; import { IntegrationsScreen } from "@/components/screens";
-import { getWorkspaceData } from "@/lib/workspace-repository"; import { ORG_ID } from "@/lib/seed";
+import { requireWorkspaceUser } from "@/lib/auth-user"; import { getWorkspaceData } from "@/lib/workspace-repository";
 export const dynamic="force-dynamic";
-export default async function Page(){const data=await getWorkspaceData(ORG_ID);return <AppShell section="Integrations"><IntegrationsScreen integrations={data.integrations}/></AppShell>}
+export default async function Page(){const user=await requireWorkspaceUser();const data=await getWorkspaceData(user.orgId);return <AppShell section="Integrations" user={user}><IntegrationsScreen integrations={data.integrations}/></AppShell>}

@@ -33,7 +33,7 @@ const configurationSchema = z
 
 export async function GET(request: NextRequest) {
   try {
-    const context = authorizeRead(request);
+    const context = await authorizeRead(request);
     return NextResponse.json(await getAiPublicConfiguration(context.orgId), {
       headers: noStoreHeaders,
     });
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const context = authorizeAdminMutation(request);
+    const context = await authorizeAdminMutation(request);
     const parsed = configurationSchema.safeParse(await request.json());
     if (!parsed.success)
       throw new HttpError(
@@ -69,7 +69,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const context = authorizeAdminMutation(request);
+    const context = await authorizeAdminMutation(request);
     return NextResponse.json(
       await removeStoredAiCredential(context.orgId, context),
       { headers: noStoreHeaders },

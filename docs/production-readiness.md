@@ -8,13 +8,30 @@ FeedbackFlow has two explicit operating modes.
 
 ## Production mode
 
-`APP_MODE=production` fails closed for mutating API calls unless an authenticated trusted proxy is configured with `AUTH_TRUSTED_PROXY=true` and `TRUSTED_PROXY_SECRET`. Production Node processes default to this mode when `APP_MODE` is omitted. The proxy must strip all inbound identity headers, verify an OIDC session and authorization policy, and then supply authenticated user, organization, and role headers. AI credential mutations additionally require the trusted `Admin` role.
+`APP_MODE=production` uses Auth.js with Google as the only identity provider.
+Production Node processes default to this mode when `APP_MODE` is omitted.
+Every workspace page and application API requires a signed session backed by
+a verified Google email. The email must match `workspace_members`; the
+database row supplies the trusted organization, actor ID, display name, and
+role. Client-provided identity headers are not trusted. AI credential
+mutations additionally require the database-backed `Admin` role.
 
-This guard prevents accidental deployment of the demo identity model. PostgreSQL persistence is implemented, but application tenant filters are not a substitute for the target PostgreSQL RLS policies and OIDC membership implementation described in `production-architecture.md`.
+This guard prevents accidental deployment of the demo identity model.
+PostgreSQL persistence and OIDC membership enforcement are implemented, but
+application tenant filters are not a substitute for the target PostgreSQL RLS
+policies described in `production-architecture.md`.
 
 ## Release gates
 
 - `npm ci && npm run check`
+- Store `AUTH_SECRET` and `AUTH_GOOGLE_SECRET` in KMS/Secrets Manager, and
+  register the exact production `/api/auth/callback/google` redirect URI in
+  Google Cloud.
+- Set `AUTH_TRUST_HOST=true` only behind a proxy that overwrites inbound
+  `Host`, `X-Forwarded-Host`, and `X-Forwarded-Proto` values with trusted
+  canonical values. Set `AUTH_URL` to the exact canonical HTTPS origin.
+- Confirm every authorized production email has one intended
+  `workspace_members` row and the minimum required role.
 - Build the multi-stage Docker image as a non-root user.
 - Verify `/api/health` behind the load balancer.
 - Inject secrets from KMS; never environment files baked into the image.
