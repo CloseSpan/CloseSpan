@@ -14,6 +14,25 @@ export interface OverviewAnalytics {
   feedbackTotal: number;
 }
 
+export function createEmptyOverviewAnalytics(): OverviewAnalytics {
+  return {
+    feedbackSeries: { "All sources": [] },
+    feedbackTotal: 0,
+    metrics: {
+      newFeedback: 0,
+      feedbackTrend: 0,
+      activeProblems: 0,
+      needsReview: 0,
+      affectedRevenue: 0,
+      affectedAccounts: 0,
+      averageResolutionDays: 0,
+      resolutionImprovementDays: 0,
+    },
+    themes: [],
+    problems: [],
+  };
+}
+
 const weeklySignals = {
   Intercom: [16, 21, 18, 27, 23, 31, 29, 36],
   Zendesk: [14, 18, 16, 22, 21, 28, 25, 32],

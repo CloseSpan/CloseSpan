@@ -4,7 +4,13 @@ const globalDatabase = globalThis as typeof globalThis & { feedbackFlowPool?: Po
 
 export function persistenceMode(): "memory" | "postgres" {
   const configured = process.env.PERSISTENCE_MODE;
+  const productionMode =
+    process.env.APP_MODE === "production" ||
+    (process.env.APP_MODE !== "demo" && process.env.NODE_ENV === "production");
+  if (productionMode && configured === "memory")
+    throw new Error("PERSISTENCE_MODE=postgres is required in production");
   if (configured === "memory" || configured === "postgres") return configured;
+  if (productionMode) return "postgres";
   if (process.env.NODE_ENV === "test") return "memory";
   return process.env.DATABASE_URL ? "postgres" : "memory";
 }

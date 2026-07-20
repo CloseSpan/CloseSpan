@@ -69,6 +69,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             <LockKeyhole aria-hidden="true" size={17} />
             <div>
               <strong>Workspace access was not granted</strong>
+              {access.status === "denied" && (
+                <p>
+                  Signed in as <strong>{access.email}</strong>. This Google
+                  account is not on the workspace member list.
+                </p>
+              )}
               <p>
                 Ask a workspace administrator to add your Google email to
                 the member list, then try again.

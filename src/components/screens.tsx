@@ -22,10 +22,8 @@ import type { DemoState } from "@/lib/store";
 import { FeedbackVolumeChart } from "./feedback-volume-chart";
 import {
   formatTrend,
-  overviewAnalytics,
   type OverviewAnalytics,
 } from "@/lib/overview-analytics";
-import { primaryProblem, recommendation } from "@/lib/seed";
 import type {
   CustomerView,
   IntegrationView,
@@ -67,12 +65,43 @@ export function PageTitle({
   );
 }
 
+function EmptyWorkspaceState({
+  title,
+  description,
+  actionHref,
+  actionLabel,
+}: {
+  title: string;
+  description: string;
+  actionHref: string;
+  actionLabel: string;
+}) {
+  return (
+    <section className="card empty-state">
+      <Info size={28} />
+      <h2>{title}</h2>
+      <p className="subtle">{description}</p>
+      <Link className="btn primary" href={actionHref}>
+        {actionLabel}
+      </Link>
+    </section>
+  );
+}
+
 export function OverviewScreen({
   analytics,
+  firstName,
+  organizationName,
 }: {
   analytics: OverviewAnalytics;
+  firstName: string;
+  organizationName: string;
 }) {
   const { metrics, themes, problems } = analytics;
+  const empty =
+    analytics.feedbackTotal === 0 &&
+    themes.length === 0 &&
+    problems.length === 0;
   const metricCards = [
     [
       "New feedback",
@@ -91,22 +120,36 @@ export function OverviewScreen({
     ],
     [
       "Avg. signal → resolution",
-      `${metrics.averageResolutionDays}d`,
-      `${metrics.resolutionImprovementDays}d faster`,
+      metrics.averageResolutionDays > 0
+        ? `${metrics.averageResolutionDays}d`
+        : "—",
+      metrics.averageResolutionDays > 0
+        ? `${metrics.resolutionImprovementDays}d faster`
+        : "No resolved samples",
     ],
   ];
   return (
     <>
       <PageTitle
-        eyebrow="Northstar workspace"
-        title="Good morning, Avery"
+        eyebrow={organizationName}
+        title={`Welcome, ${firstName}`}
         description="Here is where customer signals need attention today."
         action={
-          <Link className="btn primary" href="/approvals">
-            Review approvals <ChevronRight size={14} />
+          <Link className="btn primary" href={empty ? "/integrations" : "/approvals"}>
+            {empty ? "Connect feedback" : "Review approvals"}{" "}
+            <ChevronRight size={14} />
           </Link>
         }
       />
+      {empty ? (
+        <EmptyWorkspaceState
+          title="Your production workspace is ready"
+          description="No feedback, customer records, or product problems have been added. Connect an approved source when you are ready to begin."
+          actionHref="/integrations"
+          actionLabel="Review integrations"
+        />
+      ) : (
+        <>
       <div className="grid cols-4">
         {metricCards.map(([label, value, delta]) => (
           <div className="card metric" key={label}>
@@ -126,20 +169,24 @@ export function OverviewScreen({
             </span>
           </div>
           <div className="card-body">
-            {themes.map((theme) => (
-              <div className="rank-row" key={theme.name}>
-                <div>
-                  <strong>{theme.name}</strong>
-                  <p className="subtle">{theme.currentSignals} signals</p>
+            {themes.length ? (
+              themes.map((theme) => (
+                <div className="rank-row" key={theme.name}>
+                  <div>
+                    <strong>{theme.name}</strong>
+                    <p className="subtle">{theme.currentSignals} signals</p>
+                  </div>
+                  <span
+                    className="badge"
+                    title={`${theme.currentSignals} signals this period versus ${theme.previousSignals} previously`}
+                  >
+                    {formatTrend(theme.trend)}
+                  </span>
                 </div>
-                <span
-                  className="badge"
-                  title={`${theme.currentSignals} signals this period versus ${theme.previousSignals} previously`}
-                >
-                  {formatTrend(theme.trend)}
-                </span>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="subtle">No themes have been detected yet.</p>
+            )}
           </div>
         </section>
       </div>
@@ -157,6 +204,8 @@ export function OverviewScreen({
         </div>
         <ProblemTable problems={problems} />
       </section>
+        </>
+      )}
     </>
   );
 }
@@ -254,6 +303,22 @@ export function FeedbackScreen({
     } finally {
       setBusy(false);
     }
+  }
+  if (feedbackItems.length === 0) {
+    return (
+      <>
+        <PageTitle
+          title="Unified feedback inbox"
+          description="Review normalized customer signals across every connected source."
+        />
+        <EmptyWorkspaceState
+          title="No feedback has been imported"
+          description="This workspace has no customer signals. Connect an approved source before running classification or clustering."
+          actionHref="/integrations"
+          actionLabel="Review integrations"
+        />
+      </>
+    );
   }
   return (
     <>
@@ -410,7 +475,7 @@ export function FeedbackScreen({
                       {item.observedAt} ·{" "}
                       {analysis
                         ? `${Math.round(analysis.classificationConfidence * 100)}% AI classification proposal`
-                        : `${Math.round(item.confidence * 100)}% seeded classification`}{" "}
+                        : `${Math.round(item.confidence * 100)}% classification confidence`}{" "}
                       · {item.redacted ? "PII redacted" : "PII scan clear"}
                     </small>
                     {analysis && (
@@ -535,6 +600,14 @@ function ProblemTable({
 }: {
   problems: OverviewAnalytics["problems"];
 }) {
+  if (problems.length === 0) {
+    return (
+      <div className="empty">
+        <strong>No product problems</strong>
+        <p>Reviewed problem clusters will appear here.</p>
+      </div>
+    );
+  }
   return (
     <div className="table-wrap">
       <table>
@@ -590,9 +663,9 @@ function ProblemTable({
 }
 
 export function ProblemsScreen({
-  analytics = overviewAnalytics,
+  analytics,
 }: {
-  analytics?: OverviewAnalytics;
+  analytics: OverviewAnalytics;
 }) {
   const uncertain = analytics.problems.filter(
     (problem) => problem.confidence < 80,
@@ -600,17 +673,29 @@ export function ProblemsScreen({
   const high = analytics.problems.filter((problem) =>
     ["High", "Critical"].includes(problem.severity),
   ).length;
+  const reviewProblem =
+    analytics.problems.find((problem) => problem.stage === "Needs review") ??
+    analytics.problems[0];
   return (
     <>
       <PageTitle
         title="Product problems"
         description="Persistent clusters that connect repeated feedback to business and engineering context."
-        action={
-          <Link className="btn" href="/problems/prob_export#evidence">
+        action={reviewProblem ? (
+          <Link className="btn" href={`/problems/${reviewProblem.id}#evidence`}>
             <Sparkles size={14} /> Review clustering suggestion
           </Link>
-        }
+        ) : undefined}
       />
+      {analytics.problems.length === 0 ? (
+        <EmptyWorkspaceState
+          title="No product problems yet"
+          description="Problems will appear after feedback is imported and reviewed. No placeholder clusters have been created."
+          actionHref="/feedback"
+          actionLabel="Open feedback inbox"
+        />
+      ) : (
+        <>
       <div className="grid cols-4 page-metrics">
         {[
           ["Needs review", analytics.metrics.needsReview],
@@ -633,19 +718,23 @@ export function ProblemsScreen({
         </div>
         <ProblemTable problems={analytics.problems} />
       </section>
+        </>
+      )}
     </>
   );
 }
 
 export function PrioritizationScreen({
-  analytics = overviewAnalytics,
-  focusProblem = primaryProblem,
+  analytics,
+  focusProblem,
 }: {
-  analytics?: OverviewAnalytics;
-  focusProblem?: ProductProblem;
+  analytics: OverviewAnalytics;
+  focusProblem: ProductProblem | null;
 }) {
   const [view, setView] = useState<"board" | "ranked">("board");
-  const impact = calculateImpact(focusProblem.impactFactors);
+  const impact = focusProblem
+    ? calculateImpact(focusProblem.impactFactors)
+    : null;
   const rows = analytics.problems;
   return (
     <>
@@ -671,6 +760,15 @@ export function PrioritizationScreen({
           </div>
         }
       />
+      {rows.length === 0 ? (
+        <EmptyWorkspaceState
+          title="Nothing to prioritize"
+          description="The prioritization board is empty because this workspace has no product problems."
+          actionHref="/feedback"
+          actionLabel="Review feedback"
+        />
+      ) : (
+        <>
       {view === "ranked" ? (
         <section className="card">
           <ProblemTable problems={rows} />
@@ -708,11 +806,9 @@ export function PrioritizationScreen({
                       >
                         {problem.severity}
                       </span>
-                      <strong className="score-small">
-                        {problem.id === focusProblem.id
-                          ? impact.score
-                          : problem.confidence - 7}
-                      </strong>
+                      {problem.id === focusProblem?.id && impact ? (
+                        <strong className="score-small">{impact.score}</strong>
+                      ) : null}
                     </div>
                     <h3>{problem.title}</h3>
                     <p className="subtle">
@@ -740,19 +836,53 @@ export function PrioritizationScreen({
           Configure policy
         </Link>
       </div>
+        </>
+      )}
     </>
   );
 }
 
 export function InvestigationsScreen({
-  problem = primaryProblem,
-  investigation = recommendation,
+  problem,
+  investigation,
   queue = [],
 }: {
-  problem?: ProductProblem;
-  investigation?: Recommendation;
+  problem: ProductProblem | null;
+  investigation: Recommendation | null;
   queue?: InvestigationQueueItem[];
 }) {
+  if (!problem) {
+    return (
+      <>
+        <PageTitle
+          title="AI investigations"
+          description="Code-aware recommendations with evidence, assumptions, and uncertainty."
+        />
+        <EmptyWorkspaceState
+          title="No problems to investigate"
+          description="Create a reviewed product problem from customer feedback before preparing an investigation."
+          actionHref="/feedback"
+          actionLabel="Open feedback inbox"
+        />
+      </>
+    );
+  }
+  if (!investigation) {
+    return (
+      <>
+        <PageTitle
+          title="AI investigations"
+          description="Code-aware recommendations with evidence, assumptions, and uncertainty."
+        />
+        <EmptyWorkspaceState
+          title="No investigation is ready"
+          description={`The problem “${problem.title}” exists, but no investigation or recommendation has been prepared.`}
+          actionHref={`/problems/${problem.id}`}
+          actionLabel="Review product problem"
+        />
+      </>
+    );
+  }
   return (
     <>
       <PageTitle
@@ -810,15 +940,19 @@ export function InvestigationsScreen({
             <span className="badge">{queue.length} items</span>
           </div>
           <div className="card-body">
-            {queue.map((item) => (
-              <div className="rank-row" key={item.id}>
-                <div>
-                  <strong>{item.title}</strong>
-                  <p className="subtle">Repository search</p>
+            {queue.length ? (
+              queue.map((item) => (
+                <div className="rank-row" key={item.id}>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p className="subtle">Repository investigation</p>
+                  </div>
+                  <span className="badge">{item.status}</span>
                 </div>
-                <span className="badge">{item.status}</span>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="subtle">No other investigations are queued.</p>
+            )}
           </div>
         </section>
       </div>
@@ -865,9 +999,9 @@ export function ApprovalsScreen({
   investigation,
   queue,
 }: {
-  initialState: DemoState;
-  problem: ProductProblem;
-  investigation: Recommendation;
+  initialState: DemoState | null;
+  problem: ProductProblem | null;
+  investigation: Recommendation | null;
   queue: InvestigationQueueItem[];
 }) {
   const [state, setState] = useState(initialState);
@@ -877,13 +1011,32 @@ export function ApprovalsScreen({
     text: string;
   }>();
   const [editing, setEditing] = useState(false);
-  const [proposal, setProposal] = useState(investigation.proposedAction);
+  const [proposal, setProposal] = useState(
+    investigation?.proposedAction ?? "",
+  );
+  if (!state || !problem || !investigation) {
+    return (
+      <>
+        <PageTitle
+          title="Approval center"
+          description="Review every meaningful agent action before it affects external systems."
+        />
+        <EmptyWorkspaceState
+          title="No approval workflow exists"
+          description="This workspace has no prepared recommendation awaiting a decision. No placeholder approval was created."
+          actionHref={problem ? `/problems/${problem.id}` : "/feedback"}
+          actionLabel={problem ? "Review product problem" : "Open feedback inbox"}
+        />
+      </>
+    );
+  }
+  const activeProblem = problem;
   async function decide(action: "approve" | "reject") {
     setBusy(true);
     setNotice(undefined);
     try {
       setState(
-        await workflowMutation(`/api/workflow/${action}`, problem.orgId),
+        await workflowMutation(`/api/workflow/${action}`, activeProblem.orgId),
       );
       setNotice({
         kind: "success",
@@ -1021,7 +1174,7 @@ export function ApprovalsScreen({
                   disabled={busy}
                   onClick={() => decide("approve")}
                 >
-                  Approve simulated action <Check size={14} />
+                  Approve simulated external action <Check size={14} />
                 </button>
               </div>
             ) : (
@@ -1068,30 +1221,31 @@ export function IntegrationsScreen({
 }: {
   integrations: IntegrationView[];
 }) {
-  const [configured, setConfigured] = useState<string[]>(
-    integrations
-      .filter((item) => item.state === "Demo configured")
-      .map((item) => item.name),
+  const simulated = integrations.some((item) =>
+    /demo|seed|simulat/i.test(item.state),
   );
-  const [notice, setNotice] = useState("");
   return (
     <>
       <PageTitle
         title="Integrations"
         description="Control connection scopes, synchronization health, and permissions."
       />
-      <div className="grid cols-3">
-        {integrations.map((item) => {
-          const demo = configured.includes(item.name);
-          return (
+      {integrations.length === 0 ? (
+        <EmptyWorkspaceState
+          title="No integrations are configured"
+          description="No connector has completed authorization and a health check. Review governance settings before enabling an approved ingestion path."
+          actionHref="/settings"
+          actionLabel="Review data policy"
+        />
+      ) : (
+        <div className="grid cols-3">
+          {integrations.map((item) => (
             <section className="card integration" key={item.id}>
               <div className="split">
                 <div className="provider-icon">
                   <PlugZap size={18} />
                 </div>
-                <span className={`badge ${demo ? "brand" : ""}`}>
-                  {demo ? "Demo configured" : item.state}
-                </span>
+                <span className="badge">{item.state}</span>
               </div>
               <h2>{item.name}</h2>
               <p className="subtle">
@@ -1107,39 +1261,24 @@ export function IntegrationsScreen({
                 <span>Live data scope</span>
                 <strong>{item.dataScope}</strong>
               </div>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  setConfigured((value) =>
-                    demo
-                      ? value.filter((name) => name !== item.name)
-                      : [...value, item.name],
-                  );
-                  setNotice(
-                    `${item.name} ${demo ? "removed from" : "added to"} the demo configuration. No OAuth request was made.`,
-                  );
-                }}
-              >
-                {demo ? "Remove demo config" : "Configure demo"}
-              </button>
+              <p className="subtle">
+                {item.permissions.length
+                  ? `Granted scopes: ${item.permissions.join(", ")}`
+                  : "No connector permissions granted"}
+              </p>
             </section>
-          );
-        })}
-      </div>
-      {notice && (
-        <p className="toast success" role="status">
-          {notice}
-        </p>
+          ))}
+        </div>
       )}
-      <div className="callout section-gap">
-        <div className="callout-title">Simulation boundary</div>
-        <p className="subtle">
-          Configuration changes affect presentation state only. A provider is
-          never labeled connected until an OAuth handshake and health check
-          succeed.
-        </p>
-      </div>
+      {simulated && (
+        <div className="callout section-gap">
+          <div className="callout-title">Simulation disclosure</div>
+          <p className="subtle">
+            These demonstration connector records are not live. No OAuth
+            handshake, synchronization, or external request is performed.
+          </p>
+        </div>
+      )}
     </>
   );
 }
@@ -1149,22 +1288,39 @@ export function FollowUpScreen({
   problem,
   feedbackItems,
 }: {
-  initialState: DemoState;
-  problem: ProductProblem;
+  initialState: DemoState | null;
+  problem: ProductProblem | null;
   feedbackItems: FeedbackItem[];
 }) {
   const [state, setState] = useState(initialState);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  if (!state || !problem) {
+    return (
+      <>
+        <PageTitle
+          title="Customer follow-up"
+          description="Close the loop after a verified deployment—always with human approval."
+        />
+        <EmptyWorkspaceState
+          title="No follow-up workflow exists"
+          description="Customer drafts appear only after a real product problem has a reviewed workflow and a verified resolution."
+          actionHref={problem ? `/problems/${problem.id}` : "/feedback"}
+          actionLabel={problem ? "Review product problem" : "Open feedback inbox"}
+        />
+      </>
+    );
+  }
+  const activeProblem = problem;
   const available =
     ["Verified", "Closed"].includes(state.problemStage) &&
     state.notifications !== "Not drafted";
   async function approveDrafts() {
     setBusy(true);
     try {
-      setState(await workflowMutation("/api/workflow/notify", problem.orgId));
+      setState(await workflowMutation("/api/workflow/notify", activeProblem.orgId));
       setNotice(
-        "Customer drafts approved in the simulated workflow; no message was sent.",
+        "Customer drafts approved in the audited workflow; no external message was sent.",
       );
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Action failed");
@@ -1264,6 +1420,14 @@ export function CustomersScreen({ customers }: { customers: CustomerView[] }) {
         title="Customers"
         description="Business context connected to feedback, problems, and resolutions."
       />
+      {customers.length === 0 ? (
+        <EmptyWorkspaceState
+          title="No customer accounts"
+          description="This workspace has no customer or revenue records. Accounts appear only after an approved data source imports them."
+          actionHref="/integrations"
+          actionLabel="Review integrations"
+        />
+      ) : (
       <section className="card table-wrap">
         <table>
           <thead>
@@ -1301,6 +1465,7 @@ export function CustomersScreen({ customers }: { customers: CustomerView[] }) {
           </tbody>
         </table>
       </section>
+      )}
     </>
   );
 }

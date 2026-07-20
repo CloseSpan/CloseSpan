@@ -1,5 +1,10 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import {
+  applicationMode,
+  hasWorkspaceMembership,
+  normalizeEmail,
+} from "@/lib/auth-user";
 
 const PUBLIC_PAGES = new Set(["/", "/login"]);
 
@@ -14,15 +19,28 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     maxAge: 12 * 60 * 60,
   },
   callbacks: {
+    async jwt({ token, profile }) {
+      const googleProfile = profile as { email?: string } | undefined;
+      if (googleProfile?.email) token.email = normalizeEmail(googleProfile.email);
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && typeof token.email === "string") {
+        session.user.email = token.email;
+      }
+      return session;
+    },
     async signIn({ account, profile }) {
       if (account?.provider !== "google") return false;
       const googleProfile = profile as
         | { email?: string; email_verified?: boolean }
         | undefined;
-      return Boolean(
-        googleProfile?.email &&
-          googleProfile.email_verified === true,
-      );
+      const email = googleProfile?.email
+        ? normalizeEmail(googleProfile.email)
+        : "";
+      if (!email || googleProfile?.email_verified !== true) return false;
+      if (applicationMode() === "demo") return true;
+      return hasWorkspaceMembership(email);
     },
     authorized({ auth: session, request }) {
       if (PUBLIC_PAGES.has(request.nextUrl.pathname)) return true;

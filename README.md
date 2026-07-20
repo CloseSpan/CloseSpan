@@ -35,10 +35,19 @@ AUTH_GOOGLE_ID=<Google OAuth client ID>
 AUTH_GOOGLE_SECRET=<Google OAuth client secret>
 ```
 
-Use `openssl rand -hex 32` to generate `AUTH_SECRET`. In demo mode, any verified
-Google account can enter the simulated tenant. In production mode, the
+Use `openssl rand -hex 32` to generate `AUTH_SECRET`. In production mode, the
 Google email must match a row in `workspace_members`; that row supplies the
-organization, member ID, display name, and role. Add the production callback
+organization, member ID, display name, and role. Provision the first owner
+into an empty organization with:
+
+```bash
+PRODUCTION_OWNER_EMAIL=you@company.com \
+PRODUCTION_OWNER_NAME="Your Name" \
+PRODUCTION_ORG_NAME="Feelow AI" \
+npm run db:provision-owner
+```
+
+Add the production callback
 `https://your-domain.example/api/auth/callback/google` in Google Cloud before
 deployment.
 

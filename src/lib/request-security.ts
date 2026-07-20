@@ -8,6 +8,7 @@ export class HttpError extends Error {
 
 export interface RequestContext {
   orgId: string;
+  organizationName: string;
   actorId: string;
   actorName: string;
   role: string;
@@ -45,7 +46,10 @@ function testUser(request: NextRequest): WorkspaceUser | null | undefined {
   if (request.headers.get("x-test-auth") === "none") return null;
   return {
     id: request.headers.get("x-test-user-id") ?? "demo_user_avery",
-    orgId: ORG_ID,
+    orgId: request.headers.get("x-test-user-org-id") ?? ORG_ID,
+    organizationName:
+      request.headers.get("x-test-organization-name") ??
+      "FeedbackFlow AI Test",
     name: request.headers.get("x-test-user-name") ?? "Avery Chen",
     email: request.headers.get("x-test-user-email") ?? "avery@example.com",
     role: request.headers.get("x-test-user-role") ?? "Admin",
@@ -91,6 +95,7 @@ export async function authorizeMutation(
   enforceRateLimit(request, user.id);
   return {
     orgId: user.orgId,
+    organizationName: user.organizationName,
     actorId: user.id,
     actorName: user.name,
     role: user.role,
@@ -109,11 +114,17 @@ export async function authorizeAdminMutation(
 
 export async function authorizeRead(
   request: NextRequest,
-): Promise<Pick<RequestContext, "orgId" | "actorId" | "actorName" | "traceId">> {
+): Promise<
+  Pick<
+    RequestContext,
+    "orgId" | "organizationName" | "actorId" | "actorName" | "traceId"
+  >
+> {
   const user = await authenticatedUser(request);
   enforceOrganizationScope(request, user);
   return {
     orgId: user.orgId,
+    organizationName: user.organizationName,
     actorId: user.id,
     actorName: user.name,
     traceId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
@@ -121,9 +132,25 @@ export async function authorizeRead(
 }
 
 export function errorResponse(error: unknown): Response {
-  const known = error instanceof HttpError;
-  return Response.json({ error: known ? error.message : "The action could not be completed" }, {
-    status: known ? error.status : error instanceof Error && error.message.includes("cannot") ? 409 : 409,
+  if (error instanceof HttpError) {
+    return Response.json({ error: error.message }, {
+      status: error.status,
+      headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+    });
+  }
+  const status =
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof (error as { status: unknown }).status === "number" &&
+    (error as { status: number }).status >= 400 &&
+    (error as { status: number }).status <= 599
+      ? (error as { status: number }).status
+      : 409;
+  const message =
+    error instanceof Error ? error.message : "The action could not be completed";
+  return Response.json({ error: message }, {
+    status,
     headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
   });
 }

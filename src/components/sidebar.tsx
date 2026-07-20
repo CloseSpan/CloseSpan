@@ -9,13 +9,19 @@ export const navigationItems = [
   [Activity, "Investigations", "/investigations"], [BadgeCheck, "Approvals", "/approvals"], [GitPullRequest, "Follow-up", "/follow-up"], [Blocks, "Integrations", "/integrations"], [Users, "Customers", "/customers"], [Settings, "Settings", "/settings"],
 ] as const;
 
-export function Sidebar() {
+export function Sidebar({
+  workspaceName,
+  demoMode,
+}: {
+  workspaceName: string;
+  demoMode: boolean;
+}) {
   const pathname = usePathname();
   return <aside className="sidebar">
     <Link className="brand" href="/" aria-label="Feelow AI home"><div className="brandmark">F</div><span>Feelow AI</span></Link>
-    <div className="workspace">Northstar workspace</div>
+    <div className="workspace">{workspaceName}</div>
     <nav className="nav" aria-label="Primary navigation">{navigationItems.map(([Icon, label, href]) => { const active = pathname === href || pathname.startsWith(`${href}/`); return <Link href={href} className={active ? "active" : ""} aria-current={active ? "page" : undefined} aria-label={label} title={label} key={label}><Icon aria-hidden="true"/><span>{label}</span></Link>})}</nav>
-    <div className="demo-label"><strong>SIMULATED WORKSPACE</strong>Seeded data · no external systems connected</div>
+    {demoMode && <div className="demo-label"><strong>SIMULATED WORKSPACE</strong>Seeded data · no external systems connected</div>}
   </aside>;
 }
 

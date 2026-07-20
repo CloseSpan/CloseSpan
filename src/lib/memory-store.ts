@@ -43,6 +43,12 @@ export function getMemoryState(orgId: string): DemoState {
   return current;
 }
 
+export function findMemoryState(orgId: string): DemoState | null {
+  const current = states().get(orgId);
+  if (current) return current;
+  return orgId === approval.orgId ? getMemoryState(orgId) : null;
+}
+
 function alreadyProcessed(state: DemoState, context: ActionContext, action: string): boolean {
   const processed = state.processedActions[context.idempotencyKey];
   if (processed && processed !== action) throw new Error("Idempotency key was already used for a different action");
