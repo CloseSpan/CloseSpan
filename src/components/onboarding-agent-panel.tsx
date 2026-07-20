@@ -11,6 +11,14 @@ import {
   PlugZap,
   Sparkles,
 } from "lucide-react";
+import {
+  fetchConnectedIntegrationIds,
+  NangoConnectButton,
+} from "@/components/nango-connect-button";
+import { IntegrationSyncStatus } from "@/components/integration-sync-status";
+import { PublicSourceDiscovery } from "@/components/public-source-discovery";
+import type { IntegrationConnectionState } from "@/lib/integration-client";
+import { isNangoConnectorId } from "@/lib/nango-connectors";
 import type { OnboardingAction } from "@/lib/onboarding-agent";
 import type {
   OnboardingPhase,
@@ -117,6 +125,12 @@ export function OnboardingAgentPanel({
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [connectedIds, setConnectedIds] = useState<string[]>([]);
+  const [connectionStates, setConnectionStates] = useState<
+    Partial<Record<string, IntegrationConnectionState>>
+  >({});
+  const [syncRefreshKeys, setSyncRefreshKeys] = useState<
+    Record<string, number>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -137,6 +151,20 @@ export function OnboardingAgentPanel({
       })
       .catch(() => {
         if (!cancelled) setError(FRIENDLY_ERROR);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchConnectedIntegrationIds(orgId)
+      .then((ids) => {
+        if (!cancelled) setConnectedIds(ids);
+      })
+      .catch(() => {
+        // Onboarding remains usable while a transient status read recovers.
       });
     return () => {
       cancelled = true;
@@ -203,9 +231,6 @@ export function OnboardingAgentPanel({
       if (action.type === "connect_github") {
         const result = await integrationFetch("/api/integrations/github", orgId);
         window.open(result.installUrl as string, "_blank", "noopener,noreferrer");
-        setConnectedIds((prev) =>
-          prev.includes("int_github") ? prev : [...prev, "int_github"],
-        );
       }
       router.refresh();
     } catch {
@@ -297,6 +322,21 @@ export function OnboardingAgentPanel({
           <div ref={endRef} />
         </div>
 
+        {state &&
+          (state.productProfile.productName ||
+            state.productProfile.productUrl ||
+            state.productProfile.productDescription) && (
+            <PublicSourceDiscovery
+              key={JSON.stringify([
+                state.productProfile.productName,
+                state.productProfile.productUrl,
+                state.productProfile.productDescription,
+              ])}
+              orgId={orgId}
+              productProfile={state.productProfile}
+            />
+          )}
+
         {state && state.recommendedConnectors.length > 0 && (
           <section className="delphi-sync">
             <div className="delphi-sync-head">
@@ -311,7 +351,17 @@ export function OnboardingAgentPanel({
             </div>
             <div className="delphi-sync-grid">
               {state.recommendedConnectors.map((connector) => {
-                const connected = connectedIds.includes(connector.integrationId);
+                const observedConnectionState =
+                  connectionStates[connector.integrationId];
+                const connected =
+                  observedConnectionState === undefined
+                    ? connectedIds.includes(connector.integrationId)
+                    : observedConnectionState === "Connected";
+                const nangoIntegrationId = isNangoConnectorId(
+                  connector.integrationId,
+                )
+                  ? connector.integrationId
+                  : null;
                 const action = actions.find((item) => {
                   if (item.type === "connect_webhook")
                     return connector.integrationId === "int_webhook";
@@ -320,7 +370,18 @@ export function OnboardingAgentPanel({
                   if (item.type === "oauth_connect")
                     return item.integrationId === connector.integrationId;
                   return false;
-                });
+                }) ??
+                  (connector.integrationId === "int_webhook"
+                    ? ({
+                        type: "connect_webhook",
+                        label: "Create webhook endpoint",
+                      } satisfies OnboardingAction)
+                    : connector.integrationId === "int_github"
+                      ? ({
+                          type: "connect_github",
+                          label: "Connect GitHub",
+                        } satisfies OnboardingAction)
+                      : null);
                 return (
                   <article
                     key={connector.integrationId}
@@ -334,9 +395,59 @@ export function OnboardingAgentPanel({
                       <p>{connector.reason}</p>
                     </div>
                     {connected ? (
-                      <span className="delphi-source-status">
-                        <Check size={14} aria-hidden="true" /> Connected
-                      </span>
+                      <div className="delphi-source-connected">
+                        <span className="delphi-source-status">
+                          <Check size={14} aria-hidden="true" /> Connected
+                        </span>
+                        {nangoIntegrationId && (
+                          <IntegrationSyncStatus
+                            orgId={orgId}
+                            integrationId={nangoIntegrationId}
+                            active
+                            refreshKey={
+                              syncRefreshKeys[nangoIntegrationId] ?? 0
+                            }
+                            onSucceeded={() => router.refresh()}
+                            onConnectionStateChange={(nextState) => {
+                              setConnectionStates((previous) => ({
+                                ...previous,
+                                [nangoIntegrationId]: nextState,
+                              }));
+                              setConnectedIds((previous) =>
+                                nextState === "Connected"
+                                  ? previous.includes(nangoIntegrationId)
+                                    ? previous
+                                    : [...previous, nangoIntegrationId]
+                                  : previous.filter(
+                                      (id) => id !== nangoIntegrationId,
+                                    ),
+                              );
+                            }}
+                          />
+                        )}
+                      </div>
+                    ) : nangoIntegrationId ? (
+                      <NangoConnectButton
+                        orgId={orgId}
+                        integrationId={nangoIntegrationId}
+                        connectionState={observedConnectionState}
+                        onConnected={(integrationId) => {
+                          setConnectedIds((previous) =>
+                            previous.includes(integrationId)
+                              ? previous
+                              : [...previous, integrationId],
+                          );
+                          setConnectionStates((previous) => ({
+                            ...previous,
+                            [integrationId]: "Connected",
+                          }));
+                          setSyncRefreshKeys((previous) => ({
+                            ...previous,
+                            [integrationId]:
+                              (previous[integrationId] ?? 0) + 1,
+                          }));
+                        }}
+                      />
                     ) : action?.type === "oauth_connect" ? (
                       <Link
                         className="btn"

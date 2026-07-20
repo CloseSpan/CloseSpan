@@ -27,6 +27,10 @@ describe("discoverFeedbackSourcesFromProduct", () => {
       productBrief: "A consumer iOS and Android fitness mobile app",
     });
     const ids = result.recommendedConnectors.map((item) => item.integrationId);
+    expect(result.understanding).toMatchObject({
+      productType: "consumer_mobile",
+      productDescription: "A consumer iOS and Android fitness mobile app",
+    });
     expect(ids).toContain("int_app_store");
     expect(ids).toContain("int_play_store");
   });
@@ -37,6 +41,7 @@ describe("discoverFeedbackSourcesFromProduct", () => {
       productBrief: "B2B SaaS analytics dashboard for enterprise teams",
     });
     const ids = result.recommendedConnectors.map((item) => item.integrationId);
+    expect(result.understanding.productType).toBe("b2b_saas");
     expect(ids).toContain("int_zendesk");
     expect(ids).toContain("int_slack");
   });

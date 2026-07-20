@@ -20,10 +20,14 @@ import { calculateImpact } from "@/lib/domain";
 import { launchPricingNote } from "@/lib/plans";
 import type { DemoState } from "@/lib/store";
 import { FeedbackVolumeChart } from "./feedback-volume-chart";
+import { IntegrationSyncStatus } from "./integration-sync-status";
+import { NangoConnectButton } from "./nango-connect-button";
 import {
   formatTrend,
   type OverviewAnalytics,
 } from "@/lib/overview-analytics";
+import { isNangoConnectorId } from "@/lib/nango-connectors";
+import type { IntegrationConnectionState } from "@/lib/integration-client";
 import type {
   CustomerView,
   IntegrationView,
@@ -1218,11 +1222,36 @@ function Fact({
 
 export function IntegrationsScreen({
   integrations,
+  orgId,
 }: {
   integrations: IntegrationView[];
+  orgId: string;
 }) {
   const simulated = integrations.some((item) =>
     /demo|seed|simulat/i.test(item.state),
+  );
+  const [connectedIds, setConnectedIds] = useState(() =>
+    integrations
+      .filter((integration) => integration.state === "Connected")
+      .map((integration) => integration.id),
+  );
+  const [connectionStates, setConnectionStates] = useState<
+    Partial<Record<string, IntegrationConnectionState>>
+  >(() =>
+    Object.fromEntries(
+      integrations
+        .filter(
+          (integration) =>
+            isNangoConnectorId(integration.id) &&
+            ["Connected", "Needs reconnect", "Disconnected"].includes(
+              integration.state,
+            ),
+        )
+        .map((integration) => [
+          integration.id,
+          integration.state as Exclude<IntegrationConnectionState, null>,
+        ]),
+    ),
   );
   return (
     <>
@@ -1239,35 +1268,89 @@ export function IntegrationsScreen({
         />
       ) : (
         <div className="grid cols-3">
-          {integrations.map((item) => (
-            <section className="card integration" key={item.id}>
-              <div className="split">
-                <div className="provider-icon">
-                  <PlugZap size={18} />
+          {integrations.map((item) => {
+            const observedConnectionState = connectionStates[item.id];
+            const connected =
+              observedConnectionState === undefined
+                ? connectedIds.includes(item.id)
+                : observedConnectionState === "Connected";
+            const stateLabel =
+              observedConnectionState === undefined
+                ? connected
+                  ? "Connected"
+                  : item.state
+                : observedConnectionState ?? "Not connected";
+            return (
+              <section className="card integration" key={item.id}>
+                <div className="split">
+                  <div className="provider-icon">
+                    <PlugZap size={18} />
+                  </div>
+                  <span className={`badge${connected ? " success" : ""}`}>
+                    {stateLabel}
+                  </span>
                 </div>
-                <span className="badge">{item.state}</span>
-              </div>
-              <h2>{item.name}</h2>
-              <p className="subtle">
-                {item.category} adapter · least-privilege scopes
-              </p>
-              <div className="integration-meta">
-                <span>Last live sync</span>
-                <strong>
-                  {item.lastSync
-                    ? new Date(item.lastSync).toLocaleString()
-                    : "Never"}
-                </strong>
-                <span>Live data scope</span>
-                <strong>{item.dataScope}</strong>
-              </div>
-              <p className="subtle">
-                {item.permissions.length
-                  ? `Granted scopes: ${item.permissions.join(", ")}`
-                  : "No connector permissions granted"}
-              </p>
-            </section>
-          ))}
+                <h2>{item.name}</h2>
+                <p className="subtle">
+                  {item.category} adapter · least-privilege scopes
+                </p>
+                <div className="integration-meta">
+                  <span>Last live sync</span>
+                  <strong>
+                    {item.lastSync
+                      ? new Date(item.lastSync).toLocaleString()
+                      : "Never"}
+                  </strong>
+                  <span>Live data scope</span>
+                  <strong>{item.dataScope}</strong>
+                </div>
+                <p className="subtle">
+                  {item.permissions.length
+                    ? `Granted scopes: ${item.permissions.join(", ")}`
+                    : "No connector permissions granted"}
+                </p>
+                {isNangoConnectorId(item.id) && (
+                  <div className="integration-controls">
+                    <NangoConnectButton
+                      orgId={orgId}
+                      integrationId={item.id}
+                      initiallyConnected={connected}
+                      connectionState={observedConnectionState}
+                      onConnected={(integrationId) => {
+                        setConnectedIds((previous) =>
+                          previous.includes(integrationId)
+                            ? previous
+                            : [...previous, integrationId],
+                        );
+                        setConnectionStates((previous) => ({
+                          ...previous,
+                          [integrationId]: "Connected",
+                        }));
+                      }}
+                    />
+                    <IntegrationSyncStatus
+                      orgId={orgId}
+                      integrationId={item.id}
+                      active={connected}
+                      onConnectionStateChange={(nextState) => {
+                        setConnectionStates((previous) => ({
+                          ...previous,
+                          [item.id]: nextState,
+                        }));
+                        setConnectedIds((previous) =>
+                          nextState === "Connected"
+                            ? previous.includes(item.id)
+                              ? previous
+                              : [...previous, item.id]
+                            : previous.filter((id) => id !== item.id),
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
       {simulated && (

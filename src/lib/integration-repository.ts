@@ -12,6 +12,7 @@ import {
 import { databasePool, persistenceMode } from "./db";
 import { integrationCatalog } from "./integration-catalog";
 import { getAiPublicConfiguration } from "./ai-config";
+import { getNangoConnectionStatuses } from "./nango-repository";
 
 export interface WorkspaceSetupStatus {
   feedbackConnected: boolean;
@@ -19,6 +20,7 @@ export interface WorkspaceSetupStatus {
   githubConnected: boolean;
   feedbackCount: number;
   setupComplete: boolean;
+  connectedIntegrationIds: string[];
   webhook?: {
     integrationId: string;
     webhookUrl: string;
@@ -118,17 +120,38 @@ export async function getWorkspaceSetupStatus(
   orgId: string,
 ): Promise<WorkspaceSetupStatus> {
   if (persistenceMode() !== "postgres") {
+    const [connections, aiConfig] = await Promise.all([
+      getNangoConnectionStatuses(orgId),
+      getAiPublicConfiguration(orgId),
+    ]);
+    const connectedIntegrationIds = connections
+      .filter((connection) => connection.state === "Connected")
+      .map((connection) => connection.integrationId);
+    const feedbackSourceIds = new Set(
+      integrationCatalog
+        .filter((entry) => entry.feedbackSource)
+        .map((entry) => entry.id),
+    );
+    const feedbackConnected = connectedIntegrationIds.some((id) =>
+      feedbackSourceIds.has(id),
+    );
+    const githubConnected = connectedIntegrationIds.includes("int_github");
+    const aiConfigured =
+      aiConfig.configured &&
+      (aiConfig.connectionStatus === "ready" ||
+        aiConfig.connectionStatus === "Environment");
     return {
-      feedbackConnected: false,
-      aiConfigured: false,
-      githubConnected: false,
+      feedbackConnected,
+      aiConfigured,
+      githubConnected,
       feedbackCount: 0,
-      setupComplete: false,
+      setupComplete: feedbackConnected && aiConfigured && githubConnected,
+      connectedIntegrationIds,
     };
   }
   await ensureIntegrationCatalog(orgId);
   const pool = databasePool();
-  const [feedbackResult, webhookResult, githubResult, aiConfig] =
+  const [feedbackResult, integrationsResult, aiConfig] =
     await Promise.all([
       pool.query<{ count: number }>(
         "SELECT count(*)::int AS count FROM feedback_items WHERE org_id=$1",
@@ -136,37 +159,40 @@ export async function getWorkspaceSetupStatus(
       ),
       pool.query<{
         id: string;
+        provider: string;
         connection_state: string;
         last_sync_at: Date | null;
       }>(
-        `SELECT id, connection_state, last_sync_at
+        `SELECT id, provider, connection_state, last_sync_at
            FROM integrations
-          WHERE org_id=$1 AND provider=$2
-          LIMIT 1`,
-        [orgId, WEBHOOK_PROVIDER],
-      ),
-      pool.query<{ connection_state: string }>(
-        `SELECT connection_state
-           FROM integrations
-          WHERE org_id=$1 AND provider=$2
-          LIMIT 1`,
-        [orgId, GITHUB_PROVIDER],
+          WHERE org_id=$1`,
+        [orgId],
       ),
       getAiPublicConfiguration(orgId),
     ]);
 
   const feedbackCount = feedbackResult.rows[0]?.count ?? 0;
-  const webhookRow = webhookResult.rows[0];
+  const connectedIntegrationIds = integrationsResult.rows
+    .filter((row) => row.connection_state === "Connected")
+    .map((row) => row.id);
+  const webhookRow = integrationsResult.rows.find(
+    (row) => row.provider === WEBHOOK_PROVIDER,
+  );
   const webhookConnected = webhookRow?.connection_state === "Connected";
-  const githubConnected =
-    githubResult.rows[0]?.connection_state === "Connected" ||
-    githubResult.rows[0]?.connection_state === "Pending setup";
+  const githubConnected = connectedIntegrationIds.includes("int_github");
   const aiConfigured =
     aiConfig.configured &&
     (aiConfig.connectionStatus === "ready" ||
       aiConfig.connectionStatus === "Environment");
 
-  const feedbackConnected = feedbackCount > 0 || webhookConnected;
+  const feedbackSourceIds = new Set(
+    integrationCatalog
+      .filter((entry) => entry.feedbackSource)
+      .map((entry) => entry.id),
+  );
+  const feedbackConnected =
+    feedbackCount > 0 ||
+    connectedIntegrationIds.some((id) => feedbackSourceIds.has(id));
 
   return {
     feedbackConnected,
@@ -174,6 +200,7 @@ export async function getWorkspaceSetupStatus(
     githubConnected,
     feedbackCount,
     setupComplete: feedbackConnected && aiConfigured && githubConnected,
+    connectedIntegrationIds,
     webhook: webhookConnected
       ? {
           integrationId: webhookRow.id,
@@ -316,7 +343,8 @@ export async function ingestWebhookFeedback(
       await client.query("ROLLBACK");
       const existing = await pool.query<{ id: string }>(
         `SELECT id FROM feedback_items
-          WHERE org_id=$1 AND integration_id=$2 AND external_id=$3
+          WHERE org_id=$1 AND integration_id=$2
+            AND source_namespace='direct' AND external_id=$3
           LIMIT 1`,
         [orgId, integrationId, externalId],
       );

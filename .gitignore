@@ -3,6 +3,7 @@ node_modules
 coverage
 .env
 .env.local
+upload.env.me
 *.log
 *.tsbuildinfo
 .DS_Store

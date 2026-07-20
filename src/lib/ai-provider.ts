@@ -255,7 +255,7 @@ async function callOpenRouter(
     maxRetries: 2,
     defaultHeaders: {
       "HTTP-Referer": process.env.APP_PUBLIC_URL ?? "https://feedbackflow.ai",
-      "X-OpenRouter-Title": "FeedbackFlow AI",
+      "X-OpenRouter-Title": "Feelow AI",
     },
   });
   const response = await client.chat.completions.parse(

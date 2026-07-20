@@ -6,6 +6,30 @@ const expected = { organizations:1,product_problems:4,feedback_items:5,accounts:
 try {
   const providerConfigTable = await pool.query("SELECT to_regclass('public.ai_provider_configs') table_name");
   if (!providerConfigTable.rows[0].table_name) throw new Error("ai_provider_configs migration is missing");
+  const requiredConnectorTables = [
+    "integration_connections",
+    "integration_connection_attempts",
+    "nango_webhook_events",
+    "nango_sync_cursors",
+    "nango_sync_jobs",
+    "nango_sync_record_receipts",
+  ];
+  for (const table of requiredConnectorTables) {
+    const relation = await pool.query("SELECT to_regclass($1) table_name", [
+      `public.${table}`,
+    ]);
+    if (!relation.rows[0].table_name)
+      throw new Error(`${table} migration is missing`);
+  }
+  const syncHardeningColumns = await pool.query(
+    `SELECT table_name,column_name FROM information_schema.columns
+      WHERE table_schema='public' AND (
+        (table_name='feedback_items' AND column_name='source_namespace') OR
+        (table_name='nango_sync_jobs' AND column_name='queue_order_at')
+      )`,
+  );
+  if (syncHardeningColumns.rowCount !== 2)
+    throw new Error("Nango sync hardening migration is missing");
   for (const [table,count] of Object.entries(expected)) {
     const result = await pool.query(`SELECT count(*)::int count FROM ${table} WHERE ${table === "organizations" ? "id" : "org_id"}='org_northstar'`);
     if (result.rows[0].count !== count) throw new Error(`${table}: expected ${count}, received ${result.rows[0].count}`);
@@ -18,5 +42,10 @@ try {
   if (total !== 1_320_000) throw new Error(`Expected $1.32m affected ARR, received ${total}`);
   const prompt = await pool.query("SELECT provider FROM prompt_versions WHERE org_id='org_northstar' AND name='feedback-intelligence' AND active=true");
   if (prompt.rows[0]?.provider !== "multi-provider") throw new Error("The active feedback prompt must be provider-agnostic");
-  console.log("Database verification passed", { ...expected, ai_provider_configuration:"ready", affected_revenue:total });
+  console.log("Database verification passed", {
+    ...expected,
+    ai_provider_configuration:"ready",
+    nango_sync_ingestion:"ready",
+    affected_revenue:total,
+  });
 } finally { await pool.end(); }

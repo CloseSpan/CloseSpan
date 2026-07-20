@@ -23,36 +23,47 @@ import type { ProductProfile, RecommendedConnector } from "./onboarding-reposito
  * enrichment (scrape public product pages), never for customer credentials.
  */
 
-const discoverySchema = z.object({
+export const productTypeSchema = z.enum([
+  "b2b_saas",
+  "consumer_mobile",
+  "consumer_web",
+  "marketplace",
+  "developer_tool",
+  "other",
+]);
+
+export const productUnderstandingSchema = z.object({
   productName: z.string().nullable(),
   productUrl: z.string().nullable(),
   productDescription: z.string().nullable(),
-  productType: z.enum([
-    "b2b_saas",
-    "consumer_mobile",
-    "consumer_web",
-    "marketplace",
-    "developer_tool",
-    "other",
-  ]),
+  productType: productTypeSchema,
+});
+
+export const connectorRecommendationCandidateSchema = z.object({
+  integrationId: z.string(),
+  reason: z.string().min(1).max(280),
+  confidence: z.enum(["high", "medium", "low"]),
+});
+
+export const productDiscoverySchema = productUnderstandingSchema.extend({
   likelySources: z
-    .array(
-      z.object({
-        integrationId: z.string(),
-        reason: z.string().min(1).max(280),
-        confidence: z.enum(["high", "medium", "low"]),
-      }),
-    )
+    .array(connectorRecommendationCandidateSchema)
     .min(1)
     .max(8),
   summary: z.string().min(1).max(400),
 });
 
+export type ProductUnderstanding = z.infer<typeof productUnderstandingSchema>;
+export type ConnectorRecommendationCandidate = z.infer<
+  typeof connectorRecommendationCandidateSchema
+>;
+
 export type ProductDiscoveryResult = {
+  understanding: ProductUnderstanding;
   productProfile: ProductProfile;
   recommendedConnectors: RecommendedConnector[];
   summary: string;
-  productType: z.infer<typeof discoverySchema>["productType"];
+  productType: ProductUnderstanding["productType"];
 };
 
 const catalogById = new Map(
@@ -60,7 +71,7 @@ const catalogById = new Map(
 );
 
 function toRecommended(
-  items: z.infer<typeof discoverySchema>["likelySources"],
+  items: ConnectorRecommendationCandidate[],
 ): RecommendedConnector[] {
   const seen = new Set<string>();
   const connectors: RecommendedConnector[] = [];
@@ -206,6 +217,12 @@ function heuristicDiscovery(brief: string): ProductDiscoveryResult {
   }));
 
   return {
+    understanding: {
+      productName,
+      productUrl,
+      productDescription: brief.trim().slice(0, 800),
+      productType,
+    },
     productType,
     productProfile: {
       productName,
@@ -256,7 +273,7 @@ async function callDiscoveryModel(
       max_tokens: Math.min(configuration.maxOutputTokens, 1500),
       system: systemPrompt,
       messages: [{ role: "user", content: userPayload }],
-      output_config: { format: zodOutputFormat(discoverySchema) },
+      output_config: { format: zodOutputFormat(productDiscoverySchema) },
     });
     if (!response.parsed_output) throw new Error("No product discovery result");
     return response.parsed_output;
@@ -275,7 +292,10 @@ async function callDiscoveryModel(
       { role: "system", content: systemPrompt },
       { role: "user", content: userPayload },
     ],
-    response_format: zodResponseFormat(discoverySchema, "product_discovery_v1"),
+    response_format: zodResponseFormat(
+      productDiscoverySchema,
+      "product_discovery_v1",
+    ),
   });
   const parsed = response.choices[0]?.message.parsed;
   if (!parsed) throw new Error("No product discovery result");
@@ -301,6 +321,13 @@ export async function discoverFeedbackSourcesFromProduct(input: {
         : heuristicDiscovery(brief).recommendedConnectors;
 
     return {
+      understanding: {
+        productName: parsed.productName,
+        productUrl: parsed.productUrl,
+        productDescription:
+          parsed.productDescription ?? brief.slice(0, 800),
+        productType: parsed.productType,
+      },
       productType: parsed.productType,
       productProfile: {
         productName: parsed.productName,

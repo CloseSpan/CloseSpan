@@ -11,6 +11,7 @@ export interface RequestContext {
   organizationName: string;
   actorId: string;
   actorName: string;
+  actorEmail: string;
   role: string;
   idempotencyKey: string;
   traceId: string;
@@ -49,7 +50,7 @@ function testUser(request: NextRequest): WorkspaceUser | null | undefined {
     orgId: request.headers.get("x-test-user-org-id") ?? ORG_ID,
     organizationName:
       request.headers.get("x-test-organization-name") ??
-      "FeedbackFlow AI Test",
+      "Feelow AI Test",
     name: request.headers.get("x-test-user-name") ?? "Avery Chen",
     email: request.headers.get("x-test-user-email") ?? "avery@example.com",
     role: request.headers.get("x-test-user-role") ?? "Admin",
@@ -98,6 +99,7 @@ export async function authorizeMutation(
     organizationName: user.organizationName,
     actorId: user.id,
     actorName: user.name,
+    actorEmail: user.email,
     role: user.role,
     idempotencyKey,
     traceId: request.headers.get("x-request-id") ?? crypto.randomUUID(),

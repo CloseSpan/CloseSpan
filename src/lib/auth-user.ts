@@ -73,7 +73,7 @@ function demoUser(email: string, name?: string | null): WorkspaceUser {
   return {
     id: `google_${digest}`,
     orgId: ORG_ID,
-    organizationName: "FeedbackFlow AI Demo",
+    organizationName: "Feelow AI Demo",
     name: name?.trim() || email,
     email,
     role: "Admin",
