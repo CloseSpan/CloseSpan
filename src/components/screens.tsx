@@ -153,7 +153,7 @@ export function OverviewScreen({
       "Avg. signal → resolution",
       metrics.averageResolutionDays > 0
         ? `${metrics.averageResolutionDays}d`
-        : "—",
+        : "No data",
       metrics.averageResolutionDays > 0
         ? `${metrics.resolutionImprovementDays}d faster`
         : "No resolved samples",
@@ -2312,7 +2312,7 @@ export function FollowUpScreen({
       <>
         <PageTitle
           title="Customer follow-up"
-          description="Close the loop after a verified deployment—always with human approval."
+          description="Close the loop after a verified deployment, always with human approval."
         />
         <EmptyWorkspaceState
           title="No follow-up workflow exists"
@@ -2347,7 +2347,7 @@ export function FollowUpScreen({
     <>
       <PageTitle
         title="Customer follow-up"
-        description="Close the loop after a verified deployment—always with human approval."
+        description="Close the loop after a verified deployment, always with human approval."
         action={
           <span className={`badge ${available ? "success" : ""}`}>
             {available ? "Verified resolution" : "Waiting for verification"}

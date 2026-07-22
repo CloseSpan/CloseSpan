@@ -157,7 +157,7 @@ const outcomes = [
   {
     icon: Network,
     eyebrow: "Detect",
-    title: "See one problem—not 30 disconnected tickets.",
+    title: "See one problem instead of 30 disconnected tickets.",
     text: "Group differently worded reports into a persistent problem with visible evidence, confidence, and release context.",
     metric: "3 reports → 1 problem",
   },
@@ -433,7 +433,7 @@ export default function LandingPage() {
         <section className="trust-section" id="trust">
           <div>
             <span className="section-label">Trust by design</span>
-            <h2>AI recommendations you can inspect—and refuse.</h2>
+            <h2>AI recommendations you can inspect and refuse.</h2>
             <p>
               Customer content is evidence, never agent instruction. Confidence,
               assumptions, affected systems, shared data, and reversibility stay

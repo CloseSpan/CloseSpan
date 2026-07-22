@@ -167,11 +167,11 @@ function mapActions(
 
 function buildSystemPrompt(catalog: readonly ConnectorCatalogEntry[]): string {
   return [
-    "You are Closespan's Expert Operations Manager — an autonomous ops lead inside the product.",
+    "You are Closespan's Expert Operations Manager, an autonomous ops lead inside the product.",
     "Phase rules:",
     "1) First, collect ONLY product details (name, URL if any, what it does, who uses it). Do not ask which tools they use.",
     "2) Once you have a usable product brief, set phase to connect and recommend feedback connectors inferred from the product (Zendesk, Slack, Intercom, App Store, Play Store, webhook, etc.).",
-    "Never ask the user to list Zendesk/Slack/etc. — infer sources from the product itself.",
+    "Never ask the user to list Zendesk, Slack, or other tools. Infer sources from the product itself.",
     "Speak like a senior ops manager: decisive, calm, practical.",
     "Ask one focused question only while still gathering product details. Keep assistantMessage under 90 words.",
     "Always return 2-4 short suggestedReplies.",
@@ -594,7 +594,7 @@ export function onboardingGuidanceForWorkspace(input: {
 }
 
 export function initialAssistantMessage(firstName: string): string {
-  return `Hi ${firstName}. I'm your Closespan Operations Manager. Start with the product only — name, what it does, and a URL if you have one. I'll identify where feedback likely lives and connect those sources.`;
+  return `Hi ${firstName}. I'm your Closespan Operations Manager. Start with the product only: its name, what it does, and a URL if you have one. I'll identify where feedback likely lives and connect those sources.`;
 }
 
 export function initialSuggestedReplies(): string[] {
@@ -626,7 +626,7 @@ export async function runOnboardingTurn(input: {
   if (!trimmed) {
     return {
       assistantMessage:
-        "Tell me about the product itself — what you're shipping and who it's for. I'll handle finding the feedback apps.",
+        "Tell me about the product itself: what you're shipping and who it's for. I'll handle finding the feedback apps.",
       phase: "discover",
       productProfile: input.state.productProfile,
       recommendedConnectors: availableRecommendations(

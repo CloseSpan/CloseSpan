@@ -1,7 +1,7 @@
 export const SITE_URL = "https://www.closespan.com";
 export const SITE_NAME = "Closespan";
 export const SITE_TITLE =
-  "Closespan — AI Feedback-to-Fix Operations for B2B SaaS";
+  "Closespan | AI Feedback-to-Fix Operations for B2B SaaS";
 export const SITE_DESCRIPTION =
   "Closespan turns B2B SaaS customer feedback into prioritized product problems, engineering-ready evidence, approved actions, and verified fixes.";
 

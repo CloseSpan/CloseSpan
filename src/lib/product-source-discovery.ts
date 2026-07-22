@@ -255,7 +255,7 @@ async function callDiscoveryModel(
     "You are Closespan's product intelligence module for an Expert Operations Manager.",
     "Given only a product brief, infer where customer feedback likely lives.",
     "Prefer feedback sources (Zendesk, Slack, Intercom, App Store, Play Store, webhook).",
-    "Do not ask the user which tools they use — infer from product type and description.",
+    "Do not ask the user which tools they use. Infer them from the product type and description.",
     "Only recommend ids from the allowed catalog.",
     "Allowed catalog:",
     JSON.stringify(connectorCatalogForAgent),

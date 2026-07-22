@@ -79,19 +79,19 @@ Public subscription packaging should remain a hypothesis until at least three pa
 
 ## Six-week validation plan
 
-### Week 1 — Reconstruct the painful event
+### Week 1: Reconstruct the painful event
 
 Interview 15 people across 10–12 qualified companies: five support leaders, five engineering/product leaders, and five operators. Ask each to reconstruct the last customer-reported defect, tools and people involved, duplicate issues created, time to usable engineering evidence, revenue/SLA impact, verification, and customer follow-up.
 
 Gate: eight companies report the workflow at least monthly and five offer anonymized historical examples.
 
-### Week 2 — Sell a concierge feedback-to-fix audit
+### Week 2: Sell a concierge feedback-to-fix audit
 
 Using a redacted 30–90 day export and issue/release metadata, manually produce the top defect clusters, existing-work matches, affected accounts, likely owner/release, missing reproduction evidence, and current manual time cost.
 
 Gate: three companies pay for a pilot or sign a credible paid conversion commitment. A free “interesting dashboard” response does not pass.
 
-### Week 3 — Shadow mode
+### Week 3: Shadow mode
 
 Connect one support source and one engineering stack with all external writes disabled.
 
@@ -102,19 +102,19 @@ Targets:
 - At least 80% top-three repository or owner accuracy.
 - Zero unapproved external writes.
 
-### Week 4 — Approved execution
+### Week 4: Approved execution
 
 Run at least ten real problem workflows through recommendation, review, one approved work-item action, and audit recording.
 
 Targets: 75% of evidence packs accepted with minor edits and a 50% reduction in median time from first signal to an engineering-ready problem.
 
-### Week 5 — Resolution proof
+### Week 5: Resolution proof
 
 Associate releases, verify complaint or error decline, prepare affected-customer replies, and calculate customer-specific ROI using the buyer’s own labor and revenue assumptions.
 
 Track time to triage, time to engineering-ready, duplicate issues avoided, support escalations per problem, time to verified resolution, follow-up completion, and post-release recurrence.
 
-### Week 6 — Conversion test
+### Week 6: Conversion test
 
 Offer paid continuation based on measured outcomes.
 

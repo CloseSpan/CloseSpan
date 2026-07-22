@@ -157,12 +157,12 @@ non-redirecting host if that redirect direction changes.
 
 The application publishes these unauthenticated discovery resources:
 
-- `/robots.txt` — allows normal search crawlers plus OpenAI and Anthropic
+- `/robots.txt`: allows normal search crawlers plus OpenAI and Anthropic
   search/user agents, while excluding tenant workspace and API paths.
-- `/sitemap.xml` — lists only canonical, public, indexable pages.
-- `/opengraph-image` and `/icon.svg` — branded link-preview and site assets.
-- `/manifest.webmanifest` — installable web-application identity.
-- `/llms.txt` — an optional factual product brief for systems that choose to
+- `/sitemap.xml`: lists only canonical, public, indexable pages.
+- `/opengraph-image` and `/icon.svg`: branded link-preview and site assets.
+- `/manifest.webmanifest`: installable web-application identity.
+- `/llms.txt`: an optional factual product brief for systems that choose to
   use the community convention. It is not a Google ranking signal and does not
   replace crawlable HTML, metadata, structured data, or the sitemap.
 
@@ -219,18 +219,18 @@ All workspace business data is persisted in PostgreSQL: feedback, problems, acco
 
 ## Repository structure
 
-- `src/app` — Next.js UI and tenant-scoped workflow routes
-- `src/components` — product workspace and application navigation
-- `src/lib/domain.ts` — core entities and explainable scoring logic
-- `src/lib/seed.ts` — deterministic test fixtures used only by the memory adapter and unit tests
-- `src/lib/store.ts` — persistence adapter boundary
-- `src/lib/postgres-store.ts` — transactional PostgreSQL workflow repository
-- `src/lib/workspace-repository.ts` — tenant-scoped database view models for application screens
-- `src/lib/ai-provider.ts`, `src/lib/ai-config.ts`, and `src/lib/ai-repository.ts` — provider adapters, encrypted configuration, and durable recommendation records
-- `src/lib/public-feedback-discovery.ts` — optional You.com public-source discovery and the disabled Bright Data adapter boundary
-- `src/lib/pipedream*` — Pipedream Connect client, connector catalog, and tenant-scoped account metadata
-- `db/migrations` and `db/seeds` — idempotent schema and demonstration data
-- `docs/architecture` — decisions and production migration plan
+- `src/app`: Next.js UI and tenant-scoped workflow routes
+- `src/components`: product workspace and application navigation
+- `src/lib/domain.ts`: core entities and explainable scoring logic
+- `src/lib/seed.ts`: deterministic test fixtures used only by the memory adapter and unit tests
+- `src/lib/store.ts`: persistence adapter boundary
+- `src/lib/postgres-store.ts`: transactional PostgreSQL workflow repository
+- `src/lib/workspace-repository.ts`: tenant-scoped database view models for application screens
+- `src/lib/ai-provider.ts`, `src/lib/ai-config.ts`, and `src/lib/ai-repository.ts`: provider adapters, encrypted configuration, and durable recommendation records
+- `src/lib/public-feedback-discovery.ts`: optional You.com public-source discovery and the disabled Bright Data adapter boundary
+- `src/lib/pipedream*`: Pipedream Connect client, connector catalog, and tenant-scoped account metadata
+- `db/migrations` and `db/seeds`: idempotent schema and demonstration data
+- `docs/architecture`: decisions and production migration plan
 
 ## Current limitations
 

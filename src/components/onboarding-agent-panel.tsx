@@ -385,7 +385,7 @@ export function OnboardingAgentPanel({
           <p className="delphi-kicker">{organizationName} · Operations</p>
           <h1>Your Operations Manager is ready</h1>
           <p className="delphi-sub">
-            Hi {firstName}. Tell me about the product only — I&apos;ll identify
+            Hi {firstName}. Tell me about the product only. I&apos;ll identify
             feedback apps like Zendesk, Slack, App Store, and Play Store, then
             connect them for intake.
           </p>
@@ -448,7 +448,7 @@ export function OnboardingAgentPanel({
             <div className="delphi-bubble assistant resolved" role="status">
               <span className="delphi-bubble-label">Ops Manager · Updated</span>
               <p>
-                GitHub is connected now — the earlier OAuth failure is
+                GitHub is connected now. The earlier OAuth failure is
                 resolved. It is ready for approved actions, so let&apos;s move on
                 to a feedback source. Slack or the custom webhook will get
                 intake started.
@@ -514,7 +514,7 @@ export function OnboardingAgentPanel({
                 {setupStatus.feedbackConnected
                   ? "Your feedback intake is connected"
                   : githubFailureIsResolved
-                    ? "GitHub is connected — keep moving"
+                    ? "GitHub is connected. Keep moving"
                     : "Choose one feedback source to keep moving"}
               </strong>
               <p>
@@ -832,7 +832,7 @@ export function OnboardingAgentPanel({
               disabled={busy === "continue"}
               onClick={continueToWorkspace}
             >
-              Continue for now — setup stays available
+              Continue for now. Setup stays available
             </button>
           </nav>
         )}
@@ -843,7 +843,7 @@ export function OnboardingAgentPanel({
             type="text"
             value={draft}
             aria-label="Describe your product"
-            placeholder="Describe your product — name, what it does, URL..."
+            placeholder="Describe your product: name, what it does, URL..."
             onChange={(event) => setDraft(event.target.value)}
             disabled={busy === "chat"}
           />

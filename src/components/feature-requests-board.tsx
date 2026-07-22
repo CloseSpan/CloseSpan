@@ -443,7 +443,7 @@ export function FeatureRequestsBoard({
 
         <p className="feature-request-vote-note">
           One vote per request, per network address. Closespan stores only a
-          one-way security fingerprint—not your raw IP address.
+          one-way security fingerprint. Your raw IP address is not stored.
         </p>
       </main>
 
