@@ -3,6 +3,7 @@ import Link from "next/link";
 import { signOutCurrentUser } from "@/app/auth-actions";
 import { applicationMode, type WorkspaceUser } from "@/lib/auth-user";
 import { getWorkspaceDemoGuide } from "@/lib/demo-guide-repository";
+import { ClosespanLogo } from "./closespan-logo";
 import { GuidedDemo } from "./guided-demo";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { MobileNavigation, Sidebar } from "./sidebar";
@@ -38,11 +39,12 @@ export async function AppShell({
         </a>
         <main className="main immersive-main">
           <header className="immersive-topbar">
-            <Link className="immersive-brand" href="/overview">
-              <span className="brandmark" aria-hidden="true">
-                C
-              </span>
-              <strong>Closespan</strong>
+            <Link
+              className="immersive-brand"
+              href="/overview"
+              aria-label="Closespan overview"
+            >
+              <ClosespanLogo size="sm" />
             </Link>
             <div className="immersive-top-actions">
               <OrganizationSwitcher

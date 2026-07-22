@@ -61,6 +61,35 @@ Set `AUTH_URL` to the exact canonical HTTPS origin in production:
 AUTH_URL=https://closespan.com
 ```
 
+### Configure feature-request voting
+
+The public `/requests` board stores requests and vote counts in PostgreSQL.
+Voting is limited to one vote per feature request per network address with a
+database uniqueness constraint. Closespan never stores raw IP addresses; it
+stores a request-scoped HMAC fingerprint instead. Anonymous submissions remain
+in `Pending review` until an administrator publishes them. Short-lived,
+action-scoped HMAC claims provide a PostgreSQL-backed abuse limit without
+linking submissions indefinitely. Set a stable, server-only secret in every
+production environment before launch:
+
+```bash
+FEATURE_REQUEST_IP_SECRET=<at least 32 random bytes>
+FEATURE_REQUEST_MODERATOR_EMAILS=owner@example.com
+```
+
+The public mutation endpoints fail closed in production if this dedicated key
+is absent. Keep it stable: changing it resets the anonymous voter identity
+boundary. Vercel's controlled client-IP header is used automatically. For a
+non-Vercel production deployment, `FEATURE_REQUEST_TRUST_PROXY=1` is required,
+and the app must be reachable only through a reverse proxy that replaces
+`X-Forwarded-For`. Run `npm run db:migrate` after pulling the feature-request
+schema. Signed-in allowlisted administrators receive a private review queue on
+the public board and can publish or reject submissions; each decision is
+idempotent and written to the workspace audit log. `PRODUCTION_OWNER_EMAIL` is
+also recognized as a moderator. IP uniqueness is a lightweight abuse control
+rather than proof of one human identity; shared networks and VPNs can affect
+it.
+
 ### Configure an AI provider
 
 The seeded demo runs without an AI credential. To enable secure bring-your-own-key settings, initialize the server credential vault once in `.env.local` with a random 32-byte key, restart, then open **Settings → AI provider**:

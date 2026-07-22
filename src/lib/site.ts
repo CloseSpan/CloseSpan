@@ -15,6 +15,7 @@ export const PUBLIC_DISCOVERY_PATHS = [
   "/manifest.webmanifest",
   "/llms.txt",
   "/opengraph-image",
+  "/requests",
 ] as const;
 
 export const PRIVATE_APP_PATHS = [

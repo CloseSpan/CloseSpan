@@ -6,6 +6,7 @@ import {
   signInWithGoogle,
   signOutCurrentUser,
 } from "@/app/auth-actions";
+import { ClosespanLogo } from "@/components/closespan-logo";
 import { resolveWorkspaceAccess } from "@/lib/auth-user";
 
 export const metadata: Metadata = {
@@ -53,8 +54,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       </Link>
 
       <section className="login-card" aria-labelledby="login-title">
-        <div className="login-brand" aria-hidden="true">
-          C
+        <div className="login-brand">
+          <ClosespanLogo size="lg" />
         </div>
         <div className="login-heading">
           <span>Secure workspace access</span>

@@ -21,23 +21,40 @@ export default function OpenGraphImage() {
             "radial-gradient(circle at 82% 12%, #393480 0%, transparent 34%), linear-gradient(145deg, #080d19 0%, #0d1528 58%, #111a31 100%)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <div
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            fontSize: 56,
+            fontWeight: 720,
+            letterSpacing: "-0.055em",
+          }}
+        >
+          <span
             style={{
-              width: 68,
-              height: 68,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 19,
-              background: "linear-gradient(145deg, #8a83ff, #5147db)",
-              fontSize: 40,
-              fontWeight: 800,
+              color: "#aaa4ff",
+              fontFamily: "monospace",
+              fontSize: 51,
+              fontWeight: 850,
+              letterSpacing: "-0.12em",
             }}
           >
-            C
-          </div>
-          <div style={{ fontSize: 34, fontWeight: 800 }}>Closespan</div>
+            {"</"}
+          </span>
+          <span style={{ display: "flex", color: "#ffffff", margin: "0 6px" }}>
+            <span style={{ fontWeight: 720 }}>Close</span>
+            <span style={{ fontWeight: 900 }}>Span</span>
+          </span>
+          <span
+            style={{
+              color: "#756cff",
+              fontFamily: "monospace",
+              fontSize: 51,
+              fontWeight: 850,
+            }}
+          >
+            {">"}
+          </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
           <div

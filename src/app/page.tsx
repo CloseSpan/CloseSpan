@@ -14,6 +14,7 @@ import {
   TimerReset,
   Users,
 } from "lucide-react";
+import { ClosespanLogo } from "@/components/closespan-logo";
 import { launchPlans, launchPricingNote } from "@/lib/plans";
 import {
   LANDING_FAQS,
@@ -215,16 +216,14 @@ export default function LandingPage() {
       <div className="landing-top">
         <header className="landing-nav">
           <Link className="landing-brand" href="/" aria-label="Closespan home">
-            <span className="brandmark" aria-hidden="true">
-              C
-            </span>
-            <strong>Closespan</strong>
+            <ClosespanLogo size="md" tone="inverse" />
           </Link>
           <nav aria-label="Landing navigation">
             <a href="#product">Product</a>
             <a href="#workflow">How it works</a>
             <a href="#trust">Trust</a>
             <a href="#pricing">Pricing</a>
+            <Link href="/requests">Requests</Link>
             <a href="#faq">FAQ</a>
           </nav>
           <div className="landing-actions">
@@ -243,6 +242,7 @@ export default function LandingPage() {
                 <a href="#workflow">How it works</a>
                 <a href="#trust">Trust</a>
                 <a href="#pricing">Pricing</a>
+                <Link href="/requests">Requests</Link>
                 <a href="#faq">FAQ</a>
                 <Link href="/login">Sign in</Link>
               </nav>
@@ -540,17 +540,15 @@ export default function LandingPage() {
       </main>
 
       <footer className="landing-footer">
-        <Link className="landing-brand" href="/">
-          <span className="brandmark" aria-hidden="true">
-            C
-          </span>
-          <strong>Closespan</strong>
+        <Link className="landing-brand" href="/" aria-label="Closespan home">
+          <ClosespanLogo size="sm" />
         </Link>
         <p>Customer-reported problem to verified fix.</p>
         <div>
           <Link href="/login">Sign in</Link>
           <a href="#pricing">Pricing</a>
           <a href="#trust">Trust</a>
+          <Link href="/requests">Requests</Link>
           <a href="#faq">FAQ</a>
           <a href="mailto:shanmukhsain@gmail.com">Contact</a>
         </div>
@@ -573,7 +571,7 @@ function ProductPreview() {
       </div>
       <div className="preview-body">
         <aside className="preview-sidebar" aria-label="Preview navigation">
-          <div className="preview-logo">C</div>
+          <ClosespanLogo variant="mark" tone="inverse" size="xs" />
           {[1, 2, 3, 4, 5, 6].map((item) => (
             <i key={item} />
           ))}

@@ -8,12 +8,14 @@ import {
   GitPullRequest,
   Inbox,
   ListChecks,
+  Lightbulb,
   Network,
   Settings,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ClosespanLogo } from "./closespan-logo";
 import {
   OrganizationSwitcher,
   type OrganizationSwitcherItem,
@@ -27,6 +29,7 @@ export const navigationItems = [
   [Activity, "Investigations", "/investigations"],
   [BadgeCheck, "Approvals", "/approvals"],
   [GitPullRequest, "Follow-up", "/follow-up"],
+  [Lightbulb, "Requests", "/requests"],
   [Blocks, "Integrations", "/integrations"],
   [Users, "Customers", "/customers"],
   [Settings, "Settings", "/settings"],
@@ -64,10 +67,7 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <Link className="brand" href="/overview" aria-label="Closespan overview">
-        <div className="brandmark" aria-hidden="true">
-          C
-        </div>
-        <span>Closespan</span>
+        <ClosespanLogo size="md" />
       </Link>
       <nav className="nav" aria-label="Primary navigation">
         <NavigationLinks />

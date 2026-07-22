@@ -6,7 +6,12 @@ const expected = { organizations:1,product_problems:4,feedback_items:5,accounts:
 try {
   const providerConfigTable = await pool.query("SELECT to_regclass('public.ai_provider_configs') table_name");
   if (!providerConfigTable.rows[0].table_name) throw new Error("ai_provider_configs migration is missing");
-  const requiredConnectorTables = ["pipedream_connections"];
+  const requiredConnectorTables = [
+    "pipedream_connections",
+    "feature_requests",
+    "feature_request_votes",
+    "feature_request_rate_limits",
+  ];
   for (const table of requiredConnectorTables) {
     const relation = await pool.query("SELECT to_regclass($1) table_name", [
       `public.${table}`,

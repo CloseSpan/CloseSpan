@@ -20,7 +20,10 @@ describe("public search metadata", () => {
     expect(homeMetadata.title).toEqual({ absolute: SITE_TITLE });
     expect(homeMetadata.description).toBe(SITE_DESCRIPTION);
     expect(homeMetadata.alternates).toEqual({ canonical: "/" });
-    expect(sitemap()).toEqual([{ url: `${SITE_URL}/` }]);
+    expect(sitemap()).toEqual([
+      { url: `${SITE_URL}/` },
+      { url: `${SITE_URL}/requests` },
+    ]);
   });
 
   it("allows search crawlers to reach public content while excluding app data", () => {
@@ -49,6 +52,7 @@ describe("public search metadata", () => {
         "/manifest.webmanifest",
         "/llms.txt",
         "/opengraph-image",
+        "/requests",
       ]),
     );
   });
