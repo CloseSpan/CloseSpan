@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowLeft, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { redirect } from "next/navigation";
 import {
   signInWithGoogle,
@@ -14,6 +14,8 @@ export const metadata: Metadata = {
   description: "Sign in to the Closespan workspace with Google.",
   robots: { index: false, follow: false },
 };
+
+const WORKSPACE_ADMIN_EMAIL = "shanmukhsain@gmail.com";
 
 interface LoginPageProps {
   searchParams: Promise<{
@@ -35,6 +37,20 @@ function safeCallbackUrl(value: string | undefined): string {
     }
   }
   return "/overview";
+}
+
+function accessRequestEmailUrl(email: string): string {
+  const subject = "Closespan workspace access request";
+  const body = [
+    "Hi Shanmukh,",
+    "",
+    `Could you grant Closespan workspace access to ${email}?`,
+    "",
+    "What I want to use Closespan for:",
+    "",
+    "Thanks,",
+  ].join("\n");
+  return `mailto:${WORKSPACE_ADMIN_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -74,23 +90,36 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               {access.status === "denied" && (
                 <p>
                   Signed in as <strong>{access.email}</strong>. This Google
-                  account is not on the workspace member list.
+                  account is now on the access waitlist.
                 </p>
               )}
               <p>
-                Ask a workspace administrator to add your Google email to
-                the member list, then try again.
+                Email the workspace administrator with a little context about
+                how you want to use Closespan.
               </p>
             </div>
           </div>
         )}
 
         {access.status === "denied" ? (
-          <form action={signOutCurrentUser}>
-            <button className="btn login-google" type="submit">
-              Sign out and use another Google account
-            </button>
-          </form>
+          <div className="login-denied-actions">
+            <a
+              className="btn primary login-request-access"
+              href={accessRequestEmailUrl(access.email)}
+            >
+              <Mail aria-hidden="true" size={17} />
+              Email an access request
+            </a>
+            <p className="login-email-hint">
+              Opens a message to {WORKSPACE_ADMIN_EMAIL} with your verified
+              email and access question prefilled.
+            </p>
+            <form action={signOutCurrentUser}>
+              <button className="btn login-google" type="submit">
+                Sign out and use another Google account
+              </button>
+            </form>
+          </div>
         ) : (
           <form action={signInWithGoogle}>
             <input name="callbackUrl" type="hidden" value={callbackUrl} />

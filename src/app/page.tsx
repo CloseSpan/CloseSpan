@@ -252,10 +252,6 @@ export default function LandingPage() {
 
         <section className="landing-hero">
           <div className="hero-copy">
-            <div className="hero-kicker">
-              <Sparkles aria-hidden="true" size={14} />
-              AI feedback-to-fix operations for B2B SaaS
-            </div>
             <h1>
               Turn customer feedback into <span>verified product fixes.</span>
             </h1>

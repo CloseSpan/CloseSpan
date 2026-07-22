@@ -460,7 +460,6 @@ p { margin:0; line-height:1.55; }
 
 .landing-hero { width:min(1200px, 100%); margin:0 auto; padding:88px 24px 82px; display:grid; grid-template-columns:minmax(0,.9fr) minmax(500px,1.1fr); align-items:center; gap:62px; }
 .hero-copy { position:relative; z-index:1; }
-.hero-kicker { width:max-content; max-width:100%; margin-bottom:19px; display:flex; align-items:center; gap:7px; color:#4338ca; font-size:12px; font-weight:750; letter-spacing:.02em; }
 .hero-copy h1 { max-width:640px; margin:0; font-size:clamp(42px, 5vw, 60px); line-height:1.015; letter-spacing:-.052em; text-wrap:balance; }
 .hero-copy > p { max-width:610px; margin-top:24px; color:#536177; font-size:17px; line-height:1.7; }
 .hero-actions { margin-top:30px; }
@@ -658,7 +657,6 @@ p { margin:0; line-height:1.55; }
 @media (max-width:430px) {
   .landing-brand strong { max-width:112px; overflow:hidden; text-overflow:ellipsis; }
   .landing-actions .btn { gap:4px; }
-  .hero-kicker { font-size:10px; }
   .hero-copy h1 { font-size:37px; }
   .hero-product { border-radius:12px; }
   .preview-chrome { grid-template-columns:1fr 1fr; }
@@ -778,18 +776,6 @@ p { margin:0; line-height:1.55; }
   grid-template-columns:minmax(0,.88fr) minmax(540px,1.12fr);
   align-items:center;
   gap:70px;
-}
-.hero-kicker {
-  margin-bottom:22px;
-  padding:7px 10px;
-  border:1px solid rgba(169,164,255,.22);
-  border-radius:999px;
-  background:rgba(117,108,255,.09);
-  color:#c4c0ff;
-  font-size:10px;
-  font-weight:800;
-  letter-spacing:.055em;
-  text-transform:uppercase;
 }
 .hero-copy h1 {
   max-width:660px;
@@ -1209,7 +1195,6 @@ p { margin:0; line-height:1.55; }
 @media (max-width:430px) {
   .landing-brand strong { max-width:none; }
   .hero-copy h1 { font-size:40px; }
-  .hero-kicker { max-width:290px; line-height:1.45; }
   .preview-chrome { grid-template-columns:1fr 1fr; }
   .preview-chrome > span:nth-child(2) { display:none; }
   .preview-status { grid-column:2; }
@@ -1244,6 +1229,9 @@ p { margin:0; line-height:1.55; }
 .login-heading h1 { margin:7px 0 8px; font-size:27px; }
 .login-heading p { color:var(--muted); font-size:13px; }
 .login-google { width:100%; min-height:46px; font-size:14px; }
+.login-denied-actions { display:grid; gap:10px; }
+.login-request-access { width:100%; min-height:46px; gap:8px; font-size:14px; }
+.login-email-hint { margin:-2px 2px 3px; color:var(--muted); font-size:10px; line-height:1.5; text-align:center; }
 .google-mark { width:22px; height:22px; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; color:#4285f4; font-weight:850; font-family:Arial,sans-serif; }
 .login-alert { display:flex; gap:10px; margin:-4px 0 18px; padding:13px; border:1px solid #f1c8cd; border-radius:9px; background:#fff4f5; color:var(--danger); }
 .login-alert svg { flex:none; margin-top:1px; }

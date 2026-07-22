@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import { recordWorkspaceAccessAttempt } from "@/lib/access-waitlist-repository";
 import {
   applicationMode,
   hasWorkspaceMembership,
@@ -41,11 +42,35 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         : "";
       if (!email || googleProfile?.email_verified !== true) return false;
       if (applicationMode() === "demo") return true;
-      return hasWorkspaceMembership(email);
+      if (await hasWorkspaceMembership(email)) return true;
+
+      try {
+        await recordWorkspaceAccessAttempt(
+          email,
+          typeof profile?.name === "string" ? profile.name : null,
+        );
+      } catch (error) {
+        console.error("Unable to record a workspace access attempt", error);
+        return false;
+      }
+
+      // Keep the verified Google identity so the denial page can explain
+      // which account was waitlisted. Workspace access is checked separately.
+      return true;
     },
-    authorized({ auth: session, request }) {
+    async authorized({ auth: session, request }) {
       if (PUBLIC_PAGES.has(request.nextUrl.pathname)) return true;
-      return Boolean(session?.user?.email);
+      const email = session?.user?.email
+        ? normalizeEmail(session.user.email)
+        : "";
+      if (!email) return false;
+      if (applicationMode() === "demo") return true;
+      try {
+        return await hasWorkspaceMembership(email);
+      } catch (error) {
+        console.error("Unable to verify workspace access", error);
+        return false;
+      }
     },
   },
 });
