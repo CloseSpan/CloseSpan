@@ -15,27 +15,124 @@ import {
   Users,
 } from "lucide-react";
 import { launchPlans, launchPricingNote } from "@/lib/plans";
+import {
+  LANDING_FAQS,
+  SITE_ALTERNATE_NAMES,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from "@/lib/site";
 
 export const metadata: Metadata = {
   title: {
-    absolute: "Closespan | Turn customer signals into verified product fixes",
+    absolute: SITE_TITLE,
   },
-  description:
-    "Detect revenue-impacting customer problems, prepare engineering-ready evidence, and verify every resolution with Closespan.",
-  robots: { index: true, follow: true },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-snippet": -1,
+      "max-image-preview": "large",
+      "max-video-preview": -1,
+    },
+  },
   openGraph: {
-    title: "Closespan | Turn customer signals into verified product fixes",
-    description:
-      "Connect support evidence, revenue impact, engineering context, human approval, and customer follow-up in one governed workflow.",
-    siteName: "Closespan",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    siteName: SITE_NAME,
     type: "website",
+    locale: "en_US",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Closespan turns customer feedback into verified product fixes.",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Closespan | Turn customer signals into verified product fixes",
-    description:
-      "From scattered customer reports to one prioritized, engineering-ready, verified resolution.",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: ["/opengraph-image"],
   },
+};
+
+export const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      name: SITE_NAME,
+      alternateName: SITE_ALTERNATE_NAMES,
+      url: `${SITE_URL}/`,
+      description: SITE_DESCRIPTION,
+      inLanguage: "en-US",
+      publisher: { "@id": `${SITE_URL}/#organization` },
+    },
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      alternateName: SITE_ALTERNATE_NAMES,
+      url: `${SITE_URL}/`,
+      logo: `${SITE_URL}/icon.svg`,
+      description: SITE_DESCRIPTION,
+    },
+    {
+      "@type": ["SoftwareApplication", "WebApplication"],
+      "@id": `${SITE_URL}/#application`,
+      name: SITE_NAME,
+      url: `${SITE_URL}/`,
+      description: SITE_DESCRIPTION,
+      applicationCategory: "BusinessApplication",
+      applicationSubCategory: "Customer feedback intelligence",
+      operatingSystem: "Web browser",
+      browserRequirements:
+        "Requires a modern web browser. Workspace access requires Google sign-in.",
+      provider: { "@id": `${SITE_URL}/#organization` },
+      audience: {
+        "@type": "BusinessAudience",
+        audienceType:
+          "B2B SaaS product, support, engineering, customer-success, and operations teams",
+      },
+      featureList: [
+        "Customer-feedback normalization",
+        "Evidence-backed product-problem clustering",
+        "Account and revenue impact prioritization",
+        "Engineering-ready evidence preparation",
+        "Human approval for external actions",
+        "Release verification and customer follow-up",
+      ],
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+        description:
+          "Private authenticated evaluation workspace with no live customer data or external writes.",
+      },
+    },
+    {
+      "@type": "FAQPage",
+      "@id": `${SITE_URL}/#faq`,
+      mainEntity: LANDING_FAQS.map(({ question, answer }) => ({
+        "@type": "Question",
+        name: question,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: answer,
+        },
+      })),
+    },
+  ],
 };
 
 const pilotHref =
@@ -105,6 +202,12 @@ const workflow = [
 export default function LandingPage() {
   return (
     <div className="landing">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
+        }}
+      />
       <a className="skip-link" href="#landing-content">
         Skip to content
       </a>
@@ -122,6 +225,7 @@ export default function LandingPage() {
             <a href="#workflow">How it works</a>
             <a href="#trust">Trust</a>
             <a href="#pricing">Pricing</a>
+            <a href="#faq">FAQ</a>
           </nav>
           <div className="landing-actions">
             <Link className="btn landing-secondary" href="/login">
@@ -139,6 +243,7 @@ export default function LandingPage() {
                 <a href="#workflow">How it works</a>
                 <a href="#trust">Trust</a>
                 <a href="#pricing">Pricing</a>
+                <a href="#faq">FAQ</a>
                 <Link href="/login">Sign in</Link>
               </nav>
             </details>
@@ -149,15 +254,15 @@ export default function LandingPage() {
           <div className="hero-copy">
             <div className="hero-kicker">
               <Sparkles aria-hidden="true" size={14} />
-              Feedback-to-fix operations for B2B SaaS
+              AI feedback-to-fix operations for B2B SaaS
             </div>
             <h1>
-              Turn customer signals into <span>verified product fixes.</span>
+              Turn customer feedback into <span>verified product fixes.</span>
             </h1>
             <p>
-              Closespan connects support evidence, revenue impact, engineering
-              context, human approval, and customer follow-up in one governed
-              workflow.
+              Closespan is customer feedback intelligence that connects support
+              evidence, revenue impact, engineering context, human approval,
+              and customer follow-up in one governed workflow.
             </p>
             <div className="hero-actions">
               <a className="btn primary large" href={pilotHref}>
@@ -215,12 +320,13 @@ export default function LandingPage() {
 
         <section className="landing-section" id="product">
           <div className="section-intro">
-            <span>One operational record</span>
-            <h2>Own the gap between customer pain and engineering action.</h2>
+            <span>What is Closespan?</span>
+            <h2>AI customer feedback intelligence that finishes the job.</h2>
             <p>
-              Every signal remains connected to the problem it revealed, the
-              business impact it created, the decision your team made, and the
-              outcome your customer experienced.
+              Closespan gives B2B SaaS product and operations teams one
+              feedback-to-fix workspace. Every customer signal stays connected
+              to the problem it revealed, its business impact, the decision
+              your team made, and the outcome your customer experienced.
             </p>
           </div>
           <div className="outcome-grid">
@@ -394,6 +500,25 @@ export default function LandingPage() {
           </p>
         </section>
 
+        <section className="faq-section" id="faq" aria-labelledby="faq-title">
+          <div className="section-intro">
+            <span>Closespan FAQ</span>
+            <h2 id="faq-title">Customer feedback operations, explained.</h2>
+            <p>
+              Clear answers about how Closespan connects customer evidence to
+              prioritized product problems and governed engineering work.
+            </p>
+          </div>
+          <div className="faq-list">
+            {LANDING_FAQS.map(({ question, answer }) => (
+              <details key={question}>
+                <summary>{question}</summary>
+                <p>{answer}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
         <section className="landing-cta">
           <div>
             <span>Start with evidence</span>
@@ -426,6 +551,7 @@ export default function LandingPage() {
           <Link href="/login">Sign in</Link>
           <a href="#pricing">Pricing</a>
           <a href="#trust">Trust</a>
+          <a href="#faq">FAQ</a>
           <a href="mailto:shanmukhsain@gmail.com">Contact</a>
         </div>
       </footer>

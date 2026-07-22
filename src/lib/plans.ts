@@ -12,7 +12,7 @@ export type LaunchPlan = {
   featured?: boolean;
 };
 
-const pilotEmail = "mailto:shanmukhsain@gmail.com?subject=Feedback-to-Fix%20Design%20Partner%20Pilot";
+const pilotEmail = "mailto:shanmukhsain@gmail.com?subject=Closespan%20Feedback-to-Fix%20Design%20Partner%20Pilot";
 
 export const launchPlans: readonly LaunchPlan[] = [
   {

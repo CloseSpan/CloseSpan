@@ -897,8 +897,10 @@ p { margin:0; line-height:1.55; }
 .landing-trustbar > span { color:#8b95a5; font-size:9px; text-transform:uppercase; letter-spacing:.07em; }
 .landing-trustbar strong { color:#4b586c; font-size:11px; }
 
-.landing-section,.trust-section,.pricing-section,.landing-cta {
+.landing-section,.trust-section,.pricing-section,.faq-section,.landing-cta {
   width:min(1184px,100%);
+  margin-right:auto;
+  margin-left:auto;
   padding:116px 28px;
 }
 .section-intro { max-width:760px; }
@@ -1073,6 +1075,58 @@ p { margin:0; line-height:1.55; }
 .pricing-price { font-size:35px; }
 .pricing-note { margin-top:24px; }
 
+.faq-section { border-top:1px solid #eceef2; }
+.faq-list {
+  margin-top:54px;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+  align-items:start;
+}
+.faq-list details {
+  overflow:hidden;
+  border:1px solid #e1e4eb;
+  border-radius:15px;
+  background:#fff;
+  box-shadow:0 5px 18px rgba(21,34,56,.035);
+}
+.faq-list details[open] { border-color:#cbc8f3; box-shadow:0 14px 34px rgba(57,50,150,.075); }
+.faq-list summary {
+  position:relative;
+  padding:21px 52px 21px 22px;
+  color:#1a2538;
+  font-size:14px;
+  font-weight:800;
+  line-height:1.4;
+  list-style:none;
+  cursor:pointer;
+}
+.faq-list summary::-webkit-details-marker { display:none; }
+.faq-list summary::after {
+  content:"+";
+  position:absolute;
+  top:17px;
+  right:20px;
+  width:28px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:#f0efff;
+  color:#554dd3;
+  font-size:18px;
+  font-weight:650;
+}
+.faq-list details[open] summary::after { content:"−"; }
+.faq-list details p {
+  margin:0 22px 22px;
+  padding-top:17px;
+  border-top:1px solid #eceef2;
+  color:#66748a;
+  font-size:12px;
+  line-height:1.75;
+}
+
 .landing-cta {
   margin-bottom:30px;
   padding:68px;
@@ -1131,7 +1185,7 @@ p { margin:0; line-height:1.55; }
   .hero-product-proof { width:calc(100% - 32px); grid-template-columns:repeat(2,1fr); gap:18px 0; }
   .hero-product-proof > div:nth-of-type(3) { border-left:0; padding-left:0; }
   .landing-trustbar { width:calc(100% - 32px); gap:28px; }
-  .landing-section,.trust-section,.pricing-section { padding:82px 16px; }
+  .landing-section,.trust-section,.pricing-section,.faq-section { padding:82px 16px; }
   .outcome-grid { grid-template-columns:1fr; margin-top:40px; }
   .outcome-grid article { min-height:270px; }
   .signal-story { width:calc(100% - 32px); padding:46px 20px; }
@@ -1143,6 +1197,7 @@ p { margin:0; line-height:1.55; }
   .workflow-step { min-height:190px; }
   .workflow-summary { grid-template-columns:1fr; }
   .trust-section ul { grid-template-columns:1fr; }
+  .faq-list { grid-template-columns:1fr; margin-top:40px; }
   .landing-cta { width:calc(100% - 32px); padding:46px 24px; }
   .landing-cta-actions { width:100%; flex-direction:column; align-items:stretch; }
   .landing-cta .btn { width:100%; }

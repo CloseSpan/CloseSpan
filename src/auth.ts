@@ -5,8 +5,9 @@ import {
   hasWorkspaceMembership,
   normalizeEmail,
 } from "@/lib/auth-user";
+import { PUBLIC_DISCOVERY_PATHS } from "@/lib/site";
 
-const PUBLIC_PAGES = new Set(["/", "/login"]);
+const PUBLIC_PAGES = new Set<string>(PUBLIC_DISCOVERY_PATHS);
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   providers: [Google],

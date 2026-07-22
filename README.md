@@ -119,6 +119,34 @@ npm run typecheck
 npm run build
 ```
 
+### Search and agent discoverability
+
+The public marketing site uses `https://www.closespan.com/` as its search
+canonical because the apex domain redirects to `www`. Keep the canonical,
+Open Graph URL, structured data, and sitemap aligned with the final
+non-redirecting host if that redirect direction changes.
+
+The application publishes these unauthenticated discovery resources:
+
+- `/robots.txt` — allows normal search crawlers plus OpenAI and Anthropic
+  search/user agents, while excluding tenant workspace and API paths.
+- `/sitemap.xml` — lists only canonical, public, indexable pages.
+- `/opengraph-image` and `/icon.svg` — branded link-preview and site assets.
+- `/manifest.webmanifest` — installable web-application identity.
+- `/llms.txt` — an optional factual product brief for systems that choose to
+  use the community convention. It is not a Google ranking signal and does not
+  replace crawlable HTML, metadata, structured data, or the sitemap.
+
+The homepage includes visible product and FAQ content plus `WebSite`,
+`Organization`, `WebApplication`, and matching `FAQPage` JSON-LD. Authenticated
+workspace pages remain `noindex`. Optional ownership tokens can be added at
+build time with `GOOGLE_SITE_VERIFICATION` and `BING_SITE_VERIFICATION`.
+
+After production deployment, verify the canonical domain in Google Search
+Console and Bing Webmaster Tools, then submit
+`https://www.closespan.com/sitemap.xml`. Indexing and ranking remain controlled
+by each search provider and can take time after a recrawl.
+
 After migrating the local PostgreSQL database, run the real cursor/upsert/delete
 integration test with:
 

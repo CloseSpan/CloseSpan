@@ -11,6 +11,7 @@ import { resolveWorkspaceAccess } from "@/lib/auth-user";
 export const metadata: Metadata = {
   title: "Sign in",
   description: "Sign in to the Closespan workspace with Google.",
+  robots: { index: false, follow: false },
 };
 
 interface LoginPageProps {
