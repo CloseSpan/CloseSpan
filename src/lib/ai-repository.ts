@@ -26,6 +26,64 @@ export interface StoredAiRun {
   analyses: AiAnalysisResult["analyses"];
 }
 
+export type StoredFeedbackAnalysis = AiAnalysisResult["analyses"][number] & {
+  reviewStatus: "Proposed" | "Approved" | "Rejected";
+};
+
+export async function listLatestFeedbackAnalyses(
+  orgId: string,
+): Promise<StoredFeedbackAnalysis[]> {
+  if (persistenceMode() !== "postgres") return [];
+  const result = await databasePool().query<{
+    feedback_id: string;
+    classification: AiAnalysisResult["analyses"][number]["classification"];
+    severity: AiAnalysisResult["analyses"][number]["severity"];
+    redacted_summary: string;
+    proposed_problem_id: string | null;
+    classification_confidence: number;
+    cluster_confidence: number;
+    confidence_factors: {
+      evidenceQuality?: number;
+      classificationClarity?: number;
+      clusterMatch?: number;
+      ambiguityPenalty?: number;
+    };
+    rationale: string;
+    evidence: string[];
+    review_status: StoredFeedbackAnalysis["reviewStatus"];
+  }>(
+    `SELECT DISTINCT ON (analysis.feedback_id)
+       analysis.feedback_id,analysis.classification,analysis.severity,
+       analysis.redacted_summary,analysis.proposed_problem_id,
+       analysis.classification_confidence,analysis.cluster_confidence,
+       analysis.confidence_factors,analysis.rationale,analysis.evidence,
+       analysis.review_status
+     FROM ai_feedback_analyses analysis
+     JOIN model_runs run ON run.id=analysis.model_run_id AND run.org_id=analysis.org_id
+     WHERE analysis.org_id=$1 AND run.status='Succeeded'
+     ORDER BY analysis.feedback_id,analysis.created_at DESC,analysis.id DESC`,
+    [orgId],
+  );
+  return result.rows.map((row) => ({
+    feedbackId: row.feedback_id,
+    classification: row.classification,
+    severity: row.severity,
+    redactedSummary: row.redacted_summary,
+    proposedProblemId: row.proposed_problem_id,
+    classificationConfidence: row.classification_confidence,
+    clusterConfidence: row.cluster_confidence,
+    evidenceQuality: Number(row.confidence_factors?.evidenceQuality ?? 0),
+    classificationClarity: Number(
+      row.confidence_factors?.classificationClarity ?? 0,
+    ),
+    clusterMatch: Number(row.confidence_factors?.clusterMatch ?? 0),
+    ambiguityPenalty: Number(row.confidence_factors?.ambiguityPenalty ?? 0),
+    rationale: row.rationale,
+    evidence: Array.isArray(row.evidence) ? row.evidence : [],
+    reviewStatus: row.review_status,
+  }));
+}
+
 export type ModelRunReservation =
   | { kind: "created"; runId: string }
   | { kind: "replay"; result: StoredAiRun }

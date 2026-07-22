@@ -1,6 +1,6 @@
 # Production readiness contract
 
-FeedbackFlow has two explicit operating modes.
+Closespan has two explicit operating modes.
 
 ## Demo mode
 
@@ -25,11 +25,11 @@ policies described in `production-architecture.md`.
 
 - `npm ci && npm run check`
 - Store `AUTH_SECRET` and `AUTH_GOOGLE_SECRET` in KMS/Secrets Manager, and
-  register the exact production `/api/auth/callback/google` redirect URI in
-  Google Cloud.
+  register `https://closespan.com/api/auth/callback/google` as an authorized
+  redirect URI on the Google OAuth 2.0 Web client.
 - Set `AUTH_TRUST_HOST=true` only behind a proxy that overwrites inbound
   `Host`, `X-Forwarded-Host`, and `X-Forwarded-Proto` values with trusted
-  canonical values. Set `AUTH_URL` to the exact canonical HTTPS origin.
+  canonical values. Set `AUTH_URL=https://closespan.com` in production.
 - Confirm every authorized production email has one intended
   `workspace_members` row and the minimum required role.
 - Build the multi-stage Docker image as a non-root user.

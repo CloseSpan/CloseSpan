@@ -7,8 +7,8 @@ import {
 
 describe("normalizeProductUrl", () => {
   it("adds https to a domain-only model response", () => {
-    expect(normalizeProductUrl("feelow.ai/product")).toBe(
-      "https://feelow.ai/product",
+    expect(normalizeProductUrl("closespan.example/product")).toBe(
+      "https://closespan.example/product",
     );
   });
 
@@ -31,7 +31,7 @@ describe("parsePublicSourceDiscoveryResponse", () => {
       sources: [
         {
           id: "source_1",
-          title: "Feelow reviews",
+          title: "Closespan reviews",
           url: "https://example.com/reviews",
           host: "example.com",
           kind: "review_site",

@@ -38,13 +38,13 @@ export function ProblemWorkspace({ initialState, problem: primaryProblem, feedba
     const rows = [["occurred_at", "actor", "action", "trace_id"], ...state.audit.map((item) => [item.occurredAt, item.actorName, item.action, item.traceId])];
     const csv = rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const link = document.createElement("a"); link.href = url; link.download = "feedbackflow-audit.csv"; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement("a"); link.href = url; link.download = "closespan-audit.csv"; link.click(); URL.revokeObjectURL(url);
   }
 
   const activeIndex = stages.indexOf(state.problemStage);
   return <>
     <div className="page-head">
-      <div><div className="eyebrow">Product problem · FF-142</div><h1>{primaryProblem.title}</h1><p className="subtle">Detected from 3 customer signals after release 4.18.2</p></div>
+      <div><div className="eyebrow">Product problem · CS-142</div><h1>{primaryProblem.title}</h1><p className="subtle">Detected from 3 customer signals after release 4.18.2</p></div>
       <div className="top-actions"><span className={`badge ${primaryProblem.severity.toLowerCase()}`}>{primaryProblem.severity} severity</span><span className="badge brand">{state.problemStage}</span></div>
     </div>
 

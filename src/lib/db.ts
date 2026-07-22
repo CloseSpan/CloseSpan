@@ -1,6 +1,6 @@
 import { Pool, type PoolClient } from "pg";
 
-const globalDatabase = globalThis as typeof globalThis & { feedbackFlowPool?: Pool };
+const globalDatabase = globalThis as typeof globalThis & { closespanPool?: Pool };
 
 export function persistenceMode(): "memory" | "postgres" {
   const configured = process.env.PERSISTENCE_MODE;
@@ -17,14 +17,14 @@ export function persistenceMode(): "memory" | "postgres" {
 
 export function databasePool(): Pool {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required when PERSISTENCE_MODE=postgres");
-  globalDatabase.feedbackFlowPool ??= new Pool({
+  globalDatabase.closespanPool ??= new Pool({
     connectionString: process.env.DATABASE_URL,
     max: Number(process.env.DATABASE_POOL_MAX ?? 10),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
     ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: true } : undefined,
   });
-  return globalDatabase.feedbackFlowPool;
+  return globalDatabase.closespanPool;
 }
 
 export async function transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {

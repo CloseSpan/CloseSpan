@@ -2,7 +2,9 @@ import { Bell, LogOut, Search, UserRound } from "lucide-react";
 import Link from "next/link";
 import { signOutCurrentUser } from "@/app/auth-actions";
 import { applicationMode, type WorkspaceUser } from "@/lib/auth-user";
-import { getWorkspaceSetupStatus } from "@/lib/integration-repository";
+import { getWorkspaceDemoGuide } from "@/lib/demo-guide-repository";
+import { GuidedDemo } from "./guided-demo";
+import { OrganizationSwitcher } from "./organization-switcher";
 import { MobileNavigation, Sidebar } from "./sidebar";
 
 function initials(name: string): string {
@@ -20,15 +22,15 @@ export async function AppShell({
   section,
   user,
   children,
+  immersive = false,
 }: {
   section: string;
   user: WorkspaceUser;
   children: React.ReactNode;
+  immersive?: boolean;
 }) {
-  const setup = await getWorkspaceSetupStatus(user.orgId);
-  const onboardingActive = !setup.setupComplete && setup.feedbackCount === 0;
-
-  if (onboardingActive) {
+  const demoGuide = await getWorkspaceDemoGuide(user.orgId);
+  if (immersive) {
     return (
       <div className="shell shell-immersive">
         <a className="skip-link" href="#main-content">
@@ -38,11 +40,16 @@ export async function AppShell({
           <header className="immersive-topbar">
             <Link className="immersive-brand" href="/overview">
               <span className="brandmark" aria-hidden="true">
-                F
+                C
               </span>
-              <strong>Feelow</strong>
+              <strong>Closespan</strong>
             </Link>
             <div className="immersive-top-actions">
+              <OrganizationSwitcher
+                organizations={user.organizations}
+                activeOrganizationId={user.orgId}
+                variant="topbar"
+              />
               <Link className="btn" href="/settings#ai">
                 AI settings
               </Link>
@@ -80,17 +87,21 @@ export async function AppShell({
   }
 
   return (
-    <div className="shell">
+    <div className="shell app-shell">
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
       <Sidebar
-        workspaceName={user.organizationName}
+        organizations={user.organizations}
+        activeOrganizationId={user.orgId}
         demoMode={applicationMode() === "demo"}
       />
       <main className="main">
         <header className="topbar">
-          <MobileNavigation />
+          <MobileNavigation
+            organizations={user.organizations}
+            activeOrganizationId={user.orgId}
+          />
           <div className="crumb">{section}</div>
           <div className="top-actions">
             <Link className="btn search-action" href="/feedback">
@@ -129,6 +140,7 @@ export async function AppShell({
           {children}
         </div>
       </main>
+      {demoGuide && <GuidedDemo guide={demoGuide} orgId={user.orgId} />}
     </div>
   );
 }

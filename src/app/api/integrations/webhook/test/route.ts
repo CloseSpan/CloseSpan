@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   buildWebhookUrl,
   ingestWebhookFeedback,
+  loadWebhookPublicId,
   loadWebhookSecret,
 } from "@/lib/integration-repository";
 import {
@@ -15,7 +16,10 @@ export async function POST(request: NextRequest) {
   try {
     const context = await authorizeAdminMutation(request);
     const integrationId = "int_webhook";
-    const secret = await loadWebhookSecret(context.orgId, integrationId);
+    const [secret, publicId] = await Promise.all([
+      loadWebhookSecret(context.orgId, integrationId),
+      loadWebhookPublicId(context.orgId, integrationId),
+    ]);
     if (!secret) {
       throw new HttpError(
         409,
@@ -30,7 +34,7 @@ export async function POST(request: NextRequest) {
       {
         id: deliveryId,
         customer: "Test customer",
-        quote: "Test feedback event from the Feelow setup hub.",
+        quote: "Test feedback event from the Closespan setup hub.",
         type: "Bug",
         severity: "Medium",
         environment: "setup-hub",
@@ -39,7 +43,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ...result,
-        webhookUrl: buildWebhookUrl(integrationId),
+        ...(publicId ? { webhookUrl: buildWebhookUrl(publicId) } : {}),
       },
       { headers: noStoreHeaders },
     );

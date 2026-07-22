@@ -9,12 +9,23 @@ import {
 } from "@/lib/integration-client";
 
 const ACTIVE_POLL_MS = 2_500;
-const WAITING_POLL_MS = 4_000;
 const IDLE_POLL_MS = 30_000;
 const ERROR_POLL_MS = 8_000;
+const DELAYED_IMPORT_MS = 5 * 60_000;
 
 function recordLabel(count: number): string {
   return `${count.toLocaleString()} record${count === 1 ? "" : "s"}`;
+}
+
+export function importIsDelayed(
+  sync: IntegrationSyncStatusResponse["sync"],
+): boolean {
+  if (!sync || !["Queued", "Running", "Retrying"].includes(sync.status)) {
+    return false;
+  }
+  const reference = sync.startedAt ?? sync.queuedAt;
+  const timestamp = Date.parse(reference);
+  return Number.isFinite(timestamp) && Date.now() - timestamp > DELAYED_IMPORT_MS;
 }
 
 export function IntegrationSyncStatus({
@@ -77,14 +88,11 @@ export function IntegrationSyncStatus({
 
         const activelySyncing =
           next.sync !== null &&
-          ["Queued", "Running", "Retrying"].includes(next.sync.status);
+          ["Queued", "Running", "Retrying"].includes(next.sync.status) &&
+          !importIsDelayed(next.sync);
         timer = window.setTimeout(
           poll,
-          activelySyncing
-            ? ACTIVE_POLL_MS
-            : next.sync === null && next.connectionState === "Connected"
-              ? WAITING_POLL_MS
-              : IDLE_POLL_MS,
+          activelySyncing ? ACTIVE_POLL_MS : IDLE_POLL_MS,
         );
       } catch {
         if (cancelled) return;
@@ -141,9 +149,18 @@ export function IntegrationSyncStatus({
   const sync = status.sync;
   if (!sync) {
     return (
-      <p className="integration-import waiting" role="status">
-        <LoaderCircle className="spin" size={13} aria-hidden="true" />
-        Connected · waiting for the first import
+      <p className="integration-import quiet" role="status">
+        <Check size={13} aria-hidden="true" />
+        Connected · account is ready
+      </p>
+    );
+  }
+
+  if (importIsDelayed(sync)) {
+    return (
+      <p className="integration-import quiet" role="status">
+        Import is taking longer than usual. You can keep working while Closespan
+        continues in the background.
       </p>
     );
   }

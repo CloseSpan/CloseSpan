@@ -1,8 +1,33 @@
 import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { databasePool, persistenceMode } from "./db";
+import { persistenceMode } from "./db";
+import {
+  listOrganizationMemberships,
+  normalizeMembershipEmail,
+  selectOrganizationMembership,
+  type OrganizationMembership,
+} from "./organization-repository";
 import { ORG_ID } from "./seed";
+
+export const ACTIVE_ORGANIZATION_COOKIE = "closespan_active_org";
+export const LEGACY_ACTIVE_ORGANIZATION_COOKIE = "feelow_active_org";
+
+export function activeOrganizationCookieOptions(): {
+  httpOnly: true;
+  sameSite: "lax";
+  secure: boolean;
+  path: "/";
+  maxAge: number;
+} {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  };
+}
 
 export interface WorkspaceUser {
   id: string;
@@ -11,6 +36,7 @@ export interface WorkspaceUser {
   name: string;
   email: string;
   role: string;
+  organizations: Array<{ id: string; name: string; role: string }>;
 }
 
 export type WorkspaceAccess =
@@ -18,14 +44,7 @@ export type WorkspaceAccess =
   | { status: "unauthenticated" }
   | { status: "denied"; email: string };
 
-export interface WorkspaceMemberIdentityRow {
-  id: string;
-  org_id: string;
-  organization_name: string;
-  display_name: string;
-  email: string;
-  role: string;
-}
+export type WorkspaceMemberIdentityRow = OrganizationMembership;
 
 export function applicationMode(): "demo" | "production" {
   const configured = process.env.APP_MODE;
@@ -34,16 +53,7 @@ export function applicationMode(): "demo" | "production" {
 }
 
 export function normalizeEmail(email: string): string {
-  const trimmed = email.trim().toLowerCase();
-  const [localPart, domainPart] = trimmed.split("@");
-  if (!localPart || !domainPart) return trimmed;
-  const domain =
-    domainPart === "googlemail.com" ? "gmail.com" : domainPart;
-  if (domain === "gmail.com") {
-    const local = localPart.split("+")[0]?.replace(/\./g, "") ?? localPart;
-    return `${local}@${domain}`;
-  }
-  return `${localPart}@${domain}`;
+  return normalizeMembershipEmail(email);
 }
 
 export function displayFirstName(name: string): string {
@@ -51,20 +61,29 @@ export function displayFirstName(name: string): string {
 }
 
 export function workspaceUserFromMemberships(
-  memberships: WorkspaceMemberIdentityRow[],
+  memberships: readonly OrganizationMembership[],
   verifiedEmail: string,
   verifiedSessionName?: string | null,
+  activeOrganizationId?: string | null,
 ): WorkspaceUser | null {
-  if (memberships.length !== 1) return null;
-  const member = memberships[0];
+  const member = selectOrganizationMembership(
+    memberships,
+    activeOrganizationId,
+  );
+  if (!member) return null;
   const sessionName = verifiedSessionName?.trim();
   return {
-    id: member.id,
-    orgId: member.org_id,
-    organizationName: member.organization_name,
-    name: sessionName || member.display_name,
+    id: member.memberId,
+    orgId: member.organizationId,
+    organizationName: member.organizationName,
+    name: sessionName || member.displayName,
     email: normalizeEmail(verifiedEmail),
     role: member.role,
+    organizations: memberships.map((membership) => ({
+      id: membership.organizationId,
+      name: membership.organizationName,
+      role: membership.role,
+    })),
   };
 }
 
@@ -73,60 +92,41 @@ function demoUser(email: string, name?: string | null): WorkspaceUser {
   return {
     id: `google_${digest}`,
     orgId: ORG_ID,
-    organizationName: "Feelow AI Demo",
+    organizationName: "Closespan Demo",
     name: name?.trim() || email,
     email,
     role: "Admin",
+    organizations: [{ id: ORG_ID, name: "Closespan Demo", role: "Admin" }],
   };
-}
-
-function membershipLookupSql(): string {
-  return `SELECT m.id, m.org_id, o.name AS organization_name,
-            m.display_name, m.email, m.role
-       FROM workspace_members m
-       JOIN organizations o ON o.id = m.org_id
-      WHERE lower(replace(split_part(btrim(m.email), '@', 1), '.', ''))
-            || '@'
-            || CASE
-                 WHEN lower(split_part(btrim(m.email), '@', 2)) = 'googlemail.com'
-                   THEN 'gmail.com'
-                 ELSE lower(split_part(btrim(m.email), '@', 2))
-               END
-            = $1
-      ORDER BY m.org_id, m.id`;
 }
 
 export async function hasWorkspaceMembership(email: string): Promise<boolean> {
   if (persistenceMode() !== "postgres") return false;
-  const result = await databasePool().query<{ count: string }>(
-    `SELECT count(*)::text AS count
-       FROM workspace_members m
-      WHERE lower(replace(split_part(btrim(m.email), '@', 1), '.', ''))
-            || '@'
-            || CASE
-                 WHEN lower(split_part(btrim(m.email), '@', 2)) = 'googlemail.com'
-                   THEN 'gmail.com'
-                 ELSE lower(split_part(btrim(m.email), '@', 2))
-               END
-            = $1`,
-    [normalizeEmail(email)],
-  );
-  return Number(result.rows[0]?.count ?? 0) > 0;
+  return (await listOrganizationMemberships(normalizeEmail(email))).length > 0;
 }
 
 async function findWorkspaceMember(
   email: string,
   verifiedSessionName?: string | null,
+  activeOrganizationId?: string | null,
 ): Promise<WorkspaceUser | null> {
   if (persistenceMode() !== "postgres") return null;
-  const result = await databasePool().query<WorkspaceMemberIdentityRow>(
-    membershipLookupSql(),
-    [normalizeEmail(email)],
-  );
+  const memberships = await listOrganizationMemberships(normalizeEmail(email));
   return workspaceUserFromMemberships(
-    result.rows,
+    memberships,
     email,
     verifiedSessionName,
+    activeOrganizationId,
+  );
+}
+
+async function activeOrganizationIdFromCookie(): Promise<string | null> {
+  const { cookies } = await import("next/headers");
+  const store = await cookies();
+  return (
+    store.get(ACTIVE_ORGANIZATION_COOKIE)?.value ??
+    store.get(LEGACY_ACTIVE_ORGANIZATION_COOKIE)?.value ??
+    null
   );
 }
 
@@ -138,7 +138,8 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
   const name = session?.user?.name;
   if (!email) return { status: "unauthenticated" };
 
-  const member = await findWorkspaceMember(email, name);
+  const activeOrganizationId = await activeOrganizationIdFromCookie();
+  const member = await findWorkspaceMember(email, name, activeOrganizationId);
   if (member) return { status: "granted", user: member };
   if (applicationMode() === "demo") {
     return {

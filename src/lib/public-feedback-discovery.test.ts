@@ -138,10 +138,10 @@ describe("YouPublicFeedbackDiscoveryAdapter", () => {
   it("builds a privacy-minimized query from a public hostname when name is absent", () => {
     const query = buildPublicFeedbackSearchQuery({
       productName: null,
-      productUrl: "https://feelow.ai/product",
+      productUrl: "https://closespan.example/product",
       productDescription: "Confidential positioning details",
     });
-    expect(query).toContain('"feelow"');
+    expect(query).toContain('"closespan"');
     expect(query).not.toContain("Confidential");
   });
 

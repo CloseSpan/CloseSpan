@@ -26,8 +26,8 @@ export async function POST(
   context: { params: Promise<{ integrationId: string }> },
 ) {
   try {
-    const { integrationId } = await context.params;
-    const integration = await resolveWebhookIntegration(integrationId);
+    const { integrationId: endpointId } = await context.params;
+    const integration = await resolveWebhookIntegration(endpointId);
     if (!integration) throw new HttpError(404, "Webhook integration not found");
 
     const secret = await loadWebhookSecret(
@@ -38,15 +38,17 @@ export async function POST(
 
     const body = await request.text();
     const signature =
-      request.headers.get("x-feelow-signature") ??
+      request.headers.get("x-closespan-signature") ||
+      request.headers.get("x-feelow-signature") ||
       request.headers.get("x-webhook-signature");
     if (!verifyWebhookSignature(secret, body, signature)) {
       throw new HttpError(401, "Invalid webhook signature");
     }
 
     const deliveryId =
-      request.headers.get("x-feelow-delivery-id") ??
-      request.headers.get("x-request-id") ??
+      request.headers.get("x-closespan-delivery-id") ||
+      request.headers.get("x-feelow-delivery-id") ||
+      request.headers.get("x-request-id") ||
       `delivery_${Date.now()}`;
 
     const parsed = payloadSchema.safeParse(JSON.parse(body));

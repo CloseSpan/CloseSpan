@@ -1,9 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [
-    {
-      "path": "/api/cron/nango-sync",
-      "schedule": "0 3 * * *"
-    }
-  ]
+  "crons": []
 }

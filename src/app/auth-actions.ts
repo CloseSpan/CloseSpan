@@ -1,6 +1,11 @@
 "use server";
 
 import { signIn, signOut } from "@/auth";
+import {
+  ACTIVE_ORGANIZATION_COOKIE,
+  LEGACY_ACTIVE_ORGANIZATION_COOKIE,
+} from "@/lib/auth-user";
+import { cookies } from "next/headers";
 
 function safeRedirect(value: FormDataEntryValue | null): string {
   if (
@@ -20,5 +25,8 @@ export async function signInWithGoogle(formData: FormData): Promise<void> {
 }
 
 export async function signOutCurrentUser(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.delete(ACTIVE_ORGANIZATION_COOKIE);
+  cookieStore.delete(LEGACY_ACTIVE_ORGANIZATION_COOKIE);
   await signOut({ redirectTo: "/" });
 }

@@ -12,7 +12,7 @@ import {
 import { databasePool, persistenceMode } from "./db";
 import { integrationCatalog } from "./integration-catalog";
 import { getAiPublicConfiguration } from "./ai-config";
-import { getNangoConnectionStatuses } from "./nango-repository";
+import { listPipedreamConnections } from "./pipedream-repository";
 
 export interface WorkspaceSetupStatus {
   feedbackConnected: boolean;
@@ -78,12 +78,12 @@ function decryptWebhookSecret(
   );
 }
 
-export function buildWebhookUrl(integrationId: string): string {
+export function buildWebhookUrl(publicId: string): string {
   const base =
     process.env.AUTH_URL?.replace(/\/$/, "") ??
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
     "http://localhost:3000";
-  return `${base}/api/webhooks/${integrationId}`;
+  return `${base}/api/webhooks/${publicId}`;
 }
 
 export function signWebhookPayload(secret: string, body: string): string {
@@ -121,7 +121,7 @@ export async function getWorkspaceSetupStatus(
 ): Promise<WorkspaceSetupStatus> {
   if (persistenceMode() !== "postgres") {
     const [connections, aiConfig] = await Promise.all([
-      getNangoConnectionStatuses(orgId),
+      listPipedreamConnections(orgId),
       getAiPublicConfiguration(orgId),
     ]);
     const connectedIntegrationIds = connections
@@ -162,10 +162,16 @@ export async function getWorkspaceSetupStatus(
         provider: string;
         connection_state: string;
         last_sync_at: Date | null;
+        webhook_public_id: string | null;
       }>(
-        `SELECT id, provider, connection_state, last_sync_at
-           FROM integrations
-          WHERE org_id=$1`,
+        `SELECT integration.id, integration.provider,
+                integration.connection_state, integration.last_sync_at,
+                secret.public_id AS webhook_public_id
+           FROM integrations integration
+           LEFT JOIN integration_webhook_secrets secret
+             ON secret.org_id=integration.org_id
+            AND secret.integration_id=integration.id
+          WHERE integration.org_id=$1`,
         [orgId],
       ),
       getAiPublicConfiguration(orgId),
@@ -201,10 +207,10 @@ export async function getWorkspaceSetupStatus(
     feedbackCount,
     setupComplete: feedbackConnected && aiConfigured && githubConnected,
     connectedIntegrationIds,
-    webhook: webhookConnected
+    webhook: webhookConnected && webhookRow?.webhook_public_id
       ? {
           integrationId: webhookRow.id,
-          webhookUrl: buildWebhookUrl(webhookRow.id),
+          webhookUrl: buildWebhookUrl(webhookRow.webhook_public_id),
           connectedAt: webhookRow.last_sync_at?.toISOString?.() ?? null,
         }
       : undefined,
@@ -226,6 +232,7 @@ export async function createWebhookIntegration(
   await ensureIntegrationCatalog(orgId);
   const pool = databasePool();
   const integrationId = "int_webhook";
+  let publicId = `whk_${randomBytes(18).toString("base64url")}`;
   const signingSecret = `whsec_${randomBytes(24).toString("base64url")}`;
   const encrypted = encryptWebhookSecret(signingSecret, orgId, integrationId);
   const client = await pool.connect();
@@ -240,20 +247,22 @@ export async function createWebhookIntegration(
         WHERE org_id=$1 AND id=$2`,
       [orgId, integrationId],
     );
-    await client.query(
+    const webhookSecret = await client.query<{ public_id: string }>(
       `INSERT INTO integration_webhook_secrets(
-         org_id, integration_id, secret_hint, secret_fingerprint,
+         org_id, integration_id, public_id, secret_hint, secret_fingerprint,
          encrypted_secret, secret_iv, secret_auth_tag
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT (org_id, integration_id) DO UPDATE SET
          secret_hint=excluded.secret_hint,
          secret_fingerprint=excluded.secret_fingerprint,
          encrypted_secret=excluded.encrypted_secret,
          secret_iv=excluded.secret_iv,
-         secret_auth_tag=excluded.secret_auth_tag`,
+         secret_auth_tag=excluded.secret_auth_tag
+       RETURNING public_id`,
       [
         orgId,
         integrationId,
+        publicId,
         encrypted.secretHint,
         encrypted.secretFingerprint,
         encrypted.encryptedSecret,
@@ -261,6 +270,7 @@ export async function createWebhookIntegration(
         encrypted.secretAuthTag,
       ],
     );
+    publicId = webhookSecret.rows[0]?.public_id ?? publicId;
     await client.query(
       `INSERT INTO audit_events(id, org_id, actor_id, actor_name, action, entity_type, entity_id, trace_id)
        VALUES ($1,$2,$3,'Workspace admin','Connected custom webhook integration','Integration',$4,$5)`,
@@ -275,7 +285,7 @@ export async function createWebhookIntegration(
   }
   return {
     integrationId,
-    webhookUrl: buildWebhookUrl(integrationId),
+    webhookUrl: buildWebhookUrl(publicId),
     signingSecret,
   };
 }
@@ -411,15 +421,33 @@ export async function loadWebhookSecret(
   return decryptWebhookSecret(orgId, integrationId, row);
 }
 
-export async function resolveWebhookIntegration(
+export async function loadWebhookPublicId(
+  orgId: string,
   integrationId: string,
+): Promise<string | null> {
+  const result = await databasePool().query<{ public_id: string }>(
+    `SELECT public_id
+       FROM integration_webhook_secrets
+      WHERE org_id=$1 AND integration_id=$2`,
+    [orgId, integrationId],
+  );
+  return result.rows[0]?.public_id ?? null;
+}
+
+export async function resolveWebhookIntegration(
+  publicId: string,
 ): Promise<{ orgId: string; integrationId: string } | null> {
   const pool = databasePool();
   const result = await pool.query<{ org_id: string; id: string }>(
-    `SELECT org_id, id
-       FROM integrations
-      WHERE id=$1 AND provider=$2 AND connection_state IN ('Connected','Pending setup')`,
-    [integrationId, WEBHOOK_PROVIDER],
+    `SELECT integration.org_id, integration.id
+       FROM integration_webhook_secrets secret
+       JOIN integrations integration
+         ON integration.org_id=secret.org_id
+        AND integration.id=secret.integration_id
+      WHERE secret.public_id=$1
+        AND integration.provider=$2
+        AND integration.connection_state IN ('Connected','Pending setup')`,
+    [publicId, WEBHOOK_PROVIDER],
   );
   const row = result.rows[0];
   if (!row) return null;

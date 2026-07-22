@@ -1,4 +1,4 @@
-INSERT INTO organizations(id,name) VALUES ('org_northstar','Feelow AI Demo')
+INSERT INTO organizations(id,name) VALUES ('org_northstar','Closespan Demo')
 ON CONFLICT (id) DO UPDATE SET name=excluded.name, updated_at=now();
 INSERT INTO product_problems(id,org_id,title,statement,summary,stage,severity,confidence,product_area,team,churn_risk,suspected_repository,suspected_files,impact_factors)
 VALUES ('prob_export','org_northstar','Large CSV exports produce empty files','Customers exporting datasets above approximately 10,000 rows receive an empty or zero-byte CSV despite a successful completion state.','Three customers across two paid tiers reported the same failure after release 4.18.2. Small exports remain healthy, suggesting a size-dependent regression in asynchronous export finalization.','Needs review','High',0.92,'Analytics exports','Data Experience',72,'acme/analytics-api','["services/exports/finalize.ts","workers/csv-export.ts","lib/object-storage.ts"]','[]') ON CONFLICT (org_id,id) DO NOTHING;

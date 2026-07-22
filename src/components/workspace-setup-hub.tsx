@@ -143,7 +143,7 @@ export function WorkspaceSetupHub({
           <div className="eyebrow">{organizationName}</div>
           <h1>Welcome, {firstName}</h1>
           <p className="subtle">
-            Connect your stack in three steps. Feelow will ingest feedback,
+            Connect your stack in three steps. Closespan will ingest feedback,
             run governed AI agents on your board, and prepare GitHub actions
             after approval.
           </p>
@@ -279,7 +279,7 @@ export function WorkspaceSetupHub({
           ) : (
             <div className="setup-card-body">
               <p className="subtle">
-                Add one provider key in Settings. Feelow encrypts it per
+                Add one provider key in Settings. Closespan encrypts it per
                 workspace and uses it only for structured analysis.
               </p>
               <Link className="btn primary" href="/settings#ai">
@@ -296,7 +296,7 @@ export function WorkspaceSetupHub({
               <GitBranch aria-hidden="true" size={18} />
               <h2>Connect GitHub</h2>
               <p className="subtle">
-                After human approval, Feelow can create issues and later open
+                After human approval, Closespan can create issues and later open
                 pull requests in allowed repositories.
               </p>
             </div>
@@ -304,11 +304,7 @@ export function WorkspaceSetupHub({
           {status.githubConnected ? (
             <div className="setup-complete">
               <Check aria-hidden="true" size={16} />
-              <span>
-                {status.githubConnected && !status.setupComplete
-                  ? "GitHub setup started"
-                  : "GitHub connected"}
-              </span>
+              <span>GitHub connected</span>
               <Link className="btn" href="/integrations">
                 Manage GitHub scopes
               </Link>
@@ -316,7 +312,7 @@ export function WorkspaceSetupHub({
           ) : (
             <div className="setup-card-body">
               <p className="subtle">
-                Install the Feelow GitHub App on the repositories you want
+                Install the Closespan GitHub App on the repositories you want
                 agents to inspect and act on after approval.
               </p>
               <button

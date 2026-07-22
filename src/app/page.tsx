@@ -18,28 +18,28 @@ import { launchPlans, launchPricingNote } from "@/lib/plans";
 
 export const metadata: Metadata = {
   title: {
-    absolute: "Feelow AI | Turn customer signals into verified product fixes",
+    absolute: "Closespan | Turn customer signals into verified product fixes",
   },
   description:
-    "Detect revenue-impacting customer problems, prepare engineering-ready evidence, and verify every resolution with Feelow AI.",
+    "Detect revenue-impacting customer problems, prepare engineering-ready evidence, and verify every resolution with Closespan.",
   robots: { index: true, follow: true },
   openGraph: {
-    title: "Feelow AI | Turn customer signals into verified product fixes",
+    title: "Closespan | Turn customer signals into verified product fixes",
     description:
       "Connect support evidence, revenue impact, engineering context, human approval, and customer follow-up in one governed workflow.",
-    siteName: "Feelow AI",
+    siteName: "Closespan",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Feelow AI | Turn customer signals into verified product fixes",
+    title: "Closespan | Turn customer signals into verified product fixes",
     description:
       "From scattered customer reports to one prioritized, engineering-ready, verified resolution.",
   },
 };
 
 const pilotHref =
-  "mailto:shanmukhsain@gmail.com?subject=Feelow%20AI%20Design%20Partner%20Pilot";
+  "mailto:shanmukhsain@gmail.com?subject=Closespan%20Design%20Partner%20Pilot";
 const workspaceLoginHref = "/login?callbackUrl=%2Foverview";
 const problemLoginHref =
   "/login?callbackUrl=%2Fproblems%2Fprob_export";
@@ -111,11 +111,11 @@ export default function LandingPage() {
 
       <div className="landing-top">
         <header className="landing-nav">
-          <Link className="landing-brand" href="/" aria-label="Feelow AI home">
+          <Link className="landing-brand" href="/" aria-label="Closespan home">
             <span className="brandmark" aria-hidden="true">
-              F
+              C
             </span>
-            <strong>Feelow AI</strong>
+            <strong>Closespan</strong>
           </Link>
           <nav aria-label="Landing navigation">
             <a href="#product">Product</a>
@@ -155,7 +155,7 @@ export default function LandingPage() {
               Turn customer signals into <span>verified product fixes.</span>
             </h1>
             <p>
-              Feelow AI connects support evidence, revenue impact, engineering
+              Closespan connects support evidence, revenue impact, engineering
               context, human approval, and customer follow-up in one governed
               workflow.
             </p>
@@ -245,7 +245,7 @@ export default function LandingPage() {
             <span className="section-label">The must-win moment</span>
             <h2>A release ships. Complaints spike. Every team sees only a fragment.</h2>
             <p>
-              Feelow AI gives product, engineering, support, and success one
+              Closespan gives product, engineering, support, and success one
               shared source of truth before a recurring defect becomes a lost
               renewal.
             </p>
@@ -417,9 +417,9 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <Link className="landing-brand" href="/">
           <span className="brandmark" aria-hidden="true">
-            F
+            C
           </span>
-          <strong>Feelow AI</strong>
+          <strong>Closespan</strong>
         </Link>
         <p>Customer-reported problem to verified fix.</p>
         <div>
@@ -435,19 +435,19 @@ export default function LandingPage() {
 
 function ProductPreview() {
   return (
-    <div className="hero-product" aria-label="Feelow AI problem workspace preview">
+    <div className="hero-product" aria-label="Closespan problem workspace preview">
       <div className="preview-chrome">
         <div className="preview-dots" aria-hidden="true">
           <span />
           <span />
           <span />
         </div>
-        <span>Problem workspace · FF-142</span>
+        <span>Problem workspace · CS-142</span>
         <span className="preview-status">Needs review</span>
       </div>
       <div className="preview-body">
         <aside className="preview-sidebar" aria-label="Preview navigation">
-          <div className="preview-logo">F</div>
+          <div className="preview-logo">C</div>
           {[1, 2, 3, 4, 5, 6].map((item) => (
             <i key={item} />
           ))}

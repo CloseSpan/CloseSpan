@@ -14,7 +14,7 @@ export interface DemoState {
 
 interface ActionContext { actorId: string; actorName: string; idempotencyKey: string; traceId: string }
 
-const globalStore = globalThis as typeof globalThis & { feedbackFlowStates?: Map<string, DemoState> };
+const globalStore = globalThis as typeof globalThis & { closespanStates?: Map<string, DemoState> };
 
 function now(): string { return new Date().toISOString(); }
 function event(orgId: string, actorId: string, actorName: string, action: string, entityType: AuditEvent["entityType"], entityId: string, traceId: string): AuditEvent {
@@ -33,8 +33,8 @@ function initialState(orgId: string): DemoState {
 }
 
 function states(): Map<string, DemoState> {
-  globalStore.feedbackFlowStates ??= new Map();
-  return globalStore.feedbackFlowStates;
+  globalStore.closespanStates ??= new Map();
+  return globalStore.closespanStates;
 }
 
 export function getMemoryState(orgId: string): DemoState {
@@ -104,4 +104,4 @@ export function approveMemoryNotifications(orgId: string, context: ActionContext
   return state;
 }
 
-export function resetMemoryState(): void { globalStore.feedbackFlowStates = new Map(); }
+export function resetMemoryState(): void { globalStore.closespanStates = new Map(); }

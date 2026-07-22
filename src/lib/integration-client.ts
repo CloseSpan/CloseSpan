@@ -306,17 +306,25 @@ export async function fetchIntegrationSyncStatus(input: {
   integrationId: string;
 }): Promise<IntegrationSyncStatusResponse> {
   const response = await fetch(
-    `/api/integrations/nango/sync/status?integrationId=${encodeURIComponent(input.integrationId)}`,
+    "/api/integrations/pipedream/status",
     {
-      method: "GET",
+      method: "POST",
       headers: {
+        "Content-Type": "application/json",
         "x-org-id": input.orgId,
+        "idempotency-key": crypto.randomUUID(),
         "x-request-id": crypto.randomUUID(),
       },
+      body: JSON.stringify({ integrationId: input.integrationId }),
       cache: "no-store",
     },
   );
-  const payload = parseIntegrationSyncStatusResponse(await json(response));
-  if (!response.ok || !payload) throw new Error("sync_status_unavailable");
-  return payload;
+  const payload = record(await json(response));
+  const connectionState = payload && ["Connected", "Needs reconnect", "Disconnected"].includes(String(payload.connectionState))
+    ? payload.connectionState as IntegrationConnectionState
+    : null;
+  if (!response.ok || !payload || text(payload.integrationId) !== input.integrationId) {
+    throw new Error("sync_status_unavailable");
+  }
+  return { integrationId: input.integrationId, connectionState, sync: null };
 }

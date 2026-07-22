@@ -4,7 +4,7 @@ import pg from "pg";
 const email = (process.env.PRODUCTION_OWNER_EMAIL ?? "").trim().toLowerCase();
 const name = (process.env.PRODUCTION_OWNER_NAME ?? "").trim() || email;
 const orgId = (process.env.PRODUCTION_ORG_ID ?? "org_feelow").trim();
-const orgName = (process.env.PRODUCTION_ORG_NAME ?? "Feelow AI").trim();
+const orgName = (process.env.PRODUCTION_ORG_NAME ?? "Closespan").trim();
 const workspaceId = `${orgId}_primary`;
 
 if (!email || !email.includes("@")) {
@@ -53,12 +53,6 @@ try {
          plan_price = excluded.plan_price,
          updated_at = now()`,
       [orgId],
-    );
-    await client.query(
-      `DELETE FROM workspace_members
-        WHERE lower(btrim(email)) = $1
-          AND org_id <> $2`,
-      [email, orgId],
     );
     await client.query(
       `INSERT INTO workspace_members(id, org_id, display_name, email, role, team)

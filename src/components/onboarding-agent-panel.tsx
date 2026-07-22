@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowRight,
   ArrowUp,
   Check,
   Copy,
@@ -11,14 +12,21 @@ import {
   PlugZap,
   Sparkles,
 } from "lucide-react";
-import {
-  fetchConnectedIntegrationIds,
-  NangoConnectButton,
-} from "@/components/nango-connect-button";
+import { PipedreamConnectButton } from "@/components/pipedream-connect-button";
 import { IntegrationSyncStatus } from "@/components/integration-sync-status";
+import { IntegrationProviderIcon } from "@/components/integration-provider-icon";
 import { PublicSourceDiscovery } from "@/components/public-source-discovery";
+import {
+  isFeedbackSourceIntegration,
+  isIntegrationAvailable,
+} from "@/lib/integration-catalog";
 import type { IntegrationConnectionState } from "@/lib/integration-client";
-import { isNangoConnectorId } from "@/lib/nango-connectors";
+import type { WorkspaceSetupStatus } from "@/lib/integration-repository";
+import { isPipedreamConnectorId } from "@/lib/pipedream-connectors";
+import {
+  deriveOnboardingPhase,
+  resolvedConnectorFailure,
+} from "@/lib/onboarding-guidance";
 import type { OnboardingAction } from "@/lib/onboarding-agent";
 import type {
   OnboardingPhase,
@@ -96,6 +104,35 @@ async function integrationFetch(path: string, orgId: string) {
   return payload;
 }
 
+async function workspaceSetupFetch(
+  orgId: string,
+): Promise<WorkspaceSetupStatus> {
+  const response = await fetch("/api/integrations/setup", {
+    method: "GET",
+    headers: {
+      "x-org-id": orgId,
+      "x-request-id": crypto.randomUUID(),
+    },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error("status_unavailable");
+  return (await response.json()) as WorkspaceSetupStatus;
+}
+
+async function continueOnboardingFetch(orgId: string) {
+  const response = await fetch("/api/onboarding", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "x-org-id": orgId,
+      "idempotency-key": crypto.randomUUID(),
+      "x-request-id": crypto.randomUUID(),
+    },
+    body: JSON.stringify({ action: "continue" }),
+  });
+  if (!response.ok) throw new Error("continue_unavailable");
+}
+
 function phaseIndex(phase: OnboardingPhase): number {
   return Math.max(
     0,
@@ -107,13 +144,15 @@ export function OnboardingAgentPanel({
   orgId,
   firstName,
   organizationName,
+  initialSetup,
 }: {
   orgId: string;
   firstName: string;
   organizationName: string;
+  initialSetup: WorkspaceSetupStatus;
 }) {
   const router = useRouter();
-  const endRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<OnboardingState | null>(null);
   const [actions, setActions] = useState<OnboardingAction[]>([]);
@@ -124,7 +163,13 @@ export function OnboardingAgentPanel({
   const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  const [connectedIds, setConnectedIds] = useState<string[]>([]);
+  const [setupStatus, setSetupStatus] =
+    useState<WorkspaceSetupStatus>(initialSetup);
+  const [connectedIds, setConnectedIds] = useState<string[]>(
+    initialSetup.connectedIntegrationIds,
+  );
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [connectionStates, setConnectionStates] = useState<
     Partial<Record<string, IntegrationConnectionState>>
   >({});
@@ -155,13 +200,15 @@ export function OnboardingAgentPanel({
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+  }, [loadVersion, orgId]);
 
   useEffect(() => {
     let cancelled = false;
-    fetchConnectedIntegrationIds(orgId)
-      .then((ids) => {
-        if (!cancelled) setConnectedIds(ids);
+    workspaceSetupFetch(orgId)
+      .then((next) => {
+        if (cancelled) return;
+        setSetupStatus(next);
+        setConnectedIds(next.connectedIntegrationIds);
       })
       .catch(() => {
         // Onboarding remains usable while a transient status read recovers.
@@ -172,11 +219,41 @@ export function OnboardingAgentPanel({
   }, [orgId]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [state?.messages.length, busy, actions.length]);
+    const thread = threadRef.current;
+    if (!thread) return;
+    thread.scrollTo({
+      top: thread.scrollHeight,
+      behavior: busy === "chat" ? "smooth" : "auto",
+    });
+  }, [state?.messages.length, busy]);
 
-  const activePhase = state?.phase ?? "discover";
+  const hasProductBrief = Boolean(
+    state?.productProfile.productName?.trim() ||
+      state?.productProfile.productUrl?.trim() ||
+      state?.productProfile.productDescription?.trim(),
+  );
+  const activePhase: OnboardingPhase = deriveOnboardingPhase({
+    persistedPhase: state?.phase ?? null,
+    hasProductBrief,
+    feedbackConnected: setupStatus.feedbackConnected,
+    feedbackCount: setupStatus.feedbackCount,
+  });
   const activePhaseIndex = phaseIndex(activePhase);
+  const githubConnected = connectedIds.includes("int_github");
+  const githubFailureIsResolved = resolvedConnectorFailure({
+    provider: "GitHub",
+    connected: githubConnected,
+    messages: state?.messages ?? [],
+  });
+  const visibleSuggestedReplies = githubFailureIsResolved
+    ? []
+    : suggestedReplies;
+  const nextFeedbackSource = state?.recommendedConnectors.find(
+    (connector) =>
+      isFeedbackSourceIntegration(connector.integrationId) &&
+      isIntegrationAvailable(connector.integrationId) &&
+      !connectedIds.includes(connector.integrationId),
+  );
   const showStarters = useMemo(
     () =>
       Boolean(
@@ -227,11 +304,42 @@ export function OnboardingAgentPanel({
         setConnectedIds((prev) =>
           prev.includes("int_webhook") ? prev : [...prev, "int_webhook"],
         );
+        setSetupStatus((previous) => ({
+          ...previous,
+          feedbackConnected: true,
+          connectedIntegrationIds: previous.connectedIntegrationIds.includes(
+            "int_webhook",
+          )
+            ? previous.connectedIntegrationIds
+            : [...previous.connectedIntegrationIds, "int_webhook"],
+        }));
+        setSuggestedReplies([]);
+        setConnectionNotice(
+          "Custom webhook is connected. You can keep working while the first feedback event arrives.",
+        );
       }
       if (action.type === "connect_github") {
         const result = await integrationFetch("/api/integrations/github", orgId);
         window.open(result.installUrl as string, "_blank", "noopener,noreferrer");
       }
+      router.refresh();
+    } catch {
+      setError(FRIENDLY_ERROR);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function continueToWorkspace() {
+    if (busy) return;
+    setBusy("continue");
+    setError(null);
+    try {
+      await continueOnboardingFetch(orgId);
+      setState((previous) =>
+        previous ? { ...previous, phase: "complete" } : previous,
+      );
+      router.push("/feedback");
       router.refresh();
     } catch {
       setError(FRIENDLY_ERROR);
@@ -258,6 +366,7 @@ export function OnboardingAgentPanel({
               className={`delphi-phase${index <= activePhaseIndex ? " active" : ""}${
                 phase.id === activePhase ? " current" : ""
               }`}
+              aria-current={phase.id === activePhase ? "step" : undefined}
             >
               {index < activePhaseIndex ? (
                 <Check size={12} aria-hidden="true" />
@@ -291,12 +400,37 @@ export function OnboardingAgentPanel({
           </div>
         )}
 
-        <div className="delphi-thread" aria-live="polite">
+        <div className="delphi-thread" ref={threadRef}>
           {!state ? (
-            <div className="onboarding-loading">
-              <LoaderCircle className="spin" size={18} aria-hidden="true" />
-              <span>Operations Manager coming online...</span>
-            </div>
+            error ? (
+              <div className="onboarding-load-fallback" role="status">
+                <strong>The chat is taking a little longer.</strong>
+                <p>
+                  You can retry it or open Integrations and connect a source
+                  directly.
+                </p>
+                <div>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => {
+                      setError(null);
+                      setLoadVersion((current) => current + 1);
+                    }}
+                  >
+                    Retry chat
+                  </button>
+                  <Link className="btn" href="/integrations">
+                    Open integrations
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="onboarding-loading">
+                <LoaderCircle className="spin" size={18} aria-hidden="true" />
+                <span>Operations Manager coming online...</span>
+              </div>
+            )
           ) : (
             state.messages.map((message, index) => (
               <div
@@ -310,6 +444,17 @@ export function OnboardingAgentPanel({
               </div>
             ))
           )}
+          {state && githubFailureIsResolved && (
+            <div className="delphi-bubble assistant resolved" role="status">
+              <span className="delphi-bubble-label">Ops Manager · Updated</span>
+              <p>
+                GitHub is connected now — the earlier OAuth failure is
+                resolved. It is ready for approved actions, so let&apos;s move on
+                to a feedback source. Slack or the custom webhook will get
+                intake started.
+              </p>
+            </div>
+          )}
           {busy === "chat" && (
             <div className="delphi-bubble assistant thinking">
               <span className="delphi-bubble-label">Ops Manager</span>
@@ -319,8 +464,16 @@ export function OnboardingAgentPanel({
               </p>
             </div>
           )}
-          <div ref={endRef} />
         </div>
+        <p className="sr-only" aria-live="polite" aria-atomic="true">
+          {busy === "chat"
+            ? "The Operations Manager is preparing a response."
+            : githubFailureIsResolved
+              ? "GitHub is connected now. The earlier OAuth failure is resolved. Choose another feedback source or continue to the workspace."
+            : state?.messages.at(-1)?.role === "assistant"
+              ? state.messages.at(-1)?.content
+              : ""}
+        </p>
 
         {state &&
           (state.productProfile.productName ||
@@ -337,15 +490,79 @@ export function OnboardingAgentPanel({
             />
           )}
 
+        {state && hasProductBrief && (
+          <section
+            className={`delphi-recovery${
+              setupStatus.feedbackConnected ? " ready" : ""
+            }`}
+            aria-label="Recommended next step"
+          >
+            <div className="delphi-recovery-icon" aria-hidden="true">
+              {setupStatus.feedbackConnected ? (
+                <Check size={18} />
+              ) : (
+                <ArrowRight size={18} />
+              )}
+            </div>
+            <div
+              className="delphi-recovery-copy"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <span className="delphi-bubble-label">Next best step</span>
+              <strong>
+                {setupStatus.feedbackConnected
+                  ? "Your feedback intake is connected"
+                  : githubFailureIsResolved
+                    ? "GitHub is connected — keep moving"
+                    : "Choose one feedback source to keep moving"}
+              </strong>
+              <p>
+                {setupStatus.feedbackConnected
+                  ? setupStatus.feedbackCount > 0
+                    ? "Signal is already arriving. Open the inbox and start operating; other integrations can be added later."
+                    : "You do not need to wait for the first import here. Closespan will keep checking in the background while you explore the workspace."
+                  : githubFailureIsResolved
+                    ? `The earlier OAuth issue is resolved. GitHub is ready for approved engineering actions, and it does not need a feedback import. ${
+                        nextFeedbackSource
+                          ? `Connect ${nextFeedbackSource.provider} next, or use the webhook fallback.`
+                          : "Connect another intake source or use the webhook fallback."
+                      }`
+                    : nextFeedbackSource
+                      ? `Start with ${nextFeedbackSource.provider}. If its authorization is blocked, the custom webhook is always available as a fallback.`
+                      : "Use the custom webhook if a native connector is unavailable. You can also explore the workspace and finish setup later."}
+              </p>
+              {connectionNotice && (
+                <p className="delphi-recovery-notice">{connectionNotice}</p>
+              )}
+            </div>
+            <div className="delphi-recovery-actions">
+              {!setupStatus.feedbackConnected && (
+                <a className="btn primary" href="#intake-sources">
+                  Choose a source
+                </a>
+              )}
+              <button
+                type="button"
+                className={setupStatus.feedbackConnected ? "btn primary" : "btn"}
+                disabled={busy === "continue"}
+                onClick={continueToWorkspace}
+              >
+                {busy === "continue" ? "Opening..." : "Explore workspace"}
+              </button>
+            </div>
+          </section>
+        )}
+
         {state && state.recommendedConnectors.length > 0 && (
-          <section className="delphi-sync">
+          <section className="delphi-sync" id="intake-sources">
             <div className="delphi-sync-head">
               <PlugZap size={16} aria-hidden="true" />
               <div>
-                <strong>Connect intake sources</strong>
+                <strong>Connect your workflow</strong>
                 <p>
-                  I&apos;ll pull customer signal into the Feedback inbox, then
-                  run triage on the problem board under your approval.
+                  Choose one intake source now. Engineering destinations and
+                  additional sources can be connected later.
                 </p>
               </div>
             </div>
@@ -357,11 +574,21 @@ export function OnboardingAgentPanel({
                   observedConnectionState === undefined
                     ? connectedIds.includes(connector.integrationId)
                     : observedConnectionState === "Connected";
-                const nangoIntegrationId = isNangoConnectorId(
+                const pipedreamIntegrationId = isPipedreamConnectorId(
                   connector.integrationId,
                 )
                   ? connector.integrationId
                   : null;
+                const feedbackSource = isFeedbackSourceIntegration(
+                  connector.integrationId,
+                );
+                const available = isIntegrationAvailable(
+                  connector.integrationId,
+                );
+                const connectorReason =
+                  connector.integrationId === "int_github" && connected
+                    ? "GitHub is ready to receive approved engineering actions after review."
+                    : connector.reason;
                 const action = actions.find((item) => {
                   if (item.type === "connect_webhook")
                     return connector.integrationId === "int_webhook";
@@ -386,52 +613,88 @@ export function OnboardingAgentPanel({
                   <article
                     key={connector.integrationId}
                     className={`delphi-source${connected ? " connected" : ""}`}
+                    data-connector-id={connector.integrationId}
                   >
                     <div>
-                      <span className="delphi-source-priority">
-                        {connector.priority}
-                      </span>
-                      <h3>{connector.provider}</h3>
-                      <p>{connector.reason}</p>
+                      <div className="delphi-source-title">
+                        <IntegrationProviderIcon
+                          integrationId={connector.integrationId}
+                          size={16}
+                          compact
+                        />
+                        <div>
+                          <span className="delphi-source-priority">
+                            {feedbackSource ? connector.priority : "optional"}
+                          </span>
+                          <h3>{connector.provider}</h3>
+                        </div>
+                      </div>
+                      <p>{connectorReason}</p>
                     </div>
                     {connected ? (
                       <div className="delphi-source-connected">
                         <span className="delphi-source-status">
                           <Check size={14} aria-hidden="true" /> Connected
                         </span>
-                        {nangoIntegrationId && (
+                        {pipedreamIntegrationId && feedbackSource ? (
                           <IntegrationSyncStatus
                             orgId={orgId}
-                            integrationId={nangoIntegrationId}
+                            integrationId={pipedreamIntegrationId}
                             active
                             refreshKey={
-                              syncRefreshKeys[nangoIntegrationId] ?? 0
+                              syncRefreshKeys[pipedreamIntegrationId] ?? 0
                             }
                             onSucceeded={() => router.refresh()}
                             onConnectionStateChange={(nextState) => {
                               setConnectionStates((previous) => ({
                                 ...previous,
-                                [nangoIntegrationId]: nextState,
+                                [pipedreamIntegrationId]: nextState,
                               }));
                               setConnectedIds((previous) =>
                                 nextState === "Connected"
-                                  ? previous.includes(nangoIntegrationId)
+                                  ? previous.includes(pipedreamIntegrationId)
                                     ? previous
-                                    : [...previous, nangoIntegrationId]
+                                    : [...previous, pipedreamIntegrationId]
                                   : previous.filter(
-                                      (id) => id !== nangoIntegrationId,
-                                    ),
+                                      (id) => id !== pipedreamIntegrationId,
+                                  ),
                               );
+                              void workspaceSetupFetch(orgId)
+                                .then((next) => {
+                                  setSetupStatus(next);
+                                  setConnectedIds(
+                                    next.connectedIntegrationIds,
+                                  );
+                                })
+                                .catch(() => {
+                                  // Keep the last trusted setup snapshot during
+                                  // a transient status read.
+                                });
                             }}
                           />
-                        )}
+                        ) : !feedbackSource ? (
+                          <p className="integration-import succeeded">
+                            <Check size={13} aria-hidden="true" />
+                            Ready for approved actions
+                          </p>
+                        ) : null}
                       </div>
-                    ) : nangoIntegrationId ? (
-                      <NangoConnectButton
+                    ) : !available ? (
+                      <div className="delphi-source-unavailable">
+                        <span>Coming soon</span>
+                        <p>
+                          This connector is not available yet. Choose another
+                          source or use the webhook fallback.
+                        </p>
+                      </div>
+                    ) : pipedreamIntegrationId ? (
+                      <PipedreamConnectButton
                         orgId={orgId}
-                        integrationId={nangoIntegrationId}
+                        integrationId={pipedreamIntegrationId}
+                        guidance="compact"
                         connectionState={observedConnectionState}
                         onConnected={(integrationId) => {
+                          const provider = connector.provider;
                           setConnectedIds((previous) =>
                             previous.includes(integrationId)
                               ? previous
@@ -446,6 +709,36 @@ export function OnboardingAgentPanel({
                             [integrationId]:
                               (previous[integrationId] ?? 0) + 1,
                           }));
+                          setSuggestedReplies([]);
+                          setConnectionNotice(
+                            feedbackSource
+                              ? `${provider} is connected. You can continue while the first import runs in the background.`
+                              : `${provider} is connected and ready for approved actions. No feedback import is required.`,
+                          );
+                          void workspaceSetupFetch(orgId)
+                            .then((next) => {
+                              setSetupStatus(next);
+                              setConnectedIds(next.connectedIntegrationIds);
+                            })
+                            .catch(() => {
+                              setSetupStatus((previous) => ({
+                                ...previous,
+                                feedbackConnected:
+                                  previous.feedbackConnected || feedbackSource,
+                                githubConnected:
+                                  previous.githubConnected ||
+                                  integrationId === "int_github",
+                                connectedIntegrationIds:
+                                  previous.connectedIntegrationIds.includes(
+                                    integrationId,
+                                  )
+                                    ? previous.connectedIntegrationIds
+                                    : [
+                                        ...previous.connectedIntegrationIds,
+                                        integrationId,
+                                      ],
+                              }));
+                            });
                         }}
                       />
                     ) : action?.type === "oauth_connect" ? (
@@ -514,9 +807,9 @@ export function OnboardingAgentPanel({
           </div>
         )}
 
-        {(showStarters || suggestedReplies.length > 0) && (
+        {(showStarters || visibleSuggestedReplies.length > 0) && (
           <div className="delphi-chips" aria-label="Suggested replies">
-            {(showStarters ? STARTER_CHIPS : suggestedReplies).map((chip) => (
+            {(showStarters ? STARTER_CHIPS : visibleSuggestedReplies).map((chip) => (
               <button
                 key={chip}
                 type="button"
@@ -530,15 +823,29 @@ export function OnboardingAgentPanel({
           </div>
         )}
 
+        {state && hasProductBrief && (
+          <nav className="delphi-workspace-links" aria-label="Onboarding options">
+            <Link href="/integrations">Manage all integrations</Link>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              disabled={busy === "continue"}
+              onClick={continueToWorkspace}
+            >
+              Continue for now — setup stays available
+            </button>
+          </nav>
+        )}
+
         <form className="delphi-composer" onSubmit={onSubmit}>
           <input
             ref={inputRef}
             type="text"
             value={draft}
+            aria-label="Describe your product"
             placeholder="Describe your product — name, what it does, URL..."
             onChange={(event) => setDraft(event.target.value)}
             disabled={busy === "chat"}
-            autoFocus
           />
           <button
             className="delphi-send"

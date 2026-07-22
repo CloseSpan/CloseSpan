@@ -9,6 +9,8 @@ import {
 } from "./ai-config";
 import {
   connectorCatalogForAgent,
+  isFeedbackSourceIntegration,
+  isIntegrationAvailable,
   type ConnectorCatalogEntry,
 } from "./integration-catalog";
 import { discoverFeedbackSourcesFromProduct } from "./product-source-discovery";
@@ -34,6 +36,14 @@ export interface OnboardingTurnResult {
   recommendedConnectors: RecommendedConnector[];
   suggestedActions: OnboardingAction[];
   suggestedReplies: string[];
+}
+
+export interface OnboardingWorkspaceConnectionStatus {
+  connectedIntegrationIds: string[];
+  feedbackConnected: boolean;
+  githubConnected: boolean;
+  aiConfigured: boolean;
+  setupComplete: boolean;
 }
 
 const onboardingTurnSchema = z.object({
@@ -83,7 +93,7 @@ function enrichConnectors(
   return raw
     .map((item) => {
       const catalog = catalogById.get(item.integrationId);
-      if (!catalog) return null;
+      if (!catalog || !isIntegrationAvailable(catalog.id)) return null;
       return {
         integrationId: catalog.id,
         provider: catalog.provider,
@@ -97,36 +107,67 @@ function enrichConnectors(
 
 function mapActions(
   raw: z.infer<typeof onboardingTurnSchema>["suggestedActions"],
+  connectedIntegrationIds: ReadonlySet<string>,
+  aiConfigured: boolean,
 ): OnboardingAction[] {
   const actions: OnboardingAction[] = [];
+  const actionKeys = new Set<string>();
+  const push = (action: OnboardingAction, key: string) => {
+    if (actionKeys.has(key)) return;
+    actionKeys.add(key);
+    actions.push(action);
+  };
   for (const item of raw) {
     switch (item.action) {
       case "connect_webhook":
-        actions.push({ type: "connect_webhook", label: item.label });
+        if (!connectedIntegrationIds.has("int_webhook")) {
+          push(
+            { type: "connect_webhook", label: item.label },
+            "int_webhook",
+          );
+        }
         break;
       case "connect_github":
-        actions.push({ type: "connect_github", label: item.label });
+        if (!connectedIntegrationIds.has("int_github")) {
+          push({ type: "connect_github", label: item.label }, "int_github");
+        }
         break;
       case "open_settings_ai":
-        actions.push({ type: "open_settings_ai", label: item.label });
+        if (!aiConfigured) {
+          push({ type: "open_settings_ai", label: item.label }, "settings_ai");
+        }
         break;
       case "oauth_connect":
-        if (item.integrationId?.trim()) {
-          actions.push({
-            type: "oauth_connect",
-            integrationId: item.integrationId,
-            label: item.label,
-          });
+        if (
+          item.integrationId?.trim() &&
+          isIntegrationAvailable(item.integrationId) &&
+          !connectedIntegrationIds.has(item.integrationId)
+        ) {
+          if (item.integrationId === "int_github") {
+            push(
+              { type: "connect_github", label: item.label },
+              "int_github",
+            );
+          } else {
+            push(
+              {
+                type: "oauth_connect",
+                integrationId: item.integrationId,
+                label: item.label,
+              },
+              item.integrationId,
+            );
+          }
         }
         break;
     }
   }
-  return actions;
+  return actions.slice(0, 5);
 }
 
 function buildSystemPrompt(catalog: readonly ConnectorCatalogEntry[]): string {
   return [
-    "You are Feelow's Expert Operations Manager — an autonomous ops lead inside the product.",
+    "You are Closespan's Expert Operations Manager — an autonomous ops lead inside the product.",
     "Phase rules:",
     "1) First, collect ONLY product details (name, URL if any, what it does, who uses it). Do not ask which tools they use.",
     "2) Once you have a usable product brief, set phase to connect and recommend feedback connectors inferred from the product (Zendesk, Slack, Intercom, App Store, Play Store, webhook, etc.).",
@@ -134,7 +175,10 @@ function buildSystemPrompt(catalog: readonly ConnectorCatalogEntry[]): string {
     "Speak like a senior ops manager: decisive, calm, practical.",
     "Ask one focused question only while still gathering product details. Keep assistantMessage under 90 words.",
     "Always return 2-4 short suggestedReplies.",
-    "Never invent connectors outside the catalog. Prefer webhook as universal fallback.",
+    "The allowed catalog contains only connectors that can be connected in the current product. Never recommend anything outside it.",
+    "Treat currentWorkspaceConnections in the user payload as authoritative. Never ask a user to reconnect a source already listed as connected.",
+    "A connector failure must not block onboarding: recommend another available feedback source or the webhook fallback.",
+    "Prefer webhook as the universal fallback.",
     "Allowed connectors JSON:",
     JSON.stringify(catalog),
   ].join("\n");
@@ -148,17 +192,191 @@ function hasProductBrief(profile: ProductProfile): boolean {
   );
 }
 
+function connectedIds(
+  workspaceStatus: OnboardingWorkspaceConnectionStatus,
+): Set<string> {
+  const ids = new Set(
+    workspaceStatus.connectedIntegrationIds.filter(isIntegrationAvailable),
+  );
+  if (workspaceStatus.githubConnected) ids.add("int_github");
+  return ids;
+}
+
+function availableRecommendations(
+  connectors: readonly RecommendedConnector[],
+): RecommendedConnector[] {
+  const seen = new Set<string>();
+  return connectors.filter((connector) => {
+    if (
+      !isIntegrationAvailable(connector.integrationId) ||
+      seen.has(connector.integrationId)
+    ) {
+      return false;
+    }
+    seen.add(connector.integrationId);
+    return true;
+  });
+}
+
+function recommendedConnector(
+  integrationId: string,
+  reason: string,
+): RecommendedConnector | null {
+  const catalog = catalogById.get(integrationId);
+  if (!catalog || !isIntegrationAvailable(integrationId)) return null;
+  return {
+    integrationId,
+    provider: catalog.provider,
+    reason,
+    priority: "required",
+    connectionMethod: catalog.connectionMethod,
+  };
+}
+
+const failureAliases: ReadonlyArray<{
+  integrationId: string;
+  pattern: RegExp;
+}> = [
+  { integrationId: "int_github", pattern: /\bgithub\b/i },
+  { integrationId: "int_zendesk", pattern: /\bzendesk\b/i },
+  { integrationId: "int_intercom", pattern: /\bintercom\b/i },
+  { integrationId: "int_slack", pattern: /\bslack\b/i },
+  {
+    integrationId: "int_app_store",
+    pattern: /\b(?:apple\s+)?app\s+store\b/i,
+  },
+  {
+    integrationId: "int_play_store",
+    pattern: /\b(?:google\s+)?play\s+store\b/i,
+  },
+  { integrationId: "int_webhook", pattern: /\bwebhook\b/i },
+];
+
+function reportedConnectorFailure(message: string): {
+  integrationId: string | null;
+  label: string;
+} | null {
+  const failureLanguage =
+    /\b(?:fail(?:ed|ing|s)?|error|broken|stuck|unable|cannot|can't|couldn't|won't|trouble)\b|\b(?:did not|didn't|does not|doesn't|not)\s+(?:connect|work|open|finish)/i;
+  if (!failureLanguage.test(message)) return null;
+  const matched = failureAliases.find((candidate) =>
+    candidate.pattern.test(message),
+  );
+  if (!matched) return { integrationId: null, label: "That connector" };
+  return {
+    integrationId: matched.integrationId,
+    label: catalogById.get(matched.integrationId)?.provider ?? "That connector",
+  };
+}
+
+function feedbackFallback(input: {
+  state: OnboardingState;
+  workspaceStatus: OnboardingWorkspaceConnectionStatus;
+  excludedIntegrationId: string | null;
+}): { connector: RecommendedConnector; alreadyConnected: boolean } {
+  const connected = connectedIds(input.workspaceStatus);
+  const eligible = (integrationId: string) =>
+    integrationId !== input.excludedIntegrationId &&
+    isFeedbackSourceIntegration(integrationId);
+  const preferredIds = [
+    ...availableRecommendations(input.state.recommendedConnectors).map(
+      (connector) => connector.integrationId,
+    ),
+    "int_webhook",
+    "int_zendesk",
+    "int_intercom",
+    "int_slack",
+    "int_app_store",
+    "int_play_store",
+  ].filter((integrationId, index, values) => values.indexOf(integrationId) === index);
+
+  const unconnectedId = preferredIds.find(
+    (integrationId) => eligible(integrationId) && !connected.has(integrationId),
+  );
+  const selectedId =
+    unconnectedId ??
+    preferredIds.find(
+      (integrationId) => eligible(integrationId) && connected.has(integrationId),
+    ) ??
+    "int_webhook";
+  const connector = recommendedConnector(
+    selectedId,
+    "This source keeps feedback intake moving while another connector is retried later.",
+  );
+  if (!connector) {
+    throw new Error("The webhook fallback is unavailable");
+  }
+  return { connector, alreadyConnected: connected.has(selectedId) };
+}
+
+function connectorFailureTurn(input: {
+  state: OnboardingState;
+  workspaceStatus: OnboardingWorkspaceConnectionStatus;
+  failure: NonNullable<ReturnType<typeof reportedConnectorFailure>>;
+}): OnboardingTurnResult {
+  const connected = connectedIds(input.workspaceStatus);
+  const fallback = feedbackFallback({
+    state: input.state,
+    workspaceStatus: input.workspaceStatus,
+    excludedIntegrationId: input.failure.integrationId,
+  });
+  const otherRecommendations = availableRecommendations(
+    input.state.recommendedConnectors,
+  ).filter(
+    (connector) =>
+      connector.integrationId !== input.failure.integrationId &&
+      connector.integrationId !== fallback.connector.integrationId &&
+      !connected.has(connector.integrationId),
+  );
+  const recommendedConnectors = [
+    fallback.connector,
+    ...otherRecommendations,
+  ].slice(0, 6);
+  const githubAlreadyConnected =
+    input.failure.integrationId === "int_github" &&
+    input.workspaceStatus.githubConnected;
+  const fallbackGuidance = fallback.alreadyConnected
+    ? `Feedback intake is already covered by ${fallback.connector.provider}, so you can continue.`
+    : `Connect ${fallback.connector.provider} next to keep feedback intake moving.`;
+  const assistantMessage = githubAlreadyConnected
+    ? `GitHub is already securely connected in this workspace, so that step is resolved. ${fallbackGuidance}`
+    : `${input.failure.label} is not required to finish onboarding. ${fallbackGuidance} You can retry the failed connector later.`;
+  const suggestedReplies = fallback.alreadyConnected
+    ? ["Continue onboarding", "Review connected sources"]
+    : [
+        `Connect ${fallback.connector.provider}`,
+        ...(fallback.connector.integrationId === "int_webhook"
+          ? []
+          : ["Use a webhook instead"]),
+        "Continue without the failed connector",
+      ];
+  return {
+    assistantMessage,
+    phase: "connect",
+    productProfile: input.state.productProfile,
+    recommendedConnectors,
+    suggestedActions: buildSuggestedActions(
+      recommendedConnectors,
+      connected,
+      input.workspaceStatus.aiConfigured,
+    ),
+    suggestedReplies,
+  };
+}
+
 function conversationPayload(
   firstName: string,
   organizationName: string,
   state: OnboardingState,
   userMessage: string,
+  workspaceStatus: OnboardingWorkspaceConnectionStatus,
 ) {
   return JSON.stringify({
     workspace: organizationName,
     userFirstName: firstName,
     currentPhase: state.phase,
     existingProfile: state.productProfile,
+    currentWorkspaceConnections: workspaceStatus,
     priorMessages: state.messages.slice(-12),
     latestUserMessage: userMessage,
   });
@@ -215,6 +433,7 @@ async function productDiscoveryTurn(input: {
   orgId: string;
   productBrief: string;
   existingProfile: ProductProfile;
+  workspaceStatus: OnboardingWorkspaceConnectionStatus;
 }): Promise<OnboardingTurnResult> {
   const discovery = await discoverFeedbackSourcesFromProduct({
     orgId: input.orgId,
@@ -224,13 +443,32 @@ async function productDiscoveryTurn(input: {
     ...input.existingProfile,
     ...discovery.productProfile,
   };
-  const recommendedConnectors = discovery.recommendedConnectors.slice(0, 6);
+  const connected = connectedIds(input.workspaceStatus);
+  let recommendedConnectors = availableRecommendations(
+    discovery.recommendedConnectors,
+  ).slice(0, 6);
+  if (
+    !recommendedConnectors.some((connector) =>
+      isFeedbackSourceIntegration(connector.integrationId),
+    ) &&
+    !input.workspaceStatus.feedbackConnected
+  ) {
+    const webhook = recommendedConnector(
+      "int_webhook",
+      "Custom webhook is the available fallback for first-party feedback intake.",
+    );
+    if (webhook) recommendedConnectors = [webhook, ...recommendedConnectors];
+  }
   return {
     assistantMessage: `${discovery.summary} Connect the sources below and I'll start intake into the Feedback inbox.`,
     phase: "connect",
     productProfile,
     recommendedConnectors,
-    suggestedActions: buildSuggestedActions(recommendedConnectors),
+    suggestedActions: buildSuggestedActions(
+      recommendedConnectors,
+      connected,
+      input.workspaceStatus.aiConfigured,
+    ),
     suggestedReplies: [
       "Connect the recommended sources",
       "Start with a webhook only",
@@ -241,19 +479,32 @@ async function productDiscoveryTurn(input: {
 
 function buildSuggestedActions(
   connectors: RecommendedConnector[],
+  connectedIntegrationIds: ReadonlySet<string>,
+  aiConfigured: boolean,
 ): OnboardingAction[] {
   const actions: OnboardingAction[] = [];
   for (const connector of connectors) {
-    if (connector.connectionMethod === "webhook" && !actions.some((a) => a.type === "connect_webhook")) {
+    if (
+      !isIntegrationAvailable(connector.integrationId) ||
+      connectedIntegrationIds.has(connector.integrationId)
+    ) {
+      continue;
+    }
+    if (
+      connector.connectionMethod === "webhook" &&
+      !actions.some((action) => action.type === "connect_webhook")
+    ) {
       actions.push({
         type: "connect_webhook",
         label: "Create webhook endpoint",
       });
     }
-    if (connector.integrationId === "int_github" && !actions.some((a) => a.type === "connect_github")) {
+    if (
+      connector.integrationId === "int_github" &&
+      !actions.some((action) => action.type === "connect_github")
+    ) {
       actions.push({ type: "connect_github", label: "Connect GitHub" });
-    }
-    if (connector.connectionMethod === "oauth") {
+    } else if (connector.connectionMethod === "oauth") {
       actions.push({
         type: "oauth_connect",
         integrationId: connector.integrationId,
@@ -261,7 +512,10 @@ function buildSuggestedActions(
       });
     }
   }
-  if (!actions.some((action) => action.type === "open_settings_ai")) {
+  if (
+    !aiConfigured &&
+    !actions.some((action) => action.type === "open_settings_ai")
+  ) {
     actions.push({
       type: "open_settings_ai",
       label: "Enable AI agents",
@@ -270,8 +524,77 @@ function buildSuggestedActions(
   return actions.slice(0, 5);
 }
 
+export function onboardingGuidanceForWorkspace(input: {
+  state: OnboardingState;
+  workspaceStatus: OnboardingWorkspaceConnectionStatus;
+}): {
+  recommendedConnectors: RecommendedConnector[];
+  suggestedActions: OnboardingAction[];
+  suggestedReplies: string[];
+} {
+  let recommendedConnectors = availableRecommendations(
+    input.state.recommendedConnectors,
+  ).slice(0, 6);
+  if (
+    !input.workspaceStatus.feedbackConnected &&
+    !recommendedConnectors.some((connector) =>
+      isFeedbackSourceIntegration(connector.integrationId),
+    )
+  ) {
+    const webhook = recommendedConnector(
+      "int_webhook",
+      "Custom webhook is the available fallback for first-party feedback intake.",
+    );
+    if (webhook) {
+      recommendedConnectors = [webhook, ...recommendedConnectors].slice(0, 6);
+    }
+  }
+  if (input.state.phase === "complete") {
+    return {
+      recommendedConnectors,
+      suggestedActions: [],
+      suggestedReplies: [],
+    };
+  }
+
+  const connected = connectedIds(input.workspaceStatus);
+  const suggestedActions = buildSuggestedActions(
+    recommendedConnectors,
+    connected,
+    input.workspaceStatus.aiConfigured,
+  );
+  const userTurns = input.state.messages.filter(
+    (message) => message.role === "user",
+  ).length;
+  if (userTurns === 0) {
+    return {
+      recommendedConnectors,
+      suggestedActions,
+      suggestedReplies: initialSuggestedReplies(),
+    };
+  }
+  const nextConnector =
+    (!input.workspaceStatus.feedbackConnected
+      ? recommendedConnectors.find(
+          (connector) =>
+            isFeedbackSourceIntegration(connector.integrationId) &&
+            !connected.has(connector.integrationId),
+        )
+      : undefined) ??
+    recommendedConnectors.find(
+      (connector) => !connected.has(connector.integrationId),
+    );
+  return {
+    recommendedConnectors,
+    suggestedActions,
+    suggestedReplies: nextConnector
+      ? [`Connect ${nextConnector.provider}`, "Continue for now"]
+      : ["Continue to the workspace"],
+  };
+}
+
 export function initialAssistantMessage(firstName: string): string {
-  return `Hi ${firstName}. I'm your Feelow Operations Manager. Start with the product only — name, what it does, and a URL if you have one. I'll identify where feedback likely lives and connect those sources.`;
+  return `Hi ${firstName}. I'm your Closespan Operations Manager. Start with the product only — name, what it does, and a URL if you have one. I'll identify where feedback likely lives and connect those sources.`;
 }
 
 export function initialSuggestedReplies(): string[] {
@@ -297,6 +620,7 @@ export async function runOnboardingTurn(input: {
   organizationName: string;
   state: OnboardingState;
   userMessage: string;
+  workspaceStatus: OnboardingWorkspaceConnectionStatus;
 }): Promise<OnboardingTurnResult> {
   const trimmed = input.userMessage.trim();
   if (!trimmed) {
@@ -305,10 +629,21 @@ export async function runOnboardingTurn(input: {
         "Tell me about the product itself — what you're shipping and who it's for. I'll handle finding the feedback apps.",
       phase: "discover",
       productProfile: input.state.productProfile,
-      recommendedConnectors: input.state.recommendedConnectors,
+      recommendedConnectors: availableRecommendations(
+        input.state.recommendedConnectors,
+      ),
       suggestedActions: [],
       suggestedReplies: initialSuggestedReplies(),
     };
+  }
+
+  const failure = reportedConnectorFailure(trimmed);
+  if (failure) {
+    return connectorFailureTurn({
+      state: input.state,
+      workspaceStatus: input.workspaceStatus,
+      failure,
+    });
   }
 
   // Product-first: first usable brief triggers automatic source discovery.
@@ -317,6 +652,7 @@ export async function runOnboardingTurn(input: {
       orgId: input.orgId,
       productBrief: trimmed,
       existingProfile: input.state.productProfile,
+      workspaceStatus: input.workspaceStatus,
     });
   }
 
@@ -336,6 +672,7 @@ export async function runOnboardingTurn(input: {
       orgId: input.orgId,
       productBrief: combined,
       existingProfile: input.state.productProfile,
+      workspaceStatus: input.workspaceStatus,
     });
   }
 
@@ -345,6 +682,7 @@ export async function runOnboardingTurn(input: {
       orgId: input.orgId,
       productBrief: trimmed,
       existingProfile: input.state.productProfile,
+      workspaceStatus: input.workspaceStatus,
     });
   }
 
@@ -356,6 +694,7 @@ export async function runOnboardingTurn(input: {
       input.organizationName,
       input.state,
       trimmed,
+      input.workspaceStatus,
     );
 
     const parsed =
@@ -363,14 +702,40 @@ export async function runOnboardingTurn(input: {
         ? await callAnthropicOnboarding(configuration, systemPrompt, payload)
         : await callOpenAiCompatible(configuration, systemPrompt, payload);
 
-    const recommendedConnectors =
-      enrichConnectors(parsed.recommendedConnectors).length > 0
-        ? enrichConnectors(parsed.recommendedConnectors)
-        : input.state.recommendedConnectors;
+    const modelRecommendations = availableRecommendations(
+      enrichConnectors(parsed.recommendedConnectors),
+    );
+    let recommendedConnectors =
+      modelRecommendations.length > 0
+        ? modelRecommendations
+        : availableRecommendations(input.state.recommendedConnectors);
+    if (
+      !recommendedConnectors.some((connector) =>
+        isFeedbackSourceIntegration(connector.integrationId),
+      ) &&
+      !input.workspaceStatus.feedbackConnected
+    ) {
+      const webhook = recommendedConnector(
+        "int_webhook",
+        "Custom webhook is the available fallback for first-party feedback intake.",
+      );
+      if (webhook) recommendedConnectors = [webhook, ...recommendedConnectors];
+    }
+    recommendedConnectors = recommendedConnectors.slice(0, 6);
+    const connected = connectedIds(input.workspaceStatus);
+    const modelActions = mapActions(
+      parsed.suggestedActions,
+      connected,
+      input.workspaceStatus.aiConfigured,
+    );
     const suggestedActions =
-      mapActions(parsed.suggestedActions).length > 0
-        ? mapActions(parsed.suggestedActions)
-        : buildSuggestedActions(recommendedConnectors);
+      modelActions.length > 0
+        ? modelActions
+        : buildSuggestedActions(
+            recommendedConnectors,
+            connected,
+            input.workspaceStatus.aiConfigured,
+          );
 
     return {
       assistantMessage: parsed.assistantMessage,
@@ -396,6 +761,7 @@ export async function runOnboardingTurn(input: {
       orgId: input.orgId,
       productBrief: trimmed,
       existingProfile: input.state.productProfile,
+      workspaceStatus: input.workspaceStatus,
     });
   }
 }

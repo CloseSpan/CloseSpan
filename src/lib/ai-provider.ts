@@ -4,6 +4,9 @@ import OpenAI from "openai";
 import { zodResponseFormat, zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { AiRuntimeConfiguration } from "./ai-config";
+import { redactUntrustedText } from "./redaction";
+
+export { redactUntrustedText } from "./redaction";
 
 const feedbackAnalysisSchema = z.object({
   analyses: z
@@ -99,17 +102,6 @@ export function clusterConfidence(
       analysis.evidenceQuality * 0.2 +
       (1 - analysis.ambiguityPenalty) * 0.15,
   );
-}
-
-export function redactUntrustedText(value: string): string {
-  return value
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[REDACTED_EMAIL]")
-    .replace(/\b(?:\+?\d[\d\s().-]{7,}\d)\b/g, "[REDACTED_PHONE]")
-    .replace(
-      /\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*[^\s,;]+/gi,
-      "$1=[REDACTED_SECRET]",
-    )
-    .slice(0, 8_000);
 }
 
 function validateModelOutput(
@@ -254,8 +246,8 @@ async function callOpenRouter(
     timeout: configuration.timeoutMs,
     maxRetries: 2,
     defaultHeaders: {
-      "HTTP-Referer": process.env.APP_PUBLIC_URL ?? "https://feedbackflow.ai",
-      "X-OpenRouter-Title": "Feelow AI",
+      "HTTP-Referer": process.env.APP_PUBLIC_URL ?? "http://localhost:3000",
+      "X-OpenRouter-Title": "Closespan",
     },
   });
   const response = await client.chat.completions.parse(

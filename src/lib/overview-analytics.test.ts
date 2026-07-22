@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { calculateOverviewAnalytics, formatTrend, percentageChange } from "./overview-analytics";
+import {
+  calculateOverviewAnalytics,
+  createEmptyOverviewAnalytics,
+  formatTrend,
+  percentageChange,
+} from "./overview-analytics";
 
 describe("overview analytics", () => {
   it("calculates comparison-period trends", () => {
@@ -20,10 +25,23 @@ describe("overview analytics", () => {
   });
 
   it("derives feedback totals and resolution timing from records", () => {
-    const analytics = calculateOverviewAnalytics();
+    const analytics = calculateOverviewAnalytics(
+      new Date("2026-07-21T18:00:00.000Z"),
+    );
     expect(analytics.feedbackTotal).toBe(528);
     expect(analytics.metrics.newFeedback).toBe(94);
     expect(analytics.metrics.averageResolutionDays).toBe(8.4);
     expect(analytics.metrics.resolutionImprovementDays).toBe(1.2);
+    expect(analytics.feedbackWeeks).toHaveLength(
+      analytics.feedbackSeries["All sources"].length,
+    );
+    expect(analytics.feedbackWeeks.at(-1)?.shortLabel).toBe("Jul 20–26");
+  });
+
+  it("keeps empty analytics compatible with the date-range chart contract", () => {
+    const analytics = createEmptyOverviewAnalytics();
+
+    expect(analytics.feedbackSeries).toEqual({ "All sources": [] });
+    expect(analytics.feedbackWeeks).toEqual([]);
   });
 });

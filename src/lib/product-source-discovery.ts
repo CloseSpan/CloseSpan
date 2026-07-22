@@ -10,16 +10,17 @@ import {
 import {
   connectorCatalogForAgent,
   integrationCatalog,
+  isIntegrationAvailable,
   type IntegrationCatalogEntry,
 } from "./integration-catalog";
 import type { ProductProfile, RecommendedConnector } from "./onboarding-repository";
 
 /**
- * Feelow product → feedback-source discovery.
+ * Closespan product → feedback-source discovery.
  *
  * zero.xyz is a developer-machine CLI for ad-hoc paid tool calls (crypto wallet).
  * It cannot OAuth into Zendesk/Slack/App Store for a multi-tenant SaaS workspace,
- * so Feelow owns discovery + connect. Optional future: use zero only for research
+ * so Closespan owns discovery + connect. Optional future: use zero only for research
  * enrichment (scrape public product pages), never for customer credentials.
  */
 
@@ -77,7 +78,12 @@ function toRecommended(
   const connectors: RecommendedConnector[] = [];
   for (const item of items) {
     const catalog = catalogById.get(item.integrationId);
-    if (!catalog || seen.has(catalog.id)) continue;
+    if (
+      !catalog ||
+      !isIntegrationAvailable(catalog.id) ||
+      seen.has(catalog.id)
+    )
+      continue;
     seen.add(catalog.id);
     connectors.push({
       integrationId: catalog.id,
@@ -246,9 +252,9 @@ async function callDiscoveryModel(
   brief: string,
 ) {
   const systemPrompt = [
-    "You are Feelow's product intelligence module for an Expert Operations Manager.",
+    "You are Closespan's product intelligence module for an Expert Operations Manager.",
     "Given only a product brief, infer where customer feedback likely lives.",
-    "Prefer feedback sources (Zendesk, Slack, Intercom, App Store, Play Store, Sentry, PostHog, webhook).",
+    "Prefer feedback sources (Zendesk, Slack, Intercom, App Store, Play Store, webhook).",
     "Do not ask the user which tools they use — infer from product type and description.",
     "Only recommend ids from the allowed catalog.",
     "Allowed catalog:",

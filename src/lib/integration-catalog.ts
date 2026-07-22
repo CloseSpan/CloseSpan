@@ -1,3 +1,5 @@
+import { PIPEDREAM_CONNECTOR_IDS } from "./pipedream-connectors";
+
 export interface IntegrationCatalogEntry {
   id: string;
   provider: string;
@@ -15,6 +17,12 @@ export interface ConnectorCatalogEntry {
   connectionMethod: IntegrationCatalogEntry["connectionMethod"];
   feedbackSource: boolean;
   description: string;
+}
+
+export interface IntegrationCapabilities {
+  connect: boolean;
+  feedbackImport: "manual" | "webhook" | "not_implemented";
+  approvedActions: boolean;
 }
 
 export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
@@ -131,17 +139,107 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
   },
 ];
 
+const availableIntegrationIds = new Set<string>([
+  "int_webhook",
+  ...PIPEDREAM_CONNECTOR_IDS,
+]);
+
+const integrationCapabilities: Readonly<Record<string, IntegrationCapabilities>> = {
+  int_webhook: {
+    connect: true,
+    feedbackImport: "webhook",
+    approvedActions: false,
+  },
+  int_zendesk: {
+    connect: true,
+    feedbackImport: "manual",
+    approvedActions: false,
+  },
+  int_intercom: {
+    connect: true,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  },
+  int_slack: {
+    connect: true,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  },
+  int_app_store: {
+    connect: true,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  },
+  int_play_store: {
+    connect: true,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  },
+  int_github: {
+    connect: true,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  },
+  int_linear: {
+    connect: true,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  },
+  int_jira: {
+    connect: true,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  },
+  int_sentry: {
+    connect: true,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  },
+  int_posthog: {
+    connect: true,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  },
+};
+
+export function getIntegrationCapabilities(
+  integrationId: string,
+): IntegrationCapabilities {
+  return integrationCapabilities[integrationId] ?? {
+    connect: false,
+    feedbackImport: "not_implemented",
+    approvedActions: false,
+  };
+}
+
+/** Connectors with a real setup path in the current product. */
+export function isIntegrationAvailable(integrationId: string): boolean {
+  return availableIntegrationIds.has(integrationId);
+}
+
+/** Available connectors that can ingest customer feedback into Closespan. */
+export function isFeedbackSourceIntegration(integrationId: string): boolean {
+  return (
+    isIntegrationAvailable(integrationId) &&
+    integrationCatalog.some(
+      (entry) => entry.id === integrationId && entry.feedbackSource,
+    )
+  );
+}
+
 export const connectorCatalogForAgent: readonly ConnectorCatalogEntry[] =
-  integrationCatalog.map((entry) => ({
-    id: entry.id,
-    provider: entry.provider,
-    category: entry.category,
-    connectionMethod: entry.connectionMethod,
-    feedbackSource: entry.feedbackSource,
-    description: entry.feedbackSource
-      ? `${entry.provider} ingests customer feedback into Feelow.`
-      : `${entry.provider} receives approved agent actions after human review.`,
-  }));
+  integrationCatalog
+    .filter((entry) => isIntegrationAvailable(entry.id))
+    .map((entry) => ({
+      id: entry.id,
+      provider: entry.provider,
+      category: entry.category,
+      connectionMethod: entry.connectionMethod,
+      feedbackSource: entry.feedbackSource,
+      description: entry.feedbackSource
+        ? `${entry.provider} ingests customer feedback into Closespan.`
+        : `${entry.provider} receives approved agent actions after human review.`,
+    }));
 
 export function inferConnectorsFromText(text: string): Array<{
   integrationId: string;
@@ -151,8 +249,10 @@ export function inferConnectorsFromText(text: string): Array<{
   connectionMethod: IntegrationCatalogEntry["connectionMethod"];
 }> {
   const lower = text.toLowerCase();
-  const matches = integrationCatalog.filter((entry) =>
-    entry.agentKeywords.some((keyword) => lower.includes(keyword)),
+  const matches = integrationCatalog.filter(
+    (entry) =>
+      isIntegrationAvailable(entry.id) &&
+      entry.agentKeywords.some((keyword) => lower.includes(keyword)),
   );
   const selected =
     matches.length > 0

@@ -10,7 +10,7 @@ import { resolveWorkspaceAccess } from "@/lib/auth-user";
 
 export const metadata: Metadata = {
   title: "Sign in",
-  description: "Sign in to the Feelow AI workspace with Google.",
+  description: "Sign in to the Closespan workspace with Google.",
 };
 
 interface LoginPageProps {
@@ -48,16 +48,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     <main className="login-page">
       <Link className="login-back" href="/">
         <ArrowLeft aria-hidden="true" size={15} />
-        Back to Feelow AI
+        Back to Closespan
       </Link>
 
       <section className="login-card" aria-labelledby="login-title">
         <div className="login-brand" aria-hidden="true">
-          F
+          C
         </div>
         <div className="login-heading">
           <span>Secure workspace access</span>
-          <h1 id="login-title">Sign in to Feelow AI</h1>
+          <h1 id="login-title">Sign in to Closespan</h1>
           <p>
             Use your verified Google account to enter the customer
             feedback workspace.
@@ -104,7 +104,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <div className="login-trust">
           <ShieldCheck aria-hidden="true" size={17} />
           <p>
-            Google verifies your identity. Feelow AI uses your workspace
+            Google verifies your identity. Closespan uses your workspace
             membership to determine organization and role.
           </p>
         </div>
