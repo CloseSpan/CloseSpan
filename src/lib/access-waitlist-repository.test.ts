@@ -10,7 +10,10 @@ vi.mock("./db", () => ({
   databasePool: () => database.pool,
 }));
 
-import { recordWorkspaceAccessAttempt } from "./access-waitlist-repository";
+import {
+  ensureWorkspaceAccessWaitlistEntry,
+  recordWorkspaceAccessAttempt,
+} from "./access-waitlist-repository";
 
 describe("workspace access waitlist repository", () => {
   beforeEach(() => {
@@ -42,5 +45,16 @@ describe("workspace access waitlist repository", () => {
     await recordWorkspaceAccessAttempt("person@example.com", "Person");
 
     expect(database.pool.query).not.toHaveBeenCalled();
+  });
+
+  it("idempotently confirms the waitlist entry on the denied page", async () => {
+    await expect(
+      ensureWorkspaceAccessWaitlistEntry("Prospect@Example.com"),
+    ).resolves.toBe(true);
+
+    expect(database.pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("ON CONFLICT(email) DO NOTHING"),
+      ["prospect@example.com"],
+    );
   });
 });

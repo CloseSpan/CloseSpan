@@ -120,7 +120,7 @@ describe("runOnboardingTurn product-first", () => {
     const turn = await runOnboardingTurn({
       orgId: "org_test",
       firstName: "Sam",
-      organizationName: "Closespan",
+      organizationName: "CloseSpan",
       state: {
         ...state,
         messages: [
@@ -164,7 +164,7 @@ describe("runOnboardingTurn product-first", () => {
     const turn = await runOnboardingTurn({
       orgId: "org_test",
       firstName: "Sam",
-      organizationName: "Closespan",
+      organizationName: "CloseSpan",
       state: connectorState(),
       userMessage: "GitHub failed to connect",
       workspaceStatus: {
@@ -199,7 +199,7 @@ describe("runOnboardingTurn product-first", () => {
     const turn = await runOnboardingTurn({
       orgId: "org_test",
       firstName: "Sam",
-      organizationName: "Closespan",
+      organizationName: "CloseSpan",
       state,
       userMessage: "Zendesk is broken and cannot connect",
       workspaceStatus: emptyWorkspaceStatus,

@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClosespanLogo } from "./closespan-logo";
+import { CloseSpanLogo } from "./closespan-logo";
 import {
   OrganizationSwitcher,
   type OrganizationSwitcherItem,
@@ -66,8 +66,8 @@ export function Sidebar({
 }) {
   return (
     <aside className="sidebar">
-      <Link className="brand" href="/overview" aria-label="Closespan overview">
-        <ClosespanLogo size="md" />
+      <Link className="brand" href="/overview" aria-label="CloseSpan overview">
+        <CloseSpanLogo size="md" />
       </Link>
       <nav className="nav" aria-label="Primary navigation">
         <NavigationLinks />

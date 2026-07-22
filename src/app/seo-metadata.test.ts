@@ -8,6 +8,8 @@ import {
   LANDING_FAQS,
   PRIVATE_APP_PATHS,
   PUBLIC_DISCOVERY_PATHS,
+  PUBLIC_INDEXABLE_PATHS,
+  SITE_ALTERNATE_NAMES,
   SITE_DESCRIPTION,
   SITE_NAME,
   SITE_TITLE,
@@ -17,13 +19,19 @@ import {
 describe("public search metadata", () => {
   it("uses one non-redirecting canonical identity", () => {
     expect(SITE_URL).toBe("https://www.closespan.com");
+    expect(SITE_NAME).toBe("CloseSpan");
+    expect(SITE_ALTERNATE_NAMES).toContain("closespan.com");
     expect(homeMetadata.title).toEqual({ absolute: SITE_TITLE });
     expect(homeMetadata.description).toBe(SITE_DESCRIPTION);
     expect(homeMetadata.alternates).toEqual({ canonical: "/" });
-    expect(sitemap()).toEqual([
-      { url: `${SITE_URL}/` },
-      { url: `${SITE_URL}/requests` },
-    ]);
+    expect(sitemap()).toEqual(
+      PUBLIC_INDEXABLE_PATHS.map((path) => ({
+        url: path === "/" ? `${SITE_URL}/` : `${SITE_URL}${path}`,
+      })),
+    );
+    expect(sitemap().every((entry) => entry.lastModified === undefined)).toBe(
+      true,
+    );
   });
 
   it("allows search crawlers to reach public content while excluding app data", () => {
@@ -41,7 +49,14 @@ describe("public search metadata", () => {
       ]),
     );
     for (const rule of rules) {
-      expect(rule.allow).toBe("/");
+      expect(rule.allow).toEqual(
+        expect.arrayContaining([
+          "/",
+          "/integrations/zendesk",
+          "/integrations/intercom",
+          "/integrations/github",
+        ]),
+      );
       expect(rule.disallow).toEqual([...PRIVATE_APP_PATHS]);
     }
     expect(output.sitemap).toBe(`${SITE_URL}/sitemap.xml`);
@@ -53,6 +68,9 @@ describe("public search metadata", () => {
         "/llms.txt",
         "/opengraph-image",
         "/requests",
+        "/resources",
+        "/connectors",
+        "/integrations/zendesk",
       ]),
     );
   });
@@ -60,8 +78,21 @@ describe("public search metadata", () => {
   it("publishes factual website, organization, application, and FAQ schema", () => {
     const graph = structuredData["@graph"];
 
-    expect(graph.some((node) => node["@type"] === "WebSite")).toBe(true);
-    expect(graph.some((node) => node["@type"] === "Organization")).toBe(true);
+    const websiteNode = graph.find((node) => node["@type"] === "WebSite");
+    expect(websiteNode).toMatchObject({
+      name: SITE_NAME,
+      alternateName: SITE_ALTERNATE_NAMES,
+      url: `${SITE_URL}/`,
+    });
+    const organizationNode = graph.find(
+      (node) => node["@type"] === "Organization",
+    );
+    expect(organizationNode).toMatchObject({
+      name: SITE_NAME,
+      alternateName: SITE_ALTERNATE_NAMES,
+      url: `${SITE_URL}/`,
+    });
+    expect(organizationNode).not.toHaveProperty("sameAs");
     expect(
       graph.some(
         (node) =>
@@ -79,6 +110,7 @@ describe("public search metadata", () => {
   it("provides app identity and a crawlable product brief", async () => {
     const appManifest = manifest();
     expect(appManifest.name).toContain(SITE_NAME);
+    expect(appManifest.short_name).toBe(SITE_NAME);
     expect(appManifest.start_url).toBe("/");
 
     const response = getLlmsTxt();
@@ -86,7 +118,11 @@ describe("public search metadata", () => {
     expect(response.headers.get("content-type")).toContain("text/plain");
     expect(body).toContain(`# ${SITE_NAME}`);
     expect(body).toContain(`${SITE_URL}/`);
+    expect(body).toContain(`Preferred product name: ${SITE_NAME}`);
     expect(body).toContain("feedback-to-fix");
+    expect(body).toContain(`${SITE_URL}/resources`);
+    expect(body).toContain(`${SITE_URL}/connectors`);
+    expect(body).toContain(`${SITE_URL}/integrations/zendesk`);
     for (const { question } of LANDING_FAQS) {
       expect(body).toContain(question);
     }

@@ -217,7 +217,7 @@ export function isIntegrationAvailable(integrationId: string): boolean {
   return availableIntegrationIds.has(integrationId);
 }
 
-/** Available connectors that can ingest customer feedback into Closespan. */
+/** Available connectors that can ingest customer feedback into CloseSpan. */
 export function isFeedbackSourceIntegration(integrationId: string): boolean {
   return (
     isIntegrationAvailable(integrationId) &&
@@ -237,7 +237,7 @@ export const connectorCatalogForAgent: readonly ConnectorCatalogEntry[] =
       connectionMethod: entry.connectionMethod,
       feedbackSource: entry.feedbackSource,
       description: entry.feedbackSource
-        ? `${entry.provider} ingests customer feedback into Closespan.`
+        ? `${entry.provider} ingests customer feedback into CloseSpan.`
         : `${entry.provider} receives approved agent actions after human review.`,
     }));
 

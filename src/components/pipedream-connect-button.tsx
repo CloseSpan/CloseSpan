@@ -188,7 +188,7 @@ export function PipedreamConnectButton({
       </button>
       {state === "waiting" && (
         <div className="connector-waiting-help" role="status">
-          <p className="subtle">Finish signing in in the secure window. You can keep using Closespan while it completes.</p>
+          <p className="subtle">Finish signing in in the secure window. You can keep using CloseSpan while it completes.</p>
           <button className="text-link" type="button" onClick={cancelConnection}>Cancel and retry</button>
         </div>
       )}

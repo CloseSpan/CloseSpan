@@ -16,11 +16,11 @@ import {
 import type { ProductProfile, RecommendedConnector } from "./onboarding-repository";
 
 /**
- * Closespan product → feedback-source discovery.
+ * CloseSpan product → feedback-source discovery.
  *
  * zero.xyz is a developer-machine CLI for ad-hoc paid tool calls (crypto wallet).
  * It cannot OAuth into Zendesk/Slack/App Store for a multi-tenant SaaS workspace,
- * so Closespan owns discovery + connect. Optional future: use zero only for research
+ * so CloseSpan owns discovery + connect. Optional future: use zero only for research
  * enrichment (scrape public product pages), never for customer credentials.
  */
 
@@ -252,7 +252,7 @@ async function callDiscoveryModel(
   brief: string,
 ) {
   const systemPrompt = [
-    "You are Closespan's product intelligence module for an Expert Operations Manager.",
+    "You are CloseSpan's product intelligence module for an Expert Operations Manager.",
     "Given only a product brief, infer where customer feedback likely lives.",
     "Prefer feedback sources (Zendesk, Slack, Intercom, App Store, Play Store, webhook).",
     "Do not ask the user which tools they use. Infer them from the product type and description.",

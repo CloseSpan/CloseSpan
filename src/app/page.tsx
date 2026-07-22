@@ -14,7 +14,7 @@ import {
   TimerReset,
   Users,
 } from "lucide-react";
-import { ClosespanLogo } from "@/components/closespan-logo";
+import { CloseSpanLogo } from "@/components/closespan-logo";
 import { launchPlans, launchPricingNote } from "@/lib/plans";
 import {
   LANDING_FAQS,
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Closespan turns customer feedback into verified product fixes.",
+        alt: "CloseSpan turns customer feedback into verified product fixes.",
       },
     ],
   },
@@ -78,6 +78,7 @@ export const structuredData = {
       description: SITE_DESCRIPTION,
       inLanguage: "en-US",
       publisher: { "@id": `${SITE_URL}/#organization` },
+      about: { "@id": `${SITE_URL}/#application` },
     },
     {
       "@type": "Organization",
@@ -85,21 +86,39 @@ export const structuredData = {
       name: SITE_NAME,
       alternateName: SITE_ALTERNATE_NAMES,
       url: `${SITE_URL}/`,
-      logo: `${SITE_URL}/icon.svg`,
+      logo: {
+        "@type": "ImageObject",
+        url: `${SITE_URL}/icon.svg`,
+        contentUrl: `${SITE_URL}/icon.svg`,
+        caption: `${SITE_NAME} logo`,
+      },
       description: SITE_DESCRIPTION,
+      knowsAbout: [
+        "Customer feedback intelligence",
+        "Feedback operations",
+        "Product operations",
+        "Support ticket analysis",
+        "Customer feedback prioritization",
+      ],
     },
     {
       "@type": ["SoftwareApplication", "WebApplication"],
       "@id": `${SITE_URL}/#application`,
       name: SITE_NAME,
+      alternateName: SITE_ALTERNATE_NAMES,
       url: `${SITE_URL}/`,
       description: SITE_DESCRIPTION,
+      image: `${SITE_URL}/opengraph-image`,
+      inLanguage: "en-US",
       applicationCategory: "BusinessApplication",
       applicationSubCategory: "Customer feedback intelligence",
       operatingSystem: "Web browser",
       browserRequirements:
         "Requires a modern web browser. Workspace access requires Google sign-in.",
+      isPartOf: { "@id": `${SITE_URL}/#website` },
       provider: { "@id": `${SITE_URL}/#organization` },
+      publisher: { "@id": `${SITE_URL}/#organization` },
+      brand: { "@id": `${SITE_URL}/#organization` },
       audience: {
         "@type": "BusinessAudience",
         audienceType:
@@ -117,13 +136,14 @@ export const structuredData = {
         "@type": "Offer",
         price: "0",
         priceCurrency: "USD",
-        description:
-          "Private authenticated evaluation workspace with no live customer data or external writes.",
+        url: `${SITE_URL}/#pricing`,
+        description: "Private authenticated evaluation workspace.",
       },
     },
     {
       "@type": "FAQPage",
       "@id": `${SITE_URL}/#faq`,
+      isPartOf: { "@id": `${SITE_URL}/#website` },
       mainEntity: LANDING_FAQS.map(({ question, answer }) => ({
         "@type": "Question",
         name: question,
@@ -137,20 +157,18 @@ export const structuredData = {
 };
 
 const pilotHref =
-  "mailto:shanmukhsain@gmail.com?subject=Closespan%20Design%20Partner%20Pilot";
+  "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20Design%20Partner%20Pilot";
 const workspaceLoginHref = "/login?callbackUrl=%2Foverview";
-const problemLoginHref =
-  "/login?callbackUrl=%2Fproblems%2Fprob_export";
 
 const integrations = [
-  "Intercom",
-  "Zendesk",
-  "Slack",
-  "GitHub",
-  "Linear",
-  "Jira",
-  "Sentry",
-  "PostHog",
+  { name: "Intercom", href: "/integrations/intercom" },
+  { name: "Zendesk", href: "/integrations/zendesk" },
+  { name: "Slack" },
+  { name: "GitHub", href: "/integrations/github" },
+  { name: "Linear" },
+  { name: "Jira" },
+  { name: "Sentry" },
+  { name: "PostHog" },
 ];
 
 const outcomes = [
@@ -159,21 +177,21 @@ const outcomes = [
     eyebrow: "Detect",
     title: "See one problem instead of 30 disconnected tickets.",
     text: "Group differently worded reports into a persistent problem with visible evidence, confidence, and release context.",
-    metric: "3 reports → 1 problem",
+    metric: "Example: 3 reports → 1 problem",
   },
   {
     icon: CircleDollarSign,
     eyebrow: "Prioritize",
     title: "Rank by customer and revenue impact.",
     text: "Replace vote counts with affected ARR, renewal risk, account tier, severity, SLA, frequency, and confidence.",
-    metric: "$394k ARR surfaced",
+    metric: "Example: $394k ARR surfaced",
   },
   {
     icon: GitBranch,
     eyebrow: "Resolve",
     title: "Hand engineering evidence, not a vague summary.",
-    text: "Connect the customer problem to likely owners, repositories, files, releases, tests, and existing work.",
-    metric: "4 evidence types linked",
+    text: "Prepare reproducible evidence, likely ownership, release context, test ideas, and existing-work references for engineering review.",
+    metric: "Example: 4 evidence types linked",
   },
 ];
 
@@ -213,18 +231,18 @@ export default function LandingPage() {
         Skip to content
       </a>
 
-      <div className="landing-top">
+      <div className="landing-header">
         <header className="landing-nav">
-          <Link className="landing-brand" href="/" aria-label="Closespan home">
-            <ClosespanLogo size="md" tone="inverse" />
+          <Link className="landing-brand" href="/" aria-label="CloseSpan home">
+            <CloseSpanLogo size="md" tone="inverse" />
           </Link>
           <nav aria-label="Landing navigation">
-            <a href="#product">Product</a>
-            <a href="#workflow">How it works</a>
-            <a href="#trust">Trust</a>
+            <Link href="/customer-feedback-operations">Product</Link>
+            <Link href="/guides/customer-feedback-to-fix-workflow">How it works</Link>
+            <Link href="/connectors">Connectors</Link>
+            <Link href="/resources">Resources</Link>
             <a href="#pricing">Pricing</a>
             <Link href="/requests">Requests</Link>
-            <a href="#faq">FAQ</a>
           </nav>
           <div className="landing-actions">
             <Link className="btn landing-secondary" href="/login">
@@ -238,25 +256,30 @@ export default function LandingPage() {
                 <Menu aria-hidden="true" size={18} />
               </summary>
               <nav aria-label="Mobile navigation">
-                <a href="#product">Product</a>
-                <a href="#workflow">How it works</a>
-                <a href="#trust">Trust</a>
+                <Link href="/customer-feedback-operations">Product</Link>
+                <Link href="/guides/customer-feedback-to-fix-workflow">How it works</Link>
+                <Link href="/connectors">Connectors</Link>
+                <Link href="/resources">Resources</Link>
+                <Link href="/security">Security</Link>
+                <Link href="/about">About</Link>
                 <a href="#pricing">Pricing</a>
                 <Link href="/requests">Requests</Link>
-                <a href="#faq">FAQ</a>
                 <Link href="/login">Sign in</Link>
               </nav>
             </details>
           </div>
         </header>
+      </div>
 
+      <main id="landing-content">
+        <div className="landing-top">
         <section className="landing-hero">
           <div className="hero-copy">
             <h1>
               Turn customer feedback into <span>verified product fixes.</span>
             </h1>
             <p>
-              Closespan is customer feedback intelligence that connects support
+              CloseSpan is customer feedback intelligence that connects support
               evidence, revenue impact, engineering context, human approval,
               and customer follow-up in one governed workflow.
             </p>
@@ -285,8 +308,8 @@ export default function LandingPage() {
           <ProductPreview />
         </section>
 
-        <div className="hero-product-proof" aria-label="Product workspace snapshot">
-          <span>Product workspace snapshot</span>
+        <div className="hero-product-proof" aria-label="Illustrative product workspace example">
+          <span>Illustrative workspace example</span>
           <div>
             <strong>5</strong>
             <small>feedback signals</small>
@@ -304,26 +327,35 @@ export default function LandingPage() {
             <small>actions governed</small>
           </div>
         </div>
-      </div>
+        </div>
 
-      <main id="landing-content">
         <section className="landing-trustbar" aria-label="Designed to connect with">
           <span>Designed to work above your existing stack</span>
           {integrations.map((item) => (
-            <strong key={item}>{item}</strong>
+            item.href ? (
+              <Link className="landing-trustbar-link" href={item.href} key={item.name}>
+                {item.name}
+              </Link>
+            ) : (
+              <strong key={item.name}>{item.name}</strong>
+            )
           ))}
         </section>
 
         <section className="landing-section" id="product">
           <div className="section-intro">
-            <span>What is Closespan?</span>
+            <span>What is CloseSpan?</span>
             <h2>AI customer feedback intelligence that finishes the job.</h2>
             <p>
-              Closespan gives B2B SaaS product and operations teams one
+              CloseSpan gives B2B SaaS product and operations teams one
               feedback-to-fix workspace. Every customer signal stays connected
               to the problem it revealed, its business impact, the decision
               your team made, and the outcome your customer experienced.
             </p>
+            <Link className="text-link" href="/customer-feedback-operations">
+              Explore customer feedback operations
+              <ChevronRight aria-hidden="true" size={15} />
+            </Link>
           </div>
           <div className="outcome-grid">
             {outcomes.map(({ icon: Icon, eyebrow, title, text, metric }) => (
@@ -347,12 +379,12 @@ export default function LandingPage() {
             <span className="section-label">The must-win moment</span>
             <h2>A release ships. Complaints spike. Every team sees only a fragment.</h2>
             <p>
-              Closespan gives product, engineering, support, and success one
+              CloseSpan gives product, engineering, support, and success one
               shared source of truth before a recurring defect becomes a lost
               renewal.
             </p>
-            <Link className="text-link" href={problemLoginHref}>
-              Sign in to view the problem workspace
+            <Link className="text-link" href="/support-ticket-analysis">
+              Learn how recurring support issues are analyzed
               <ChevronRight aria-hidden="true" size={15} />
             </Link>
           </div>
@@ -424,6 +456,12 @@ export default function LandingPage() {
               </div>
             </article>
           </div>
+          <div className="section-resource-link">
+            <Link className="text-link" href="/guides/customer-feedback-to-fix-workflow">
+              Read the complete feedback-to-fix workflow
+              <ChevronRight aria-hidden="true" size={15} />
+            </Link>
+          </div>
         </section>
 
         <section className="trust-section" id="trust">
@@ -440,7 +478,7 @@ export default function LandingPage() {
                 <Check aria-hidden="true" size={15} /> Configurable human approval
               </li>
               <li>
-                <Check aria-hidden="true" size={15} /> PII detection and redaction
+                <Check aria-hidden="true" size={15} /> Email, phone, and secret redaction
               </li>
               <li>
                 <Check aria-hidden="true" size={15} /> Tenant-scoped audit events
@@ -449,6 +487,10 @@ export default function LandingPage() {
                 <Check aria-hidden="true" size={15} /> Idempotent workflow actions
               </li>
             </ul>
+            <Link className="text-link" href="/security">
+              Review the security and data boundaries
+              <ChevronRight aria-hidden="true" size={15} />
+            </Link>
           </div>
           <ApprovalPreview />
         </section>
@@ -498,10 +540,10 @@ export default function LandingPage() {
 
         <section className="faq-section" id="faq" aria-labelledby="faq-title">
           <div className="section-intro">
-            <span>Closespan FAQ</span>
+            <span>CloseSpan FAQ</span>
             <h2 id="faq-title">Customer feedback operations, explained.</h2>
             <p>
-              Clear answers about how Closespan connects customer evidence to
+              Clear answers about how CloseSpan connects customer evidence to
               prioritized product problems and governed engineering work.
             </p>
           </div>
@@ -536,17 +578,21 @@ export default function LandingPage() {
       </main>
 
       <footer className="landing-footer">
-        <Link className="landing-brand" href="/" aria-label="Closespan home">
-          <ClosespanLogo size="sm" />
+        <Link className="landing-brand" href="/" aria-label="CloseSpan home">
+          <CloseSpanLogo size="sm" />
         </Link>
         <p>Customer-reported problem to verified fix.</p>
         <div>
-          <Link href="/login">Sign in</Link>
-          <a href="#pricing">Pricing</a>
-          <a href="#trust">Trust</a>
+          <Link href="/customer-feedback-operations">Product</Link>
+          <Link href="/connectors">Connectors</Link>
+          <Link href="/resources">Resources</Link>
+          <Link href="/about">About</Link>
+          <Link href="/security">Security</Link>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/terms">Terms</Link>
           <Link href="/requests">Requests</Link>
-          <a href="#faq">FAQ</a>
-          <a href="mailto:shanmukhsain@gmail.com">Contact</a>
+          <Link href="/contact">Contact</Link>
+          <Link href="/login">Sign in</Link>
         </div>
       </footer>
     </div>
@@ -555,19 +601,19 @@ export default function LandingPage() {
 
 function ProductPreview() {
   return (
-    <div className="hero-product" aria-label="Closespan problem workspace preview">
+    <div className="hero-product" aria-label="CloseSpan problem workspace preview">
       <div className="preview-chrome">
         <div className="preview-dots" aria-hidden="true">
           <span />
           <span />
           <span />
         </div>
-        <span>Problem workspace · CS-142</span>
+        <span>Example problem workspace · CS-142</span>
         <span className="preview-status">Needs review</span>
       </div>
       <div className="preview-body">
         <aside className="preview-sidebar" aria-label="Preview navigation">
-          <ClosespanLogo variant="mark" tone="inverse" size="xs" />
+          <CloseSpanLogo variant="mark" tone="inverse" size="xs" />
           {[1, 2, 3, 4, 5, 6].map((item) => (
             <i key={item} />
           ))}
@@ -638,8 +684,8 @@ function ApprovalPreview() {
       <div className="trust-card-head">
         <ShieldCheck aria-hidden="true" size={20} />
         <div>
-          <strong>Proposed action</strong>
-          <small>Create GitHub issue in analytics-api</small>
+          <strong>Example proposed action</strong>
+          <small>Simulated GitHub issue in analytics-api</small>
         </div>
         <span>Low risk</span>
       </div>

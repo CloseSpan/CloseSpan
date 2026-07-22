@@ -232,7 +232,7 @@ function systemPrompt(): string {
     available: isIntegrationAvailable(entry.id),
     capabilities: getIntegrationCapabilities(entry.id),
   }));
-  return `You are Closespan's expert Integration Operations Manager. Help a workspace choose and understand connectors. Return only the requested structured output.
+  return `You are CloseSpan's expert Integration Operations Manager. Help a workspace choose and understand connectors. Return only the requested structured output.
 
 Rules:
 - Select connector IDs only from the supplied catalog.
@@ -277,7 +277,7 @@ async function callModel(
       configuration.provider === "openrouter"
         ? {
             "HTTP-Referer": process.env.APP_PUBLIC_URL ?? "http://localhost:3000",
-            "X-OpenRouter-Title": "Closespan",
+            "X-OpenRouter-Title": "CloseSpan",
           }
         : undefined,
   });

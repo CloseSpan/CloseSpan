@@ -1993,7 +1993,7 @@ export function IntegrationsScreen({
     <>
       <PageTitle
         title="Integrations"
-        description="Let Closespan recommend the next source, or manage every connection directly."
+        description="Let CloseSpan recommend the next source, or manage every connection directly."
         action={
           <div
             className="integration-view-tabs"
@@ -2141,7 +2141,7 @@ export function IntegrationsScreen({
                 <div className="integration-group-heading">
                   <div>
                     <h2 id={`integration-group-${group.replace(" ", "-")}`}>{group}</h2>
-                    <p>{group === "Connected" ? "Active tools in this workspace." : group === "Recommended" ? "Available connectors selected for this workflow." : "More native connections planned for Closespan."}</p>
+                    <p>{group === "Connected" ? "Active tools in this workspace." : group === "Recommended" ? "Available connectors selected for this workflow." : "More native connections planned for CloseSpan."}</p>
                   </div>
                   <span>{rows.length}</span>
                 </div>
@@ -2219,13 +2219,13 @@ export function IntegrationsScreen({
             </div>
             <p className="integration-drawer-summary">{selectedRow.experience.summary}</p>
             <section className="integration-drawer-section">
-              <h3>Data Closespan will use</h3>
+              <h3>Data CloseSpan will use</h3>
               <ul>{selectedRow.experience.importedData.map((value) => <li key={value}><Check size={14} aria-hidden="true" />{value}</li>)}</ul>
             </section>
             <section className="integration-drawer-section">
               <h3>Permissions requested</h3>
               <ul>{selectedRow.experience.requestedPermissions.map((value) => <li key={value}><ShieldCheck size={14} aria-hidden="true" />{value}</li>)}</ul>
-              <p>Closespan requests least-privilege access. Agent actions still require your approval.</p>
+              <p>CloseSpan requests least-privilege access. Agent actions still require your approval.</p>
             </section>
             {selectedRow.connected && selectedRow.item.permissions.length > 0 && (
               <section className="integration-drawer-section"><h3>Currently granted</h3><p>{selectedRow.item.permissions.join(", ")}</p></section>

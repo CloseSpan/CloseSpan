@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, LockKeyhole, ShieldCheck } from "lucide-react";
 import { redirect } from "next/navigation";
 import {
   signInWithGoogle,
   signOutCurrentUser,
 } from "@/app/auth-actions";
-import { ClosespanLogo } from "@/components/closespan-logo";
+import { AccessRequestEmail } from "@/components/access-request-email";
+import { CloseSpanLogo } from "@/components/closespan-logo";
+import { ensureWorkspaceAccessWaitlistEntry } from "@/lib/access-waitlist-repository";
 import { resolveWorkspaceAccess } from "@/lib/auth-user";
 
 export const metadata: Metadata = {
   title: "Sign in",
-  description: "Sign in to the Closespan workspace with Google.",
+  description: "Sign in to the CloseSpan workspace with Google.",
   robots: { index: false, follow: false },
 };
 
@@ -40,13 +42,15 @@ function safeCallbackUrl(value: string | undefined): string {
 }
 
 function accessRequestEmailUrl(email: string): string {
-  const subject = "Closespan workspace access request";
+  const subject = `CloseSpan workspace access request from ${email}`;
   const body = [
     "Hi Shanmukh,",
     "",
-    `Could you grant Closespan workspace access to ${email}?`,
+    `I tried to sign in to CloseSpan with ${email}.`,
     "",
-    "What I want to use Closespan for:",
+    `Could you add ${email} to the appropriate CloseSpan workspace?`,
+    "",
+    "My question or intended use:",
     "",
     "Thanks,",
   ].join("\n");
@@ -61,21 +65,29 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const accessDenied =
     access.status === "denied" || params.error === "AccessDenied";
+  let waitlistRecorded = false;
+  if (access.status === "denied") {
+    try {
+      waitlistRecorded = await ensureWorkspaceAccessWaitlistEntry(access.email);
+    } catch (error) {
+      console.error("Unable to confirm the workspace access waitlist entry", error);
+    }
+  }
 
   return (
     <main className="login-page">
       <Link className="login-back" href="/">
         <ArrowLeft aria-hidden="true" size={15} />
-        Back to Closespan
+        Back to CloseSpan
       </Link>
 
       <section className="login-card" aria-labelledby="login-title">
         <div className="login-brand">
-          <ClosespanLogo size="lg" />
+          <CloseSpanLogo size="lg" />
         </div>
         <div className="login-heading">
           <span>Secure workspace access</span>
-          <h1 id="login-title">Sign in to Closespan</h1>
+          <h1 id="login-title">Sign in to CloseSpan</h1>
           <p>
             Use your verified Google account to enter the customer
             feedback workspace.
@@ -89,13 +101,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <strong>Workspace access was not granted</strong>
               {access.status === "denied" && (
                 <p>
-                  Signed in as <strong>{access.email}</strong>. This Google
-                  account is now on the access waitlist.
+                  Signed in as <strong>{access.email}</strong>.{" "}
+                  {waitlistRecorded
+                    ? "This Google account is now on the access waitlist."
+                    : "The waitlist record could not be confirmed, so use the prefilled email below."}
                 </p>
               )}
               <p>
                 Email the workspace administrator with a little context about
-                how you want to use Closespan.
+                how you want to use CloseSpan.
               </p>
             </div>
           </div>
@@ -103,17 +117,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
         {access.status === "denied" ? (
           <div className="login-denied-actions">
-            <a
-              className="btn primary login-request-access"
-              href={accessRequestEmailUrl(access.email)}
-            >
-              <Mail aria-hidden="true" size={17} />
-              Email an access request
-            </a>
-            <p className="login-email-hint">
-              Opens a message to {WORKSPACE_ADMIN_EMAIL} with your verified
-              email and access question prefilled.
-            </p>
+            <AccessRequestEmail
+              adminEmail={WORKSPACE_ADMIN_EMAIL}
+              email={access.email}
+              mailtoUrl={accessRequestEmailUrl(access.email)}
+            />
             <form action={signOutCurrentUser}>
               <button className="btn login-google" type="submit">
                 Sign out and use another Google account
@@ -135,7 +143,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <div className="login-trust">
           <ShieldCheck aria-hidden="true" size={17} />
           <p>
-            Google verifies your identity. Closespan uses your workspace
+            Google verifies your identity. CloseSpan uses your workspace
             membership to determine organization and role.
           </p>
         </div>

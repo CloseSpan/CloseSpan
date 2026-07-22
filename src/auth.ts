@@ -51,11 +51,11 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         );
       } catch (error) {
         console.error("Unable to record a workspace access attempt", error);
-        return false;
       }
 
       // Keep the verified Google identity so the denial page can explain
-      // which account was waitlisted. Workspace access is checked separately.
+      // which account requested access and open the email fallback. Workspace
+      // access is checked separately and remains denied without membership.
       return true;
     },
     async authorized({ auth: session, request }) {

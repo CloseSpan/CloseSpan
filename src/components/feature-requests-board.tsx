@@ -44,7 +44,7 @@ const groups: Array<{
   {
     status: "Shipped",
     label: "Shipped",
-    description: "Requested improvements now available in Closespan.",
+    description: "Requested improvements now available in CloseSpan.",
     icon: Rocket,
   },
 ];
@@ -272,7 +272,7 @@ export function FeatureRequestsBoard({
           <span>Shape what comes next</span>
           <h1>Feature requests</h1>
           <p>
-            Explore the Closespan roadmap, suggest an improvement, and support
+            Explore the CloseSpan roadmap, suggest an improvement, and support
             the requests that would help your team most.
           </p>
         </div>
@@ -364,7 +364,7 @@ export function FeatureRequestsBoard({
             <h2>Start the roadmap conversation</h2>
             <p>
               There are no public requests yet. Share the first improvement
-              you would like Closespan to consider.
+              you would like CloseSpan to consider.
             </p>
             <button
               className="feature-request-primary"
@@ -442,7 +442,7 @@ export function FeatureRequestsBoard({
         )}
 
         <p className="feature-request-vote-note">
-          One vote per request, per network address. Closespan stores only a
+          One vote per request, per network address. CloseSpan stores only a
           one-way security fingerprint. Your raw IP address is not stored.
         </p>
       </main>
@@ -490,7 +490,7 @@ export function FeatureRequestsBoard({
                   minLength={4}
                   maxLength={120}
                   required
-                  placeholder="What should Closespan add or improve?"
+                  placeholder="What should CloseSpan add or improve?"
                 />
               </label>
               <label>
@@ -504,7 +504,7 @@ export function FeatureRequestsBoard({
                 />
               </label>
               <p>
-                Closespan reviews submissions before they appear publicly.
+                CloseSpan reviews submissions before they appear publicly.
                 Avoid customer data, credentials, or other sensitive
                 information.
               </p>

@@ -47,7 +47,7 @@ function testUser(request: NextRequest): WorkspaceUser | null | undefined {
   if (request.headers.get("x-test-auth") === "none") return null;
   const orgId = request.headers.get("x-test-user-org-id") ?? ORG_ID;
   const organizationName =
-    request.headers.get("x-test-organization-name") ?? "Closespan Test";
+    request.headers.get("x-test-organization-name") ?? "CloseSpan Test";
   const role = request.headers.get("x-test-user-role") ?? "Admin";
   return {
     id: request.headers.get("x-test-user-id") ?? "demo_user_avery",

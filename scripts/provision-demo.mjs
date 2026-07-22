@@ -619,7 +619,7 @@ try {
     await client.query(
       `INSERT INTO workspace_demo_guides(org_id,title,description,steps,enabled)
        VALUES($1,'From fragmented feedback to verified resolution',
-         'A repeatable 12-step product story for an Operations Manager presenting Closespan.',
+         'A repeatable 12-step product story for an Operations Manager presenting CloseSpan.',
          $2::jsonb,true)`,
       [orgId, JSON.stringify(guideSteps)],
     );

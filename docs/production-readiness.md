@@ -1,6 +1,6 @@
 # Production readiness contract
 
-Closespan has two explicit operating modes.
+CloseSpan has two explicit operating modes.
 
 ## Demo mode
 

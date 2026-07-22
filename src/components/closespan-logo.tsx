@@ -1,17 +1,17 @@
-export type ClosespanLogoVariant = "lockup" | "mark";
-export type ClosespanLogoTone = "default" | "inverse";
-export type ClosespanLogoSize = "xs" | "sm" | "md" | "lg";
+export type CloseSpanLogoVariant = "lockup" | "mark";
+export type CloseSpanLogoTone = "default" | "inverse";
+export type CloseSpanLogoSize = "xs" | "sm" | "md" | "lg";
 
-export function ClosespanLogo({
+export function CloseSpanLogo({
   variant = "lockup",
   tone = "default",
   size = "md",
   className = "",
   decorative = true,
 }: {
-  variant?: ClosespanLogoVariant;
-  tone?: ClosespanLogoTone;
-  size?: ClosespanLogoSize;
+  variant?: CloseSpanLogoVariant;
+  tone?: CloseSpanLogoTone;
+  size?: CloseSpanLogoSize;
   className?: string;
   decorative?: boolean;
 }) {
@@ -29,7 +29,7 @@ export function ClosespanLogo({
     <span
       className={classes}
       aria-hidden={decorative ? true : undefined}
-      aria-label={decorative ? undefined : "Closespan"}
+      aria-label={decorative ? undefined : "CloseSpan"}
       role={decorative ? undefined : "img"}
     >
       <span className="closespan-logo__syntax">{"</"}</span>

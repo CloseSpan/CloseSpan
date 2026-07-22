@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ArrowLeft } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { ClosespanLogo } from "@/components/closespan-logo";
+import { CloseSpanLogo } from "@/components/closespan-logo";
 import { FeatureRequestsBoard } from "@/components/feature-requests-board";
 import {
   listPendingFeatureRequests,
@@ -15,15 +15,45 @@ import {
   isFeatureRequestModerator,
 } from "@/lib/feature-request-security";
 import { resolveWorkspaceAccess } from "@/lib/auth-user";
+import {
+  SITE_NAME,
+  SITE_URL,
+} from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Feature requests",
+  title: {
+    absolute: "Feature Requests and Product Roadmap | CloseSpan",
+  },
   description:
-    "Explore the Closespan product roadmap, submit feature requests, and vote for the improvements that matter most to your team.",
+    "Explore the CloseSpan product roadmap, submit feature requests, and vote for the customer feedback operations improvements that matter most to your team.",
   alternates: { canonical: "/requests" },
   robots: { index: true, follow: true },
+  openGraph: {
+    title: "Feature Requests and Product Roadmap | CloseSpan",
+    description:
+      "Explore the CloseSpan roadmap, submit feature requests, and vote for the improvements that matter most to your team.",
+    url: `${SITE_URL}/requests`,
+    siteName: SITE_NAME,
+    type: "website",
+    locale: "en_US",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: `${SITE_NAME} feature requests and product roadmap`,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Feature Requests and Product Roadmap | CloseSpan",
+    description:
+      "Explore the CloseSpan roadmap, submit feature requests, and vote for product improvements.",
+    images: ["/opengraph-image"],
+  },
 };
 
 export default async function FeatureRequestsPage() {
@@ -65,8 +95,8 @@ export default async function FeatureRequestsPage() {
         Skip to requests
       </a>
       <header className="feature-requests-header">
-        <Link href="/" aria-label="Closespan home">
-          <ClosespanLogo size="md" tone="inverse" />
+        <Link href="/" aria-label="CloseSpan home">
+          <CloseSpanLogo size="md" tone="inverse" />
         </Link>
         <Link href="/" className="feature-requests-home-link">
           <ArrowLeft aria-hidden="true" size={15} /> Home

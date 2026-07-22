@@ -1,4 +1,4 @@
-# Closespan
+# CloseSpan
 
 An evidence-driven B2B SaaS product that turns fragmented customer feedback into a verified product resolution. This repository implements a complete, launchable seeded MVP with explicit simulation boundaries.
 
@@ -43,7 +43,7 @@ into an empty organization with:
 ```bash
 PRODUCTION_OWNER_EMAIL=you@company.com \
 PRODUCTION_OWNER_NAME="Your Name" \
-PRODUCTION_ORG_NAME="Closespan" \
+PRODUCTION_ORG_NAME="CloseSpan" \
 npm run db:provision-owner
 ```
 
@@ -65,7 +65,7 @@ AUTH_URL=https://closespan.com
 
 The public `/requests` board stores requests and vote counts in PostgreSQL.
 Voting is limited to one vote per feature request per network address with a
-database uniqueness constraint. Closespan never stores raw IP addresses; it
+database uniqueness constraint. CloseSpan never stores raw IP addresses; it
 stores a request-scoped HMAC fingerprint instead. Anonymous submissions remain
 in `Pending review` until an administrator publishes them. Short-lived,
 action-scoped HMAC claims provide a PostgreSQL-backed abuse limit without
@@ -104,7 +104,7 @@ Never commit `.env.local`. AI runs use strict structured output, no tools, PII p
 
 ### Configure Pipedream Connect
 
-Closespan uses [Pipedream Connect](https://pipedream.com/docs/connect) for multi-tenant provider authorization. Each Closespan workspace is mapped to a Pipedream external user, while Pipedream stores provider credentials. The browser only receives a short-lived hosted Connect link.
+CloseSpan uses [Pipedream Connect](https://pipedream.com/docs/connect) for multi-tenant provider authorization. Each CloseSpan workspace is mapped to a Pipedream external user, while Pipedream stores provider credentials. The browser only receives a short-lived hosted Connect link.
 
 Create a Pipedream Connect project and configure these server-only values in `.env.local` and the deployment environment:
 
@@ -115,12 +115,12 @@ PIPEDREAM_CLIENT_SECRET=<project OAuth client secret>
 PIPEDREAM_PROJECT_ENVIRONMENT=development
 ```
 
-Use `production` for the production project. Closespan opens Pipedream's secure account UI from chat and from the Integrations drawer, polls for verified accounts, supports multiple accounts per provider, and lets workspace admins remove individual accounts. Run `npm run db:migrate` after pulling the connector schema.
+Use `production` for the production project. CloseSpan opens Pipedream's secure account UI from chat and from the Integrations drawer, polls for verified accounts, supports multiple accounts per provider, and lets workspace admins remove individual accounts. Run `npm run db:migrate` after pulling the connector schema.
 
 ### Configure optional public feedback discovery
 
 Public discovery is explicitly opt-in and is separate from authenticated Pipedream
-connectors. Closespan sends only the product identity or public hostname to
+connectors. CloseSpan sends only the product identity or public hostname to
 You.com, validates and deduplicates returned public URLs, and labels every
 result with confidence and provenance. Enable it server-side with:
 

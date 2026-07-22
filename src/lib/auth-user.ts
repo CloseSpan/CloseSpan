@@ -92,11 +92,11 @@ function demoUser(email: string, name?: string | null): WorkspaceUser {
   return {
     id: `google_${digest}`,
     orgId: ORG_ID,
-    organizationName: "Closespan Demo",
+    organizationName: "CloseSpan Demo",
     name: name?.trim() || email,
     email,
     role: "Admin",
-    organizations: [{ id: ORG_ID, name: "Closespan Demo", role: "Admin" }],
+    organizations: [{ id: ORG_ID, name: "CloseSpan Demo", role: "Admin" }],
   };
 }
 

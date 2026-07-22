@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const alt =
-  "Closespan: turn customer feedback into verified product fixes";
+  "CloseSpan: turn customer feedback into verified product fixes";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -66,7 +66,7 @@ export default function OpenGraphImage() {
               textTransform: "uppercase",
             }}
           >
-            AI feedback-to-fix operations for B2B SaaS
+            Customer-reported problem to verified fix
           </div>
           <div
             style={{

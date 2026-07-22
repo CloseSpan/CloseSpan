@@ -33,3 +33,24 @@ export async function recordWorkspaceAccessAttempt(
     [normalizedEmail, optionalDisplayName(displayName)],
   );
 }
+
+export async function ensureWorkspaceAccessWaitlistEntry(
+  email: string,
+): Promise<boolean> {
+  if (persistenceMode() !== "postgres") return false;
+
+  const normalizedEmail = normalizeMembershipEmail(email);
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    throw new Error("A valid verified email is required for the access waitlist");
+  }
+
+  await databasePool().query(
+    `INSERT INTO workspace_access_waitlist(
+       email,display_name,status,login_attempt_count,
+       first_attempted_at,last_attempted_at
+     ) VALUES($1,NULL,'Pending',1,now(),now())
+     ON CONFLICT(email) DO NOTHING`,
+    [normalizedEmail],
+  );
+  return true;
+}

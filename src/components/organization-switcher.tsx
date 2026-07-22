@@ -208,7 +208,7 @@ export function OrganizationSwitcher({
               placeholder="What the product does, who it serves, and where customers usually share feedback."
             />
             <small>
-              Closespan uses this context to recommend relevant feedback sources.
+              CloseSpan uses this context to recommend relevant feedback sources.
             </small>
           </label>
           {createState.error && (

@@ -159,7 +159,7 @@ export function IntegrationSyncStatus({
   if (importIsDelayed(sync)) {
     return (
       <p className="integration-import quiet" role="status">
-        Import is taking longer than usual. You can keep working while Closespan
+        Import is taking longer than usual. You can keep working while CloseSpan
         continues in the background.
       </p>
     );

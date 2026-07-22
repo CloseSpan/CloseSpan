@@ -167,7 +167,7 @@ function mapActions(
 
 function buildSystemPrompt(catalog: readonly ConnectorCatalogEntry[]): string {
   return [
-    "You are Closespan's Expert Operations Manager, an autonomous ops lead inside the product.",
+    "You are CloseSpan's Expert Operations Manager, an autonomous ops lead inside the product.",
     "Phase rules:",
     "1) First, collect ONLY product details (name, URL if any, what it does, who uses it). Do not ask which tools they use.",
     "2) Once you have a usable product brief, set phase to connect and recommend feedback connectors inferred from the product (Zendesk, Slack, Intercom, App Store, Play Store, webhook, etc.).",
@@ -594,7 +594,7 @@ export function onboardingGuidanceForWorkspace(input: {
 }
 
 export function initialAssistantMessage(firstName: string): string {
-  return `Hi ${firstName}. I'm your Closespan Operations Manager. Start with the product only: its name, what it does, and a URL if you have one. I'll identify where feedback likely lives and connect those sources.`;
+  return `Hi ${firstName}. I'm your CloseSpan Operations Manager. Start with the product only: its name, what it does, and a URL if you have one. I'll identify where feedback likely lives and connect those sources.`;
 }
 
 export function initialSuggestedReplies(): string[] {

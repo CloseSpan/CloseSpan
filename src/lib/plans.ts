@@ -12,7 +12,7 @@ export type LaunchPlan = {
   featured?: boolean;
 };
 
-const pilotEmail = "mailto:shanmukhsain@gmail.com?subject=Closespan%20Feedback-to-Fix%20Design%20Partner%20Pilot";
+const pilotEmail = "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20Feedback-to-Fix%20Design%20Partner%20Pilot";
 
 export const launchPlans: readonly LaunchPlan[] = [
   {
@@ -39,9 +39,9 @@ export const launchPlans: readonly LaunchPlan[] = [
     cadence: "One-time · 6 weeks",
     description: "Prove one feedback-to-fix workflow and its operational ROI before committing.",
     features: [
-      "One support source and engineering workflow",
-      "Up to three repositories",
-      "Human-approved work-item execution",
+      "One supported source or controlled feedback export",
+      "A configured feedback-to-fix review workflow",
+      "Human-reviewed engineering evidence briefs",
       "Weekly accuracy and ROI review",
       "Pilot fee credited toward an annual plan",
     ],
@@ -54,12 +54,12 @@ export const launchPlans: readonly LaunchPlan[] = [
     name: "Scale",
     price: "Custom",
     cadence: "After a successful pilot",
-    description: "For multi-product teams that need deeper governance and customer context.",
+    description: "A custom production scope after connector, security, and governance requirements are validated.",
     features: [
-      "CRM and affected-revenue enrichment",
-      "Multiple products, teams, and repositories",
-      "Observability and release verification",
-      "SSO, advanced RBAC, retention, and audit export",
+      "Additional source and product requirements",
+      "Customer and revenue context requirements",
+      "Release verification operating design",
+      "RBAC, retention, and audit requirements",
     ],
     callToAction: "Discuss scale",
     href: pilotEmail,

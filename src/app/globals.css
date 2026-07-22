@@ -595,7 +595,7 @@ p { margin:0; line-height:1.55; }
 .landing-footer { width:min(1200px, 100%); min-height:110px; margin:0 auto; padding:24px; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:24px; color:#748095; font-size:11px; }
 .landing-footer .landing-brand { color:var(--ink); font-size:13px; }
 .landing-footer p { text-align:center; }
-.landing-footer > div { justify-self:end; display:flex; gap:20px; }
+.landing-footer > div { justify-self:end; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:12px 20px; }
 
 @media (max-width:1050px) {
   .landing-nav nav { gap:18px; }
@@ -666,7 +666,7 @@ p { margin:0; line-height:1.55; }
   .preview-content { padding-left:12px; padding-right:12px; }
 }
 
-/* Closespan public landing page */
+/* CloseSpan public landing page */
 .landing {
   --landing-night:#0a1020;
   --landing-night-soft:#121b31;
@@ -677,6 +677,10 @@ p { margin:0; line-height:1.55; }
   overflow:hidden;
   background:#fff;
   color:var(--ink);
+}
+.landing-header {
+  background:#080d19;
+  color:#fff;
 }
 .landing-top {
   position:relative;
@@ -881,7 +885,11 @@ p { margin:0; line-height:1.55; }
   color:#5f6d82;
 }
 .landing-trustbar > span { color:#8b95a5; font-size:9px; text-transform:uppercase; letter-spacing:.07em; }
-.landing-trustbar strong { color:#4b586c; font-size:11px; }
+.landing-trustbar strong,
+.landing-trustbar-link { flex:0 0 auto; color:#4b586c; font-size:11px; font-weight:800; }
+.landing-trustbar-link { text-decoration:none; transition:color .18s ease; }
+.landing-trustbar-link:hover,
+.landing-trustbar-link:focus-visible { color:#5147db; }
 
 .landing-section,.trust-section,.pricing-section,.faq-section,.landing-cta {
   width:min(1184px,100%);
@@ -1041,6 +1049,22 @@ p { margin:0; line-height:1.55; }
 .workflow-summary svg { color:#918aff; }
 .workflow-summary strong { color:#eef0f5; }
 .workflow-summary p { color:#8390a5; }
+.section-resource-link { margin-top:30px; }
+.section-resource-link .text-link,
+.trust-section .text-link {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  color:#5d55e1;
+  font-size:12px;
+  font-weight:800;
+  text-decoration:none;
+}
+.section-resource-link .text-link { color:#aaa5ff; }
+.section-resource-link .text-link:hover,
+.section-resource-link .text-link:focus-visible,
+.trust-section .text-link:hover,
+.trust-section .text-link:focus-visible { text-decoration:underline; text-underline-offset:4px; }
 
 .trust-section { grid-template-columns:minmax(0,1fr) minmax(410px,.84fr); gap:90px; }
 .trust-section ul { gap:12px 22px; }
@@ -1695,7 +1719,7 @@ p { margin:0; line-height:1.55; }
   .organization-switcher-trigger { transition:none; }
 }
 
-/* Code-native Closespan identity. The visible wordmark is composed of real spans. */
+/* Code-native CloseSpan identity. The visible wordmark is composed of real spans. */
 .closespan-logo {
   display:inline-flex;
   align-items:center;

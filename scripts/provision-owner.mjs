@@ -4,7 +4,7 @@ import pg from "pg";
 const email = (process.env.PRODUCTION_OWNER_EMAIL ?? "").trim().toLowerCase();
 const name = (process.env.PRODUCTION_OWNER_NAME ?? "").trim() || email;
 const orgId = (process.env.PRODUCTION_ORG_ID ?? "org_feelow").trim();
-const orgName = (process.env.PRODUCTION_ORG_NAME ?? "Closespan").trim();
+const orgName = (process.env.PRODUCTION_ORG_NAME ?? "CloseSpan").trim();
 const workspaceId = `${orgId}_primary`;
 
 if (!email || !email.includes("@")) {

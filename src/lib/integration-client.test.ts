@@ -31,7 +31,7 @@ describe("parsePublicSourceDiscoveryResponse", () => {
       sources: [
         {
           id: "source_1",
-          title: "Closespan reviews",
+          title: "CloseSpan reviews",
           url: "https://example.com/reviews",
           host: "example.com",
           kind: "review_site",

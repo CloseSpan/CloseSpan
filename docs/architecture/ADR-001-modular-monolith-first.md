@@ -5,7 +5,7 @@
 
 ## Context
 
-Closespan ultimately needs asynchronous ingestion, PostgreSQL/pgvector, Redis-backed jobs, secure connector services, and isolated AI execution. Building all services before validating the approval-led problem workflow would create operational complexity without reducing the main product risk: whether users trust the clustering, prioritization, investigation, and action evidence.
+CloseSpan ultimately needs asynchronous ingestion, PostgreSQL/pgvector, Redis-backed jobs, secure connector services, and isolated AI execution. Building all services before validating the approval-led problem workflow would create operational complexity without reducing the main product risk: whether users trust the clustering, prioritization, investigation, and action evidence.
 
 ## Decision
 

@@ -1,14 +1,14 @@
-# Closespan product-market-fit and pricing plan
+# CloseSpan product-market-fit and pricing plan
 
 Updated July 16, 2026. Competitor pricing and positioning can change; recheck the linked primary sources before changing public packaging.
 
 ## Decision
 
-Closespan is not a free developer utility and should not launch as a broad “AI customer-feedback platform.” Its initial category is **feedback-to-fix operations**: the governed operational layer that turns customer-reported product defects into engineering-ready problems, verified releases, and completed customer follow-up.
+CloseSpan is not a free developer utility and should not launch as a broad “AI customer-feedback platform.” Its initial category is **feedback-to-fix operations**: the governed operational layer that turns customer-reported product defects into engineering-ready problems, verified releases, and completed customer follow-up.
 
 The launch promise is:
 
-> Resolve the product problems customers feel before they become churn. Closespan groups related reports across support channels, quantifies the accounts and revenue affected, connects the problem to likely engineering ownership and release context, and manages the approval-controlled path to a verified fix.
+> Resolve the product problems customers feel before they become churn. CloseSpan groups related reports across support channels, quantifies the accounts and revenue affected, connects the problem to likely engineering ownership and release context, and manages the approval-controlled path to a verified fix.
 
 Feature requests and usability feedback remain classified and searchable, but bugs, regressions, and incidents own the primary workflow until the wedge is proven.
 
@@ -22,8 +22,8 @@ The broad feedback category is already crowded:
 | [Productboard](https://www.productboard.com/pricing/) | Feedback intelligence, prioritization, specs, roadmaps, codebase context, and product agents; Free, $19/maker, and $59/maker tiers | “Feedback to roadmap” is an established category. |
 | [Linear Customer Requests](https://linear.app/customer-requests) | Customer requests from support and CRM systems linked to accounts, revenue, issues, and projects | Ticket creation with customer context is increasingly native to delivery tools. |
 | [Enterpret](https://www.enterpret.com/pricing) | Cross-channel intelligence, adaptive taxonomy, customer graph, agents, actions, and close-loop workflows; custom data-volume pricing | Competing on more sources, clustering, or AI summaries alone is weak. |
-| [unitQ](https://www.unitq.com/products/monitorq/) | Quality intelligence, issue clustering, release context, engineering routing, and root-cause workflows | Closespan must win on B2B account context, approvals, verification, and mid-market implementation. |
-| [DevRev](https://devrev.ai/pricing) | A broad AI, support, build, and observe platform with a shared knowledge graph | Closespan should work above the existing stack without requiring platform replacement. |
+| [unitQ](https://www.unitq.com/products/monitorq/) | Quality intelligence, issue clustering, release context, engineering routing, and root-cause workflows | CloseSpan must win on B2B account context, approvals, verification, and mid-market implementation. |
+| [DevRev](https://devrev.ai/pricing) | A broad AI, support, build, and observe platform with a shared knowledge graph | CloseSpan should work above the existing stack without requiring platform replacement. |
 | [Zeda.io](https://zeda.io/pricing) | Broad VoC and product suite from $499/month with annual commitment | Mid-market buyers will pay several hundred dollars monthly when business value is clear. |
 | [Featurebase](https://www.featurebase.app/pricing) | Combined support and feedback suite with free and $29–$99/seat tiers | Low-end all-in-one feedback/support is also crowded. |
 
@@ -123,7 +123,7 @@ PMF gate:
 - Three of five pilots convert.
 - At least two accept an annual or three-month commitment.
 - The approved workflow is used more than once by every converted customer.
-- At least one VP Engineering or Head of Product describes Closespan as the owner of a recurring operational workflow, not merely a useful dashboard.
+- At least one VP Engineering or Head of Product describes CloseSpan as the owner of a recurring operational workflow, not merely a useful dashboard.
 
 If support values the evidence but engineering ignores it, narrow to support-escalation quality. If engineering values code-aware investigation but not clustering, reposition as customer-impact triage inside GitHub or Linear. If teams like the dashboard but no buyer owns budget, do not expand the roadmap product.
 

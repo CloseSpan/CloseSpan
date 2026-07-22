@@ -1,11 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Closespan">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CloseSpan">
   <defs>
+    <linearGradient id="closespan-background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#171a24"/>
+      <stop offset="1" stop-color="#0d0f17"/>
+    </linearGradient>
     <linearGradient id="closespan-gradient" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#756cff"/>
       <stop offset="1" stop-color="#5147db"/>
     </linearGradient>
   </defs>
-  <path d="M178 118 72 256l106 138" fill="none" stroke="url(#closespan-gradient)" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="m318 80-124 352" fill="none" stroke="url(#closespan-gradient)" stroke-width="48" stroke-linecap="round"/>
-  <path d="m334 118 106 138-106 138" fill="none" stroke="url(#closespan-gradient)" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="512" height="512" rx="96" fill="url(#closespan-background)"/>
+  <path d="M178 118 72 256l106 138" fill="none" stroke="url(#closespan-gradient)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m318 80-124 352" fill="none" stroke="url(#closespan-gradient)" stroke-width="52" stroke-linecap="round"/>
+  <path d="m334 118 106 138-106 138" fill="none" stroke="url(#closespan-gradient)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

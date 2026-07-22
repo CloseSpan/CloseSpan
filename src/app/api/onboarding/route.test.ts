@@ -48,7 +48,7 @@ function request(method: "GET" | "POST" | "PATCH", body?: unknown) {
       "x-test-user-org-id": "org_alpha",
       "x-test-user-name": "Sam Operator",
       "x-test-user-email": "sam@example.com",
-      "x-test-organization-name": "Closespan",
+      "x-test-organization-name": "CloseSpan",
       "x-test-user-role": "Contributor",
     },
     body: body === undefined ? undefined : JSON.stringify(body),

@@ -71,7 +71,7 @@ describe("custom webhook endpoint isolation", () => {
     );
   });
 
-  it("accepts legacy pre-Closespan webhook headers for existing integrations", async () => {
+  it("accepts legacy pre-CloseSpan webhook headers for existing integrations", async () => {
     repository.resolve.mockResolvedValue({
       orgId: "org_beta",
       integrationId: "int_webhook",

@@ -242,7 +242,7 @@ function connectedActivityItem(input: {
       suffix: "reconnect",
       title: `Reconnect ${connector.name}`,
       description:
-        "The connected account needs authorization before Closespan can continue.",
+        "The connected account needs authorization before CloseSpan can continue.",
       primaryAction: action("reconnect", "Reconnect"),
       secondaryAction: action("review_details", "Review details"),
     });
@@ -297,8 +297,8 @@ function connectedActivityItem(input: {
         ? `Pulling feedback from ${connector.name}`
         : `Checking ${connector.name}`,
       description: zendesk
-        ? "Closespan is fetching and normalizing feedback. You can keep working while it finishes."
-        : "Closespan is checking the connected account. You can keep working while it finishes.",
+        ? "CloseSpan is fetching and normalizing feedback. You can keep working while it finishes."
+        : "CloseSpan is checking the connected account. You can keep working while it finishes.",
       at: activity.lastImportAt,
       count: activity.lastImportCount,
       primaryAction: action("review_details", "View progress"),
@@ -313,7 +313,7 @@ function connectedActivityItem(input: {
       suffix: "connecting",
       title: `Connecting ${connector.name}`,
       description:
-        "Closespan is waiting for the secure account connection to finish.",
+        "CloseSpan is waiting for the secure account connection to finish.",
       primaryAction: action("review_details", "View progress"),
     });
   }

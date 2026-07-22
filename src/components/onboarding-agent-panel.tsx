@@ -521,7 +521,7 @@ export function OnboardingAgentPanel({
                 {setupStatus.feedbackConnected
                   ? setupStatus.feedbackCount > 0
                     ? "Signal is already arriving. Open the inbox and start operating; other integrations can be added later."
-                    : "You do not need to wait for the first import here. Closespan will keep checking in the background while you explore the workspace."
+                    : "You do not need to wait for the first import here. CloseSpan will keep checking in the background while you explore the workspace."
                   : githubFailureIsResolved
                     ? `The earlier OAuth issue is resolved. GitHub is ready for approved engineering actions, and it does not need a feedback import. ${
                         nextFeedbackSource

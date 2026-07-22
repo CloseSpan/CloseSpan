@@ -1,14 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ClosespanLogo } from "./closespan-logo";
+import { CloseSpanLogo } from "./closespan-logo";
 
-describe("ClosespanLogo", () => {
+describe("CloseSpanLogo", () => {
   it("renders the full code wordmark from semantic span elements", () => {
     const markup = renderToStaticMarkup(
-      <ClosespanLogo decorative={false} />,
+      <CloseSpanLogo decorative={false} />,
     );
 
-    expect(markup).toContain('aria-label="Closespan"');
+    expect(markup).toContain('aria-label="CloseSpan"');
     expect(markup).toContain('class="closespan-logo__syntax"');
     expect(markup).toContain('class="closespan-logo__close">Close</span>');
     expect(markup).toContain('class="closespan-logo__span">Span</span>');
@@ -18,7 +18,7 @@ describe("ClosespanLogo", () => {
 
   it("renders the compact syntax mark without the wordmark", () => {
     const markup = renderToStaticMarkup(
-      <ClosespanLogo variant="mark" />,
+      <CloseSpanLogo variant="mark" />,
     );
 
     expect(markup).toContain("&lt;/");
@@ -27,9 +27,9 @@ describe("ClosespanLogo", () => {
   });
 
   it("exposes the requested light-surface and dark-surface tones", () => {
-    const defaultMarkup = renderToStaticMarkup(<ClosespanLogo />);
+    const defaultMarkup = renderToStaticMarkup(<CloseSpanLogo />);
     const inverseMarkup = renderToStaticMarkup(
-      <ClosespanLogo tone="inverse" />,
+      <CloseSpanLogo tone="inverse" />,
     );
 
     expect(defaultMarkup).toContain("closespan-logo--default");

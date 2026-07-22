@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       {
         id: deliveryId,
         customer: "Test customer",
-        quote: "Test feedback event from the Closespan setup hub.",
+        quote: "Test feedback event from the CloseSpan setup hub.",
         type: "Bug",
         severity: "Medium",
         environment: "setup-hub",

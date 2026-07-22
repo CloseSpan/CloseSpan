@@ -1,34 +1,45 @@
 import type { MetadataRoute } from "next";
-import { PRIVATE_APP_PATHS, SITE_URL } from "@/lib/site";
+import {
+  PRIVATE_APP_PATHS,
+  PUBLIC_INDEXABLE_PATHS,
+  SITE_URL,
+} from "@/lib/site";
 
 const privatePaths = [...PRIVATE_APP_PATHS];
+const publicPathsWithinPrivatePrefixes = PUBLIC_INDEXABLE_PATHS.filter((path) =>
+  PRIVATE_APP_PATHS.some(
+    (privatePath) =>
+      !privatePath.endsWith("/") && path.startsWith(`${privatePath}/`),
+  ),
+);
+const allowedPaths = ["/", ...publicPathsWithinPrivatePrefixes];
 
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
+        allow: allowedPaths,
         disallow: privatePaths,
       },
       {
         userAgent: "OAI-SearchBot",
-        allow: "/",
+        allow: allowedPaths,
         disallow: privatePaths,
       },
       {
         userAgent: "ChatGPT-User",
-        allow: "/",
+        allow: allowedPaths,
         disallow: privatePaths,
       },
       {
         userAgent: "Claude-SearchBot",
-        allow: "/",
+        allow: allowedPaths,
         disallow: privatePaths,
       },
       {
         userAgent: "Claude-User",
-        allow: "/",
+        allow: allowedPaths,
         disallow: privatePaths,
       },
     ],

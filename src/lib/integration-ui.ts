@@ -98,7 +98,7 @@ export function getIntegrationExperience(
         : integration.category === "Analytics" || integration.category === "Observability"
           ? "Analytics"
           : "Feedback",
-    summary: `Connect ${integration.provider} to your Closespan workspace.`,
+    summary: `Connect ${integration.provider} to your CloseSpan workspace.`,
     importedData: ["Relevant workspace records", "Source metadata", "Timestamps"],
     requestedPermissions: ["Least-privilege read access"],
   };

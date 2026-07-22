@@ -37,7 +37,7 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
       <div className={`chart${total === 0 ? " chart-is-empty" : ""}`} aria-label={`Weekly feedback volume for ${source}: ${values.map((value, index) => `${weeks[index]?.label ?? `week ${index + 1}`}, ${value} signals`).join("; ")}`}>
         {total === 0 ? <div className="chart-empty-state" role="status">
           <strong>No feedback in this period</strong>
-          <span>Run an import to bring customer signals into Closespan.</span>
+          <span>Run an import to bring customer signals into CloseSpan.</span>
           <Link href="/integrations">Import feedback</Link>
         </div> : null}
         {values.map((value, index) => {

@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
-import { SITE_URL } from "@/lib/site";
+import { PUBLIC_INDEXABLE_PATHS, SITE_URL } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  return [{ url: `${SITE_URL}/` }, { url: `${SITE_URL}/requests` }];
+  return PUBLIC_INDEXABLE_PATHS.map((path) => ({
+    url: path === "/" ? `${SITE_URL}/` : `${SITE_URL}${path}`,
+  }));
 }

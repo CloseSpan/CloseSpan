@@ -247,7 +247,7 @@ async function callOpenRouter(
     maxRetries: 2,
     defaultHeaders: {
       "HTTP-Referer": process.env.APP_PUBLIC_URL ?? "http://localhost:3000",
-      "X-OpenRouter-Title": "Closespan",
+      "X-OpenRouter-Title": "CloseSpan",
     },
   });
   const response = await client.chat.completions.parse(

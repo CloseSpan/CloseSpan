@@ -94,7 +94,7 @@ describe("feedback volume chart", () => {
     expect(markup).toContain('class="chart-empty-state" role="status"');
     expect(markup).toContain("No feedback in this period");
     expect(markup).toContain(
-      "Run an import to bring customer signals into Closespan.",
+      "Run an import to bring customer signals into CloseSpan.",
     );
     expect(markup).toContain('href="/integrations">Import feedback</a>');
     expect(markup.match(/class="chart-zero-marker"/g)).toHaveLength(8);
