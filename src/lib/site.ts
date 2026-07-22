@@ -15,6 +15,7 @@ export const PUBLIC_DISCOVERY_PATHS = [
   "/manifest.webmanifest",
   "/llms.txt",
   "/opengraph-image",
+  "/google8d20992f073290c1.html",
   "/requests",
 ] as const;
 
