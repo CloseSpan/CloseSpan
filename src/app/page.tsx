@@ -580,11 +580,13 @@ export default function LandingPage() {
       </main>
 
       <footer className="landing-footer">
-        <Link className="landing-brand" href="/" aria-label="CloseSpan home">
-          <CloseSpanLogo size="sm" />
-        </Link>
-        <p>Customer-reported problem to verified fix.</p>
-        <div>
+        <div className="landing-footer-meta">
+          <Link className="landing-brand" href="/" aria-label="CloseSpan home">
+            <CloseSpanLogo size="sm" />
+          </Link>
+          <p>Customer-reported problem to verified fix.</p>
+        </div>
+        <nav className="landing-footer-links" aria-label="Footer navigation">
           <Link href="/customer-feedback-operations">Product</Link>
           <Link href="/connectors">Connectors</Link>
           <Link href="/resources">Resources</Link>
@@ -595,7 +597,7 @@ export default function LandingPage() {
           <Link href="/requests">Requests</Link>
           <Link href="/contact">Contact</Link>
           <Link href="/login">Sign in</Link>
-        </div>
+        </nav>
       </footer>
     </div>
   );
