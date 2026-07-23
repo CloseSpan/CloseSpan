@@ -81,7 +81,12 @@ export function buildTrustStructuredData({
         "@id": `${SITE_URL}/#organization`,
         name: SITE_NAME,
         url: `${SITE_URL}/`,
-        logo: `${SITE_URL}/icon.svg`,
+        logo: {
+          "@type": "ImageObject",
+          url: `${SITE_URL}/favicon-512.png`,
+          width: 512,
+          height: 512,
+        },
         description: SITE_DESCRIPTION,
         email: "shanmukhsain@gmail.com",
       },

@@ -160,7 +160,7 @@ The application publishes these unauthenticated discovery resources:
 - `/robots.txt`: allows normal search crawlers plus OpenAI and Anthropic
   search/user agents, while excluding tenant workspace and API paths.
 - `/sitemap.xml`: lists only canonical, public, indexable pages.
-- `/opengraph-image` and `/icon.svg`: branded link-preview and site assets.
+- `/opengraph-image` and `/favicon-512.png`: branded link-preview and site assets.
 - `/manifest.webmanifest`: installable web-application identity.
 - `/llms.txt`: an optional factual product brief for systems that choose to
   use the community convention. It is not a Google ranking signal and does not

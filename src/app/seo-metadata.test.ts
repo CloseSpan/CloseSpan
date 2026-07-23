@@ -91,6 +91,13 @@ describe("public search metadata", () => {
       name: SITE_NAME,
       alternateName: SITE_ALTERNATE_NAMES,
       url: `${SITE_URL}/`,
+      logo: {
+        "@type": "ImageObject",
+        url: `${SITE_URL}/favicon-512.png`,
+        contentUrl: `${SITE_URL}/favicon-512.png`,
+        width: 512,
+        height: 512,
+      },
     });
     expect(organizationNode).not.toHaveProperty("sameAs");
     expect(
@@ -112,6 +119,20 @@ describe("public search metadata", () => {
     expect(appManifest.name).toContain(SITE_NAME);
     expect(appManifest.short_name).toBe(SITE_NAME);
     expect(appManifest.start_url).toBe("/");
+    expect(appManifest.icons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          src: "/favicon-192.png",
+          sizes: "192x192",
+          type: "image/png",
+        }),
+        expect.objectContaining({
+          src: "/favicon-512.png",
+          sizes: "512x512",
+          type: "image/png",
+        }),
+      ]),
+    );
 
     const response = getLlmsTxt();
     const body = await response.text();

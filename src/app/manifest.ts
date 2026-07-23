@@ -28,12 +28,6 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "any",
       },
       {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
-        purpose: "any",
-      },
-      {
         src: "/favicon-512.png",
         sizes: "512x512",
         type: "image/png",

@@ -89,7 +89,12 @@ function articleSchema(page: PublicSeoPageInput): Record<string, unknown> {
       "@type": "Organization",
       name: "CloseSpan",
       url: `${SITE_URL}/`,
-      logo: { "@type": "ImageObject", url: `${SITE_URL}/icon.svg` },
+      logo: {
+        "@type": "ImageObject",
+        url: `${SITE_URL}/favicon-512.png`,
+        width: 512,
+        height: 512,
+      },
     },
     image: `${SITE_URL}/opengraph-image`,
   };
