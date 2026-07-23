@@ -1,14 +1,17 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { recordWorkspaceAccessAttempt } from "@/lib/access-waitlist-repository";
-import {
-  applicationMode,
-  hasWorkspaceMembership,
-  normalizeEmail,
-} from "@/lib/auth-user";
+import { normalizeEmail } from "@/lib/auth-user";
 import { PUBLIC_DISCOVERY_PATHS } from "@/lib/site";
+import {
+  isPrivateBetaAccessEnforced,
+  isPrivateBetaOwner,
+} from "@/lib/workspace-access-policy";
 
-const PUBLIC_PAGES = new Set<string>(PUBLIC_DISCOVERY_PATHS);
+const PUBLIC_PAGES = new Set<string>([
+  ...PUBLIC_DISCOVERY_PATHS,
+  "/waitlist",
+]);
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   providers: [Google],
@@ -41,8 +44,8 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         ? normalizeEmail(googleProfile.email)
         : "";
       if (!email || googleProfile?.email_verified !== true) return false;
-      if (applicationMode() === "demo") return true;
-      if (await hasWorkspaceMembership(email)) return true;
+      if (!isPrivateBetaAccessEnforced()) return true;
+      if (isPrivateBetaOwner(email)) return true;
 
       try {
         await recordWorkspaceAccessAttempt(
@@ -53,9 +56,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         console.error("Unable to record a workspace access attempt", error);
       }
 
-      // Keep the verified Google identity so the denial page can explain
-      // which account requested access and open the email fallback. Workspace
-      // access is checked separately and remains denied without membership.
+      // Every verified identity receives a session. The private beta access
+      // boundary is enforced separately so non-owner users can see their
+      // successful waitlist confirmation instead of an authentication error.
       return true;
     },
     async authorized({ auth: session, request }) {
@@ -64,13 +67,10 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         ? normalizeEmail(session.user.email)
         : "";
       if (!email) return false;
-      if (applicationMode() === "demo") return true;
-      try {
-        return await hasWorkspaceMembership(email);
-      } catch (error) {
-        console.error("Unable to verify workspace access", error);
-        return false;
-      }
+      if (!isPrivateBetaAccessEnforced()) return true;
+      if (isPrivateBetaOwner(email)) return true;
+
+      return Response.redirect(new URL("/waitlist", request.nextUrl));
     },
   },
 });

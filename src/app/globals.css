@@ -1261,6 +1261,11 @@ p { margin:0; line-height:1.55; }
 .login-alert svg { flex:none; margin-top:1px; }
 .login-alert strong { display:block; font-size:12px; margin-bottom:3px; }
 .login-alert p { color:#7d3b43; font-size:11px; }
+.waitlist-card { width:min(100%,500px); }
+.waitlist-success { display:flex; gap:11px; align-items:flex-start; margin:-4px 0 20px; padding:15px; border:1px solid #bde4d5; border-radius:11px; background:#f1fbf7; color:#137357; }
+.waitlist-success svg { flex:none; margin-top:1px; }
+.waitlist-success strong { display:block; color:#0f654d; font-size:13px; }
+.waitlist-success p { margin-top:3px; color:#4b6f64; font-size:11px; overflow-wrap:anywhere; }
 .login-trust { display:flex; gap:9px; align-items:flex-start; margin-top:20px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); }
 .login-trust svg { flex:none; color:var(--success); }
 .login-trust p { font-size:11px; }

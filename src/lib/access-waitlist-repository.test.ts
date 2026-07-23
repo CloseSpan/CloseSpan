@@ -18,7 +18,10 @@ import {
 describe("workspace access waitlist repository", () => {
   beforeEach(() => {
     database.mode = "postgres";
-    database.pool.query.mockReset().mockResolvedValue({ rowCount: 1 });
+    database.pool.query.mockReset().mockResolvedValue({
+      rowCount: 1,
+      rows: [{ status: "Pending" }],
+    });
   });
 
   it("atomically upserts a normalized verified Google identity", async () => {
@@ -28,10 +31,17 @@ describe("workspace access waitlist repository", () => {
     );
 
     expect(database.pool.query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "CREATE TABLE IF NOT EXISTS workspace_access_waitlist",
+      ),
+    );
+    expect(database.pool.query).toHaveBeenCalledWith(
       expect.stringContaining("ON CONFLICT(email) DO UPDATE SET"),
       ["shanmukhsain@gmail.com", "Demo Operator"],
     );
-    const sql = database.pool.query.mock.calls[0]?.[0] as string;
+    const sql = database.pool.query.mock.calls.find(([statement]) =>
+      String(statement).includes("ON CONFLICT(email) DO UPDATE SET"),
+    )?.[0] as string;
     expect(sql).toContain(
       "login_attempt_count=workspace_access_waitlist.login_attempt_count+1",
     );
@@ -53,8 +63,19 @@ describe("workspace access waitlist repository", () => {
     ).resolves.toBe(true);
 
     expect(database.pool.query).toHaveBeenCalledWith(
-      expect.stringContaining("ON CONFLICT(email) DO NOTHING"),
+      expect.stringContaining("RETURNING status"),
       ["prospect@example.com"],
     );
+  });
+
+  it("does not present a declined record as a successful waitlist entry", async () => {
+    database.pool.query.mockResolvedValue({
+      rowCount: 1,
+      rows: [{ status: "Declined" }],
+    });
+
+    await expect(
+      ensureWorkspaceAccessWaitlistEntry("declined@example.com"),
+    ).resolves.toBe(false);
   });
 });

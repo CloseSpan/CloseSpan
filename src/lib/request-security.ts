@@ -73,6 +73,8 @@ async function authenticatedUser(request: NextRequest): Promise<WorkspaceUser> {
     throw new HttpError(401, "Authentication required");
   if (access.status === "denied")
     throw new HttpError(403, "Workspace membership is required");
+  if (access.status === "unavailable")
+    throw new HttpError(503, "The workspace is temporarily unavailable");
   return access.user;
 }
 

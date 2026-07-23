@@ -37,6 +37,64 @@ export interface WebhookCreationResult {
 const WEBHOOK_PROVIDER = "Custom webhook";
 const GITHUB_PROVIDER = "GitHub";
 
+type WorkspaceIntegrationSetupRow = {
+  id: string;
+  provider: string;
+  connection_state: string;
+  last_sync_at: Date | null;
+  webhook_public_id: string | null;
+};
+
+function isMissingWebhookPublicIdColumn(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+
+  const postgresError = error as {
+    code?: unknown;
+    column?: unknown;
+    message?: unknown;
+  };
+  if (postgresError.code !== "42703") return false;
+
+  return (
+    postgresError.column === "public_id" ||
+    (typeof postgresError.message === "string" &&
+      postgresError.message.includes("public_id"))
+  );
+}
+
+async function queryWorkspaceSetupIntegrations(
+  pool: ReturnType<typeof databasePool>,
+  orgId: string,
+) {
+  try {
+    return await pool.query<WorkspaceIntegrationSetupRow>(
+      `SELECT integration.id, integration.provider,
+              integration.connection_state, integration.last_sync_at,
+              secret.public_id AS webhook_public_id
+         FROM integrations integration
+         LEFT JOIN integration_webhook_secrets secret
+           ON secret.org_id=integration.org_id
+          AND secret.integration_id=integration.id
+        WHERE integration.org_id=$1`,
+      [orgId],
+    );
+  } catch (error) {
+    if (!isMissingWebhookPublicIdColumn(error)) throw error;
+
+    // Older production schemas predate webhook public IDs. Keep the workspace
+    // usable while that additive migration is applied; webhook creation still
+    // requires the current schema.
+    return pool.query<WorkspaceIntegrationSetupRow>(
+      `SELECT integration.id, integration.provider,
+              integration.connection_state, integration.last_sync_at,
+              NULL::text AS webhook_public_id
+         FROM integrations integration
+        WHERE integration.org_id=$1`,
+      [orgId],
+    );
+  }
+}
+
 function encryptWebhookSecret(
   secret: string,
   orgId: string,
@@ -157,23 +215,7 @@ export async function getWorkspaceSetupStatus(
         "SELECT count(*)::int AS count FROM feedback_items WHERE org_id=$1",
         [orgId],
       ),
-      pool.query<{
-        id: string;
-        provider: string;
-        connection_state: string;
-        last_sync_at: Date | null;
-        webhook_public_id: string | null;
-      }>(
-        `SELECT integration.id, integration.provider,
-                integration.connection_state, integration.last_sync_at,
-                secret.public_id AS webhook_public_id
-           FROM integrations integration
-           LEFT JOIN integration_webhook_secrets secret
-             ON secret.org_id=integration.org_id
-            AND secret.integration_id=integration.id
-          WHERE integration.org_id=$1`,
-        [orgId],
-      ),
+      queryWorkspaceSetupIntegrations(pool, orgId),
       getAiPublicConfiguration(orgId),
     ]);
 

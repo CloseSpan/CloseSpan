@@ -9,6 +9,11 @@ import {
   type OrganizationMembership,
 } from "./organization-repository";
 import { ORG_ID } from "./seed";
+import {
+  isPrivateBetaAccessEnforced,
+  isPrivateBetaOwner,
+  PRIVATE_BETA_OWNER_EMAIL,
+} from "./workspace-access-policy";
 
 export const ACTIVE_ORGANIZATION_COOKIE = "closespan_active_org";
 export const LEGACY_ACTIVE_ORGANIZATION_COOKIE = "feelow_active_org";
@@ -42,7 +47,8 @@ export interface WorkspaceUser {
 export type WorkspaceAccess =
   | { status: "granted"; user: WorkspaceUser }
   | { status: "unauthenticated" }
-  | { status: "denied"; email: string };
+  | { status: "denied"; email: string }
+  | { status: "unavailable"; email: string };
 
 export type WorkspaceMemberIdentityRow = OrganizationMembership;
 
@@ -100,6 +106,28 @@ function demoUser(email: string, name?: string | null): WorkspaceUser {
   };
 }
 
+function privateBetaOwnerFallbackUser(
+  name?: string | null,
+): WorkspaceUser {
+  const orgId = process.env.PRODUCTION_ORG_ID?.trim() || ORG_ID;
+  const organizationName =
+    process.env.PRODUCTION_ORG_NAME?.trim() || "CloseSpan";
+  const digest = createHash("sha256")
+    .update(PRIVATE_BETA_OWNER_EMAIL)
+    .digest("hex")
+    .slice(0, 24);
+
+  return {
+    id: `google_${digest}`,
+    orgId,
+    organizationName,
+    name: name?.trim() || "Shanmukh Sain",
+    email: PRIVATE_BETA_OWNER_EMAIL,
+    role: "Admin",
+    organizations: [{ id: orgId, name: organizationName, role: "Admin" }],
+  };
+}
+
 export async function hasWorkspaceMembership(email: string): Promise<boolean> {
   if (persistenceMode() !== "postgres") return false;
   return (await listOrganizationMemberships(normalizeEmail(email))).length > 0;
@@ -138,21 +166,35 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
   const name = session?.user?.name;
   if (!email) return { status: "unauthenticated" };
 
-  const activeOrganizationId = await activeOrganizationIdFromCookie();
-  const member = await findWorkspaceMember(email, name, activeOrganizationId);
-  if (member) return { status: "granted", user: member };
-  if (applicationMode() === "demo") {
+  if (!isPrivateBetaAccessEnforced()) {
+    const activeOrganizationId = await activeOrganizationIdFromCookie();
+    const member = await findWorkspaceMember(email, name, activeOrganizationId);
+    if (member) return { status: "granted", user: member };
     return {
       status: "granted",
       user: demoUser(email, name),
     };
   }
-  return { status: "denied", email };
+
+  if (!isPrivateBetaOwner(email)) return { status: "denied", email };
+
+  try {
+    const activeOrganizationId = await activeOrganizationIdFromCookie();
+    const member = await findWorkspaceMember(email, name, activeOrganizationId);
+    if (member) return { status: "granted", user: member };
+    return { status: "granted", user: privateBetaOwnerFallbackUser(name) };
+  } catch (error) {
+    console.error("Unable to load the private beta owner workspace", error);
+  }
+
+  return { status: "unavailable", email };
 }
 
 export async function requireWorkspaceUser(): Promise<WorkspaceUser> {
   const access = await resolveWorkspaceAccess();
   if (access.status === "granted") return access.user;
-  if (access.status === "denied") redirect("/login?error=AccessDenied");
+  if (access.status === "denied") redirect("/waitlist");
+  if (access.status === "unavailable")
+    redirect("/login?error=WorkspaceUnavailable");
   redirect("/login");
 }
