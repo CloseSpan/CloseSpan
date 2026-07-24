@@ -47,6 +47,23 @@ PRODUCTION_ORG_NAME="CloseSpan" \
 npm run db:provision-owner
 ```
 
+### Configure public email aliases
+
+The public site uses role-based CloseSpan addresses rather than exposing the
+private workspace-owner email:
+
+- `hello@closespan.com` for pilots, general questions, and waitlist inquiries
+- `support@closespan.com` for product and connector support
+- `security@closespan.com` for responsible security reports
+- `privacy@closespan.com` for privacy and data-subject requests
+
+Configure these aliases in Cloudflare Email Routing and forward them to the
+appropriate monitored mailbox before deploying the public links. Cloudflare
+Email Routing handles inbound forwarding only; sending replies from a
+`@closespan.com` address requires a separate outbound mail provider. The
+private beta owner identity remains controlled separately by application
+access policy and `PRODUCTION_OWNER_EMAIL`.
+
 Add the exact production callback
 `https://closespan.com/api/auth/callback/google` to the Google OAuth 2.0 Web
 client before deployment. Keep
@@ -89,6 +106,26 @@ idempotent and written to the workspace audit log. `PRODUCTION_OWNER_EMAIL` is
 also recognized as a moderator. IP uniqueness is a lightweight abuse control
 rather than proof of one human identity; shared networks and VPNs can affect
 it.
+
+Cloudflare Turnstile adds a separate browser-verification layer to anonymous
+feature-request submissions and votes. Create a **Managed** Turnstile widget,
+allow both `closespan.com` and `www.closespan.com`, and validate the canonical
+production hostname in Vercel Production:
+
+```bash
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=<public widget site key>
+TURNSTILE_SECRET_KEY=<server-only widget secret key>
+TURNSTILE_EXPECTED_HOSTNAME=www.closespan.com
+```
+
+The server validates every token with Cloudflare Siteverify and requires the
+exact request action and hostname before writing to PostgreSQL. Tokens are
+single-use, so the browser resets the widget after every attempt. Production
+fails closed when any required Turnstile setting is missing and refuses
+Cloudflare test secrets. Local development uses Cloudflare's documented
+always-pass test keys when no keys are configured; do not copy those test keys
+into Vercel. The content security policy allows only Cloudflare's Turnstile
+script and challenge frames in addition to existing first-party sources.
 
 ### Configure an AI provider
 

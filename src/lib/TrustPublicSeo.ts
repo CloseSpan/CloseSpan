@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
+import {
+  PUBLIC_EMAILS,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_URL,
+} from "@/lib/site";
 
 type PublicPageType = "AboutPage" | "ContactPage" | "WebPage";
 
@@ -88,7 +93,7 @@ export function buildTrustStructuredData({
           height: 512,
         },
         description: SITE_DESCRIPTION,
-        email: "shanmukhsain@gmail.com",
+        email: PUBLIC_EMAILS.hello,
       },
       {
         "@type": "BreadcrumbList",

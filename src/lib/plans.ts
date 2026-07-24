@@ -1,3 +1,5 @@
+import { PUBLIC_EMAILS } from "./site";
+
 export type PlanId = "workspace" | "design-partner" | "scale";
 
 export type LaunchPlan = {
@@ -12,7 +14,7 @@ export type LaunchPlan = {
   featured?: boolean;
 };
 
-const pilotEmail = "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20Feedback-to-Fix%20Design%20Partner%20Pilot";
+const pilotEmail = `mailto:${PUBLIC_EMAILS.hello}?subject=CloseSpan%20Feedback-to-Fix%20Design%20Partner%20Pilot`;
 
 export const launchPlans: readonly LaunchPlan[] = [
   {

@@ -4,6 +4,7 @@ import {
   buildTrustMetadata,
   buildTrustStructuredData,
 } from "@/lib/TrustPublicSeo";
+import { PUBLIC_EMAILS } from "@/lib/site";
 
 const title = "CloseSpan GitHub Integration | Current Engineering Workflow";
 const description =
@@ -93,7 +94,7 @@ export default function GithubIntegrationPage() {
       relatedLinks={[
         {
           label: "Discuss GitHub workflow",
-          href: "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20GitHub%20workflow",
+          href: `mailto:${PUBLIC_EMAILS.support}?subject=CloseSpan%20GitHub%20workflow`,
         },
         { label: "Zendesk", href: "/integrations/zendesk" },
         { label: "Intercom", href: "/integrations/intercom" },

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Menu } from "lucide-react";
 import { CloseSpanLogo } from "@/components/closespan-logo";
+import { PUBLIC_EMAILS } from "@/lib/site";
 import styles from "./TrustPublicPage.module.css";
 
 export interface TrustPageSection {
@@ -27,7 +28,7 @@ interface TrustPublicPageProps {
 }
 
 const defaultRelatedLinks = [
-  { label: "Apply for a pilot", href: "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20Design%20Partner%20Pilot" },
+  { label: "Apply for a pilot", href: `mailto:${PUBLIC_EMAILS.hello}?subject=CloseSpan%20Design%20Partner%20Pilot` },
   { label: "About", href: "/about" },
   { label: "Security", href: "/security" },
 ] as const;

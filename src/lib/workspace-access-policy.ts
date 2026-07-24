@@ -1,4 +1,5 @@
 import { normalizeMembershipEmail } from "./organization-repository";
+import { PUBLIC_EMAILS } from "./site";
 
 export const PRIVATE_BETA_OWNER_EMAIL = "shanmukhsain@gmail.com";
 
@@ -30,5 +31,5 @@ export function founderInquiryEmailUrl(email: string): string {
     "Thanks,",
   ].join("\n");
 
-  return `mailto:${PRIVATE_BETA_OWNER_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return `mailto:${PUBLIC_EMAILS.hello}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }

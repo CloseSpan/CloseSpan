@@ -4,6 +4,7 @@ import {
   buildTrustMetadata,
   buildTrustStructuredData,
 } from "@/lib/TrustPublicSeo";
+import { PUBLIC_EMAILS } from "@/lib/site";
 
 const title = "CloseSpan Security | Access, Data, and AI Controls";
 const description =
@@ -58,11 +59,11 @@ export default function SecurityPage() {
         {
           heading: "Actions, auditability, and current limitations",
           paragraphs: [
-            "Workflow mutations use request validation, tenant checks, idempotency keys, and audit records. The current GitHub external-work-item path is simulated, not a live GitHub issue or pull-request action.",
+            "Workflow mutations use request validation, tenant checks, idempotency keys, and audit records. Anonymous public feature-request submissions and votes also require server-verified Cloudflare Turnstile tokens, while voting retains its one-vote-per-network-address control. The current GitHub external-work-item path is simulated, not a live GitHub issue or pull-request action.",
             "Production gates that remain open include database row-level security, complete retention and deletion workflows, production audit export, background connector workers, and provider-specific imports beyond the current Zendesk manual pull. These gaps should be resolved before broad use with sensitive customer data.",
           ],
           details: [
-            { term: "Implemented", description: "Google identity, membership checks, tenant-scoped queries, Pipedream-hosted authorization, redaction, encrypted AI keys, and audit events" },
+            { term: "Implemented", description: "Google identity, membership checks, tenant-scoped queries, Pipedream-hosted authorization, Turnstile protection for anonymous requests, redaction, encrypted AI keys, and audit events" },
             { term: "Not claimed", description: "SOC 2, ISO 27001, HIPAA, PCI DSS, or independent penetration-test certification" },
             { term: "Still required", description: "RLS defense in depth, complete lifecycle controls, worker hardening, and broader connector verification" },
           ],
@@ -70,7 +71,7 @@ export default function SecurityPage() {
         {
           heading: "Report a security concern",
           paragraphs: [
-            "Send a concise report to shanmukhsain@gmail.com with the affected URL, reproduction steps, observed impact, and a safe proof of concept. Do not include live credentials or private customer records. No public bug-bounty program or guaranteed response time is currently offered.",
+            `Send a concise report to ${PUBLIC_EMAILS.security} with the affected URL, reproduction steps, observed impact, and a safe proof of concept. Do not include live credentials or private customer records. No public bug-bounty program or guaranteed response time is currently offered.`,
           ],
         },
       ]}
@@ -89,7 +90,7 @@ export default function SecurityPage() {
       relatedLinks={[
         {
           label: "Report a concern",
-          href: "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20security%20report",
+          href: `mailto:${PUBLIC_EMAILS.security}?subject=CloseSpan%20security%20report`,
         },
         { label: "Privacy", href: "/privacy" },
         { label: "Contact", href: "/contact" },

@@ -7,10 +7,8 @@ import { AccessRequestEmail } from "@/components/access-request-email";
 import { CloseSpanLogo } from "@/components/closespan-logo";
 import { ensureWorkspaceAccessWaitlistEntry } from "@/lib/access-waitlist-repository";
 import { resolveWorkspaceAccess } from "@/lib/auth-user";
-import {
-  founderInquiryEmailUrl,
-  PRIVATE_BETA_OWNER_EMAIL,
-} from "@/lib/workspace-access-policy";
+import { PUBLIC_EMAILS } from "@/lib/site";
+import { founderInquiryEmailUrl } from "@/lib/workspace-access-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +75,7 @@ export default async function WaitlistPage() {
 
         <div className="login-denied-actions">
           <AccessRequestEmail
-            adminEmail={PRIVATE_BETA_OWNER_EMAIL}
+            adminEmail={PUBLIC_EMAILS.hello}
             mailtoUrl={founderInquiryEmailUrl(access.email)}
           />
           <form action={signOutCurrentUser}>

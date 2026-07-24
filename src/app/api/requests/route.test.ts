@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { HttpError } from "@/lib/request-security";
+
+const turnstile = vi.hoisted(() => ({ verify: vi.fn() }));
+
+vi.mock("@/lib/turnstile", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/turnstile")>();
+  return { ...actual, verifyTurnstileToken: turnstile.verify };
+});
+
 import {
   publishFeatureRequestForTests,
   resetFeatureRequestStoreForTests,
@@ -28,7 +37,13 @@ function publicRequest(
           : {}),
       "x-test-client-ip": options.ip ?? "203.0.113.10",
     },
-    ...(method === "POST" ? { body: JSON.stringify(options.body ?? {}) } : {}),
+    ...(method === "POST"
+      ? {
+          body: JSON.stringify(
+            options.body ?? { turnstileToken: "test-turnstile-token" },
+          ),
+        }
+      : {}),
   });
 }
 
@@ -41,7 +56,7 @@ async function create(
     publicRequest("http://localhost/api/requests", {
       method: "POST",
       ip,
-      body: { title, description },
+      body: { title, description, turnstileToken: "test-turnstile-token" },
     }),
   );
   const body = await response.json();
@@ -63,6 +78,7 @@ beforeEach(() => {
     "test-feature-request-secret-that-is-long-enough",
   );
   resetFeatureRequestStoreForTests();
+  turnstile.verify.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -97,6 +113,40 @@ describe("public feature requests API", () => {
     expect(board.headers.get("Cache-Control")).toContain("no-store");
   });
 
+  it("requires and verifies a Turnstile token before accepting a submission", async () => {
+    const missing = await POST(
+      publicRequest("http://localhost/api/requests", {
+        method: "POST",
+        body: {
+          title: "Protect the public request form",
+          description: "Reject automated submissions before storing them.",
+        },
+      }),
+    );
+
+    expect(missing.status).toBe(400);
+    expect(turnstile.verify).not.toHaveBeenCalled();
+
+    turnstile.verify.mockRejectedValueOnce(
+      new HttpError(403, "Security verification failed. Try again."),
+    );
+    const rejected = await create("Reject an invalid challenge");
+
+    expect(rejected.response.status).toBe(403);
+    expect(turnstile.verify).toHaveBeenCalledWith(
+      "test-turnstile-token",
+      "feature_request_submit",
+      "203.0.113.10",
+    );
+
+    const board = await GET(
+      publicRequest("http://localhost/api/requests", {
+        ip: "203.0.113.10",
+      }),
+    );
+    expect((await board.json()).requests).toHaveLength(0);
+  });
+
   it("counts only one vote for the same IP and request", async () => {
     const created = await createPublished("Show release verification trends");
     const requestId = created.requestId;
@@ -129,6 +179,11 @@ describe("public feature requests API", () => {
       voteCount: 1,
       viewerHasVoted: true,
     });
+    expect(turnstile.verify).toHaveBeenCalledWith(
+      "test-turnstile-token",
+      "feature_request_vote",
+      "203.0.113.11",
+    );
   });
 
   it("does not expose pending requests through the vote endpoint", async () => {
@@ -143,6 +198,29 @@ describe("public feature requests API", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  it("does not record a vote when Turnstile rejects the token", async () => {
+    const created = await createPublished("Verify voters before recording");
+    turnstile.verify.mockRejectedValueOnce(
+      new HttpError(403, "Security verification failed. Try again."),
+    );
+
+    const response = await vote(
+      publicRequest(
+        `http://localhost/api/requests/${created.requestId}/vote`,
+        { method: "POST", ip: "203.0.113.31" },
+      ),
+      { params: Promise.resolve({ requestId: created.requestId }) },
+    );
+
+    expect(response.status).toBe(403);
+    const board = await GET(
+      publicRequest("http://localhost/api/requests", {
+        ip: "203.0.113.31",
+      }),
+    );
+    expect((await board.json()).requests[0].voteCount).toBe(0);
   });
 
   it("rate-limits repeated vote attempts across the shared store", async () => {
@@ -217,13 +295,18 @@ describe("public feature requests API", () => {
         body: {
           title: "A valid-looking request",
           description: "This request should still be rejected by origin.",
+          turnstileToken: "test-turnstile-token",
         },
       }),
     );
     const invalid = await POST(
       publicRequest("http://localhost/api/requests", {
         method: "POST",
-        body: { title: "x", description: "short" },
+        body: {
+          title: "x",
+          description: "short",
+          turnstileToken: "test-turnstile-token",
+        },
       }),
     );
 

@@ -4,6 +4,7 @@ import {
   buildTrustMetadata,
   buildTrustStructuredData,
 } from "@/lib/TrustPublicSeo";
+import { PUBLIC_EMAILS } from "@/lib/site";
 
 const title = "CloseSpan Intercom Integration | Current Connection Status";
 const description =
@@ -92,7 +93,7 @@ export default function IntercomIntegrationPage() {
       relatedLinks={[
         {
           label: "Discuss the connector",
-          href: "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20Intercom%20connector",
+          href: `mailto:${PUBLIC_EMAILS.support}?subject=CloseSpan%20Intercom%20connector`,
         },
         { label: "Zendesk", href: "/integrations/zendesk" },
         { label: "GitHub", href: "/integrations/github" },

@@ -4,6 +4,7 @@ import {
   buildTrustMetadata,
   buildTrustStructuredData,
 } from "@/lib/TrustPublicSeo";
+import { PUBLIC_EMAILS } from "@/lib/site";
 
 const title = "CloseSpan Terms of Use | Website and Product Access";
 const description =
@@ -86,7 +87,7 @@ export default function TermsPage() {
         {
           heading: "Contact and updates",
           paragraphs: [
-            "Questions about these terms can be sent to shanmukhsain@gmail.com. Terms may be updated as the product and business arrangements change. Continued use after revised terms are published means the revised terms apply, subject to any controlling signed agreement.",
+            `Questions about these terms can be sent to ${PUBLIC_EMAILS.hello}. Terms may be updated as the product and business arrangements change. Continued use after revised terms are published means the revised terms apply, subject to any controlling signed agreement.`,
           ],
         },
       ]}
@@ -94,7 +95,7 @@ export default function TermsPage() {
         { label: "Effective", value: "July 22, 2026" },
         { label: "Applies to", value: "Website and unsigned product access" },
         { label: "Signed agreement", value: "Controls when terms conflict" },
-        { label: "Contact", value: "shanmukhsain@gmail.com" },
+        { label: "Contact", value: PUBLIC_EMAILS.hello },
       ]}
       notice={{
         title: "Early product",
@@ -105,7 +106,7 @@ export default function TermsPage() {
       relatedLinks={[
         {
           label: "Discuss a pilot",
-          href: "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20pilot%20terms",
+          href: `mailto:${PUBLIC_EMAILS.hello}?subject=CloseSpan%20pilot%20terms`,
         },
         { label: "Privacy", href: "/privacy" },
         { label: "Security", href: "/security" },

@@ -2166,6 +2166,21 @@ p { margin:0; line-height:1.55; }
   font-size:11px;
   line-height:1.55;
 }
+.turnstile-challenge {
+  width:100%;
+  min-width:0;
+}
+.turnstile-challenge iframe { max-width:100%; }
+.turnstile-unavailable {
+  margin:0;
+  padding:11px 13px;
+  border:1px solid rgba(255,111,145,.3);
+  border-radius:10px;
+  background:rgba(129,36,58,.15);
+  color:#ffb7c8;
+  font-size:12px;
+  line-height:1.5;
+}
 .feature-request-new,
 .feature-request-primary {
   display:inline-flex;
@@ -2279,7 +2294,7 @@ p { margin:0; line-height:1.55; }
   box-shadow:0 0 0 3px rgba(117,108,255,.12);
 }
 .feature-request-dialog form>p { color:#717a8a; font-size:11px; line-height:1.55; }
-.feature-request-dialog form>div {
+.feature-request-dialog form>.feature-request-actions {
   display:flex;
   justify-content:flex-end;
   gap:10px;

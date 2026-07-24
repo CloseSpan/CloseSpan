@@ -6,13 +6,13 @@ describe("AccessRequestEmail", () => {
   it("renders an explicit founder email action without automatic navigation", () => {
     const html = renderToStaticMarkup(
       <AccessRequestEmail
-        adminEmail="shanmukhsain@gmail.com"
-        mailtoUrl="mailto:shanmukhsain@gmail.com?subject=CloseSpan"
+        adminEmail="hello@closespan.com"
+        mailtoUrl="mailto:hello@closespan.com?subject=CloseSpan"
       />,
     );
 
     expect(html).toContain("Email the founder");
-    expect(html).toContain("mailto:shanmukhsain@gmail.com?subject=CloseSpan");
+    expect(html).toContain("mailto:hello@closespan.com?subject=CloseSpan");
     expect(html).toContain("You can add your question before sending it.");
     expect(html).not.toContain("script");
   });

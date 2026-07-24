@@ -18,6 +18,7 @@ import { CloseSpanLogo } from "@/components/closespan-logo";
 import { launchPlans, launchPricingNote } from "@/lib/plans";
 import {
   LANDING_FAQS,
+  PUBLIC_EMAILS,
   SITE_ALTERNATE_NAMES,
   SITE_DESCRIPTION,
   SITE_NAME,
@@ -159,7 +160,7 @@ export const structuredData = {
 };
 
 const pilotHref =
-  "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20Design%20Partner%20Pilot";
+  `mailto:${PUBLIC_EMAILS.hello}?subject=CloseSpan%20Design%20Partner%20Pilot`;
 const workspaceLoginHref = "/login?callbackUrl=%2Foverview";
 
 const integrations = [

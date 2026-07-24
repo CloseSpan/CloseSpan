@@ -19,6 +19,7 @@ import {
   SITE_NAME,
   SITE_URL,
 } from "@/lib/site";
+import { turnstileSiteKey } from "@/lib/turnstile";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,7 @@ export default async function FeatureRequestsPage() {
         initialPendingRequests={pendingRequests}
         canModerate={canModerate}
         initialError={initialError}
+        turnstileSiteKey={turnstileSiteKey()}
       />
     </div>
   );

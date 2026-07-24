@@ -7,6 +7,7 @@ import sitemap from "./sitemap";
 import {
   LANDING_FAQS,
   PRIVATE_APP_PATHS,
+  PUBLIC_EMAILS,
   PUBLIC_DISCOVERY_PATHS,
   PUBLIC_INDEXABLE_PATHS,
   SITE_ALTERNATE_NAMES,
@@ -24,6 +25,12 @@ describe("public search metadata", () => {
     expect(homeMetadata.title).toEqual({ absolute: SITE_TITLE });
     expect(homeMetadata.description).toBe(SITE_DESCRIPTION);
     expect(homeMetadata.alternates).toEqual({ canonical: "/" });
+    expect(PUBLIC_EMAILS).toEqual({
+      hello: "hello@closespan.com",
+      support: "support@closespan.com",
+      security: "security@closespan.com",
+      privacy: "privacy@closespan.com",
+    });
     expect(sitemap()).toEqual(
       PUBLIC_INDEXABLE_PATHS.map((path) => ({
         url: path === "/" ? `${SITE_URL}/` : `${SITE_URL}${path}`,

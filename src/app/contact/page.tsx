@@ -4,6 +4,7 @@ import {
   buildTrustMetadata,
   buildTrustStructuredData,
 } from "@/lib/TrustPublicSeo";
+import { PUBLIC_EMAILS } from "@/lib/site";
 
 const title = "Contact CloseSpan | Pilots, Product, and Security";
 const description =
@@ -37,7 +38,7 @@ export default function ContactPage() {
             "A useful pilot begins with one recurring customer problem, one or two evidence sources, the people who review product decisions, and a measurable outcome. Include your current workflow, the tools involved, and the part that consumes the most manual effort.",
           ],
           details: [
-            { term: "Email", description: "shanmukhsain@gmail.com" },
+            { term: "Email", description: PUBLIC_EMAILS.hello },
             { term: "Suggested subject", description: "CloseSpan design-partner pilot" },
             { term: "Helpful context", description: "Team size, feedback sources, workflow owner, and a representative problem" },
           ],
@@ -47,6 +48,9 @@ export default function ContactPage() {
           paragraphs: [
             "If you need a connector that is not listed, describe the system, authentication method, records you need imported, and whether CloseSpan would read data or perform an approved write. Connector authorization and data synchronization are separate capabilities, so please identify both needs.",
           ],
+          details: [
+            { term: "Support email", description: PUBLIC_EMAILS.support },
+          ],
         },
         {
           heading: "Security and privacy reports",
@@ -54,10 +58,14 @@ export default function ContactPage() {
             "For a suspected vulnerability or privacy concern, include the affected URL, observed behavior, reproduction steps, and potential impact. Do not send access tokens, passwords, private customer content, or destructive proof of concept material by email.",
             "CloseSpan does not currently publish a guaranteed response or remediation time. Reports are reviewed directly and handled according to severity and available evidence.",
           ],
+          details: [
+            { term: "Security reports", description: PUBLIC_EMAILS.security },
+            { term: "Privacy requests", description: PUBLIC_EMAILS.privacy },
+          ],
         },
       ]}
       facts={[
-        { label: "Contact", value: "shanmukhsain@gmail.com" },
+        { label: "Contact", value: PUBLIC_EMAILS.hello },
         { label: "Best for", value: "Pilots, connectors, trust, and product questions" },
         { label: "Do not send", value: "Passwords, tokens, or private customer data" },
       ]}
@@ -70,7 +78,7 @@ export default function ContactPage() {
       relatedLinks={[
         {
           label: "Email CloseSpan",
-          href: "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20product%20question",
+          href: `mailto:${PUBLIC_EMAILS.hello}?subject=CloseSpan%20product%20question`,
         },
         { label: "Security", href: "/security" },
         { label: "Privacy", href: "/privacy" },

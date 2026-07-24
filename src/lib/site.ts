@@ -5,6 +5,13 @@ export const SITE_TITLE =
 export const SITE_DESCRIPTION =
   "CloseSpan turns B2B SaaS customer feedback into prioritized product problems, engineering-ready evidence, approved actions, and verified fixes.";
 
+export const PUBLIC_EMAILS = {
+  hello: "hello@closespan.com",
+  support: "support@closespan.com",
+  security: "security@closespan.com",
+  privacy: "privacy@closespan.com",
+} as const;
+
 export const SITE_ALTERNATE_NAMES = [
   "CloseSpan AI",
   "closespan.com",

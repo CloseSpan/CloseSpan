@@ -11,11 +11,13 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import type {
   FeatureRequestSubmission,
   FeatureRequestStatus,
   PublicFeatureRequest,
 } from "@/lib/feature-request-repository";
+import { TURNSTILE_ACTIONS } from "@/lib/turnstile-config";
 
 const groups: Array<{
   status: FeatureRequestStatus;
@@ -65,11 +67,13 @@ export function FeatureRequestsBoard({
   initialPendingRequests = [],
   canModerate = false,
   initialError,
+  turnstileSiteKey,
 }: {
   initialRequests: PublicFeatureRequest[];
   initialPendingRequests?: FeatureRequestSubmission[];
   canModerate?: boolean;
   initialError?: string;
+  turnstileSiteKey: string;
 }) {
   const [requests, setRequests] = useState(initialRequests);
   const [pendingRequests, setPendingRequests] = useState(
@@ -81,11 +85,30 @@ export function FeatureRequestsBoard({
     new Set(),
   );
   const [submitting, setSubmitting] = useState(false);
+  const [voteTurnstileToken, setVoteTurnstileToken] = useState<string | null>(
+    null,
+  );
+  const [voteTurnstileResetKey, setVoteTurnstileResetKey] = useState(0);
+  const [requestTurnstileToken, setRequestTurnstileToken] = useState<
+    string | null
+  >(null);
+  const [requestTurnstileResetKey, setRequestTurnstileResetKey] = useState(0);
   const [notice, setNotice] = useState<{
     kind: "success" | "error";
     message: string;
   } | null>(initialError ? { kind: "error", message: initialError } : null);
   const titleInput = useRef<HTMLInputElement>(null);
+  const voteTurnstileTokenRef = useRef<string | null>(null);
+
+  function updateVoteTurnstileToken(token: string | null) {
+    voteTurnstileTokenRef.current = token;
+    setVoteTurnstileToken(token);
+  }
+
+  function openRequestDialog() {
+    setRequestTurnstileToken(null);
+    setDialogOpen(true);
+  }
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -99,13 +122,22 @@ export function FeatureRequestsBoard({
 
   async function vote(requestId: string) {
     if (pendingVotes.has(requestId)) return;
+    const turnstileToken = voteTurnstileTokenRef.current;
+    if (!turnstileToken) {
+      setNotice({
+        kind: "error",
+        message: "Wait for the security check to finish, then try again.",
+      });
+      return;
+    }
+    updateVoteTurnstileToken(null);
     setPendingVotes((current) => new Set(current).add(requestId));
     setNotice(null);
     try {
       const response = await fetch(`/api/requests/${requestId}/vote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ turnstileToken }),
       });
       const body = (await response.json()) as {
         requestId?: string;
@@ -146,6 +178,7 @@ export function FeatureRequestsBoard({
             : "Your vote could not be recorded",
       });
     } finally {
+      setVoteTurnstileResetKey((current) => current + 1);
       setPendingVotes((current) => {
         const next = new Set(current);
         next.delete(requestId);
@@ -161,6 +194,16 @@ export function FeatureRequestsBoard({
     setNotice(null);
     const form = event.currentTarget;
     const data = new FormData(form);
+    const turnstileToken = requestTurnstileToken;
+    if (!turnstileToken) {
+      setSubmitting(false);
+      setNotice({
+        kind: "error",
+        message: "Wait for the security check to finish, then try again.",
+      });
+      return;
+    }
+    setRequestTurnstileToken(null);
     try {
       const response = await fetch("/api/requests", {
         method: "POST",
@@ -168,6 +211,7 @@ export function FeatureRequestsBoard({
         body: JSON.stringify({
           title: String(data.get("title") ?? ""),
           description: String(data.get("description") ?? ""),
+          turnstileToken,
         }),
       });
       const body = (await response.json()) as {
@@ -196,6 +240,7 @@ export function FeatureRequestsBoard({
             : "Your request could not be submitted",
       });
     } finally {
+      setRequestTurnstileResetKey((current) => current + 1);
       setSubmitting(false);
     }
   }
@@ -296,6 +341,15 @@ export function FeatureRequestsBoard({
           </div>
         )}
 
+        {requests.some((request) => request.votingOpen) && (
+          <TurnstileWidget
+            siteKey={turnstileSiteKey}
+            action={TURNSTILE_ACTIONS.featureRequestVote}
+            resetKey={voteTurnstileResetKey}
+            onTokenChange={updateVoteTurnstileToken}
+          />
+        )}
+
         {canModerate && pendingRequests.length > 0 && (
           <section
             className="feature-request-review-queue"
@@ -369,7 +423,7 @@ export function FeatureRequestsBoard({
             <button
               className="feature-request-primary"
               type="button"
-              onClick={() => setDialogOpen(true)}
+              onClick={openRequestDialog}
             >
               <Plus aria-hidden="true" size={16} /> New request
             </button>
@@ -416,6 +470,7 @@ export function FeatureRequestsBoard({
                           aria-pressed={request.viewerHasVoted}
                           disabled={
                             voting ||
+                            !voteTurnstileToken ||
                             request.viewerHasVoted ||
                             !request.votingOpen
                           }
@@ -450,7 +505,7 @@ export function FeatureRequestsBoard({
       <button
         className="feature-request-new"
         type="button"
-        onClick={() => setDialogOpen(true)}
+        onClick={openRequestDialog}
       >
         <Plus aria-hidden="true" size={17} /> New request
       </button>
@@ -503,12 +558,18 @@ export function FeatureRequestsBoard({
                   placeholder="Describe the workflow, pain point, and outcome you need."
                 />
               </label>
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                action={TURNSTILE_ACTIONS.featureRequestSubmit}
+                resetKey={requestTurnstileResetKey}
+                onTokenChange={setRequestTurnstileToken}
+              />
               <p>
                 CloseSpan reviews submissions before they appear publicly.
                 Avoid customer data, credentials, or other sensitive
                 information.
               </p>
-              <div>
+              <div className="feature-request-actions">
                 <button
                   type="button"
                   className="feature-request-secondary"
@@ -519,7 +580,7 @@ export function FeatureRequestsBoard({
                 <button
                   type="submit"
                   className="feature-request-primary"
-                  disabled={submitting}
+                  disabled={submitting || !requestTurnstileToken}
                 >
                   {submitting ? (
                     <LoaderCircle

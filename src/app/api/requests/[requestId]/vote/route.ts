@@ -8,6 +8,7 @@ import {
 import {
   featureRequestRateLimitIdentity,
   featureRequestVoteHash,
+  publicClientIp,
   readPublicJson,
 } from "@/lib/feature-request-security";
 import {
@@ -15,11 +16,15 @@ import {
   HttpError,
   noStoreHeaders,
 } from "@/lib/request-security";
+import { TURNSTILE_ACTIONS } from "@/lib/turnstile-config";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const emptyBodySchema = z.object({}).strict();
+const voteBodySchema = z
+  .object({ turnstileToken: z.string().trim().min(1).max(2048) })
+  .strict();
 const requestIdSchema = z.string().uuid();
 
 export async function POST(
@@ -30,8 +35,14 @@ export async function POST(
     const { requestId: rawRequestId } = await context.params;
     const requestId = requestIdSchema.safeParse(rawRequestId);
     if (!requestId.success) throw new HttpError(404, "Request not found");
-    const body = emptyBodySchema.safeParse(await readPublicJson(request));
+    const body = voteBodySchema.safeParse(await readPublicJson(request));
     if (!body.success) throw new HttpError(400, "Vote details are invalid");
+
+    await verifyTurnstileToken(
+      body.data.turnstileToken,
+      TURNSTILE_ACTIONS.featureRequestVote,
+      publicClientIp(request.headers),
+    );
 
     await consumeFeatureRequestRateLimit(
       "vote",

@@ -8,6 +8,7 @@ import {
 import {
   featureRequestRateLimitIdentity,
   featureRequestViewerHasher,
+  publicClientIp,
   readPublicJson,
 } from "@/lib/feature-request-security";
 import {
@@ -15,6 +16,8 @@ import {
   HttpError,
   noStoreHeaders,
 } from "@/lib/request-security";
+import { TURNSTILE_ACTIONS } from "@/lib/turnstile-config";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +26,7 @@ const createRequestSchema = z
   .object({
     title: z.string().trim().min(4).max(120),
     description: z.string().trim().min(10).max(2000),
+    turnstileToken: z.string().trim().min(1).max(2048),
   })
   .strict();
 
@@ -45,10 +49,18 @@ export async function POST(request: NextRequest) {
     if (!parsed.success)
       throw new HttpError(
         400,
-        "Add a title and a short description of the improvement",
+        "Add a title, a short description, and complete the security check",
       );
+    await verifyTurnstileToken(
+      parsed.data.turnstileToken,
+      TURNSTILE_ACTIONS.featureRequestSubmit,
+      publicClientIp(request.headers),
+    );
     const created = await createFeatureRequest(
-      parsed.data,
+      {
+        title: parsed.data.title,
+        description: parsed.data.description,
+      },
       featureRequestRateLimitIdentity(request.headers, "submit", 60 * 60),
     );
     return NextResponse.json(

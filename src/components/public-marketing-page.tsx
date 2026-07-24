@@ -8,10 +8,11 @@ import {
 } from "lucide-react";
 import { CloseSpanLogo } from "@/components/closespan-logo";
 import type { PublicSeoPage } from "@/lib/public-seo-pages";
+import { PUBLIC_EMAILS } from "@/lib/site";
 import styles from "./public-marketing-page.module.css";
 
 const pilotHref =
-  "mailto:shanmukhsain@gmail.com?subject=CloseSpan%20Design%20Partner%20Pilot";
+  `mailto:${PUBLIC_EMAILS.hello}?subject=CloseSpan%20Design%20Partner%20Pilot`;
 
 function JsonLd({ data }: { data: Record<string, unknown> }) {
   return (

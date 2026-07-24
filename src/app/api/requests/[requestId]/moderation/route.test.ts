@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+
+const turnstile = vi.hoisted(() => ({ verify: vi.fn() }));
+
+vi.mock("@/lib/turnstile", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/turnstile")>();
+  return { ...actual, verifyTurnstileToken: turnstile.verify };
+});
+
 import { resetFeatureRequestStoreForTests } from "@/lib/feature-request-repository";
 import { GET, POST as submit } from "../../route";
 import { POST as moderate } from "./route";
@@ -26,6 +34,7 @@ async function pendingRequest(title: string) {
     request("http://localhost/api/requests", {
       title,
       description: "This request should be reviewed before it is public.",
+      turnstileToken: "test-turnstile-token",
     }),
   );
   const body = await response.json();
@@ -39,6 +48,7 @@ beforeEach(() => {
     "FEATURE_REQUEST_IP_SECRET",
     "test-feature-request-secret-that-is-long-enough",
   );
+  turnstile.verify.mockReset().mockResolvedValue(undefined);
   resetFeatureRequestStoreForTests();
 });
 

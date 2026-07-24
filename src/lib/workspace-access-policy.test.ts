@@ -5,6 +5,7 @@ import {
   isPrivateBetaOwner,
   PRIVATE_BETA_OWNER_EMAIL,
 } from "./workspace-access-policy";
+import { PUBLIC_EMAILS } from "./site";
 
 describe("private beta workspace access policy", () => {
   it("allows only the founder Google identity", () => {
@@ -25,7 +26,7 @@ describe("private beta workspace access policy", () => {
   it("builds a prefilled founder inquiry for a waitlisted user", () => {
     const url = founderInquiryEmailUrl("Prospect@Example.com");
 
-    expect(url).toContain(`mailto:${PRIVATE_BETA_OWNER_EMAIL}`);
+    expect(url).toContain(`mailto:${PUBLIC_EMAILS.hello}`);
     expect(decodeURIComponent(url)).toContain(
       "CloseSpan product inquiry from prospect@example.com",
     );
