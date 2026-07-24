@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const database = vi.hoisted(() => ({
+  mode: "postgres" as "memory" | "postgres",
   pool: { query: vi.fn() },
 }));
 
 vi.mock("./db", () => ({
-  persistenceMode: () => "postgres",
+  persistenceMode: () => database.mode,
   databasePool: () => database.pool,
 }));
 
@@ -36,6 +37,7 @@ import { getWorkspaceSetupStatus } from "./integration-repository";
 
 describe("workspace setup integration compatibility", () => {
   beforeEach(() => {
+    database.mode = "postgres";
     database.pool.query.mockReset().mockImplementation((sql: string) => {
       if (sql.includes("INSERT INTO integrations")) {
         return Promise.resolve({ rows: [], rowCount: 1 });
@@ -67,6 +69,17 @@ describe("workspace setup integration compatibility", () => {
       }
       throw new Error(`Unexpected query: ${sql}`);
     });
+  });
+
+  it("reports seeded feedback as ready in memory demo mode", async () => {
+    database.mode = "memory";
+
+    const status = await getWorkspaceSetupStatus("org_demo");
+
+    expect(status.feedbackCount).toBe(5);
+    expect(status.feedbackConnected).toBe(true);
+    expect(status.setupComplete).toBe(false);
+    expect(database.pool.query).not.toHaveBeenCalled();
   });
 
   it("retries without the webhook public ID when an older schema lacks that column", async () => {

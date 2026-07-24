@@ -48,8 +48,53 @@ export function defaultOnboardingState(): OnboardingState {
   };
 }
 
+export function demoOnboardingState(): OnboardingState {
+  return {
+    phase: "complete",
+    productProfile: {
+      productName: "Northstar Analytics",
+      productUrl: "https://northstar.example",
+      productDescription:
+        "A B2B analytics platform used by operations teams to monitor customer and business performance.",
+      feedbackSources: ["Zendesk", "Intercom", "Slack"],
+      engineeringTools: ["GitHub"],
+    },
+    recommendedConnectors: [
+      {
+        integrationId: "int_zendesk",
+        provider: "Zendesk",
+        reason: "Primary source for customer support tickets.",
+        priority: "required",
+        connectionMethod: "oauth",
+      },
+      {
+        integrationId: "int_intercom",
+        provider: "Intercom",
+        reason: "Adds in-product customer conversations.",
+        priority: "recommended",
+        connectionMethod: "oauth",
+      },
+      {
+        integrationId: "int_slack",
+        provider: "Slack",
+        reason: "Captures customer-success escalations and qualitative feedback.",
+        priority: "recommended",
+        connectionMethod: "oauth",
+      },
+      {
+        integrationId: "int_github",
+        provider: "GitHub",
+        reason: "Receives approved engineering actions after human review.",
+        priority: "required",
+        connectionMethod: "oauth",
+      },
+    ],
+    messages: [],
+  };
+}
+
 export async function getOnboardingState(orgId: string): Promise<OnboardingState> {
-  if (persistenceMode() !== "postgres") return defaultOnboardingState();
+  if (persistenceMode() !== "postgres") return demoOnboardingState();
   const result = await databasePool().query<{
     phase: OnboardingPhase;
     product_profile: ProductProfile;

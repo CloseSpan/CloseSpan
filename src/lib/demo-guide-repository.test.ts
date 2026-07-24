@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { parseDemoGuideSteps } from "./demo-guide-repository";
+import {
+  demoWorkspaceGuide,
+  parseDemoGuideSteps,
+} from "./demo-guide-repository";
 
 describe("guided demo parsing", () => {
+  it("ships an internal presentation route for every demo step", () => {
+    expect(demoWorkspaceGuide.steps.length).toBeGreaterThanOrEqual(6);
+    expect(
+      demoWorkspaceGuide.steps.every(
+        (step) => step.path.startsWith("/") && !step.path.startsWith("//"),
+      ),
+    ).toBe(true);
+  });
+
   it("accepts internal presentation steps and drops malformed records", () => {
     expect(parseDemoGuideSteps([
       {

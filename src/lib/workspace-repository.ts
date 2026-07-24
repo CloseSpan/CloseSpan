@@ -4,6 +4,8 @@ import { feedback as seedFeedback, primaryProblem as seedProblem, recommendation
 import { getOverviewAnalytics } from "./overview-repository";
 import { overviewAnalytics, type OverviewAnalytics } from "./overview-analytics";
 import { getAiPublicConfiguration, type AiPublicConfiguration } from "./ai-config";
+import { integrationCatalog } from "./integration-catalog";
+import { getIntegrationExperience } from "./integration-ui";
 
 export interface IntegrationView { id: string; name: string; category: string; state: string; lastSync: string | null; dataScope: string; permissions: string[] }
 export interface InvestigationQueueItem { id: string; problemId: string; title: string; status: string }
@@ -50,7 +52,29 @@ export function createDefaultWorkspaceSettings(
   };
 }
 
-const memoryIntegrations = ["Zendesk","Intercom","Slack","Microsoft Teams","Gmail","Jira","Linear","GitHub","Salesforce","HubSpot","Sentry","Datadog","PostHog","App Store","Google Play"].map((name,index) => ({ id:`int_${index}`,name,category:index < 5 ? "Feedback" : index < 8 ? "Engineering" : "Platform",state:name === "GitHub" ? "Demo configured" : name === "Zendesk" ? "Seeded sample" : "Not connected",lastSync:null,dataScope:"None",permissions:[] }));
+const memoryIntegrations = integrationCatalog.map((entry) => {
+  const experience = getIntegrationExperience(entry);
+  const isZendesk = entry.id === "int_zendesk";
+  const isGitHub = entry.id === "int_github";
+  return {
+    id: entry.id,
+    name: entry.provider,
+    category: entry.category,
+    state: isZendesk
+      ? "Seeded sample"
+      : isGitHub
+        ? "Demo configured"
+        : "Not connected",
+    lastSync: isZendesk ? "2026-07-23T16:42:00.000Z" : null,
+    dataScope: isZendesk
+      ? "Tickets, comments, tags, and customer references"
+      : isGitHub
+        ? "Repository metadata and approved issue creation"
+        : "None",
+    permissions:
+      isZendesk || isGitHub ? [...experience.requestedPermissions] : [],
+  };
+});
 
 async function memoryData(orgId: string): Promise<WorkspaceData> {
   const analytics = overviewAnalytics;

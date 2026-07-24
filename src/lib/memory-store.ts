@@ -104,4 +104,10 @@ export function approveMemoryNotifications(orgId: string, context: ActionContext
   return state;
 }
 
-export function resetMemoryState(): void { globalStore.closespanStates = new Map(); }
+export function resetMemoryState(orgId?: string): void {
+  if (orgId) {
+    states().delete(orgId);
+    return;
+  }
+  globalStore.closespanStates = new Map();
+}

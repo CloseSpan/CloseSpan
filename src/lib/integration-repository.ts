@@ -13,6 +13,7 @@ import { databasePool, persistenceMode } from "./db";
 import { integrationCatalog } from "./integration-catalog";
 import { getAiPublicConfiguration } from "./ai-config";
 import { listPipedreamConnections } from "./pipedream-repository";
+import { feedback as seedFeedback } from "./seed";
 
 export interface WorkspaceSetupStatus {
   feedbackConnected: boolean;
@@ -190,9 +191,10 @@ export async function getWorkspaceSetupStatus(
         .filter((entry) => entry.feedbackSource)
         .map((entry) => entry.id),
     );
-    const feedbackConnected = connectedIntegrationIds.some((id) =>
-      feedbackSourceIds.has(id),
-    );
+    const feedbackCount = seedFeedback.length;
+    const feedbackConnected =
+      feedbackCount > 0 ||
+      connectedIntegrationIds.some((id) => feedbackSourceIds.has(id));
     const githubConnected = connectedIntegrationIds.includes("int_github");
     const aiConfigured =
       aiConfig.configured &&
@@ -202,7 +204,7 @@ export async function getWorkspaceSetupStatus(
       feedbackConnected,
       aiConfigured,
       githubConnected,
-      feedbackCount: 0,
+      feedbackCount,
       setupComplete: feedbackConnected && aiConfigured && githubConnected,
       connectedIntegrationIds,
     };
