@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { databasePool, persistenceMode, transaction } from "./db";
+import { databasePool, transaction } from "./db";
 import type { RequestContext } from "./request-security";
 import type { AiProvider } from "./ai-config";
 import type { AiAnalysisResult, AiFeedbackInput, AiProblemCandidate } from "./ai-provider";
+import {
+  requirePostgresWorkspace,
+  workspacePersistenceMode,
+} from "./workspace-persistence";
 
 export interface FeedbackPromptVersion {
   id: string;
@@ -33,7 +37,7 @@ export type StoredFeedbackAnalysis = AiAnalysisResult["analyses"][number] & {
 export async function listLatestFeedbackAnalyses(
   orgId: string,
 ): Promise<StoredFeedbackAnalysis[]> {
-  if (persistenceMode() !== "postgres") return [];
+  if (workspacePersistenceMode(orgId) !== "postgres") return [];
   const result = await databasePool().query<{
     feedback_id: string;
     classification: AiAnalysisResult["analyses"][number]["classification"];
@@ -91,7 +95,7 @@ export type ModelRunReservation =
   | { kind: "failed"; message: string };
 
 export async function getFeedbackAnalysisContext(orgId: string, feedbackIds: string[]): Promise<FeedbackAnalysisContext> {
-  if (persistenceMode() !== "postgres") throw new Error("PostgreSQL persistence is required for durable AI analysis");
+  requirePostgresWorkspace(orgId, "Durable AI analysis");
   const pool = databasePool();
   const [promptResult, feedbackResult, problemResult] = await Promise.all([
     pool.query<{ id:string; name:string; version:number; system_prompt:string }>(
@@ -126,6 +130,7 @@ export async function reserveModelRun(input: {
   idempotencyKey: string;
   feedbackIds: string[];
 }): Promise<ModelRunReservation> {
+  requirePostgresWorkspace(input.orgId, "Durable AI analysis");
   const pool = databasePool();
   const existing = await pool.query<{ id:string; status:string; provider:AiProvider; model:string; output:unknown; error_message:string|null }>(
     "SELECT id,status,provider,model,output,error_message FROM model_runs WHERE org_id=$1 AND idempotency_key=$2",
@@ -152,6 +157,7 @@ export async function completeModelRun(input: {
   result: AiAnalysisResult;
   context: RequestContext;
 }): Promise<StoredAiRun> {
+  requirePostgresWorkspace(input.orgId, "Durable AI analysis");
   await transaction(async (client) => {
     for (const analysis of input.result.analyses) {
       await client.query(
@@ -182,6 +188,7 @@ export async function completeModelRun(input: {
 }
 
 export async function failModelRun(orgId: string, runId: string, error: unknown): Promise<void> {
+  requirePostgresWorkspace(orgId, "Durable AI analysis");
   const safeMessage = error instanceof Error ? error.message.slice(0,500) : "The AI request failed";
   const code = error instanceof Error ? error.name.slice(0,100) : "UnknownError";
   await databasePool().query(

@@ -528,3 +528,31 @@
     justify-content: flex-start;
   }
 }
+
+/* CloseSpan neumorphic layer for trust and legal pages. */
+.page { background: #edf1f7; }
+
+.header {
+  background: #0d1426;
+  box-shadow: 0 9px 20px #060a14, -4px -4px 12px rgba(34, 45, 76, .42);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.mobileMenu nav,
+.details,
+.detail,
+.asideCard,
+.notice {
+  border-color: rgba(255, 255, 255, .68);
+  background: #f1f4f9;
+  box-shadow: 9px 9px 22px rgba(150, 160, 181, .38), -9px -9px 22px rgba(255, 255, 255, .9);
+}
+
+.related {
+  border-color: rgba(255, 255, 255, .06);
+  background: #0d1426;
+  box-shadow: 11px 11px 26px rgba(142, 152, 174, .3), -10px -10px 24px rgba(255, 255, 255, .72);
+}
+
+.footer { background: #edf1f7; }

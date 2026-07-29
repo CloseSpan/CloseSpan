@@ -6,8 +6,9 @@ import {
   type AiPublicConfiguration,
 } from "./ai-config";
 import { encryptCredential } from "./credential-crypto";
-import { databasePool, persistenceMode, transaction } from "./db";
+import { databasePool, transaction } from "./db";
 import type { RequestContext } from "./request-security";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 export class AiConfigurationPersistenceError extends Error {}
 
@@ -18,7 +19,7 @@ export async function saveAiConfiguration(input: {
   apiKey?: string;
   context: RequestContext;
 }): Promise<AiPublicConfiguration> {
-  if (persistenceMode() !== "postgres")
+  if (workspacePersistenceMode(input.orgId) !== "postgres")
     throw new AiConfigurationPersistenceError(
       "PostgreSQL persistence is required to store AI credentials",
     );
@@ -88,7 +89,7 @@ export async function removeStoredAiCredential(
   orgId: string,
   context: RequestContext,
 ): Promise<AiPublicConfiguration> {
-  if (persistenceMode() !== "postgres")
+  if (workspacePersistenceMode(orgId) !== "postgres")
     throw new AiConfigurationPersistenceError(
       "PostgreSQL persistence is required to store AI credentials",
     );

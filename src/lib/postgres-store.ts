@@ -173,7 +173,32 @@ export function advancePostgresLifecycle(orgId: string, context: ActionContext) 
       throw new WorkflowConflictError(
         "The problem cannot advance from its current stage",
       );
+    if (nextStage === "Verified") {
+      const specification = await client.query<{ id: string; revision: number }>(
+        "SELECT id,revision FROM engineering_ticket_specifications WHERE org_id=$1 AND problem_id=$2",
+        [orgId, target.problemId],
+      );
+      if (specification.rows[0]) {
+        const verification = await client.query(
+          `SELECT 1 FROM engineering_release_verifications
+            WHERE org_id=$1 AND problem_id=$2 AND specification_id=$3
+              AND specification_revision=$4 AND status='Passed'
+            ORDER BY verified_at DESC LIMIT 1`,
+          [orgId, target.problemId, specification.rows[0].id, specification.rows[0].revision],
+        );
+        if (!verification.rowCount)
+          throw new WorkflowConflictError(
+            "Verified requires passing release evidence for the current engineering specification",
+          );
+      }
+    }
     await client.query("UPDATE product_problems SET stage=$3,updated_at=now() WHERE org_id=$1 AND id=$2", [orgId,target.problemId,nextStage]);
+    if (nextStage === "Released" || nextStage === "Verified") {
+      await client.query(
+        "UPDATE engineering_ticket_specifications SET implementation_state=$3,updated_at=now() WHERE org_id=$1 AND problem_id=$2",
+        [orgId, target.problemId, nextStage],
+      );
+    }
     if (nextStage === "Verified") {
       const customers = await client.query<{ customer_name:string }>(`SELECT DISTINCT f.customer_name
         FROM feedback_cluster_memberships membership

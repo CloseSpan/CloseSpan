@@ -5,13 +5,15 @@ import {
   Check,
   ChevronsUpDown,
   LoaderCircle,
+  Pencil,
   Plus,
   X,
 } from "lucide-react";
-import { useActionState, useId, useRef } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
   createOrganizationAction,
+  renameOrganizationAction,
   switchOrganizationAction,
 } from "@/app/organization-actions";
 
@@ -105,17 +107,131 @@ function CreateOrganizationButton() {
   );
 }
 
+function RenameWorkspaceButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      className="btn primary organization-rename-submit"
+      type="submit"
+      disabled={pending}
+    >
+      {pending ? (
+        <LoaderCircle className="spin" size={16} aria-hidden="true" />
+      ) : (
+        <Pencil size={16} aria-hidden="true" />
+      )}
+      {pending ? "Saving…" : "Save workspace name"}
+    </button>
+  );
+}
+
+function RenameWorkspaceDialog({
+  organizationName,
+  onClose,
+}: {
+  organizationName: string;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  const [renameState, renameFormAction] = useActionState(
+    renameOrganizationAction,
+    { error: null, success: false },
+  );
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    const focusFrame = window.requestAnimationFrame(() => {
+      nameRef.current?.focus();
+      nameRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, []);
+
+  useEffect(() => {
+    if (renameState.success) dialogRef.current?.close();
+  }, [renameState.success]);
+
+  function closeDialog(): void {
+    dialogRef.current?.close();
+  }
+
+  return (
+    <dialog
+      className="organization-create-dialog organization-rename-dialog"
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      onClose={onClose}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) closeDialog();
+      }}
+    >
+      <div className="organization-create-panel">
+        <header className="organization-create-head">
+          <div>
+            <span className="eyebrow">Workspace settings</span>
+            <h2 id={titleId}>Rename workspace</h2>
+            <p className="subtle" id={descriptionId}>
+              This name appears throughout CloseSpan for everyone in this workspace.
+            </p>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Close rename workspace form"
+            onClick={closeDialog}
+          >
+            <X size={19} aria-hidden="true" />
+          </button>
+        </header>
+        <form className="organization-create-form" action={renameFormAction}>
+          <label className="field">
+            Workspace name
+            <input
+              name="workspaceName"
+              type="text"
+              autoComplete="organization"
+              maxLength={120}
+              required
+              defaultValue={organizationName}
+              ref={nameRef}
+            />
+          </label>
+          {renameState.error && (
+            <p className="toast error" role="alert">
+              {renameState.error}
+            </p>
+          )}
+          <div className="organization-create-actions">
+            <button className="btn" type="button" onClick={closeDialog}>
+              Cancel
+            </button>
+            <RenameWorkspaceButton />
+          </div>
+        </form>
+      </div>
+    </dialog>
+  );
+}
+
 export function OrganizationSwitcher({
   organizations,
   activeOrganizationId,
+  canRenameWorkspace,
   variant = "sidebar",
 }: {
   organizations: OrganizationSwitcherItem[];
   activeOrganizationId: string;
+  canRenameWorkspace: boolean;
   variant?: OrganizationSwitcherVariant;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const organizationNameRef = useRef<HTMLInputElement>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const titleId = useId();
   const descriptionId = useId();
   const [createState, createFormAction] = useActionState(
@@ -125,6 +241,8 @@ export function OrganizationSwitcher({
   const activeOrganization =
     organizations.find((organization) => organization.id === activeOrganizationId) ??
     organizations[0];
+  const renameAllowed =
+    canRenameWorkspace && activeOrganization?.role === "Admin";
 
   function openCreateDialog(): void {
     dialogRef.current?.showModal();
@@ -227,12 +345,33 @@ export function OrganizationSwitcher({
     </dialog>
   );
 
+  const renameDialog =
+    renameAllowed && renameOpen && activeOrganization ? (
+      <RenameWorkspaceDialog
+        organizationName={activeOrganization.name}
+        onClose={() => setRenameOpen(false)}
+      />
+    ) : null;
+
   if (variant === "mobile") {
     return (
       <section className="mobile-organizations" aria-labelledby={`${titleId}-mobile`}>
         <div className="mobile-organizations-head">
-          <span id={`${titleId}-mobile`}>Organizations</span>
-          <small>Independent workspaces</small>
+          <span className="mobile-organizations-copy">
+            <span id={`${titleId}-mobile`}>Organizations</span>
+            <small>Independent workspaces</small>
+          </span>
+          {renameAllowed && activeOrganization && (
+            <button
+              className="organization-rename-mobile"
+              type="button"
+              aria-label={`Rename workspace ${activeOrganization.name}`}
+              title="Rename workspace"
+              onClick={() => setRenameOpen(true)}
+            >
+              <Pencil size={15} aria-hidden="true" />
+            </button>
+          )}
         </div>
         <OrganizationOptions
           organizations={organizations}
@@ -243,45 +382,62 @@ export function OrganizationSwitcher({
           Add organization
         </button>
         {createDialog}
+        {renameDialog}
       </section>
     );
   }
 
   return (
     <div className={`organization-switcher ${variant === "topbar" ? "compact" : ""}`}>
-      <details>
-        <summary
-          className="organization-switcher-trigger"
-          aria-label={`Switch organization. Current organization: ${activeOrganization?.name ?? "Unknown"}`}
-        >
-          <span className="organization-avatar" aria-hidden="true">
-            {initials(activeOrganization?.name ?? "Organization")}
-          </span>
-          <span className="organization-trigger-copy">
-            <small>Organization</small>
-            <strong>{activeOrganization?.name ?? "Select organization"}</strong>
-          </span>
-          <ChevronsUpDown size={16} aria-hidden="true" />
-        </summary>
-        <div className="organization-switcher-menu">
-          <div className="organization-switcher-menu-head">
-            <Building2 size={16} aria-hidden="true" />
-            <span>
-              <strong>Organizations</strong>
-              <small>Feedback stays separate</small>
+      <div
+        className={`organization-switcher-control${renameAllowed ? " rename-enabled" : ""}`}
+      >
+        <details>
+          <summary
+            className="organization-switcher-trigger"
+            aria-label={`Switch organization. Current organization: ${activeOrganization?.name ?? "Unknown"}`}
+          >
+            <span className="organization-avatar" aria-hidden="true">
+              {initials(activeOrganization?.name ?? "Organization")}
             </span>
+            <span className="organization-trigger-copy">
+              <small>Organization</small>
+              <strong>{activeOrganization?.name ?? "Select organization"}</strong>
+            </span>
+            <ChevronsUpDown size={16} aria-hidden="true" />
+          </summary>
+          <div className="organization-switcher-menu">
+            <div className="organization-switcher-menu-head">
+              <Building2 size={16} aria-hidden="true" />
+              <span>
+                <strong>Organizations</strong>
+                <small>Feedback stays separate</small>
+              </span>
+            </div>
+            <OrganizationOptions
+              organizations={organizations}
+              activeOrganizationId={activeOrganizationId}
+            />
+            <button className="organization-create-action" type="button" onClick={openCreateDialog}>
+              <Plus size={16} aria-hidden="true" />
+              Add organization
+            </button>
           </div>
-          <OrganizationOptions
-            organizations={organizations}
-            activeOrganizationId={activeOrganizationId}
-          />
-          <button className="organization-create-action" type="button" onClick={openCreateDialog}>
-            <Plus size={16} aria-hidden="true" />
-            Add organization
+        </details>
+        {renameAllowed && activeOrganization && (
+          <button
+            className="organization-rename-trigger"
+            type="button"
+            aria-label={`Rename workspace ${activeOrganization.name}`}
+            title="Rename workspace"
+            onClick={() => setRenameOpen(true)}
+          >
+            <Pencil size={14} aria-hidden="true" />
           </button>
-        </div>
-      </details>
+        )}
+      </div>
       {createDialog}
+      {renameDialog}
     </div>
   );
 }

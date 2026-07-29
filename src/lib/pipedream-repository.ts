@@ -1,7 +1,8 @@
 import type { Account } from "@pipedream/sdk";
 import type { PoolClient } from "pg";
-import { databasePool, persistenceMode, transaction } from "./db";
+import { databasePool, transaction } from "./db";
 import type { PipedreamConnectorId } from "./pipedream-connectors";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 export type PipedreamConnectionState =
   | "Connected"
@@ -76,7 +77,7 @@ export async function savePipedreamAccount(input: {
     lastImportCount: 0,
     lastImportError: null,
   };
-  if (persistenceMode() !== "postgres") {
+  if (workspacePersistenceMode(input.orgId) !== "postgres") {
     const items = memory.get(input.orgId) ?? [];
     memory.set(input.orgId, [
       ...items.filter((item) => item.accountId !== connection.accountId),
@@ -113,7 +114,8 @@ export async function savePipedreamAccount(input: {
 export async function listPipedreamConnections(
   orgId: string,
 ): Promise<PipedreamConnection[]> {
-  if (persistenceMode() !== "postgres") return memory.get(orgId) ?? [];
+  if (workspacePersistenceMode(orgId) !== "postgres")
+    return memory.get(orgId) ?? [];
   const result = await databasePool().query<{
     integration_id: PipedreamConnectorId; account_id: string; app_slug: string;
     account_name: string | null; state: PipedreamConnectionState;
@@ -145,7 +147,7 @@ export async function reconcilePipedreamAccounts(input: {
   verifiedBefore: Date;
 }): Promise<void> {
   const upstreamAccountIds = [...new Set(input.upstreamAccountIds)];
-  if (persistenceMode() !== "postgres") {
+  if (workspacePersistenceMode(input.orgId) !== "postgres") {
     const upstream = new Set(upstreamAccountIds);
     const items = memory.get(input.orgId) ?? [];
     memory.set(
@@ -188,7 +190,7 @@ export async function updatePipedreamImportState(input: {
   count?: number;
   safeError?: string | null;
 }): Promise<void> {
-  if (persistenceMode() !== "postgres") {
+  if (workspacePersistenceMode(input.orgId) !== "postgres") {
     const items = memory.get(input.orgId) ?? [];
     memory.set(input.orgId, items.map((item) =>
       item.integrationId === input.integrationId && item.accountId === input.accountId
@@ -214,7 +216,7 @@ export async function claimPipedreamImport(input: {
   integrationId: PipedreamConnectorId;
   accountId: string;
 }): Promise<boolean> {
-  if (persistenceMode() !== "postgres") {
+  if (workspacePersistenceMode(input.orgId) !== "postgres") {
     const items = memory.get(input.orgId) ?? [];
     const target = items.find((item) => item.integrationId === input.integrationId && item.accountId === input.accountId);
     if (!target || target.lastImportStatus === "Running") return false;
@@ -253,7 +255,7 @@ export async function disconnectPipedreamAccount(input: {
   integrationId: PipedreamConnectorId;
   accountId: string;
 }): Promise<boolean> {
-  if (persistenceMode() !== "postgres") {
+  if (workspacePersistenceMode(input.orgId) !== "postgres") {
     const items = memory.get(input.orgId) ?? [];
     const found = items.some((item) => item.accountId === input.accountId);
     memory.set(input.orgId, items.filter((item) => item.accountId !== input.accountId));

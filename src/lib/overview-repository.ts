@@ -1,4 +1,5 @@
-import { databasePool, persistenceMode } from "./db";
+import { databasePool } from "./db";
+import { workspacePersistenceMode } from "./workspace-persistence";
 import {
   buildFeedbackWeekDescriptors,
   createEmptyOverviewAnalytics,
@@ -230,7 +231,7 @@ export function buildOverviewAnalytics(input: {
 }
 
 export async function getOverviewAnalytics(orgId: string): Promise<OverviewAnalytics> {
-  if (persistenceMode() === "memory") return overviewAnalytics;
+  if (workspacePersistenceMode(orgId) === "memory") return overviewAnalytics;
   const pool = databasePool();
   const referenceDate = new Date();
   const [feedbackEventsResult, themeEventsResult, problemResult, resolutionResult, feedbackCountResult] = await Promise.all([

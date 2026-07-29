@@ -1,4 +1,5 @@
-import { databasePool, persistenceMode } from "./db";
+import { databasePool } from "./db";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 export type OnboardingPhase = "discover" | "connect" | "verify" | "complete";
 
@@ -94,7 +95,8 @@ export function demoOnboardingState(): OnboardingState {
 }
 
 export async function getOnboardingState(orgId: string): Promise<OnboardingState> {
-  if (persistenceMode() !== "postgres") return demoOnboardingState();
+  if (workspacePersistenceMode(orgId) !== "postgres")
+    return demoOnboardingState();
   const result = await databasePool().query<{
     phase: OnboardingPhase;
     product_profile: ProductProfile;
@@ -120,7 +122,7 @@ export async function saveOnboardingState(
   orgId: string,
   state: OnboardingState,
 ): Promise<void> {
-  if (persistenceMode() !== "postgres") return;
+  if (workspacePersistenceMode(orgId) !== "postgres") return;
   await databasePool().query(
     `INSERT INTO workspace_onboarding(org_id, phase, product_profile, recommended_connectors, messages, updated_at)
      VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,now())

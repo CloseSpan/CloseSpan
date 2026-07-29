@@ -83,7 +83,7 @@ export interface AuditEvent {
   actorId: string;
   actorName: string;
   action: string;
-  entityType: "ProductProblem" | "ApprovalRequest" | "CustomerNotification";
+  entityType: "ProductProblem" | "ApprovalRequest" | "CustomerNotification" | "EngineeringTicket" | "ImplementationPrompt" | "AgentRun" | "ReleaseVerification" | "Integration";
   entityId: string;
   traceId: string;
 }

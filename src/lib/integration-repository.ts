@@ -9,11 +9,15 @@ import {
   decryptCredential,
   encryptCredential,
 } from "./credential-crypto";
-import { databasePool, persistenceMode } from "./db";
+import { databasePool } from "./db";
 import { integrationCatalog } from "./integration-catalog";
 import { getAiPublicConfiguration } from "./ai-config";
 import { listPipedreamConnections } from "./pipedream-repository";
 import { feedback as seedFeedback } from "./seed";
+import {
+  requirePostgresWorkspace,
+  workspacePersistenceMode,
+} from "./workspace-persistence";
 
 export interface WorkspaceSetupStatus {
   feedbackConnected: boolean;
@@ -162,7 +166,7 @@ export function verifyWebhookSignature(
 }
 
 export async function ensureIntegrationCatalog(orgId: string): Promise<void> {
-  if (persistenceMode() !== "postgres") return;
+  if (workspacePersistenceMode(orgId) !== "postgres") return;
   const pool = databasePool();
   for (const entry of integrationCatalog) {
     await pool.query(
@@ -178,7 +182,7 @@ export async function ensureIntegrationCatalog(orgId: string): Promise<void> {
 export async function getWorkspaceSetupStatus(
   orgId: string,
 ): Promise<WorkspaceSetupStatus> {
-  if (persistenceMode() !== "postgres") {
+  if (workspacePersistenceMode(orgId) !== "postgres") {
     const [connections, aiConfig] = await Promise.all([
       listPipedreamConnections(orgId),
       getAiPublicConfiguration(orgId),
@@ -270,7 +274,7 @@ export async function createWebhookIntegration(
       "Set AI_CREDENTIAL_ENCRYPTION_KEY in .env.local before creating webhook integrations.",
     );
   }
-  if (persistenceMode() !== "postgres") {
+  if (workspacePersistenceMode(orgId) !== "postgres") {
     throw new Error("Webhook integrations require PostgreSQL persistence.");
   }
   await ensureIntegrationCatalog(orgId);
@@ -338,6 +342,7 @@ export async function markGithubPendingSetup(
   orgId: string,
   actorId: string,
 ): Promise<string> {
+  requirePostgresWorkspace(orgId, "GitHub setup");
   await ensureIntegrationCatalog(orgId);
   const pool = databasePool();
   await pool.query(
@@ -377,6 +382,7 @@ export async function ingestWebhookFeedback(
   deliveryId: string,
   payload: WebhookFeedbackPayload,
 ): Promise<{ feedbackId: string; created: boolean }> {
+  requirePostgresWorkspace(orgId, "Webhook feedback ingestion");
   const pool = databasePool();
   const feedbackId = payload.id?.trim() || `fb_${randomBytes(8).toString("hex")}`;
   const externalId = payload.id?.trim() || deliveryId;
@@ -449,6 +455,7 @@ export async function loadWebhookSecret(
   orgId: string,
   integrationId: string,
 ): Promise<string | null> {
+  requirePostgresWorkspace(orgId, "Webhook credential access");
   const pool = databasePool();
   const result = await pool.query<{
     encrypted_secret: string;
@@ -469,6 +476,7 @@ export async function loadWebhookPublicId(
   orgId: string,
   integrationId: string,
 ): Promise<string | null> {
+  requirePostgresWorkspace(orgId, "Webhook configuration access");
   const result = await databasePool().query<{ public_id: string }>(
     `SELECT public_id
        FROM integration_webhook_secrets

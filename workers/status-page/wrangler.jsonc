@@ -1,0 +1,52 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "closespan-status",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-07-29",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/", "/maintenance", "/incidents", "/incidents/*", "/api/*", "/admin", "/admin/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "closespan-status",
+      "database_id": "37dfee7e-985c-49f3-ba8c-db059fe87f8a",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "routes": [
+    {
+      "pattern": "uptime.closespan.com",
+      "custom_domain": true
+    }
+  ],
+  "send_email": [
+    {
+      "name": "STATUS_EMAIL",
+      "allowed_sender_addresses": ["status@closespan.com"]
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "production",
+    "STATUS_PUBLIC_ORIGIN": "https://uptime.closespan.com",
+    "STATUS_EMAIL_FROM": "status@closespan.com",
+    "STATUS_EMAIL_TO": "support@closespan.com",
+    "WEBSITE_URL": "https://www.closespan.com/",
+    "APPLICATION_URL": "https://www.closespan.com/login",
+    "API_HEALTH_URL": "https://www.closespan.com/api/health",
+    "COMPONENT_HEALTH_URL": "https://www.closespan.com/api/health/components",
+    "AGENT_EXECUTOR_URL": "https://closespan-agent-executor.shanmukhsain.workers.dev"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.05 }
+  }
+}
