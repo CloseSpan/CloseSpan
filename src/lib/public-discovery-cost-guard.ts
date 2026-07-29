@@ -1,4 +1,5 @@
-import { persistenceMode, transaction } from "./db";
+import { transaction } from "./db";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 export type PublicDiscoveryClaimResult =
   | "claimed"
@@ -111,7 +112,7 @@ async function postgresClaim(
 export async function claimPublicDiscoveryRequest(
   input: PublicDiscoveryClaim,
 ): Promise<PublicDiscoveryClaimResult> {
-  return persistenceMode() === "postgres"
+  return workspacePersistenceMode(input.orgId) === "postgres"
     ? postgresClaim(input)
     : memoryClaim(input);
 }

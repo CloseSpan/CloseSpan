@@ -4,7 +4,12 @@ CloseSpan has two explicit operating modes.
 
 ## Demo mode
 
-`APP_MODE=demo` uses realistic seeded data, organization-isolated in-process state, and simulated adapters. The UI labels this mode prominently. No production credentials or customer data may be used. Development defaults to this mode.
+One explicitly configured seeded workspace can use organization-isolated
+in-process state and simulated adapters. Configure that workspace with
+`DEMO_MEMORY_ORG_ID`. PostgreSQL remains the global persistence mode, so every
+newly created organization and its workspace data are durable.
+The UI labels the seeded workspace prominently. No production credentials or
+customer data may be used in the seeded demo workspace.
 
 ## Production mode
 
@@ -41,4 +46,8 @@ policies described in `production-architecture.md`.
 - Confirm CSP, HSTS, frame, MIME, referrer, and permissions headers.
 - Run `npm run db:migrate` as a separate one-shot deployment job before rolling out application instances. Run `db:seed` only in demonstration environments.
 - Exercise approval idempotency, cross-tenant denial, rollback, and audit export in staging.
+- Install the CloseSpan GitHub App only on explicitly approved repositories, record each installation/repository allowlist entry, and verify the app cannot write workflows, protected branches, merges, deployments, or unrelated repositories.
+- Deploy the Cloudflare Sandbox executor with a Queue, container binding, `OPENAI_API_KEY`, and a rotated `AGENT_EXECUTOR_SHARED_SECRET` shared only with the Vercel application. Confirm repository archives and provider credentials never enter the sandbox together.
+- Exercise expired and replayed approvals, stale base commits, executor timeouts, network isolation, secret scanning, prompt byte equality, diff size/path restrictions, cleanup, callback signature failure, and partial GitHub publication retry in staging.
+- Confirm automated tests stop at `Tests passed`/`Draft PR opened`; require passing release evidence for the current engineering-specification revision before advancing a Released problem to Verified.
 - Verify backup restore and tenant deletion before accepting customer data.

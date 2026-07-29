@@ -29,6 +29,21 @@ export interface CreatedOrganization {
   memberId: string;
 }
 
+export interface RenameOrganizationInput {
+  orgId: string;
+  name: string;
+  actor: {
+    actorId: string;
+    actorName: string;
+    traceId: string;
+  };
+}
+
+export interface RenamedOrganization {
+  organizationId: string;
+  organizationName: string;
+}
+
 const defaultPriorityWeights = {
   frequency: 20,
   severity: 20,
@@ -241,4 +256,56 @@ export async function createOrganization(
   });
 
   return { organizationId, organizationName, workspaceId, memberId };
+}
+
+export async function renameOrganization(
+  input: RenameOrganizationInput,
+): Promise<RenamedOrganization> {
+  if (persistenceMode() !== "postgres")
+    throw new Error("PostgreSQL persistence is required to rename organizations");
+
+  const organizationName = requiredTrimmed(
+    input.name,
+    "Organization name",
+    120,
+  );
+
+  await transaction(async (client) => {
+    const organization = await client.query(
+      `UPDATE organizations
+          SET name=$2,updated_at=now()
+        WHERE id=$1
+        RETURNING id`,
+      [input.orgId, organizationName],
+    );
+    if (!organization.rowCount)
+      throw new Error("Organization was not found");
+
+    const workspace = await client.query(
+      `UPDATE workspaces
+          SET name=$2,version=version+1,updated_at=now()
+        WHERE org_id=$1`,
+      [input.orgId, organizationName],
+    );
+    if (!workspace.rowCount)
+      throw new Error("Workspace was not found");
+    await client.query(
+      `INSERT INTO audit_events(
+         id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+       ) VALUES($1,$2,$3,$4,$5,'Organization',$2,$6)`,
+      [
+        randomUUID(),
+        input.orgId,
+        input.actor.actorId,
+        input.actor.actorName,
+        `Renamed workspace to ${organizationName}`,
+        `${input.actor.traceId}_organization_renamed_${randomUUID()}`,
+      ],
+    );
+  });
+
+  return {
+    organizationId: input.orgId,
+    organizationName,
+  };
 }

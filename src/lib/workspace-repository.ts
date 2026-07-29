@@ -1,4 +1,4 @@
-import { databasePool, persistenceMode } from "./db";
+import { databasePool } from "./db";
 import type { FeedbackItem, ImpactFactor, ProductProblem, Recommendation } from "./domain";
 import { feedback as seedFeedback, primaryProblem as seedProblem, recommendation as seedRecommendation } from "./seed";
 import { getOverviewAnalytics } from "./overview-repository";
@@ -6,6 +6,7 @@ import { overviewAnalytics, type OverviewAnalytics } from "./overview-analytics"
 import { getAiPublicConfiguration, type AiPublicConfiguration } from "./ai-config";
 import { integrationCatalog } from "./integration-catalog";
 import { getIntegrationExperience } from "./integration-ui";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 export interface IntegrationView { id: string; name: string; category: string; state: string; lastSync: string | null; dataScope: string; permissions: string[] }
 export interface InvestigationQueueItem { id: string; problemId: string; title: string; status: string }
@@ -156,7 +157,7 @@ export function mapPrimaryWorkspaceDomain(
 }
 
 export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
-  if (persistenceMode() === "memory") return await memoryData(orgId);
+  if (workspacePersistenceMode(orgId) === "memory") return await memoryData(orgId);
   const pool = databasePool();
   const [analytics, feedbackResult, problemResult, investigationResult, integrationResult, customerResult, settingsResult, membersResult, promptResult, modelRunResult, ai] = await Promise.all([
     getOverviewAnalytics(orgId),

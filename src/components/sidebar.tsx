@@ -8,7 +8,6 @@ import {
   GitPullRequest,
   Inbox,
   ListChecks,
-  Lightbulb,
   Network,
   Settings,
   Users,
@@ -29,7 +28,6 @@ export const navigationItems = [
   [Activity, "Investigations", "/investigations"],
   [BadgeCheck, "Approvals", "/approvals"],
   [GitPullRequest, "Follow-up", "/follow-up"],
-  [Lightbulb, "Requests", "/requests"],
   [Blocks, "Integrations", "/integrations"],
   [Users, "Customers", "/customers"],
   [Settings, "Settings", "/settings"],
@@ -59,10 +57,12 @@ export function Sidebar({
   organizations,
   activeOrganizationId,
   demoMode,
+  canRenameWorkspace,
 }: {
   organizations: OrganizationSwitcherItem[];
   activeOrganizationId: string;
   demoMode: boolean;
+  canRenameWorkspace: boolean;
 }) {
   return (
     <aside className="sidebar">
@@ -82,6 +82,7 @@ export function Sidebar({
         <OrganizationSwitcher
           organizations={organizations}
           activeOrganizationId={activeOrganizationId}
+          canRenameWorkspace={canRenameWorkspace}
         />
       </div>
     </aside>
@@ -91,9 +92,11 @@ export function Sidebar({
 export function MobileNavigation({
   organizations,
   activeOrganizationId,
+  canRenameWorkspace,
 }: {
   organizations: OrganizationSwitcherItem[];
   activeOrganizationId: string;
+  canRenameWorkspace: boolean;
 }) {
   return (
     <details className="mobile-menu">
@@ -105,6 +108,7 @@ export function MobileNavigation({
         <OrganizationSwitcher
           organizations={organizations}
           activeOrganizationId={activeOrganizationId}
+          canRenameWorkspace={canRenameWorkspace}
           variant="mobile"
         />
       </div>

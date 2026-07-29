@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { persistenceMode, transaction } from "./db";
+import { transaction } from "./db";
 import { getPipedreamClient, pipedreamExternalUserId } from "./pipedream";
 import type { PipedreamConnectorId } from "./pipedream-connectors";
 import { redactUntrustedText } from "./redaction";
@@ -9,6 +9,7 @@ import {
   listPipedreamConnections,
   updatePipedreamImportState,
 } from "./pipedream-repository";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 const SUPPORTED_MANUAL_IMPORTS = new Set<PipedreamConnectorId>(["int_zendesk"]);
 const MAX_PAGES = 5;
@@ -132,7 +133,7 @@ async function persistZendeskTickets(input: {
   const normalized = input.records
     .map(normalizeZendeskTicket)
     .filter((item): item is NormalizedFeedback => item !== null);
-  if (persistenceMode() !== "postgres") {
+  if (workspacePersistenceMode(input.orgId) !== "postgres") {
     return { fetched: input.records.length, created: normalized.length, updated: 0, skipped: input.records.length - normalized.length };
   }
   const namespace = `pipedream:${input.accountId}:zendesk:tickets`.slice(0, 255);

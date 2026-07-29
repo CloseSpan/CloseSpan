@@ -4,10 +4,11 @@ const database = vi.hoisted(() => ({
   client: { query: vi.fn() },
   pool: { query: vi.fn() },
   transaction: vi.fn(),
+  mode: "postgres",
 }));
 
 vi.mock("./db", () => ({
-  persistenceMode: () => "postgres",
+  persistenceMode: () => database.mode,
   databasePool: () => database.pool,
   transaction: database.transaction,
 }));
@@ -18,6 +19,7 @@ import {
   findOrganizationMembership,
   listOrganizationMemberships,
   normalizeMembershipEmail,
+  renameOrganization,
   selectOrganizationMembership,
 } from "./organization-repository";
 
@@ -26,6 +28,7 @@ const sqlIncludes = (sql: unknown, text: string) =>
 
 describe("organization repository", () => {
   beforeEach(() => {
+    database.mode = "postgres";
     database.client.query.mockReset().mockResolvedValue({ rows: [], rowCount: 1 });
     database.pool.query.mockReset();
     database.transaction.mockReset().mockImplementation(
@@ -135,5 +138,142 @@ describe("organization repository", () => {
       }),
     ).rejects.toThrow("Organization name is required");
     expect(database.transaction).not.toHaveBeenCalled();
+  });
+
+  it("renames the organization and workspace and audits the actor in one transaction", async () => {
+    const result = await renameOrganization({
+      orgId: "org_northstar",
+      name: "  Northstar Workspace  ",
+      actor: {
+        actorId: "member_admin",
+        actorName: "Sam Operator",
+        traceId: "trace_request_123",
+      },
+    });
+
+    expect(result).toEqual({
+      organizationId: "org_northstar",
+      organizationName: "Northstar Workspace",
+    });
+    expect(database.transaction).toHaveBeenCalledTimes(1);
+
+    const organizationUpdate = database.client.query.mock.calls.find(([sql]) =>
+      sqlIncludes(sql, "UPDATE organizations SET name=$2,updated_at=now() WHERE id=$1"),
+    );
+    expect(organizationUpdate?.[1]).toEqual([
+      "org_northstar",
+      "Northstar Workspace",
+    ]);
+
+    const workspaceUpdate = database.client.query.mock.calls.find(([sql]) =>
+      sqlIncludes(sql, "UPDATE workspaces SET name=$2,version=version+1,updated_at=now() WHERE org_id=$1"),
+    );
+    expect(workspaceUpdate?.[1]).toEqual([
+      "org_northstar",
+      "Northstar Workspace",
+    ]);
+
+    const auditInsert = database.client.query.mock.calls.find(([sql]) =>
+      sqlIncludes(sql, "INSERT INTO audit_events"),
+    );
+    expect(auditInsert?.[1]).toEqual([
+      expect.stringMatching(/^[a-f0-9-]{36}$/),
+      "org_northstar",
+      "member_admin",
+      "Sam Operator",
+      "Renamed workspace to Northstar Workspace",
+      expect.stringMatching(
+        /^trace_request_123_organization_renamed_[a-f0-9-]{36}$/,
+      ),
+    ]);
+  });
+
+  it.each([
+    ["   ", "Organization name is required"],
+    ["x".repeat(121), "Organization name must be 120 characters or fewer"],
+  ])("rejects an invalid rename before opening a transaction", async (name, message) => {
+    await expect(
+      renameOrganization({
+        orgId: "org_northstar",
+        name,
+        actor: {
+          actorId: "member_admin",
+          actorName: "Sam Operator",
+          traceId: "trace_request_123",
+        },
+      }),
+    ).rejects.toThrow(message);
+    expect(database.transaction).not.toHaveBeenCalled();
+  });
+
+  it("requires PostgreSQL persistence for a rename", async () => {
+    database.mode = "memory";
+
+    await expect(
+      renameOrganization({
+        orgId: "org_northstar",
+        name: "Northstar Workspace",
+        actor: {
+          actorId: "member_admin",
+          actorName: "Sam Operator",
+          traceId: "trace_request_123",
+        },
+      }),
+    ).rejects.toThrow(
+      "PostgreSQL persistence is required to rename organizations",
+    );
+    expect(database.transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown organization without updating a workspace or auditing", async () => {
+    database.client.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await expect(
+      renameOrganization({
+        orgId: "org_unknown",
+        name: "Unknown Workspace",
+        actor: {
+          actorId: "member_admin",
+          actorName: "Sam Operator",
+          traceId: "trace_request_123",
+        },
+      }),
+    ).rejects.toThrow("Organization was not found");
+
+    expect(database.transaction).toHaveBeenCalledTimes(1);
+    expect(database.client.query).toHaveBeenCalledTimes(1);
+    expect(database.client.query).not.toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE workspaces"),
+      expect.anything(),
+    );
+    expect(database.client.query).not.toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO audit_events"),
+      expect.anything(),
+    );
+  });
+
+  it("rolls back instead of auditing when the organization has no workspace", async () => {
+    database.client.query
+      .mockResolvedValueOnce({ rows: [{ id: "org_northstar" }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await expect(
+      renameOrganization({
+        orgId: "org_northstar",
+        name: "Northstar Workspace",
+        actor: {
+          actorId: "member_admin",
+          actorName: "Sam Operator",
+          traceId: "trace_request_123",
+        },
+      }),
+    ).rejects.toThrow("Workspace was not found");
+
+    expect(database.transaction).toHaveBeenCalledTimes(1);
+    expect(database.client.query).toHaveBeenCalledTimes(2);
+    expect(database.client.query).not.toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO audit_events"),
+      expect.anything(),
+    );
   });
 });

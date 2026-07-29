@@ -4,6 +4,7 @@ const authState = vi.hoisted(() => ({
   session: null as null | {
     user: { email: string; name?: string | null };
   },
+  activeOrganizationId: null as string | null,
   memberships: vi.fn(),
 }));
 
@@ -12,7 +13,13 @@ vi.mock("@/auth", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("next/headers", () => ({
-  cookies: vi.fn(async () => ({ get: vi.fn(() => undefined) })),
+  cookies: vi.fn(async () => ({
+    get: vi.fn((name: string) =>
+      name === "closespan_active_org" && authState.activeOrganizationId
+        ? { value: authState.activeOrganizationId }
+        : undefined,
+    ),
+  })),
 }));
 vi.mock("./db", () => ({
   persistenceMode: vi.fn(() => "postgres"),
@@ -31,6 +38,7 @@ vi.mock("./organization-repository", async (importOriginal) => {
 
 import {
   resolveWorkspaceAccess,
+  withDemoOrganizationMembership,
   workspaceUserFromMemberships,
 } from "./auth-user";
 import type { OrganizationMembership } from "./organization-repository";
@@ -98,12 +106,39 @@ describe("workspace organization selection", () => {
       workspaceUserFromMemberships([], "sam@example.com", "Sam", "org_acme"),
     ).toBeNull();
   });
+
+  it("prepends one virtual demo membership without duplicating a stored demo row", () => {
+    const merged = withDemoOrganizationMembership(
+      [
+        {
+          ...memberships[0],
+          memberId: "stored_demo",
+          organizationId: "org_northstar",
+          organizationName: "Legacy demo row",
+        },
+        memberships[1],
+      ],
+      "sam@example.com",
+      "Sam Operator",
+    );
+
+    expect(merged).toHaveLength(2);
+    expect(merged[0]).toMatchObject({
+      memberId: expect.stringMatching(/^google_[a-f0-9]{24}$/),
+      organizationId: "org_northstar",
+      organizationName: "CloseSpan Demo",
+      displayName: "Sam Operator",
+      role: "Admin",
+    });
+    expect(merged[1]).toEqual(memberships[1]);
+  });
 });
 
 describe("production private beta access", () => {
   beforeEach(() => {
     process.env.APP_MODE = "production";
     authState.session = null;
+    authState.activeOrganizationId = null;
     authState.memberships.mockReset();
   });
 
@@ -120,7 +155,7 @@ describe("production private beta access", () => {
     expect(authState.memberships).not.toHaveBeenCalled();
   });
 
-  it("grants the owner access to the stored workspace", async () => {
+  it("grants the owner access to a stored production organization", async () => {
     authState.session = {
       user: {
         email: "Shanmukh.Sain+founder@googlemail.com",
@@ -139,36 +174,156 @@ describe("production private beta access", () => {
     expect(access).toMatchObject({
       status: "granted",
       user: {
+        orgId: "org_acme",
+        organizationName: "Acme",
         email: "shanmukhsain@gmail.com",
         name: "Shanmukh Sain",
+        organizations: [
+          { id: "org_acme", name: "Acme", role: "Admin" },
+        ],
       },
     });
   });
 
-  it("returns a recoverable unavailable state when owner data cannot load", async () => {
+  it("selects a durable organization when its trusted cookie is active", async () => {
+    authState.session = {
+      user: { email: "shanmukhsain@gmail.com", name: "Shanmukh" },
+    };
+    authState.activeOrganizationId = "org_beta";
+    authState.memberships.mockResolvedValue(memberships.map((membership) => ({
+      ...membership,
+      email: "shanmukhsain@gmail.com",
+    })));
+
+    await expect(resolveWorkspaceAccess()).resolves.toMatchObject({
+      status: "granted",
+      user: {
+        orgId: "org_beta",
+        organizationName: "Beta",
+        role: "Contributor",
+        organizations: [
+          { id: "org_acme", name: "Acme", role: "Admin" },
+          { id: "org_beta", name: "Beta", role: "Contributor" },
+        ],
+      },
+    });
+  });
+
+  it("returns unavailable when production memberships cannot load", async () => {
     authState.session = {
       user: { email: "shanmukhsain@gmail.com", name: "Shanmukh" },
     };
     authState.memberships.mockRejectedValue(new Error("database offline"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(resolveWorkspaceAccess()).resolves.toEqual({
+      status: "unavailable",
+      email: "shanmukhsain@gmail.com",
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "Unable to load the private beta owner workspace",
+      { errorType: "Error" },
+    );
+    consoleError.mockRestore();
+  });
+
+  it("returns unavailable instead of inventing access when an active durable workspace cannot load", async () => {
+    authState.session = {
+      user: { email: "shanmukhsain@gmail.com", name: "Shanmukh" },
+    };
+    authState.activeOrganizationId = "org_acme";
+    authState.memberships.mockRejectedValue(new Error("database offline"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(resolveWorkspaceAccess()).resolves.toEqual({
+      status: "unavailable",
+      email: "shanmukhsain@gmail.com",
+    });
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
+  });
+
+  it("does not invent a production workspace when membership is missing", async () => {
+    authState.session = {
+      user: { email: "shanmukhsain@gmail.com", name: "Shanmukh" },
+    };
+    authState.memberships.mockResolvedValue([]);
 
     await expect(resolveWorkspaceAccess()).resolves.toEqual({
       status: "unavailable",
       email: "shanmukhsain@gmail.com",
     });
   });
+});
 
-  it("gives the owner a deterministic workspace when membership is missing", async () => {
+describe("hybrid demo access", () => {
+  beforeEach(() => {
+    process.env.APP_MODE = "demo";
+    process.env.DEMO_MEMORY_ORG_ID = "org_northstar";
     authState.session = {
-      user: { email: "shanmukhsain@gmail.com", name: "Shanmukh" },
+      user: { email: "sam@example.com", name: "Sam" },
     };
-    authState.memberships.mockResolvedValue([]);
+    authState.activeOrganizationId = null;
+    authState.memberships.mockReset();
+  });
+
+  it("merges the memory demo with durable organizations", async () => {
+    authState.memberships.mockResolvedValue(memberships);
 
     await expect(resolveWorkspaceAccess()).resolves.toMatchObject({
       status: "granted",
       user: {
-        email: "shanmukhsain@gmail.com",
-        role: "Admin",
+        orgId: "org_northstar",
+        organizations: [
+          { id: "org_northstar", name: "CloseSpan Demo", role: "Admin" },
+          { id: "org_acme", name: "Acme", role: "Admin" },
+          { id: "org_beta", name: "Beta", role: "Contributor" },
+        ],
       },
     });
+  });
+
+  it("selects a durable organization through the trusted cookie", async () => {
+    authState.activeOrganizationId = "org_beta";
+    authState.memberships.mockResolvedValue(memberships);
+
+    await expect(resolveWorkspaceAccess()).resolves.toMatchObject({
+      status: "granted",
+      user: {
+        orgId: "org_beta",
+        organizationName: "Beta",
+      },
+    });
+  });
+
+  it("keeps the demo available if PostgreSQL is temporarily unavailable", async () => {
+    authState.memberships.mockRejectedValue(new Error("database offline"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(resolveWorkspaceAccess()).resolves.toMatchObject({
+      status: "granted",
+      user: { orgId: "org_northstar" },
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "Unable to list durable organizations; using the demo workspace",
+      { errorType: "Error" },
+    );
+    consoleError.mockRestore();
+  });
+
+  it("does not hide a durable-workspace outage behind the demo", async () => {
+    authState.activeOrganizationId = "org_acme";
+    authState.memberships.mockRejectedValue(new Error("database offline"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(resolveWorkspaceAccess()).resolves.toEqual({
+      status: "unavailable",
+      email: "sam@example.com",
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "Unable to load the selected workspace",
+      { errorType: "Error" },
+    );
+    consoleError.mockRestore();
   });
 });

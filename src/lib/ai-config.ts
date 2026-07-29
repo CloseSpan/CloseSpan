@@ -1,8 +1,9 @@
-import { databasePool, persistenceMode } from "./db";
+import { databasePool } from "./db";
 import {
   credentialVaultConfigured,
   decryptCredential,
 } from "./credential-crypto";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 export const aiProviders = [
   "xai",
@@ -134,10 +135,29 @@ function baseUrl(provider: AiProvider): string {
   return override || aiProviderDefinitions[provider].baseUrl;
 }
 
+export interface EnvironmentAiHealthConfiguration {
+  provider: AiProvider;
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+}
+
+export function getEnvironmentAiHealthConfiguration(): EnvironmentAiHealthConfiguration | null {
+  const provider = environmentProvider();
+  const apiKey = environmentKey(provider);
+  if (!apiKey) return null;
+  return {
+    provider,
+    model: environmentModel(provider),
+    apiKey,
+    baseUrl: baseUrl(provider),
+  };
+}
+
 async function storedConfiguration(
   orgId: string,
 ): Promise<StoredConfigurationRow | null> {
-  if (persistenceMode() !== "postgres") return null;
+  if (workspacePersistenceMode(orgId) !== "postgres") return null;
   const result = await databasePool().query<StoredConfigurationRow>(
     `SELECT provider,model,encrypted_api_key,key_iv,key_auth_tag,key_hint,connection_status,updated_at
      FROM ai_provider_configs WHERE org_id=$1`,

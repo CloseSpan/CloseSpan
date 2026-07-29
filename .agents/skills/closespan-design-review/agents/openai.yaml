@@ -1,0 +1,4 @@
+interface:
+  display_name: "CloseSpan Design Review"
+  short_description: "Audit CloseSpan UI quality and consistency"
+  default_prompt: "Use $closespan-design-review to review the entire CloseSpan app and report prioritized design issues."

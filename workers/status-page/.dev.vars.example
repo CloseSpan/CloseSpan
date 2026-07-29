@@ -1,0 +1,5 @@
+STATUS_PROBE_SECRET=replace-with-a-long-random-secret
+STATUS_WEBHOOK_URL=https://hooks.example.com/replace-me
+CF_ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com
+CF_ACCESS_AUD=replace-with-access-application-audience
+STATUS_ADMIN_EMAILS=owner@example.com

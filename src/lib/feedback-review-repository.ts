@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
-import { persistenceMode, transaction } from "./db";
+import { transaction } from "./db";
 import type { RequestContext } from "./request-security";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 type ReviewDecision = "approve" | "reject";
 type ReviewStatus = "Approved" | "Rejected";
@@ -351,7 +352,7 @@ async function performReview(
 export async function reviewLatestFeedbackAnalysis(
   input: FeedbackReviewInput,
 ): Promise<FeedbackReviewResult> {
-  if (persistenceMode() !== "postgres")
+  if (workspacePersistenceMode(input.orgId) !== "postgres")
     throw new FeedbackReviewConflictError(
       "PostgreSQL persistence is required for feedback review",
     );

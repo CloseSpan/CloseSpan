@@ -21,13 +21,18 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "typecheck:executor": "npm --prefix workers/agent-executor exec tsc -- --noEmit",
     "check": "npm run lint && npm test && npm run build && npm run typecheck"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.1",
+    "@octokit/auth-app": "^8.2.0",
+    "@octokit/rest": "^22.0.1",
     "@pipedream/sdk": "^3.1.2",
     "@vercel/analytics": "^2.0.1",
     "@vercel/functions": "^3.7.5",
+    "@vercel/sdk": "^1.28.10",
+    "cloudflare": "^7.0.0",
     "framer-motion": "^12.42.2",
     "lucide-react": "^0.468.0",
     "next": "16.2.10",
@@ -46,6 +51,7 @@
     "eslint": "9.39.5",
     "eslint-config-next": "16.2.10",
     "typescript": "6.0.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "wrangler": "^4.114.0"
   }
 }

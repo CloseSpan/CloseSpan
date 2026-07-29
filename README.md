@@ -174,8 +174,13 @@ To run the optimized standalone build in demo mode:
 
 ```bash
 npm run build
-APP_MODE=demo npm start
+APP_MODE=demo PERSISTENCE_MODE=postgres \
+  DEMO_MEMORY_ORG_ID=org_northstar npm start
 ```
+
+This hybrid local mode keeps only `CloseSpan Demo` in seeded memory. New
+organizations, memberships, onboarding progress, feedback, integrations, and
+settings are stored in PostgreSQL and survive application restarts.
 
 Verification:
 
@@ -233,8 +238,9 @@ Or run the complete sequential quality gate with `npm run check`. Do not run `ne
 4. The central problem workspace combines customer, environment, business, release, repository, and ownership context.
 5. A code-aware investigation presents a hypothesis, uncertainty, assumptions, missing evidence, suspected files, and tests.
 6. The proposed GitHub action enters a human approval request with risk, reversibility, systems, and data-sharing scope.
-7. Approval creates a simulated work item and records an audit event.
-8. The problem can advance through implementation, release, and verification; verification creates follow-up drafts.
+7. Each problem can be expanded into a structured engineering ticket with measurable acceptance criteria and Given/When/Then coverage, then rendered into an immutable SHA-256-addressed `.prompt` revision.
+8. A single-use approval can launch one isolated Cloudflare Sandbox coding run against one allowlisted GitHub repository and exact base commit; successful runs publish two commits and a draft PR without merging or deploying.
+9. Automated checks can reach `Tests passed`, while `Verified` remains release-level and requires human-supplied evidence for the current ticket revision.
 
 The application also includes real routes and interactive seeded experiences for:
 
@@ -266,6 +272,8 @@ All workspace business data is persisted in PostgreSQL: feedback, problems, acco
 - `src/lib/ai-provider.ts`, `src/lib/ai-config.ts`, and `src/lib/ai-repository.ts`: provider adapters, encrypted configuration, and durable recommendation records
 - `src/lib/public-feedback-discovery.ts`: optional You.com public-source discovery and the disabled Bright Data adapter boundary
 - `src/lib/pipedream*`: Pipedream Connect client, connector catalog, and tenant-scoped account metadata
+- `.prompt`: approved-prompt format, template, and committed ticket artifacts
+- `workers/agent-executor`: isolated Cloudflare Sandbox queue consumer and OpenAI coding-agent boundary
 - `db/migrations` and `db/seeds`: idempotent schema and demonstration data
 - `docs/architecture`: decisions and production migration plan
 
@@ -273,7 +281,7 @@ All workspace business data is persisted in PostgreSQL: feedback, problems, acco
 
 - Workspace switching and tenant-scoped data access are implemented; member invitations and role administration are not yet self-service.
 - Google identity and database-backed membership enforcement are enabled, but PostgreSQL row-level-security policies are not enabled yet.
-- Feedback classification is real when a supported AI provider key is configured. Pipedream Connect authorization is implemented; provider-specific backfill and continuous import workers still need to be completed before every connector is a live feedback feed. Embeddings, repository search, and external work creation remain incomplete or simulated.
+- Feedback classification is real when a supported AI provider key is configured. Pipedream Connect authorization is implemented; provider-specific backfill and continuous import workers still need to be completed before every connector is a live feedback feed. The legacy demo approval still creates a simulated external work item; the engineering-ticket flow uses the separate GitHub App and Cloudflare executor described below.
 - No production data should be used with this phase.
 - Non-AI demo policy controls are still browser-local and reset between sessions; AI provider configuration is durable in PostgreSQL.
 
@@ -288,3 +296,9 @@ See [Production readiness contract](docs/production-readiness.md) and
 The repository includes durable PostgreSQL persistence, pgvector readiness, a non-root multi-stage `Dockerfile`, a database-aware `/api/health`, Google OIDC membership enforcement, strict response security headers, Pipedream-hosted connector credentials, and a GitHub Actions quality workflow. PostgreSQL RLS, production Pipedream credentials, and provider-specific import workers remain mandatory gates before accepting real customer data.
 
 See [Production architecture](docs/architecture/production-architecture.md) for the hardening sequence and connector design.
+
+## Approval-bound coding executor
+
+Run migration `022_engineering_prompt_workflow.sql`, install the GitHub App on only the intended repositories, and add each installation/repository pair through `PUT /api/integrations/github/repositories`. Configure `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `AGENT_EXECUTOR_URL`, `AGENT_EXECUTOR_SHARED_SECRET`, and `CLOSESPAN_INTERNAL_BASE_URL` in the Vercel application.
+
+The Cloudflare Worker is isolated in `workers/agent-executor`; its deployment and secret setup are documented in [its README](workers/agent-executor/README.md). It must receive the same shared secret plus an `OPENAI_API_KEY`. Verify its TypeScript independently with `npm run typecheck:executor`.

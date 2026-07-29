@@ -12,8 +12,8 @@ import { ORG_ID } from "./seed";
 import {
   isPrivateBetaAccessEnforced,
   isPrivateBetaOwner,
-  PRIVATE_BETA_OWNER_EMAIL,
 } from "./workspace-access-policy";
+import { isMemoryDemoOrganization } from "./workspace-persistence";
 
 export const ACTIVE_ORGANIZATION_COOKIE = "closespan_active_org";
 export const LEGACY_ACTIVE_ORGANIZATION_COOKIE = "feelow_active_org";
@@ -93,39 +93,45 @@ export function workspaceUserFromMemberships(
   };
 }
 
-function demoUser(email: string, name?: string | null): WorkspaceUser {
+function demoMembership(
+  email: string,
+  name?: string | null,
+): OrganizationMembership {
   const digest = createHash("sha256").update(email).digest("hex").slice(0, 24);
   return {
-    id: `google_${digest}`,
-    orgId: ORG_ID,
+    memberId: `google_${digest}`,
+    organizationId: ORG_ID,
     organizationName: "CloseSpan Demo",
-    name: name?.trim() || email,
+    displayName: name?.trim() || email,
     email,
     role: "Admin",
-    organizations: [{ id: ORG_ID, name: "CloseSpan Demo", role: "Admin" }],
   };
 }
 
-function privateBetaOwnerFallbackUser(
+export function withDemoOrganizationMembership(
+  memberships: readonly OrganizationMembership[],
+  email: string,
   name?: string | null,
-): WorkspaceUser {
-  const orgId = process.env.PRODUCTION_ORG_ID?.trim() || ORG_ID;
-  const organizationName =
-    process.env.PRODUCTION_ORG_NAME?.trim() || "CloseSpan";
-  const digest = createHash("sha256")
-    .update(PRIVATE_BETA_OWNER_EMAIL)
-    .digest("hex")
-    .slice(0, 24);
+): OrganizationMembership[] {
+  return [
+    demoMembership(email, name),
+    ...memberships.filter(
+      (membership) => membership.organizationId !== ORG_ID,
+    ),
+  ];
+}
 
-  return {
-    id: `google_${digest}`,
-    orgId,
-    organizationName,
-    name: name?.trim() || "Shanmukh Sain",
-    email: PRIVATE_BETA_OWNER_EMAIL,
-    role: "Admin",
-    organizations: [{ id: orgId, name: organizationName, role: "Admin" }],
-  };
+function demoUser(email: string, name?: string | null): WorkspaceUser {
+  return workspaceUserFromMemberships(
+    withDemoOrganizationMembership([], email, name),
+    email,
+    name,
+    ORG_ID,
+  )!;
+}
+
+function demoWorkspaceAvailable(): boolean {
+  return persistenceMode() === "memory" || isMemoryDemoOrganization(ORG_ID);
 }
 
 export async function hasWorkspaceMembership(email: string): Promise<boolean> {
@@ -138,10 +144,27 @@ async function findWorkspaceMember(
   verifiedSessionName?: string | null,
   activeOrganizationId?: string | null,
 ): Promise<WorkspaceUser | null> {
-  if (persistenceMode() !== "postgres") return null;
-  const memberships = await listOrganizationMemberships(normalizeEmail(email));
+  const includeDemo = demoWorkspaceAvailable();
+  let memberships: OrganizationMembership[] = [];
+  if (persistenceMode() === "postgres") {
+    try {
+      memberships = await listOrganizationMemberships(normalizeEmail(email));
+    } catch (error) {
+      if (
+        !includeDemo ||
+        (activeOrganizationId && activeOrganizationId !== ORG_ID)
+      ) {
+        throw error;
+      }
+      console.error("Unable to list durable organizations; using the demo workspace", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+  }
   return workspaceUserFromMemberships(
-    memberships,
+    includeDemo
+      ? withDemoOrganizationMembership(memberships, email, verifiedSessionName)
+      : memberships,
     email,
     verifiedSessionName,
     activeOrganizationId,
@@ -167,13 +190,23 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
   if (!email) return { status: "unauthenticated" };
 
   if (!isPrivateBetaAccessEnforced()) {
-    const activeOrganizationId = await activeOrganizationIdFromCookie();
-    const member = await findWorkspaceMember(email, name, activeOrganizationId);
-    if (member) return { status: "granted", user: member };
-    return {
-      status: "granted",
-      user: demoUser(email, name),
-    };
+    try {
+      const activeOrganizationId = await activeOrganizationIdFromCookie();
+      const member = await findWorkspaceMember(
+        email,
+        name,
+        activeOrganizationId,
+      );
+      if (member) return { status: "granted", user: member };
+      if (demoWorkspaceAvailable()) {
+        return { status: "granted", user: demoUser(email, name) };
+      }
+    } catch (error) {
+      console.error("Unable to load the selected workspace", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+    return { status: "unavailable", email };
   }
 
   if (!isPrivateBetaOwner(email)) return { status: "denied", email };
@@ -182,9 +215,13 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
     const activeOrganizationId = await activeOrganizationIdFromCookie();
     const member = await findWorkspaceMember(email, name, activeOrganizationId);
     if (member) return { status: "granted", user: member };
-    return { status: "granted", user: privateBetaOwnerFallbackUser(name) };
+    if (demoWorkspaceAvailable()) {
+      return { status: "granted", user: demoUser(email, name) };
+    }
   } catch (error) {
-    console.error("Unable to load the private beta owner workspace", error);
+    console.error("Unable to load the private beta owner workspace", {
+      errorType: error instanceof Error ? error.name : "UnknownError",
+    });
   }
 
   return { status: "unavailable", email };

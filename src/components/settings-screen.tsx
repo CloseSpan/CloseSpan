@@ -1,11 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { launchPricingNote } from "@/lib/plans";
 import type { SettingsView } from "@/lib/workspace-repository";
 import { AiProviderSettings } from "./ai-provider-settings";
 import { PageTitle } from "./screens";
+
+const settingsSections = [
+  ["agent", "Agent autonomy"],
+  ["model", "AI provider"],
+  ["priority", "Prioritization"],
+  ["data", "Data & privacy"],
+  ["members", "Members & roles"],
+  ["billing", "Plan & billing"],
+  ["usage", "Usage limits"],
+] as const;
+
+type SettingsSectionId = (typeof settingsSections)[number][0];
+
+function sectionFromHash(hash: string): SettingsSectionId {
+  const candidate = hash.replace(/^#/, "");
+  return settingsSections.some(([id]) => id === candidate)
+    ? (candidate as SettingsSectionId)
+    : "agent";
+}
 
 export function SettingsScreen({
   settings,
@@ -20,6 +39,18 @@ export function SettingsScreen({
   const [autonomy, setAutonomy] = useState(settings.autonomyLevel);
   const [pii, setPii] = useState(settings.piiRedaction);
   const [saved, setSaved] = useState(false);
+  const [activeSection, setActiveSection] =
+    useState<SettingsSectionId>("agent");
+
+  useEffect(() => {
+    function syncSectionFromHash(): void {
+      setActiveSection(sectionFromHash(window.location.hash));
+    }
+
+    syncSectionFromHash();
+    window.addEventListener("hashchange", syncSectionFromHash);
+    return () => window.removeEventListener("hashchange", syncSectionFromHash);
+  }, []);
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
   const labels: Record<string, string> = {
     frequency: "Frequency",
@@ -56,15 +87,17 @@ export function SettingsScreen({
       )}
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
-          <a className="active" href="#agent">
-            Agent autonomy
-          </a>
-          <a href="#model">AI provider</a>
-          <a href="#priority">Prioritization</a>
-          <a href="#data">Data & privacy</a>
-          <a href="#members">Members & roles</a>
-          <a href="#billing">Plan & billing</a>
-          <a href="#usage">Usage limits</a>
+          {settingsSections.map(([id, label]) => (
+            <a
+              className={activeSection === id ? "active" : undefined}
+              href={`#${id}`}
+              aria-current={activeSection === id ? "location" : undefined}
+              onClick={() => setActiveSection(id)}
+              key={id}
+            >
+              {label}
+            </a>
+          ))}
         </nav>
         <div className="detail-stack">
           <section className="card" id="agent">

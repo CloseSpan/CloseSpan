@@ -1,6 +1,7 @@
-import { databasePool, persistenceMode, transaction } from "./db";
+import { databasePool, transaction } from "./db";
 import { resetMemoryState } from "./memory-store";
 import { approval, primaryProblem } from "./seed";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 export interface DemoGuideStep {
   id: string;
@@ -161,7 +162,8 @@ export function parseDemoGuideSteps(value: unknown): DemoGuideStep[] {
 export async function getWorkspaceDemoGuide(
   orgId: string,
 ): Promise<WorkspaceDemoGuide | null> {
-  if (persistenceMode() !== "postgres") return demoWorkspaceGuide;
+  if (workspacePersistenceMode(orgId) !== "postgres")
+    return demoWorkspaceGuide;
   try {
     const result = await databasePool().query<{
       title: string;
@@ -187,7 +189,7 @@ export async function resetWorkspaceDemoWorkflow(orgId: string): Promise<{
   problemId: string;
   approvalId: string;
 }> {
-  if (persistenceMode() !== "postgres") {
+  if (workspacePersistenceMode(orgId) !== "postgres") {
     resetMemoryState(orgId);
     return { problemId: primaryProblem.id, approvalId: approval.id };
   }

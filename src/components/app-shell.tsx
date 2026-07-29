@@ -1,8 +1,9 @@
 import { Bell, LogOut, Search, UserRound } from "lucide-react";
 import Link from "next/link";
 import { signOutCurrentUser } from "@/app/auth-actions";
-import { applicationMode, type WorkspaceUser } from "@/lib/auth-user";
+import type { WorkspaceUser } from "@/lib/auth-user";
 import { getWorkspaceDemoGuide } from "@/lib/demo-guide-repository";
+import { workspacePersistenceMode } from "@/lib/workspace-persistence";
 import { CloseSpanLogo } from "./closespan-logo";
 import { GuidedDemo } from "./guided-demo";
 import { OrganizationSwitcher } from "./organization-switcher";
@@ -31,6 +32,8 @@ export async function AppShell({
   immersive?: boolean;
 }) {
   const demoGuide = await getWorkspaceDemoGuide(user.orgId);
+  const durableWorkspace = workspacePersistenceMode(user.orgId) === "postgres";
+  const canRenameWorkspace = durableWorkspace && user.role === "Admin";
   if (immersive) {
     return (
       <div className="shell shell-immersive">
@@ -50,6 +53,7 @@ export async function AppShell({
               <OrganizationSwitcher
                 organizations={user.organizations}
                 activeOrganizationId={user.orgId}
+                canRenameWorkspace={canRenameWorkspace}
                 variant="topbar"
               />
               <Link className="btn" href="/settings#ai">
@@ -96,13 +100,15 @@ export async function AppShell({
       <Sidebar
         organizations={user.organizations}
         activeOrganizationId={user.orgId}
-        demoMode={applicationMode() === "demo"}
+        demoMode={!durableWorkspace}
+        canRenameWorkspace={canRenameWorkspace}
       />
       <main className="main">
         <header className="topbar">
           <MobileNavigation
             organizations={user.organizations}
             activeOrganizationId={user.orgId}
+            canRenameWorkspace={canRenameWorkspace}
           />
           <div className="crumb">{section}</div>
           <div className="top-actions">

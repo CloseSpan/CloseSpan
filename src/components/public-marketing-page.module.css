@@ -786,3 +786,48 @@
     transition: none;
   }
 }
+
+/* CloseSpan neumorphic layer for public marketing pages. */
+.page {
+  background: #edf1f7;
+}
+
+.header {
+  border-bottom-color: rgba(255, 255, 255, .7);
+  background: #edf1f7;
+  box-shadow: 0 8px 20px rgba(150, 160, 181, .24);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.secondaryButton,
+.mobileMenu nav,
+.summary,
+.note,
+.templateBlock,
+.tableOfContents,
+.relatedGrid > a,
+.cta {
+  border-color: rgba(255, 255, 255, .68);
+  background: #f1f4f9;
+  box-shadow: 9px 9px 22px rgba(150, 160, 181, .38), -9px -9px 22px rgba(255, 255, 255, .9);
+}
+
+.secondaryButton:active,
+.relatedGrid > a:active {
+  box-shadow: inset 4px 4px 10px rgba(150, 160, 181, .3), inset -4px -4px 10px rgba(255, 255, 255, .84);
+}
+
+.stepsSection {
+  background: #0d1426;
+  box-shadow: 12px 12px 28px rgba(142, 152, 174, .3), -10px -10px 24px rgba(255, 255, 255, .7);
+}
+
+.steps li {
+  border-color: rgba(255, 255, 255, .06);
+  background: #11192d;
+  box-shadow: 7px 7px 16px #060a14, -6px -6px 15px #1a2440;
+}
+
+.tableOfContents { padding: 18px 20px; border-radius: 16px; }
+.footer { background: #edf1f7; }
