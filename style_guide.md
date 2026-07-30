@@ -19,10 +19,11 @@ When the implementation and this guide disagree, fix both in the same change. Do
 
 CloseSpan has two complementary logo systems. Choose by context rather than substituting one asset everywhere:
 
-- Use [`CloseSpan3DLogo`](src/components/closespan-3d-logo.tsx) for public marketing headers and footers, login and waitlist identity, public feature requests, and branded public error states. It automatically swaps between the light and dark 3D lockups without layout shift.
-- Use [`CloseSpanLogo`](src/components/closespan-logo.tsx) for the product sidebar, compact app shell, data previews, dense controls, and other small in-product placements where the raster depth would lose clarity.
+- Use [`CloseSpan3DLogo`](src/components/closespan-3d-logo.tsx) for public marketing headers and footers, login and waitlist identity, public feature requests, branded public error states, the product sidebar, and the immersive app header. It automatically swaps between transparent light and dark 3D lockups without layout shift.
+- Use [`CloseSpanLogo`](src/components/closespan-logo.tsx) for data previews, dense controls, and other very small in-product placements where the raster depth would lose clarity.
 - Use the square `</>` mark for browser favicons, PWA icons, bookmarks, and device home-screen icons. The active files are `favicon.ico`, `favicon-48.png`, `favicon-192.png`, `favicon-512.png`, and `apple-touch-icon.png` in `public/`.
-- Keep `closespan-3d-logo-light-lockup-v1.png`, `closespan-3d-logo-dark-lockup-v1.png`, and the versioned `closespan-tab-logo-*-v1.png` files as the authored source assets.
+- Keep `closespan-3d-logo-light-transparent-v2.png`, `closespan-3d-logo-dark-transparent-v2.png`, and the versioned `closespan-tab-logo-*-v1.png` files as the active authored assets.
+- Present the 3D lockup directly on the page with a transparent background. It is identity, not a control, so never add a containing plaque, hover lift, pressed animation, border, background, shadow, or CTA styling.
 - Never stretch, recolor, filter, outline, glow, or place the 3D lockup inside another raised button or card. Preserve its aspect ratio and let the supplied asset provide its own depth.
 
 ## 2. Design principles
@@ -370,7 +371,7 @@ Button shape and height must stay consistent when two actions appear together. I
 - Provide at least 44 pixels of hit area.
 - On narrow screens, scroll horizontally without clipping labels.
 - Add a subtle edge fade or equivalent cue when more items are available off-screen.
-- A view switch such as Board and Ranked is a segmented control: one shared track, one clearly pressed selection.
+- A view switch such as Board and Ranked is a segmented control: one shared inset track and one selection plate that slides between options using `--duration-slow` and `--ease-standard`. Keep labels stationary, preserve focus visibility, and let reduced-motion preferences collapse the transition.
 
 ### 7.5 Inputs and textareas
 

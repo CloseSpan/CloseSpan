@@ -6,8 +6,8 @@ describe("CloseSpan3DLogo", () => {
   it("ships both theme-specific lockups", () => {
     const markup = renderToStaticMarkup(<CloseSpan3DLogo />);
 
-    expect(markup).toContain("closespan-3d-logo-light-lockup-v1.png");
-    expect(markup).toContain("closespan-3d-logo-dark-lockup-v1.png");
+    expect(markup).toContain("closespan-3d-logo-light-transparent-v2.png");
+    expect(markup).toContain("closespan-3d-logo-dark-transparent-v2.png");
     expect(markup).toContain('aria-hidden="true"');
   });
 

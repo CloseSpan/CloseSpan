@@ -4,7 +4,7 @@ import { signOutCurrentUser } from "@/app/auth-actions";
 import type { WorkspaceUser } from "@/lib/auth-user";
 import { getWorkspaceDemoGuide } from "@/lib/demo-guide-repository";
 import { workspacePersistenceMode } from "@/lib/workspace-persistence";
-import { CloseSpanLogo } from "./closespan-logo";
+import { CloseSpan3DLogo } from "./closespan-3d-logo";
 import { GuidedDemo } from "./guided-demo";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { MobileNavigation, Sidebar } from "./sidebar";
@@ -48,7 +48,7 @@ export async function AppShell({
               href="/overview"
               aria-label="CloseSpan overview"
             >
-              <CloseSpanLogo size="sm" />
+              <CloseSpan3DLogo size="sm" />
             </Link>
             <div className="immersive-top-actions">
               <OrganizationSwitcher

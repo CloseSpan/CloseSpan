@@ -25,20 +25,20 @@ export function CloseSpan3DLogo({
       <Image
         alt=""
         className="closespan-3d-logo__image closespan-3d-logo__image--light"
-        height={380}
+        height={725}
         priority={priority}
         sizes="(max-width: 720px) 168px, 220px"
-        src="/closespan-3d-logo-light-lockup-v1.png"
-        width={1980}
+        src="/closespan-3d-logo-light-transparent-v2.png"
+        width={2169}
       />
       <Image
         alt=""
         className="closespan-3d-logo__image closespan-3d-logo__image--dark"
-        height={380}
+        height={725}
         priority={priority}
         sizes="(max-width: 720px) 168px, 220px"
-        src="/closespan-3d-logo-dark-lockup-v1.png"
-        width={1980}
+        src="/closespan-3d-logo-dark-transparent-v2.png"
+        width={2168}
       />
       <span className="closespan-3d-logo__forced-colors">CloseSpan</span>
     </span>

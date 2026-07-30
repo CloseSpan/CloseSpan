@@ -19,7 +19,7 @@ import {
   WORKSPACE_NAVIGATION,
   type WorkspaceNavigationId,
 } from "@/lib/workspace-navigation";
-import { CloseSpanLogo } from "./closespan-logo";
+import { CloseSpan3DLogo } from "./closespan-3d-logo";
 import {
   OrganizationSwitcher,
   type OrganizationSwitcherItem,
@@ -81,7 +81,7 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <Link className="brand" href="/overview" aria-label="CloseSpan overview">
-        <CloseSpanLogo size="md" />
+        <CloseSpan3DLogo size="sm" />
       </Link>
       <nav className="nav" aria-label="Primary navigation">
         <NavigationLinks />

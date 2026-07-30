@@ -120,8 +120,7 @@ export function WorkspaceSetupHub({
     setError(null);
     try {
       const result = await setupFetch("/api/integrations/github", orgId);
-      window.open(result.installUrl as string, "_blank", "noopener,noreferrer");
-      await refreshStatus();
+      window.location.assign(result.installUrl as string);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "GitHub setup failed");
     } finally {
@@ -304,9 +303,14 @@ export function WorkspaceSetupHub({
           {status.githubConnected ? (
             <div className="setup-complete">
               <Check aria-hidden="true" size={16} />
-              <span>GitHub connected</span>
-              <Link className="btn" href="/integrations">
-                Manage GitHub scopes
+              <span>
+                GitHub connected
+                {status.github?.repositoryCount
+                  ? ` · ${status.github.repositoryCount} repositor${status.github.repositoryCount === 1 ? "y" : "ies"}`
+                  : ""}
+              </span>
+              <Link className="btn" href="/integrations?view=connections&focus=int_github">
+                Manage repositories
               </Link>
             </div>
           ) : (

@@ -1,5 +1,8 @@
 import { IntegrationsScreen } from "@/components/screens";
+import { GithubConnectionPanel } from "@/components/github-connection-panel";
 import { requireWorkspaceUser } from "@/lib/auth-user";
+import { listGithubAppInstallations } from "@/lib/github-installation-repository";
+import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
 import { integrationCatalog } from "@/lib/integration-catalog";
 import { getOnboardingState } from "@/lib/onboarding-repository";
 import { listPipedreamConnections } from "@/lib/pipedream-repository";
@@ -17,6 +20,8 @@ export default async function Page({
   searchParams: Promise<{
     focus?: string | string[];
     view?: string | string[];
+    github?: string | string[];
+    reason?: string | string[];
   }>;
 }) {
   const user = await requireWorkspaceUser();
@@ -41,6 +46,16 @@ export default async function Page({
     : requestedView === "connections"
       ? "connections"
       : "suggestions";
+  const callbackStatus = Array.isArray(params.github) ? params.github[0] : params.github;
+  const callbackReason = Array.isArray(params.reason) ? params.reason[0] : params.reason;
+  const showGithubConnection =
+    focusedIntegrationId === "int_github" || callbackStatus === "connected" || callbackStatus === "error";
+  const [githubInstallations, githubRepositories] = showGithubConnection
+    ? await Promise.all([
+        listGithubAppInstallations(user.orgId),
+        listGithubRepositoryAuthorizations(user.orgId),
+      ])
+    : [[], []];
   const initialIntegrationActivity = pipedreamConnections.map(
     ({
       integrationId,
@@ -62,14 +77,26 @@ export default async function Page({
   );
 
   return (
-    <IntegrationsScreen
-      integrations={data.integrations}
-      orgId={user.orgId}
-      focusedIntegrationId={focusedIntegrationId}
-      productName={onboarding.productProfile.productName}
-      recommendedConnectors={onboarding.recommendedConnectors}
-      initialIntegrationActivity={initialIntegrationActivity}
-      initialView={initialView}
-    />
+    <>
+      {showGithubConnection && (
+        <GithubConnectionPanel
+          orgId={user.orgId}
+          installations={githubInstallations}
+          repositories={githubRepositories}
+          callbackStatus={callbackStatus ?? null}
+          callbackReason={callbackReason ?? null}
+          canManage={user.role === "Admin"}
+        />
+      )}
+      <IntegrationsScreen
+        integrations={data.integrations}
+        orgId={user.orgId}
+        focusedIntegrationId={focusedIntegrationId}
+        productName={onboarding.productProfile.productName}
+        recommendedConnectors={onboarding.recommendedConnectors}
+        initialIntegrationActivity={initialIntegrationActivity}
+        initialView={initialView}
+      />
+    </>
   );
 }

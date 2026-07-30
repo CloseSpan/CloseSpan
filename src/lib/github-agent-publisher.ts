@@ -1,16 +1,8 @@
-import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import type { AgentImplementationReport } from "./agent-run-verification";
 import type { AgentRunExecutionContext } from "./engineering-workflow-repository";
 import { verificationReportJson } from "./engineering-workflow-repository";
-
-function githubConfiguration() {
-  const appId = process.env.GITHUB_APP_ID?.trim();
-  const privateKey = process.env.GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n").trim();
-  if (!appId || !privateKey)
-    throw new Error("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are required for live agent publication");
-  return { appId, privateKey };
-}
+import { createGithubInstallationClient } from "./github-app-auth";
 
 function repositoryParts(repository: string): { owner: string; repo: string } {
   const [owner, repo, extra] = repository.split("/");
@@ -27,10 +19,7 @@ async function installationClient(
   dependencies: GithubPublisherDependencies = {},
 ): Promise<Octokit> {
   if (dependencies.createClient) return dependencies.createClient(installationId);
-  const { appId, privateKey } = githubConfiguration();
-  const auth = createAppAuth({ appId, privateKey, installationId: Number(installationId) });
-  const installation = await auth({ type: "installation" });
-  return new Octokit({ auth: installation.token });
+  return createGithubInstallationClient(installationId);
 }
 
 async function createTreeCommit(

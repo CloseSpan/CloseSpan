@@ -12,6 +12,7 @@ import {
 import { databasePool } from "./db";
 import { integrationCatalog } from "./integration-catalog";
 import { getAiPublicConfiguration } from "./ai-config";
+import { GITHUB_INSTALL_STATE_TTL_SECONDS } from "./github-installation-state";
 import { listPipedreamConnections } from "./pipedream-repository";
 import { feedback as seedFeedback } from "./seed";
 import {
@@ -30,6 +31,10 @@ export interface WorkspaceSetupStatus {
     integrationId: string;
     webhookUrl: string;
     connectedAt: string | null;
+  };
+  github?: {
+    installationCount: number;
+    repositoryCount: number;
   };
 }
 
@@ -215,7 +220,7 @@ export async function getWorkspaceSetupStatus(
   }
   await ensureIntegrationCatalog(orgId);
   const pool = databasePool();
-  const [feedbackResult, integrationsResult, aiConfig] =
+  const [feedbackResult, integrationsResult, aiConfig, githubResult] =
     await Promise.all([
       pool.query<{ count: number }>(
         "SELECT count(*)::int AS count FROM feedback_items WHERE org_id=$1",
@@ -223,6 +228,14 @@ export async function getWorkspaceSetupStatus(
       ),
       queryWorkspaceSetupIntegrations(pool, orgId),
       getAiPublicConfiguration(orgId),
+      pool.query<{ installation_count: number; repository_count: number }>(
+        `SELECT
+           (SELECT count(*)::int FROM github_app_installations
+             WHERE org_id=$1 AND active=true) AS installation_count,
+           (SELECT count(*)::int FROM github_repository_allowlists
+             WHERE org_id=$1 AND active=true) AS repository_count`,
+        [orgId],
+      ),
     ]);
 
   const feedbackCount = feedbackResult.rows[0]?.count ?? 0;
@@ -260,6 +273,12 @@ export async function getWorkspaceSetupStatus(
           integrationId: webhookRow.id,
           webhookUrl: buildWebhookUrl(webhookRow.webhook_public_id),
           connectedAt: webhookRow.last_sync_at?.toISOString?.() ?? null,
+        }
+      : undefined,
+    github: githubConnected
+      ? {
+          installationCount: githubResult.rows[0]?.installation_count ?? 0,
+          repositoryCount: githubResult.rows[0]?.repository_count ?? 0,
         }
       : undefined,
   };
@@ -341,28 +360,53 @@ export async function createWebhookIntegration(
 export async function markGithubPendingSetup(
   orgId: string,
   actorId: string,
-): Promise<string> {
+): Promise<{ installUrl: string; attemptId: string; expiresAt: Date }> {
   requirePostgresWorkspace(orgId, "GitHub setup");
   await ensureIntegrationCatalog(orgId);
   const pool = databasePool();
-  await pool.query(
-    `UPDATE integrations
-        SET connection_state='Pending setup',
-            data_scope='Repository metadata and issue creation (approval required)',
-            permissions='["metadata:read","issues:write"]'::jsonb,
-            error_message=NULL
-      WHERE org_id=$1 AND provider=$2`,
-    [orgId, GITHUB_PROVIDER],
-  );
-  await pool.query(
-    `INSERT INTO audit_events(id, org_id, actor_id, actor_name, action, entity_type, entity_id, trace_id)
-     VALUES ($1,$2,$3,'Workspace admin','Started GitHub integration setup','Integration','int_github',$4)`,
-    [randomUUID(), orgId, actorId, `setup_github_${Date.now()}`],
-  );
-  return (
+  const attemptId = randomUUID();
+  const expiresAt = new Date(Date.now() + GITHUB_INSTALL_STATE_TTL_SECONDS * 1000);
+  const installUrl = new URL(
     process.env.GITHUB_APP_INSTALL_URL ??
-    "https://github.com/apps/feelow-ai/installations/new"
+      "https://github.com/apps/closespan/installations/new",
   );
+  if (
+    installUrl.protocol !== "https:" ||
+    installUrl.hostname !== "github.com" ||
+    !/^\/apps\/[A-Za-z0-9-]+\/installations\/new$/.test(installUrl.pathname)
+  ) {
+    throw new Error("GITHUB_APP_INSTALL_URL must be a GitHub App installation URL");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `UPDATE integrations
+          SET connection_state='Pending setup',
+              data_scope='Repository contents for approval-bound draft pull requests',
+              permissions='["metadata:read","contents:write","pull_requests:write:draft"]'::jsonb,
+              error_message=NULL
+        WHERE org_id=$1 AND provider=$2`,
+      [orgId, GITHUB_PROVIDER],
+    );
+    await client.query(
+      `INSERT INTO github_app_install_attempts(id,org_id,actor_id,expires_at)
+       VALUES($1,$2,$3,$4)`,
+      [attemptId, orgId, actorId, expiresAt],
+    );
+    await client.query(
+      `INSERT INTO audit_events(id, org_id, actor_id, actor_name, action, entity_type, entity_id, trace_id)
+       VALUES ($1,$2,$3,'Workspace admin','Started GitHub integration setup','Integration','int_github',$4)`,
+      [randomUUID(), orgId, actorId, `setup_github_${Date.now()}_${randomUUID()}`],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return { installUrl: installUrl.toString(), attemptId, expiresAt };
 }
 
 export interface WebhookFeedbackPayload {

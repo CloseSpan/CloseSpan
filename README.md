@@ -299,7 +299,7 @@ See [Production architecture](docs/architecture/production-architecture.md) for 
 
 ## Approval-bound coding executor
 
-Run migrations `022_engineering_prompt_workflow.sql` and `023_workflow_automation.sql`, install the GitHub App on only the intended repositories, and add each installation/repository pair through `PUT /api/integrations/github/repositories`. Configure `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `AGENT_EXECUTOR_URL`, `AGENT_EXECUTOR_SHARED_SECRET`, and `CLOSESPAN_INTERNAL_BASE_URL` in the Vercel application.
+Run migrations `022_engineering_prompt_workflow.sql`, `023_workflow_automation.sql`, and `024_github_app_installations.sql`. Configure the GitHub App Setup URL as `https://closespan.com/api/integrations/github/callback` and set `GITHUB_APP_INSTALL_URL=https://github.com/apps/closespan/installations/new`. The authenticated callback verifies the installation with GitHub, binds it to the initiating workspace administrator through a signed one-time attempt, and synchronizes only repositories selected in GitHub. Configure `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `AGENT_EXECUTOR_URL`, `AGENT_EXECUTOR_SHARED_SECRET`, and `CLOSESPAN_INTERNAL_BASE_URL` in the Vercel application.
 
 The Vercel cron calls `/api/internal/workflow/automation` once per minute. Each workspace uses an advisory lock plus a durable 30-second transition lease, so one evidence-qualified ticket can move by only one stage at a time even when cron, an open board, or a retry overlap. `Approved` is the human decision queue; every other transition requires stored evidence and is agent-managed. Configure `CRON_SECRET` in Vercel before enabling the schedule.
 

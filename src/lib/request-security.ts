@@ -124,7 +124,7 @@ export async function authorizeRead(
 ): Promise<
   Pick<
     RequestContext,
-    "orgId" | "organizationName" | "actorId" | "actorName" | "traceId"
+    "orgId" | "organizationName" | "actorId" | "actorName" | "role" | "traceId"
   >
 > {
   const user = await authenticatedUser(request);
@@ -134,8 +134,16 @@ export async function authorizeRead(
     organizationName: user.organizationName,
     actorId: user.id,
     actorName: user.name,
+    role: user.role,
     traceId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
   };
+}
+
+export async function authorizeAdminRead(request: NextRequest) {
+  const context = await authorizeRead(request);
+  if (context.role !== "Admin")
+    throw new HttpError(403, "Administrator permission is required");
+  return context;
 }
 
 export function errorResponse(error: unknown): Response {

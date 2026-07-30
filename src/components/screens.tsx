@@ -1492,6 +1492,7 @@ export function PrioritizationScreen({
             />
             <div
               className="segmented prioritization-view-switch"
+              data-view={view}
               role="group"
               aria-label="Prioritization view"
             >

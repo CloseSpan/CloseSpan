@@ -45,6 +45,12 @@ describe("workspace setup integration compatibility", () => {
       if (sql.includes("FROM feedback_items")) {
         return Promise.resolve({ rows: [{ count: 0 }], rowCount: 1 });
       }
+      if (sql.includes("FROM github_app_installations")) {
+        return Promise.resolve({
+          rows: [{ installation_count: 0, repository_count: 0 }],
+          rowCount: 1,
+        });
+      }
       if (sql.includes("secret.public_id AS webhook_public_id")) {
         return Promise.reject(
           Object.assign(
@@ -110,6 +116,12 @@ describe("workspace setup integration compatibility", () => {
       }
       if (sql.includes("FROM feedback_items")) {
         return Promise.resolve({ rows: [{ count: 0 }], rowCount: 1 });
+      }
+      if (sql.includes("FROM github_app_installations")) {
+        return Promise.resolve({
+          rows: [{ installation_count: 0, repository_count: 0 }],
+          rowCount: 1,
+        });
       }
       if (sql.includes("secret.public_id AS webhook_public_id")) {
         return Promise.reject(
