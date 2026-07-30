@@ -8,6 +8,9 @@ import { CloseSpanLogo } from "./closespan-logo";
 import { GuidedDemo } from "./guided-demo";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { MobileNavigation, Sidebar } from "./sidebar";
+import { ThemeToggle } from "./theme-toggle";
+import { WorkspaceBreadcrumb } from "./workspace-breadcrumb";
+import { WorkspaceRouteTransition } from "./workspace-route-transition";
 
 function initials(name: string): string {
   return (
@@ -21,12 +24,10 @@ function initials(name: string): string {
 }
 
 export async function AppShell({
-  section,
   user,
   children,
   immersive = false,
 }: {
-  section: string;
   user: WorkspaceUser;
   children: React.ReactNode;
   immersive?: boolean;
@@ -74,6 +75,7 @@ export async function AppShell({
                     </span>
                   </div>
                   <span className="user-role">{user.role}</span>
+                  <ThemeToggle />
                   <form action={signOutCurrentUser}>
                     <button type="submit">
                       <LogOut aria-hidden="true" size={15} />
@@ -84,7 +86,11 @@ export async function AppShell({
               </details>
             </div>
           </header>
-          <div className="content immersive-content" id="main-content">
+          <div
+            className="content immersive-content"
+            id="main-content"
+            tabIndex={-1}
+          >
             {children}
           </div>
         </main>
@@ -110,7 +116,7 @@ export async function AppShell({
             activeOrganizationId={user.orgId}
             canRenameWorkspace={canRenameWorkspace}
           />
-          <div className="crumb">{section}</div>
+          <WorkspaceBreadcrumb />
           <div className="top-actions">
             <Link className="btn search-action" href="/feedback">
               <Search size={15} />
@@ -134,6 +140,7 @@ export async function AppShell({
                   </span>
                 </div>
                 <span className="user-role">{user.role}</span>
+                <ThemeToggle />
                 <form action={signOutCurrentUser}>
                   <button type="submit">
                     <LogOut aria-hidden="true" size={15} />
@@ -144,8 +151,8 @@ export async function AppShell({
             </details>
           </div>
         </header>
-        <div className="content" id="main-content">
-          {children}
+        <div className="content" id="main-content" tabIndex={-1}>
+          <WorkspaceRouteTransition>{children}</WorkspaceRouteTransition>
         </div>
       </main>
       {demoGuide && <GuidedDemo guide={demoGuide} orgId={user.orgId} />}

@@ -1,0 +1,4992 @@
+/*
+ * CloseSpan visual system
+ *
+ * This file is the single visual authority for the product. globals.css keeps
+ * structural and feature-specific layout rules while this layer supplies the
+ * shared tokens, component surfaces, interaction states, and responsive rules.
+ */
+
+:root {
+  color-scheme: light;
+
+  --bg: #e9eef7;
+  --surface: #e9eef7;
+  --surface-hover: #edf2fa;
+  --surface-pressed: #e4eaf4;
+  --surface-muted: #e3e9f3;
+
+  --text: #3f4b63;
+  --text-strong: #263249;
+  /* Darkened slightly from the visual baseline to keep normal text at 4.5:1. */
+  --text-muted: #59667f;
+  --text-on-accent: #ffffff;
+
+  --accent: #5146e5;
+  --accent-hover: #463bd1;
+  --accent-active: #3f35c3;
+  --accent-fill: #5146e5;
+  --accent-fill-hover: #463bd1;
+  --accent-fill-active: #3f35c3;
+  --accent-soft: rgba(81, 70, 229, 0.1);
+  --accent-line: rgba(81, 70, 229, 0.28);
+
+  --success: #0b674d;
+  --success-soft: rgba(22, 130, 98, 0.1);
+  --success-fill: #14745a;
+  --success-fill-hover: #0f8060;
+  --success-fill-active: #0d634b;
+  --warning: #855214;
+  --warning-soft: rgba(150, 98, 27, 0.11);
+  --warning-fill: #94601d;
+  --warning-fill-hover: #a26a21;
+  --warning-fill-active: #7d5018;
+  --danger: #a92f40;
+  --danger-soft: rgba(169, 47, 64, 0.1);
+  --danger-fill: #ac3548;
+  --danger-fill-hover: #bd4053;
+  --danger-fill-active: #912b3b;
+  --info: #386aa8;
+  --info-soft: rgba(56, 106, 168, 0.1);
+
+  --border-subtle: rgba(100, 117, 148, 0.14);
+  --border-strong: rgba(91, 107, 137, 0.24);
+  --control-border: #7a879f;
+
+  --shadow-raised:
+    -7px -7px 14px rgba(255, 255, 255, 0.82),
+    7px 7px 14px rgba(154, 169, 194, 0.38);
+  --shadow-raised-sm:
+    -4px -4px 9px rgba(255, 255, 255, 0.76),
+    4px 4px 9px rgba(154, 169, 194, 0.28);
+  --shadow-hover:
+    -8px -8px 16px rgba(255, 255, 255, 0.86),
+    8px 8px 16px rgba(154, 169, 194, 0.4);
+  --shadow-inset:
+    inset 5px 5px 10px rgba(154, 169, 194, 0.34),
+    inset -5px -5px 10px rgba(255, 255, 255, 0.82);
+  --shadow-inset-sm:
+    inset 3px 3px 7px rgba(154, 169, 194, 0.3),
+    inset -3px -3px 7px rgba(255, 255, 255, 0.76);
+  --shadow-focus: 0 0 0 3px rgba(81, 70, 229, 0.3);
+  --shadow-overlay:
+    -12px -12px 24px rgba(255, 255, 255, 0.72),
+    12px 12px 28px rgba(122, 136, 160, 0.42);
+  --shadow-accent-raised:
+    -4px -4px 9px rgba(255, 255, 255, 0.68),
+    5px 5px 11px rgba(89, 84, 164, 0.34);
+  --shadow-accent-hover:
+    -5px -5px 11px rgba(255, 255, 255, 0.76),
+    6px 6px 13px rgba(75, 68, 155, 0.38);
+  --shadow-accent-inset:
+    inset 4px 4px 8px rgba(38, 29, 145, 0.42),
+    inset -3px -3px 7px rgba(137, 130, 255, 0.3);
+  --shadow-accent-cta-raised:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.22),
+    inset -1px -1px 0 rgba(38, 29, 145, 0.28),
+    -5px -5px 12px rgba(255, 255, 255, 0.72),
+    7px 7px 14px rgba(126, 139, 165, 0.36);
+  --shadow-accent-cta-hover:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.26),
+    inset -1px -1px 0 rgba(38, 29, 145, 0.32),
+    -6px -6px 14px rgba(255, 255, 255, 0.78),
+    8px 8px 16px rgba(117, 130, 158, 0.42);
+  --shadow-accent-cta-inset:
+    inset 5px 5px 10px rgba(37, 28, 137, 0.5),
+    inset -4px -4px 9px rgba(142, 135, 255, 0.34);
+  --shadow-color-raised:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.2),
+    inset -1px -1px 0 rgba(31, 41, 62, 0.26),
+    -5px -5px 12px rgba(255, 255, 255, 0.7),
+    7px 7px 14px rgba(126, 139, 165, 0.36);
+  --shadow-color-hover:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.24),
+    inset -1px -1px 0 rgba(31, 41, 62, 0.3),
+    -6px -6px 14px rgba(255, 255, 255, 0.76),
+    8px 8px 16px rgba(117, 130, 158, 0.42);
+  --shadow-color-inset:
+    inset 5px 5px 10px rgba(23, 31, 49, 0.4),
+    inset -4px -4px 9px rgba(255, 255, 255, 0.18);
+  --shadow-progress-track:
+    inset 2px 2px 4px rgba(137, 151, 176, 0.38),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.74);
+  --shadow-progress-fill:
+    inset 1px 1px 2px rgba(255, 255, 255, 0.24),
+    inset -1px -1px 2px rgba(34, 27, 124, 0.38),
+    2px 2px 4px rgba(70, 60, 171, 0.28);
+  --shadow-sidebar:
+    8px 0 18px rgba(154, 169, 194, 0.28),
+    -4px 0 12px rgba(255, 255, 255, 0.7);
+  --shadow-topbar:
+    0 6px 14px rgba(154, 169, 194, 0.22),
+    0 -4px 10px rgba(255, 255, 255, 0.76);
+  --separator-shadow: rgba(91, 107, 137, 0.48);
+  --overlay-backdrop: rgba(63, 75, 99, 0.24);
+  --chart-grid: rgba(107, 120, 145, 0.11);
+  --skeleton-sheen: rgba(255, 255, 255, 0.52);
+  --scrollbar-thumb: rgba(107, 120, 145, 0.4);
+  --toggle-thumb: #ffffff;
+  --selection-bg: rgba(81, 70, 229, 0.2);
+  --table-row-hover: rgba(81, 70, 229, 0.045);
+
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: clamp(1.75rem, 3vw, 2.5rem);
+  --text-hero: clamp(2.5rem, 6vw, 5rem);
+  --weight-medium: 550;
+  --weight-semibold: 650;
+  --weight-bold: 760;
+  --leading-tight: 1.15;
+  --leading-body: 1.55;
+
+  --control-height: 44px;
+  --control-height-lg: 48px;
+  --content-max: 1440px;
+
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 280ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Compatibility aliases while legacy structural CSS is retired. */
+  --ink: var(--text-strong);
+  --muted: var(--text-muted);
+  --line: var(--border-subtle);
+  --soft: var(--surface-muted);
+  --brand: var(--accent);
+  --brand-soft: var(--accent-soft);
+  --nav: var(--surface);
+  --app-canvas: var(--bg);
+  --app-surface: var(--surface);
+  --app-surface-soft: var(--surface-muted);
+  --app-line: var(--border-subtle);
+  --app-radius-card: var(--radius-lg);
+  --app-radius-control: var(--radius-md);
+  --app-shadow-card: var(--shadow-raised);
+  --app-shadow-overlay: var(--shadow-overlay);
+  --app-control-height: var(--control-height);
+  --neu-canvas: var(--bg);
+  --neu-surface: var(--surface);
+  --neu-surface-raised: var(--surface);
+  --neu-border: var(--border-subtle);
+  --neu-raised: var(--shadow-raised);
+  --neu-raised-soft: var(--shadow-raised-sm);
+  --neu-inset: var(--shadow-inset);
+  --neu-pressed: var(--shadow-inset-sm);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #151b27;
+  --surface: #151b27;
+  --surface-hover: #1a2230;
+  --surface-pressed: #111722;
+  --surface-muted: #202938;
+
+  --text: #c9d2e3;
+  --text-strong: #f2f5fb;
+  --text-muted: #9aa8bd;
+  --text-on-accent: #ffffff;
+
+  --accent: #9a93ff;
+  --accent-hover: #aaa5ff;
+  --accent-active: #837bfa;
+  --accent-fill: #5146e5;
+  --accent-fill-hover: #6157ed;
+  --accent-fill-active: #4439cc;
+  --accent-soft: rgba(154, 147, 255, 0.14);
+  --accent-line: rgba(154, 147, 255, 0.38);
+
+  --success: #64d6ae;
+  --success-soft: rgba(100, 214, 174, 0.12);
+  --success-fill: #176f58;
+  --success-fill-hover: #1c8065;
+  --success-fill-active: #125b48;
+  --warning: #f1bd69;
+  --warning-soft: rgba(241, 189, 105, 0.12);
+  --warning-fill: #8d5b1d;
+  --warning-fill-hover: #a16a24;
+  --warning-fill-active: #754a17;
+  --danger: #ff8798;
+  --danger-soft: rgba(255, 135, 152, 0.12);
+  --danger-fill: #a93448;
+  --danger-fill-hover: #bc4055;
+  --danger-fill-active: #8e2a3b;
+  --info: #79b5f3;
+  --info-soft: rgba(121, 181, 243, 0.12);
+
+  --border-subtle: rgba(181, 194, 217, 0.1);
+  --border-strong: rgba(195, 207, 228, 0.2);
+  --control-border: #7e8da5;
+
+  --shadow-raised:
+    -7px -7px 14px rgba(49, 60, 81, 0.46),
+    7px 7px 14px rgba(3, 7, 14, 0.68);
+  --shadow-raised-sm:
+    -4px -4px 9px rgba(49, 60, 81, 0.4),
+    4px 4px 9px rgba(3, 7, 14, 0.58);
+  --shadow-hover:
+    -8px -8px 16px rgba(54, 66, 89, 0.5),
+    8px 8px 16px rgba(2, 6, 13, 0.72);
+  --shadow-inset:
+    inset 5px 5px 10px rgba(3, 7, 14, 0.64),
+    inset -5px -5px 10px rgba(49, 60, 81, 0.42);
+  --shadow-inset-sm:
+    inset 3px 3px 7px rgba(3, 7, 14, 0.58),
+    inset -3px -3px 7px rgba(49, 60, 81, 0.36);
+  --shadow-focus: 0 0 0 3px rgba(154, 147, 255, 0.34);
+  --shadow-overlay:
+    -12px -12px 24px rgba(49, 60, 81, 0.42),
+    12px 12px 28px rgba(2, 5, 11, 0.76);
+  --shadow-accent-raised:
+    -4px -4px 9px rgba(49, 60, 81, 0.42),
+    5px 5px 11px rgba(3, 7, 14, 0.62);
+  --shadow-accent-hover:
+    -5px -5px 11px rgba(54, 66, 89, 0.48),
+    6px 6px 13px rgba(2, 6, 13, 0.72);
+  --shadow-accent-inset:
+    inset 4px 4px 8px rgba(25, 18, 103, 0.64),
+    inset -3px -3px 7px rgba(132, 123, 255, 0.26);
+  --shadow-accent-cta-raised:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.14),
+    inset -1px -1px 0 rgba(22, 16, 91, 0.48),
+    -5px -5px 12px rgba(49, 60, 81, 0.46),
+    7px 7px 14px rgba(2, 6, 13, 0.72);
+  --shadow-accent-cta-hover:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.17),
+    inset -1px -1px 0 rgba(22, 16, 91, 0.54),
+    -6px -6px 14px rgba(54, 66, 89, 0.5),
+    8px 8px 16px rgba(2, 6, 13, 0.78);
+  --shadow-accent-cta-inset:
+    inset 5px 5px 10px rgba(20, 14, 91, 0.72),
+    inset -4px -4px 9px rgba(131, 122, 255, 0.28);
+  --shadow-color-raised:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.12),
+    inset -1px -1px 0 rgba(3, 7, 14, 0.46),
+    -5px -5px 12px rgba(49, 60, 81, 0.46),
+    7px 7px 14px rgba(2, 6, 13, 0.72);
+  --shadow-color-hover:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.15),
+    inset -1px -1px 0 rgba(3, 7, 14, 0.52),
+    -6px -6px 14px rgba(54, 66, 89, 0.5),
+    8px 8px 16px rgba(2, 6, 13, 0.78);
+  --shadow-color-inset:
+    inset 5px 5px 10px rgba(2, 6, 13, 0.66),
+    inset -4px -4px 9px rgba(255, 255, 255, 0.12);
+  --shadow-progress-track:
+    inset 2px 2px 4px rgba(2, 6, 13, 0.72),
+    inset -2px -2px 4px rgba(49, 60, 81, 0.34);
+  --shadow-progress-fill:
+    inset 1px 1px 2px rgba(255, 255, 255, 0.16),
+    inset -1px -1px 2px rgba(20, 14, 91, 0.54),
+    2px 2px 4px rgba(2, 6, 13, 0.48);
+  --shadow-sidebar:
+    8px 0 18px rgba(2, 6, 13, 0.58),
+    -4px 0 12px rgba(49, 60, 81, 0.32);
+  --shadow-topbar:
+    0 6px 14px rgba(2, 6, 13, 0.54),
+    0 -4px 10px rgba(49, 60, 81, 0.3);
+  --separator-shadow: rgba(3, 7, 14, 0.74);
+  --overlay-backdrop: rgba(3, 7, 14, 0.68);
+  --chart-grid: rgba(154, 168, 189, 0.13);
+  --skeleton-sheen: rgba(76, 90, 116, 0.38);
+  --scrollbar-thumb: rgba(154, 168, 189, 0.42);
+  --toggle-thumb: #dce3f0;
+  --selection-bg: rgba(154, 147, 255, 0.26);
+  --table-row-hover: rgba(154, 147, 255, 0.08);
+}
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--selection-bg);
+  color: var(--text-strong);
+}
+
+* {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+strong {
+  color: var(--text-strong);
+}
+
+p,
+li,
+label,
+small,
+.subtle,
+.crumb {
+  overflow-wrap: anywhere;
+}
+
+a,
+button,
+input,
+select,
+textarea,
+summary,
+[tabindex] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a,
+summary,
+input,
+select,
+textarea {
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: var(--shadow-focus);
+}
+
+:where(button, input, select, textarea):disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+  color: var(--text-muted);
+  opacity: 0.62;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Shared raised surfaces */
+
+:where(
+  .card,
+  .metric,
+  .problem-card,
+  .integration-summary-card,
+  .integration,
+  .provider-option,
+  .follow-card,
+  .fact,
+  .board-col,
+  .empty-state,
+  .feedback-analysis-card,
+  .feedback-journey,
+  .setup-card,
+  .setup-progress-card,
+  .delphi-product-card,
+  .delphi-sync,
+  .delphi-source,
+  .public-source-card,
+  .pipedream-account-row,
+  .integration-suggestions-agent,
+  .integration-suggestion-board,
+  .integration-copilot-connector,
+  .feature-request-review-queue,
+  .feature-request-row,
+  .login-card,
+  .waitlist-card
+) {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+:where(.metric, .problem-card, .integration, .provider-option, .pipedream-account-row) {
+  box-shadow: var(--shadow-raised-sm);
+}
+
+:where(.problem-card, .provider-option, .integration, .feature-request-row):hover {
+  border-color: var(--accent-line);
+  box-shadow: var(--shadow-hover);
+}
+
+:where(.filter-panel, .board-col, .fact, .empty, .empty-state, .chart-empty-state) {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset);
+}
+
+.app-shell .callout,
+.app-shell .searchbox,
+.app-shell .filter-panel,
+.app-shell .board-col,
+.app-shell .fact,
+.app-shell .empty,
+.app-shell .empty-state,
+.app-shell .chart-empty-state {
+  border-color: var(--border-subtle);
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.card-head {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--space-5) var(--space-6);
+}
+
+.card-body { padding: var(--space-6); }
+.subtle { color: var(--text-muted); }
+.summary, .quote, .list { color: var(--text); }
+
+.app-shell :where(.subtle, .crumb, .metric-label, .metric-delta) {
+  color: var(--text-muted);
+}
+
+.app-shell :where(
+  .integration-suggestion-section-description,
+  .integration-suggestion-row-copy > span,
+  .integration-suggestion-row-copy > small,
+  .integration-group-heading p,
+  .integration-card-footer > span,
+  .integration-availability,
+  .integration-unavailable p,
+  .integration-import.quiet
+) {
+  color: var(--text-muted);
+}
+
+.app-shell .badge.success,
+.app-shell .integration-import.succeeded,
+.app-shell .toast.success {
+  color: var(--success);
+}
+
+/* Shell and navigation */
+
+.shell,
+.shell-immersive,
+.app-shell,
+.main,
+.content,
+.immersive-main,
+.immersive-content {
+  background: var(--bg);
+}
+
+.sidebar {
+  z-index: 30;
+  border-right: 0;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sidebar);
+}
+
+.brand,
+.workspace,
+.nav a,
+.demo-label {
+  color: var(--text);
+}
+
+.brand {
+  min-height: var(--control-height);
+  color: var(--text-strong);
+}
+
+.workspace {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.nav a,
+.settings-nav a {
+  min-height: var(--control-height);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.nav-link-pending {
+  display: block;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: var(--radius-pill);
+  background: var(--accent-fill);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+  animation: nav-pending-pulse 900ms var(--ease-standard) infinite alternate;
+}
+
+@keyframes nav-pending-pulse {
+  from { opacity: 0.45; transform: scale(0.82); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.app-shell .nav a,
+.app-shell .settings-nav a {
+  min-height: var(--control-height);
+  color: var(--text);
+}
+
+.app-shell .nav a:hover,
+.app-shell .nav a:focus-visible,
+.app-shell .settings-nav a:hover,
+.app-shell .settings-nav a:focus-visible {
+  border-color: transparent;
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .nav a.active,
+.app-shell .settings-nav a.active,
+.app-shell .queue-item.selected {
+  border-color: transparent;
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.demo-label {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.demo-label strong { color: var(--warning); }
+
+.topbar,
+.immersive-topbar {
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-topbar);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.workspace-route-stage {
+  min-width: 0;
+  width: 100%;
+}
+
+.workspace-route-error {
+  max-width: 620px;
+  margin-inline: auto;
+}
+
+.workspace-route-error .btn {
+  align-self: flex-start;
+}
+
+.avatar,
+.organization-avatar,
+.guided-demo-icon,
+.brandmark,
+.provider-monogram,
+.provider-icon,
+.integration-provider-icon {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.notification-dot { box-shadow: 0 0 0 2px var(--surface); }
+
+.skip-link {
+  border: 1px solid var(--accent-line);
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-overlay);
+}
+
+/* Buttons and interactive controls */
+
+:where(
+  .btn,
+  .icon-btn,
+  .icon-button,
+  .guided-demo-trigger,
+  .organization-switcher-trigger,
+  .organization-create-action,
+  .organization-rename-trigger,
+  .delphi-chip,
+  .delphi-send,
+  .feature-request-new,
+  .feature-request-secondary,
+  .feature-request-dialog > header button,
+  .integration-suggestion-row-action,
+  .integration-copilot-replies button
+) {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+  font-weight: var(--weight-semibold);
+}
+
+:where(.icon-btn, .icon-button, .guided-demo-panel button[aria-label]) {
+  min-width: var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  place-items: center;
+}
+
+:where(
+  .btn,
+  .icon-btn,
+  .icon-button,
+  .guided-demo-trigger,
+  .organization-switcher-trigger,
+  .organization-create-action,
+  .organization-rename-trigger,
+  .delphi-chip,
+  .feature-request-new,
+  .feature-request-secondary,
+  .integration-suggestion-row-action,
+  .integration-copilot-replies button
+):hover:not(:disabled) {
+  border-color: var(--accent-line);
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+/* The structural stylesheet still contains high-specificity light-only hover
+ * fills for shell controls. Match that specificity here so every secondary
+ * action continues to use the active theme surface. */
+.app-shell :is(
+  .btn:not(.primary):not(.danger):not(.success),
+  .icon-btn,
+  .icon-button,
+  .organization-switcher-trigger,
+  .organization-rename-trigger,
+  .organization-rename-mobile
+):hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+:where(
+  .btn,
+  .icon-btn,
+  .icon-button,
+  .guided-demo-trigger,
+  .organization-switcher-trigger,
+  .organization-create-action,
+  .organization-rename-trigger,
+  .delphi-chip,
+  .feature-request-new,
+  .feature-request-secondary,
+  .integration-suggestion-row-action,
+  .integration-copilot-replies button
+):active:not(:disabled),
+:where(.btn, .icon-btn, .icon-button)[aria-pressed="true"] {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
+:where(
+  .btn.primary,
+  .organization-create-submit,
+  .organization-rename-submit,
+  .feature-request-primary,
+  .delphi-send,
+  .integration-copilot-primary-action,
+  .integration-copilot-composer button
+) {
+  min-height: var(--control-height);
+  border: 1px solid rgba(63, 53, 195, 0.5);
+  border-radius: var(--radius-md);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+  font-weight: var(--weight-semibold);
+}
+
+:where(
+  .btn.primary,
+  .organization-create-submit,
+  .organization-rename-submit,
+  .feature-request-primary,
+  .delphi-send,
+  .integration-copilot-primary-action,
+  .integration-copilot-composer button
+):hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+  box-shadow: var(--shadow-accent-hover);
+  transform: translateY(-1px);
+}
+
+:where(
+  .btn.primary,
+  .organization-create-submit,
+  .organization-rename-submit,
+  .feature-request-primary,
+  .delphi-send,
+  .integration-copilot-primary-action,
+  .integration-copilot-composer button
+):active:not(:disabled) {
+  background: var(--accent-fill-active);
+  box-shadow: var(--shadow-accent-inset);
+  transform: translateY(0);
+}
+
+.btn.danger,
+.integration-disconnect-confirmation .danger {
+  border-color: rgba(169, 47, 64, 0.24);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Win over feature-scoped legacy gradient buttons without changing behavior. */
+.app-shell .btn.primary,
+.app-shell .organization-create-submit,
+.app-shell .organization-rename-submit,
+.app-shell .delphi-send,
+.app-shell .integration-copilot-primary-action,
+.app-shell .integration-copilot-composer button {
+  border-color: rgba(63, 53, 195, 0.5);
+  background: var(--accent-fill);
+  background-image: none;
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+}
+
+.app-shell .page-title-actions .btn,
+.app-shell .page-title-actions .btn.primary {
+  min-height: var(--control-height);
+  padding-inline: var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-raised-sm);
+  white-space: nowrap;
+}
+
+.app-shell .page-title-actions .btn.primary {
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+}
+
+.app-shell .btn.primary:hover:not(:disabled),
+.app-shell .organization-create-submit:hover:not(:disabled),
+.app-shell .organization-rename-submit:hover:not(:disabled),
+.app-shell .delphi-send:hover:not(:disabled),
+.app-shell .integration-copilot-primary-action:hover:not(:disabled),
+.app-shell .integration-copilot-composer button:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--accent-fill-hover);
+  background-image: none;
+  box-shadow: var(--shadow-accent-hover);
+  transform: translateY(-1px);
+}
+
+/* Forms, search, and selections */
+
+:where(
+  .field > input,
+  .field > textarea,
+  .field > select,
+  .toolbar input,
+  .toolbar select,
+  .filter-panel input,
+  .filter-panel select,
+  .secret-input,
+  .organization-create-form input,
+  .organization-create-form textarea,
+  .feedback-review-actions select,
+  .feature-request-dialog input,
+  .feature-request-dialog textarea,
+  .login-card input,
+  .delphi-composer,
+  .integration-copilot-composer,
+  .searchbox
+) {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-inset);
+}
+
+:where(
+  .field > input,
+  .field > textarea,
+  .field > select,
+  .toolbar input,
+  .toolbar select,
+  .filter-panel input,
+  .filter-panel select,
+  .secret-input,
+  .organization-create-form input,
+  .organization-create-form textarea,
+  .feedback-review-actions select,
+  .feature-request-dialog input,
+  .feature-request-dialog textarea,
+  .login-card input
+):hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+:where(
+  .field > input,
+  .field > textarea,
+  .field > select,
+  .toolbar input,
+  .toolbar select,
+  .filter-panel input,
+  .filter-panel select,
+  .secret-input,
+  .organization-create-form input,
+  .organization-create-form textarea,
+  .feedback-review-actions select,
+  .feature-request-dialog input,
+  .feature-request-dialog textarea,
+  .login-card input
+):focus {
+  border-color: var(--accent-line);
+  background: var(--surface);
+  box-shadow: var(--shadow-inset-sm), var(--shadow-focus);
+}
+
+:where(input, textarea)::placeholder { color: color-mix(in srgb, var(--text-muted) 76%, transparent); }
+
+.searchbox input,
+.delphi-composer :where(input, textarea),
+.integration-copilot-composer :where(input, textarea) {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-strong);
+  box-shadow: none;
+  outline: none;
+}
+
+.searchbox:focus-within,
+.delphi-composer:focus-within,
+.integration-copilot-composer:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: var(--shadow-inset-sm), var(--shadow-focus);
+}
+
+/* Reusable themed listbox. Native select popups are painted by the operating
+ * system and cannot reliably inherit CloseSpan's light and dark surfaces. */
+.custom-select {
+  position: relative;
+  min-width: 150px;
+}
+
+.custom-select-trigger {
+  width: 100%;
+  min-height: var(--control-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  border: 0 !important;
+  outline: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.custom-select-trigger:hover {
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-hover);
+}
+
+.custom-select-trigger[aria-expanded="true"] {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.custom-select-trigger:focus-visible {
+  border: 0 !important;
+  outline: 0 !important;
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.custom-select-trigger svg {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  transition: transform var(--duration-normal) var(--ease-standard);
+}
+
+.custom-select-trigger[aria-expanded="true"] svg {
+  color: var(--accent);
+  transform: rotate(180deg);
+}
+
+.custom-select-value {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.custom-select-value > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.custom-select-value > svg {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  transform: none !important;
+}
+
+.custom-select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.custom-select-menu {
+  position: absolute;
+  z-index: 120;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  width: max(100%, 190px);
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
+}
+
+.custom-select-option {
+  width: 100%;
+  min-height: var(--control-height);
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 0 !important;
+  outline: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-align: left;
+}
+
+.custom-select-option svg { color: transparent; }
+
+.custom-select-option:hover,
+.custom-select-option[data-highlighted="true"] {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.custom-select-option:focus-visible {
+  border: 0 !important;
+  outline: 0 !important;
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.custom-select-option[aria-selected="true"] {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.custom-select-option[aria-selected="true"] svg { color: var(--accent); }
+
+/* Every product dropdown uses the same listbox surface. Context only controls
+ * width and composition; menu, focus, selected, and keyboard states remain
+ * centralized in CustomSelect. */
+.app-shell :is(
+  .field > .custom-select,
+  .feedback-review-actions .custom-select
+) {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-shell :is(
+  .field > .custom-select,
+  .feedback-review-actions .custom-select
+) .custom-select-menu {
+  right: auto;
+  left: 0;
+  width: max(100%, 240px);
+}
+
+.app-shell .toolbar-select {
+  flex: 0 0 auto;
+  min-width: 156px;
+}
+
+.app-shell .filter-field {
+  min-width: 150px;
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.app-shell .filter-field .custom-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-shell .prioritization-type-filter {
+  min-width: 156px;
+  min-height: 0;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.app-shell .prioritization-type-filter .custom-select-trigger {
+  min-height: var(--control-height);
+}
+
+.app-shell .feedback-review-actions .custom-select-option {
+  white-space: normal;
+  line-height: var(--leading-body);
+}
+
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: 0 0 auto;
+  min-width: 22px;
+  width: 22px;
+  min-height: 22px;
+  height: 22px;
+  margin: 0;
+  border: 0;
+  border-radius: 7px;
+  background-color: var(--surface-pressed);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 14px 14px;
+  box-shadow: var(--shadow-inset-sm);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  vertical-align: middle;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+  background-color: var(--surface-hover);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--accent-fill);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.5 8 3 3 6-7' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  box-shadow: var(--shadow-accent-inset);
+}
+
+input[type="checkbox"]:checked:hover:not(:disabled) {
+  background-color: var(--accent-fill-hover);
+  box-shadow: var(--shadow-accent-raised);
+}
+
+input[type="checkbox"]:indeterminate {
+  background-color: var(--accent-fill);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8h8' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E");
+  box-shadow: var(--shadow-accent-inset);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-inset-sm), var(--shadow-focus);
+}
+
+input[type="checkbox"]:checked:focus-visible,
+input[type="checkbox"]:indeterminate:focus-visible {
+  box-shadow: var(--shadow-accent-inset), var(--shadow-focus);
+}
+
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+input[type="radio"] {
+  min-width: 20px;
+  width: 20px;
+  min-height: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+.toggle-row input[type="checkbox"] {
+  appearance: none;
+  width: 48px;
+  height: 28px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background:
+    radial-gradient(circle at 14px 50%, var(--text-muted) 0 9px, transparent 10px),
+    var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+  transition:
+    background-position var(--duration-normal) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard);
+}
+
+.toggle-row input[type="checkbox"]:checked {
+  border-color: var(--accent-line);
+  background:
+    radial-gradient(circle at 34px 50%, var(--toggle-thumb) 0 9px, transparent 10px),
+    var(--accent-fill);
+}
+
+/* Tabs, segmented controls, and filter rails */
+
+:where(.segmented, .integration-view-tabs, .settings-nav) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: calc(var(--control-height) + var(--space-2));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+  padding: var(--space-1);
+}
+
+:where(.segmented button, .integration-view-tabs button, .settings-nav a) {
+  min-height: var(--control-height);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-raised-sm);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+:where(.segmented button, .integration-view-tabs button, .settings-nav a):hover:not(.active) {
+  border-color: var(--accent-line);
+  background: var(--surface-hover);
+  color: var(--text-strong);
+}
+
+:where(.segmented button.active, .integration-view-tabs button.active, .settings-nav a.active),
+:where(.segmented button, .integration-view-tabs button, .settings-nav a)[aria-selected="true"] {
+  border-color: transparent;
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+/* Settings navigation is a list of independent destinations, not a segmented
+ * control. Keep each destination visually discrete and remove the shared rail. */
+.app-shell .settings-layout > .settings-nav {
+  align-items: stretch;
+  gap: var(--space-3);
+  min-height: 0;
+  padding: var(--space-1);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .settings-layout > .settings-nav a {
+  min-height: 48px;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .settings-layout > .settings-nav a:hover:not(.active),
+.app-shell .settings-layout > .settings-nav a:focus-visible:not(.active) {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised);
+}
+
+.app-shell .settings-layout > .settings-nav a.active {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.integration-filterbar,
+.integration-copilot-replies {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 100%;
+  margin-block: calc(var(--space-2) * -1);
+  padding: var(--space-3) var(--space-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-padding-inline: var(--space-2);
+  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+}
+
+.integration-filterbar::-webkit-scrollbar,
+.integration-copilot-replies::-webkit-scrollbar { display: none; }
+
+.integration-filterbar button,
+.integration-copilot-replies button {
+  flex: 0 0 auto;
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-raised-sm);
+  padding-inline: var(--space-4);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.integration-filterbar button.active,
+.integration-filterbar button[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+:where(
+  .integration-filterbar button > span,
+  .integration-view-tabs button > span,
+  .integration-summary-card > span,
+  .integration-group-heading > span,
+  .integration-suggestion-section summary small,
+  .feature-request-count,
+  .nav .badge
+) {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  min-height: 24px;
+  padding-inline: 7px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset-sm);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.integration-filterbar button.active > span,
+.integration-view-tabs button.active > span {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+/* Badges, statuses, alerts, and progress */
+
+.badge {
+  min-height: 26px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset-sm);
+  padding: 4px 9px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.badge.brand,
+.integration-suggestion-live-badge {
+  border-color: rgba(81, 70, 229, 0.18);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.badge.success,
+.toast.success,
+.success-panel,
+.waitlist-success,
+.integration.connected .badge {
+  border-color: rgba(22, 130, 98, 0.2);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.badge.medium,
+.callout.warning {
+  border-color: rgba(150, 98, 27, 0.2);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.app-shell .callout.warning .subtle {
+  color: var(--text);
+}
+
+.badge.high,
+.badge.critical,
+.toast.error,
+.login-alert,
+.delphi-soft-error,
+.setup-alert.error,
+.turnstile-unavailable {
+  border-color: rgba(169, 47, 64, 0.2);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+:where(
+  .callout,
+  .toast,
+  .success-panel,
+  .waitlist-success,
+  .login-alert,
+  .delphi-soft-error,
+  .setup-alert,
+  .turnstile-unavailable,
+  .guided-demo-notice,
+  .connector-input-guidance,
+  .connector-waiting-help
+) {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.integration-import-bar,
+.setup-progress-bar,
+.guided-demo-progress,
+.mini-bar,
+.bar {
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-progress-track);
+}
+
+:where(
+  .integration-import-bar,
+  .setup-progress-bar,
+  .guided-demo-progress,
+  .mini-bar,
+  .bar
+) > span {
+  display: block;
+  height: 100%;
+  background: var(--accent-fill);
+  border-radius: inherit;
+  box-shadow: var(--shadow-progress-fill);
+}
+
+/* Legacy feature selectors use `.mini-bar span` and gradient fills. Match
+ * their specificity so every workspace meter resolves to the shared token. */
+.app-shell :is(
+  .integration-import-bar,
+  .setup-progress-bar,
+  .guided-demo-progress,
+  .mini-bar,
+  .bar
+) > span {
+  background: var(--accent-fill);
+  background-image: none;
+  box-shadow: var(--shadow-progress-fill);
+}
+
+.mini-bar,
+.bar,
+.setup-progress-bar {
+  height: 10px;
+  padding: 2px;
+}
+
+.integration-import-bar,
+.guided-demo-progress {
+  height: 8px;
+  padding: 2px;
+}
+
+/* Tables, lists, and dense data */
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.table-wrap table {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.table-wrap th,
+table th {
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: inset 0 -2px 5px color-mix(in srgb, var(--separator-shadow) 34%, transparent);
+}
+
+.table-wrap td,
+table td {
+  border-color: var(--border-subtle);
+  color: var(--text);
+}
+
+.table-wrap tbody tr:hover,
+table tbody tr:hover {
+  background: var(--table-row-hover);
+}
+
+:where(.rank-row, .queue-item, .integration-suggestion-row, .pipedream-account-row) {
+  border-color: var(--border-subtle);
+  color: var(--text);
+}
+
+:where(.rank-row, .queue-item, .integration-suggestion-row, .pipedream-account-row):hover {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.code-path,
+.code-block,
+.credential-value,
+.setup-copy-row code {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-inset-sm);
+  font-family: var(--font-mono);
+}
+
+/* Menus, drawers, and dialogs */
+
+:where(
+  .organization-switcher-menu,
+  .user-menu-panel,
+  .guided-demo-panel,
+  .mobile-menu-panel,
+  .organization-create-panel,
+  .feedback-drawer,
+  .integration-drawer,
+  .feature-request-dialog
+) {
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-xl);
+  background: var(--surface) !important;
+  color: var(--text);
+  box-shadow: var(--shadow-overlay) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:where(
+  .organization-create-dialog,
+  .feedback-drawer-layer,
+  .integration-drawer-layer,
+  .feature-request-dialog-backdrop
+) {
+  background: var(--overlay-backdrop);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Drawer layers predate the shared theme and use class selectors with equal
+   specificity. Keep these direct declarations later in the cascade so the
+   restrained overlay cannot fall back to the legacy blurred glass treatment. */
+.feedback-drawer-layer,
+.integration-drawer-layer {
+  background: var(--overlay-backdrop);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:where(.feedback-drawer-head, .feedback-drawer-footer, .integration-drawer-head, .guided-demo-head, .guided-demo-footer) {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+}
+
+.feedback-drawer-head,
+.feedback-drawer-footer,
+.integration-drawer-head {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+}
+
+.feedback-full-message,
+.feedback-detail-grid,
+.feedback-analysis-card,
+.feedback-proposed-match,
+.feedback-journey,
+.integration-drawer-section,
+.integration-demo-connection,
+.integration-disconnect-confirmation {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.feedback-full-message,
+.feedback-detail-grid,
+.feedback-analysis-card,
+.feedback-proposed-match,
+.feedback-journey {
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feedback-detail-grid > div,
+.feedback-drawer-footer,
+.integration-drawer-section,
+.integration-drawer-actions {
+  border-color: var(--border-subtle);
+}
+
+.feedback-journey li > span {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.feedback-drawer .icon-button,
+.integration-drawer .icon-button {
+  width: var(--control-height);
+  height: var(--control-height);
+}
+
+.organization-option {
+  min-height: var(--control-height);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text);
+}
+
+.app-shell .organization-create-action,
+.app-shell .organization-switcher.compact .organization-switcher-trigger,
+.app-shell .user-menu summary,
+.app-shell .user-menu-panel button,
+.app-shell .chart-source select,
+.app-shell .row-link {
+  min-height: var(--control-height);
+}
+
+.app-shell .field > input,
+.app-shell .field > textarea,
+.app-shell .field > select,
+.app-shell .secret-input input,
+.app-shell .secret-input,
+.app-shell .toolbar input,
+.app-shell .toolbar select,
+.app-shell .filter-panel input,
+.app-shell .filter-panel select,
+.app-shell .feedback-review-actions select {
+  min-height: var(--control-height);
+}
+
+.app-shell .weight-row {
+  min-height: var(--control-height);
+  align-items: center;
+}
+
+.app-shell .weight-row input[type="range"] {
+  min-height: var(--control-height);
+}
+
+.app-shell .toggle-row { min-height: var(--control-height); }
+
+/* Feature-level CSS predates the shared target-size contract. Keep the visual
+   density compact while preserving a full 44px interaction area. */
+.app-shell .integration-view-tabs button,
+.app-shell .integration-filterbar button,
+.app-shell .integration-copilot-replies button,
+.app-shell .integration-copilot-composer input,
+.app-shell .integration-copilot-composer button,
+.app-shell .integration-suggestion-row-action {
+  min-height: var(--control-height);
+}
+
+.app-shell .integration-copilot-composer button {
+  min-width: var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
+}
+
+.app-shell .ai-evidence summary,
+.app-shell .callout .text-link,
+.app-shell .table-wrap .text-link {
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar .organization-trigger-copy small {
+  font-size: 8px;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+}
+
+.app-shell .organization-rename-trigger,
+.app-shell .organization-rename-mobile,
+.app-shell .user-menu summary {
+  min-width: var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
+}
+
+.app-shell .user-menu summary {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.app-shell .row-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+.app-shell .feedback-expand-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+  min-width: 108px;
+  width: auto;
+  min-height: var(--control-height);
+  height: var(--control-height);
+  padding-inline: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.app-shell .feedback-expand-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--accent-hover);
+  box-shadow: var(--shadow-hover);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.app-shell .feedback-expand-button:active:not(:disabled),
+.app-shell .feedback-expand-button[aria-expanded="true"] {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.app-shell .feedback-expand-button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-raised-sm), var(--shadow-focus);
+}
+
+.feedback-select-control {
+  width: var(--control-height);
+  height: var(--control-height);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.feedback-select-control:hover {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .organization-option {
+  color: var(--text);
+}
+
+.app-shell .organization-option:hover:not(:disabled),
+.app-shell .organization-option:focus-visible {
+  border-color: var(--border-subtle);
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.organization-option.active {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+/* Integrations and onboarding */
+
+.integration-experience,
+.integration-catalog-shell {
+  color: var(--text);
+}
+
+.integration-suggestions-agent,
+.integration-suggestion-board {
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+}
+
+.integration-copilot-thread {
+  border-radius: var(--radius-lg);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.integration-copilot-message.user {
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.integration-copilot-working[open],
+.integration-suggestion-section[open] > summary {
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.integration-copilot-connector.connected .integration-copilot-primary-action {
+  border-color: rgba(22, 130, 98, 0.28);
+  background: var(--success);
+}
+
+.integration-filter-empty,
+.integration-suggestion-empty {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset);
+}
+
+.integration-card-footer {
+  margin-top: auto;
+  border-top-color: var(--border-subtle);
+}
+
+/* Connector cards share one action row. Keep the action label on one line and
+ * center it within a consistent touch target even when the grid is compressed
+ * by viewport width or browser zoom. */
+.app-shell .integration-card-footer .btn {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height);
+  padding-inline: var(--space-4);
+  white-space: nowrap;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.integration-drawer-section,
+.feedback-analysis-card,
+.feedback-journey,
+.feedback-detail-grid > div {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.delphi-onboarding,
+.delphi-hero,
+.delphi-stage,
+.delphi-thread {
+  background: var(--bg);
+}
+
+.delphi-glow { display: none; }
+
+.delphi-bubble,
+.delphi-product-card,
+.delphi-sync,
+.delphi-source,
+.public-source-card,
+.setup-card,
+.setup-progress-card {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.delphi-bubble.user,
+.delphi-phase.active,
+.delphi-source-connected,
+.setup-complete {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.delphi-phase,
+.setup-step-badge,
+.delphi-source-priority,
+.delphi-product-status {
+  border-color: var(--border-subtle);
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+/* Charts, empty states, and loading */
+
+.chart {
+  border-color: var(--border-subtle);
+  background:
+    linear-gradient(to bottom,
+      transparent 24%, var(--chart-grid) 25%, transparent 26%,
+      transparent 49%, var(--chart-grid) 50%, transparent 51%,
+      transparent 74%, var(--chart-grid) 75%, transparent 76%);
+}
+
+.chart-bar-shell {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.chart-bar-shell {
+  min-width: var(--control-height);
+  width: var(--control-height);
+}
+
+.chart-bar {
+  min-width: var(--control-height);
+  width: var(--control-height);
+  max-width: var(--control-height);
+  min-height: var(--control-height);
+}
+
+.chart-bar { background: var(--accent-fill); }
+
+.chart-tooltip {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-overlay);
+}
+
+.loading-page,
+.error-page,
+.onboarding-loading,
+.onboarding-load-fallback {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.skeleton,
+.skeleton-panel,
+.skeleton-title {
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    100deg,
+    var(--surface-pressed) 18%,
+    var(--skeleton-sheen) 34%,
+    var(--surface-pressed) 50%
+  );
+  background-size: 220% 100%;
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.error-page .btn { margin-top: var(--space-5); }
+
+/* Login and waitlist */
+
+.login-page {
+  background: var(--bg);
+}
+
+.login-page::before,
+.login-page::after { display: none; }
+
+.login-card {
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.login-google,
+.login-request-access,
+.login-denied-actions a,
+.login-denied-actions button {
+  min-height: var(--control-height);
+  border-color: var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.login-trust { border-color: var(--border-subtle); }
+
+/* Public landing and public roadmap */
+
+.landing,
+.landing-top,
+.landing-header,
+.landing-section,
+.workflow-section,
+.landing-cta,
+.feature-requests-page,
+.feature-requests-header,
+.feature-requests-main {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.landing-header,
+.feature-requests-header {
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-topbar);
+}
+
+.landing-nav,
+.landing-nav a,
+.landing-brand,
+.feature-requests-home-link {
+  color: var(--text-strong);
+}
+
+.landing-header .landing-brand,
+.landing-header .landing-nav a,
+.landing-header .landing-actions .btn,
+.landing-footer .landing-brand,
+.landing .text-link,
+.landing .trust-card-actions button,
+.landing-trustbar-link {
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+}
+
+.landing-header .landing-brand,
+.landing-header .landing-nav a,
+.landing-footer .landing-brand,
+.landing .text-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Public-facing CloseSpan lockups use the authored 3D assets. Both images
+ * occupy the same intrinsic box so a theme change never causes layout shift. */
+.closespan-3d-logo {
+  --closespan-logo-plaque: #eaedf5;
+  display: inline-grid;
+  width: 190px;
+  max-width: 100%;
+  padding: 9px 13px 10px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--closespan-logo-plaque);
+  box-shadow: var(--shadow-raised-sm);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.closespan-3d-logo--sm { width: 148px; }
+.closespan-3d-logo--md { width: 190px; }
+.closespan-3d-logo--lg { width: 250px; }
+
+.closespan-3d-logo__image {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  transition: opacity var(--duration-normal) var(--ease-standard);
+}
+
+.closespan-3d-logo__image--dark { opacity: 0; }
+
+:root[data-theme="dark"] .closespan-3d-logo__image--light { opacity: 0; }
+:root[data-theme="dark"] .closespan-3d-logo__image--dark { opacity: 1; }
+:root[data-theme="dark"] .closespan-3d-logo {
+  --closespan-logo-plaque: #111620;
+}
+
+.closespan-3d-logo__forced-colors { display: none; }
+
+.login-brand:has(.closespan-3d-logo) {
+  width: auto;
+  height: auto;
+  place-items: initial;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.error-page .closespan-3d-logo { margin-bottom: var(--space-1); }
+
+@media (max-width: 720px) {
+  .closespan-3d-logo--md { width: 168px; }
+  .closespan-3d-logo--lg { width: 210px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .closespan-3d-logo__image { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .closespan-3d-logo {
+    width: auto;
+    padding: 0;
+    border-radius: 0;
+    background: Canvas;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .closespan-3d-logo__image { display: none; }
+  .closespan-3d-logo__forced-colors {
+    display: inline;
+    color: CanvasText;
+    font-size: 1.25rem;
+    font-weight: 850;
+  }
+}
+
+.landing-header .landing-nav nav a:is(:hover, :focus-visible, :active) {
+  color: var(--accent);
+}
+
+/* The legacy landing header was dark and set hovered links to white. Keep the
+ * complete navigation state palette tied to the active theme so every item,
+ * including the in-page Pricing link, remains legible on the light surface. */
+:root[data-theme="light"] .landing-header .landing-nav nav a {
+  color: var(--text-strong);
+  -webkit-text-fill-color: currentColor;
+}
+
+:root[data-theme="light"] .landing-header .landing-nav nav a:is(
+  :hover,
+  :focus-visible,
+  :active
+) {
+  color: var(--accent);
+  -webkit-text-fill-color: currentColor;
+}
+
+/* The public landing wordmark is embossed directly from the page surface.
+ * Keep the extrusion shallow enough that the letterforms stay crisp at every
+ * scale, and open the tracking here without changing compact in-app lockups. */
+.landing-header .landing-neomorphic-logo {
+  --closespan-logo-word: #111827;
+  --landing-logo-highlight: rgba(255, 255, 255, 0.74);
+  --landing-logo-edge: rgba(85, 99, 122, 0.48);
+  --landing-logo-depth: rgba(42, 52, 70, 0.54);
+  --landing-logo-cast: rgba(75, 88, 110, 0.32);
+  font-size: 32px;
+  letter-spacing: 0;
+  filter: none;
+  transform: translateY(0);
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.landing-header .landing-neomorphic-logo .closespan-logo__name {
+  margin-inline: 0.18em;
+  color: var(--closespan-logo-word);
+  -webkit-text-fill-color: currentColor;
+  font-kerning: normal;
+  letter-spacing: 0.018em;
+  text-shadow:
+    -1px -1px 0 var(--landing-logo-highlight),
+    1px 1px 0 var(--landing-logo-edge),
+    2px 2px 0 var(--landing-logo-depth),
+    4px 5px 7px var(--landing-logo-cast);
+}
+
+.landing-header .landing-neomorphic-logo .closespan-logo__syntax {
+  background: none;
+  color: var(--accent);
+  -webkit-text-fill-color: currentColor;
+  text-shadow:
+    -1px -1px 0 rgba(255, 255, 255, 0.64),
+    1px 1px 0 rgba(63, 53, 195, 0.72),
+    2px 2px 0 rgba(43, 34, 143, 0.66),
+    4px 5px 7px var(--landing-logo-cast);
+}
+
+:root[data-theme="dark"] .landing-header .landing-neomorphic-logo {
+  --closespan-logo-word: #eef2f8;
+  --landing-logo-highlight: rgba(255, 255, 255, 0.88);
+  --landing-logo-edge: rgba(5, 9, 16, 0.96);
+  --landing-logo-depth: rgba(1, 4, 10, 0.92);
+  --landing-logo-cast: rgba(0, 0, 0, 0.76);
+}
+
+:root[data-theme="dark"] .landing-header .landing-neomorphic-logo .closespan-logo__syntax {
+  text-shadow:
+    -1px -1px 0 rgba(154, 146, 255, 0.42),
+    1px 1px 0 rgba(44, 34, 154, 0.88),
+    2px 2px 0 rgba(27, 20, 102, 0.82),
+    4px 5px 7px var(--landing-logo-cast);
+}
+
+.landing-header .landing-brand:hover .landing-neomorphic-logo {
+  transform: translateY(-1px);
+}
+
+.landing-header .landing-brand:active .landing-neomorphic-logo {
+  transform: translateY(1px);
+}
+
+.landing-header .landing-brand:active .landing-neomorphic-logo .closespan-logo__name {
+  text-shadow:
+    1px 1px 0 var(--landing-logo-highlight),
+    -1px -1px 0 var(--landing-logo-edge),
+    2px 3px 3px var(--landing-logo-cast);
+}
+
+.landing .text-link {
+  margin-inline: calc(var(--space-2) * -1);
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.landing .btn.primary {
+  border-color: rgba(63, 53, 195, 0.5);
+  background: var(--accent-fill);
+  background-image: none;
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+}
+
+.landing .btn.primary:hover {
+  border-color: rgba(63, 53, 195, 0.58);
+  background: var(--accent-fill-hover);
+  background-image: none;
+  box-shadow: var(--shadow-accent-hover);
+}
+
+/* The hero CTA is the strongest action on the public page. Keep the purple
+ * brand surface, but give it the same raised/pressed depth language as the
+ * rest of the neumorphic system. */
+.landing .hero-actions .btn.primary {
+  min-height: var(--control-height-lg);
+  padding-inline: var(--space-6);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-cta-raised);
+  transform: translateY(0);
+}
+
+.landing .hero-actions .btn.primary:hover {
+  border: 0;
+  background: var(--accent-fill-hover);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-cta-hover);
+  transform: translateY(-1px);
+}
+
+.landing .hero-actions .btn.primary:active {
+  background: var(--accent-fill-active);
+  box-shadow: var(--shadow-accent-cta-inset);
+  transform: translateY(0);
+}
+
+.landing .hero-actions .btn.primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  box-shadow:
+    var(--shadow-accent-cta-raised),
+    var(--shadow-focus);
+}
+
+.landing :is(
+  .section-intro > p,
+  .signal-story-copy > p,
+  .trust-section > div > p,
+  .workflow-section .section-intro > p,
+  .workflow-step p,
+  .workflow-summary p,
+  .outcome-grid p,
+  .pricing-section p,
+  .faq-list details p,
+  .landing-cta p,
+  .landing-footer p
+) {
+  color: var(--text-muted);
+}
+
+.landing :is(
+  .section-intro > span,
+  .section-label,
+  .landing-cta > div > span,
+  .workflow-section .section-intro > span,
+  .workflow-step > span,
+  .outcome-card-top > span,
+  .signal-result-card small
+) {
+  color: var(--accent);
+}
+
+.landing :is(.workflow-step h3, .workflow-summary strong) {
+  color: var(--text-strong);
+}
+
+.landing .section-resource-link {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.landing .section-resource-link .text-link {
+  width: fit-content;
+  max-width: 100%;
+  min-height: var(--control-height);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  gap: var(--space-2);
+  justify-content: space-between;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+  line-height: 1.35;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transform: translateY(0);
+  transition:
+    background var(--duration-normal) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.landing .section-resource-link .text-link:hover {
+  background: var(--surface-hover);
+  color: var(--accent-hover);
+  box-shadow: var(--shadow-hover);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.landing .section-resource-link .text-link:active {
+  background: var(--surface-pressed);
+  color: var(--accent-active);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.landing .section-resource-link .text-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow:
+    var(--shadow-raised-sm),
+    var(--shadow-focus);
+  text-decoration: none;
+}
+
+.landing .section-resource-link .text-link svg {
+  flex: 0 0 auto;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.landing .section-resource-link .text-link:hover svg {
+  transform: translateX(2px);
+}
+
+.landing .outcome-grid article,
+.landing .signal-story,
+.landing .pricing-grid article.featured,
+.landing .landing-cta {
+  background: var(--surface);
+  background-image: none;
+}
+
+.landing .pricing-grid article.featured {
+  border-color: var(--accent-line);
+  box-shadow: var(--shadow-raised);
+}
+
+.landing .landing-trustbar > span { color: var(--text-muted); }
+
+.landing :is(
+  .preview-chrome,
+  .preview-grid > section,
+  .preview-recommendation,
+  .preview-approval,
+  .trust-card-actions
+) {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.landing .preview-sidebar {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.landing :is(.preview-title-row p, .preview-recommendation p, .preview-approval small) {
+  color: var(--text-muted);
+}
+
+.landing-secondary,
+.landing-mobile-menu summary,
+.landing-trustbar-link {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.landing-secondary:hover,
+.landing-mobile-menu summary:hover,
+.landing-trustbar-link:hover {
+  border-color: var(--accent-line);
+  background: var(--surface-hover);
+  color: var(--accent);
+  box-shadow: var(--shadow-hover);
+}
+
+.landing .landing-footer-links {
+  display: grid;
+  grid-template-columns: repeat(5, max-content);
+  align-items: center;
+  justify-content: end;
+  gap: 0 var(--space-5);
+}
+
+.landing .landing-footer-links a {
+  min-width: 0;
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--space-1);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+.landing .landing-footer-links a:hover,
+.landing .landing-footer-links a:focus-visible {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  box-shadow: none;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+@media (max-width: 1050px) {
+  .landing .landing-footer {
+    grid-template-columns: 1fr;
+    justify-items: start;
+    gap: var(--space-5);
+  }
+
+  .landing .landing-footer-links {
+    justify-self: start;
+    justify-content: start;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing .landing-footer-links {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-4);
+  }
+}
+
+.landing-nav {
+  border-bottom-color: var(--border-subtle);
+}
+
+.landing-hero h1,
+.landing-section h2,
+.workflow-section h2,
+.landing-cta h2,
+.feature-requests-page h1,
+.feature-requests-page h2,
+.feature-requests-page h3 {
+  color: var(--text-strong);
+}
+
+.hero-copy h1 span {
+  background: none;
+  color: var(--accent);
+  background-clip: border-box;
+  -webkit-background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+}
+
+.hero-copy > p,
+.hero-proof,
+.hero-product-proof > span,
+.hero-product-proof small {
+  color: var(--text-muted);
+}
+
+.landing .hero-copy > p {
+  max-width: 560px;
+  margin-top: var(--space-5);
+  font-size: clamp(14px, 1.15vw, 16px);
+  line-height: 1.6;
+}
+
+/* Success checks sit on their own small neumorphic plate so the mark reads as
+ * a deliberate status indicator instead of a loose glyph. */
+.landing :is(
+  .hero-proof > span,
+  .trust-section li,
+  .pricing-grid li
+) > svg {
+  box-sizing: border-box;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  margin-top: 0;
+  padding: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--success);
+  box-shadow: var(--shadow-raised-sm);
+  stroke-width: 2.6;
+}
+
+.landing .hero-proof > span {
+  gap: var(--space-2);
+}
+
+/* Keep the three desktop safeguards as one compact assurance row. The
+ * structural stylesheet intentionally switches them back to a stacked grid
+ * below 760px, where preserving readable type matters more than one-line fit. */
+@media (min-width: 761px) {
+  .landing .hero-proof {
+    flex-wrap: nowrap;
+    column-gap: clamp(8px, 0.9vw, 14px);
+    font-size: clamp(9px, 0.78vw, 10px);
+  }
+
+  .landing .hero-proof > span {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+.landing :is(.trust-section li, .pricing-grid li) {
+  align-items: center;
+}
+
+.hero-product-proof {
+  border-color: var(--border-subtle);
+}
+
+.hero-product-proof > div {
+  border-color: var(--border-subtle);
+}
+
+.hero-product-proof strong { color: var(--text-strong); }
+
+.landing-hero p,
+.workflow-section p,
+.landing-cta p,
+.landing-footer,
+.feature-requests-page p {
+  color: var(--text-muted);
+}
+
+.hero-product,
+.outcome-grid article,
+.signal-story,
+.signal-source-list > div,
+.signal-result-card,
+.workflow-step,
+.trust-card,
+.pricing-grid article,
+.faq-list details {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-raised);
+}
+
+/* Outcome cards previously inherited a light-only white hover highlight from
+ * globals.css. Theme every part of the interaction so dark mode keeps a
+ * restrained raised surface instead of producing a white halo. */
+.landing .outcome-grid article:hover {
+  border-color: var(--accent-line);
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+.landing .outcome-icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.landing .outcome-metric {
+  color: var(--accent);
+}
+
+.hero-product {
+  box-shadow: var(--shadow-overlay);
+  transform: none;
+}
+
+.hero-product::before { display: none; }
+
+.signal-story,
+.faq-list details[open] {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset);
+}
+
+.workflow-step {
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.workflow-step strong,
+.workflow-step h3,
+.landing-cta strong { color: var(--text-strong); }
+
+.landing-footer {
+  border-color: var(--border-subtle);
+  background: var(--bg);
+}
+
+.faq-list summary::after {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.feature-request-group > header,
+.feature-request-review-queue {
+  border-color: var(--border-subtle);
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-empty {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset);
+}
+
+.feature-requests-page .feature-request-empty > span {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-requests-intro > span {
+  color: var(--accent);
+}
+
+.feature-requests-page .feature-request-empty h2,
+.feature-requests-page .feature-request-row h3,
+.feature-requests-page .feature-request-group > header h2,
+.feature-requests-page .feature-request-review-queue h2,
+.feature-requests-page .feature-request-review-queue h3,
+.feature-requests-page .feature-request-dialog h2,
+.feature-requests-page .feature-request-dialog label {
+  color: var(--text-strong);
+}
+
+.feature-requests-page .feature-request-empty p,
+.feature-requests-page .feature-request-row p,
+.feature-requests-page .feature-request-group > header p,
+.feature-requests-page .feature-request-review-queue p,
+.feature-requests-page .feature-request-vote-note {
+  color: var(--text-muted);
+}
+
+.feature-requests-page .feature-request-status-icon {
+  background: var(--danger-soft);
+  color: var(--danger);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-status-icon.in-progress {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.feature-requests-page .feature-request-status-icon.backlog {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.feature-requests-page .feature-request-status-icon.shipped {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.feature-request-row,
+.feature-request-review-queue article {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.feature-request-row > button,
+.feature-request-review-queue article button {
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.feature-request-row > button[aria-pressed="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-new,
+.feature-requests-page .feature-request-primary {
+  border: 1px solid rgba(63, 53, 195, 0.5);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+  filter: none;
+}
+
+.feature-requests-page .feature-request-new:hover,
+.feature-requests-page .feature-request-primary:hover {
+  background: var(--accent-fill-hover);
+  box-shadow: var(--shadow-accent-hover);
+  filter: none;
+}
+
+.feature-requests-page .feature-request-secondary,
+.feature-requests-page .feature-request-row > button,
+.feature-requests-page .feature-request-review-queue article button,
+.feature-requests-page .feature-request-dialog > header button {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.feature-requests-page .feature-request-row > button.voted,
+.feature-requests-page .feature-request-row > button[aria-pressed="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-notice {
+  border-color: rgba(22, 130, 98, 0.2);
+  background: var(--success-soft);
+  color: var(--success);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-notice.error {
+  border-color: rgba(169, 47, 64, 0.2);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.feature-requests-header > a,
+.feature-requests-home-link {
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+}
+
+.feature-request-dialog {
+  max-height: min(calc(100dvh - 24px), 760px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.feature-requests-page .feature-request-dialog > header {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+}
+
+.feature-requests-page .feature-request-dialog input,
+.feature-requests-page .feature-request-dialog textarea {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-inset);
+}
+
+.feature-requests-page .feature-request-dialog input:focus,
+.feature-requests-page .feature-request-dialog textarea:focus {
+  border-color: var(--accent-line);
+  background: var(--surface);
+  box-shadow: var(--shadow-inset-sm), var(--shadow-focus);
+}
+
+.feature-requests-page .feature-request-dialog input::placeholder,
+.feature-requests-page .feature-request-dialog textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.feature-request-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding-block: var(--space-3);
+  background: var(--surface);
+}
+
+.feature-request-dialog > header button {
+  min-width: var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
+}
+
+.integration-copilot-turn time,
+.integration-suggestion-row > time,
+.integration-suggestion-row-copy > small,
+.organization-trigger-copy small,
+.organization-option-copy small,
+.organization-switcher-menu-head small {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* Legacy component rules use app-shell specificity. Keep these active controls
+ * on the shared surface system without widening the override to native widgets
+ * or feature-specific content. */
+.app-shell .badge {
+  border-color: var(--border-subtle);
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .badge.brand {
+  border-color: rgba(81, 70, 229, 0.18);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-shell .badge.success,
+.app-shell .integration.connected .badge {
+  border-color: rgba(22, 130, 98, 0.2);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.app-shell .badge.medium {
+  border-color: rgba(150, 98, 27, 0.2);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.app-shell .badge.high,
+.app-shell .badge.critical {
+  border-color: rgba(169, 47, 64, 0.2);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.app-shell .chart-source select,
+.app-shell .segmented,
+.app-shell .integration-copilot-composer {
+  border-color: var(--border-subtle);
+  background-color: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .field > input,
+.app-shell .field > textarea,
+.app-shell .field > select,
+.app-shell .toolbar select,
+.app-shell .filter-panel select,
+.app-shell .secret-input {
+  border-color: var(--border-subtle);
+  background-color: var(--surface-pressed);
+  box-shadow: var(--shadow-inset);
+}
+
+.app-shell .secret-input input {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .weight-row input[type="range"] {
+  appearance: none;
+  width: 100%;
+  min-height: var(--control-height);
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-shell .weight-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .weight-row input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -7px;
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  background: var(--accent-fill);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .weight-row input[type="range"]::-moz-range-track {
+  height: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .weight-row input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  background: var(--accent-fill);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.landing .btn:not(.primary),
+.landing .landing-secondary {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  background-image: none;
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.landing .btn:not(.primary):hover,
+.landing .landing-secondary:hover {
+  border-color: var(--accent-line);
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.landing .btn:not(.primary):active,
+.landing .landing-secondary:active {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.landing .trust-card-actions button {
+  border-color: var(--border-subtle);
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset-sm);
+  opacity: 0.82;
+}
+
+.landing .trust-card-actions button:last-child {
+  border-color: rgba(63, 53, 195, 0.4);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow:
+    inset 3px 3px 7px rgba(38, 29, 145, 0.34),
+    inset -3px -3px 7px rgba(137, 130, 255, 0.24);
+}
+
+.feature-request-dialog-backdrop,
+.organization-create-dialog {
+  background: var(--overlay-backdrop);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.app-shell .guided-demo-open-view,
+.app-shell .guided-demo-footer button {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .guided-demo-open-view {
+  color: var(--accent);
+}
+
+.app-shell .guided-demo-footer button.primary {
+  border-color: rgba(63, 53, 195, 0.5);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+}
+
+.app-shell .guided-demo-reset > button {
+  min-height: var(--control-height);
+  color: var(--text-muted);
+}
+
+.app-shell .guided-demo-reset > div {
+  border-color: rgba(169, 47, 64, 0.2);
+  background: var(--danger-soft);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .guided-demo-reset > div button {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .guided-demo-reset > div button:last-child {
+  border-color: rgba(169, 47, 64, 0.24);
+  background: var(--danger);
+  color: var(--text-on-accent);
+}
+
+.delphi-avatar {
+  background: var(--accent-fill);
+  background-image: none;
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-hover);
+}
+
+.delphi-credentials,
+.setup-credentials {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.delphi-recovery {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  background-image: none;
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.delphi-recovery.ready {
+  border-color: rgba(22, 130, 98, 0.2);
+  background: var(--success-soft);
+  background-image: none;
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.delphi-recovery-icon {
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .mobile-menu summary {
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .mobile-menu-panel nav {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .mobile-menu-panel nav a {
+  min-height: var(--control-height);
+  border-radius: var(--radius-md);
+  color: var(--text);
+}
+
+.app-shell .mobile-menu-panel nav a:hover {
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .mobile-menu-panel nav a.active {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.landing .landing-mobile-menu nav {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.landing .landing-mobile-menu summary {
+  width: var(--control-height);
+  min-width: var(--control-height);
+  height: var(--control-height);
+  min-height: var(--control-height);
+  display: grid;
+  place-items: center;
+}
+
+.landing .landing-mobile-menu nav a {
+  min-height: var(--control-height);
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  color: var(--text);
+}
+
+.landing .landing-mobile-menu nav a:hover,
+.landing .landing-mobile-menu nav a:focus-visible {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .mobile-menu-panel {
+  max-height: calc(100dvh - 74px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.organization-create-panel {
+  max-height: 90dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.app-shell .integration-copilot-working > summary,
+.app-shell details > summary {
+  min-height: var(--control-height);
+}
+
+:is(a, button).text-link {
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+}
+
+.app-shell .revenue-info,
+.feature-requests-page .feature-request-notice button {
+  width: var(--control-height);
+  min-width: var(--control-height);
+  height: var(--control-height);
+  min-height: var(--control-height);
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.app-shell .revenue-info {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .revenue-info:hover,
+.app-shell .revenue-info:focus-visible {
+  background: var(--surface-hover);
+  color: var(--accent);
+}
+
+.app-shell .revenue-info:active,
+.feature-requests-page .feature-request-notice button:active {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-notice button {
+  border-radius: var(--radius-md);
+  color: inherit;
+}
+
+.app-shell .chart-select,
+.app-shell .revenue-tooltip,
+.app-shell .revenue-breakdown {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-overlay);
+}
+
+.app-shell .revenue-details:not([open]) > .revenue-breakdown {
+  display: none;
+}
+
+.app-shell .revenue-breakdown,
+.app-shell .revenue-breakdown > strong,
+.app-shell .revenue-breakdown b {
+  color: var(--text-strong);
+}
+
+.revenue-breakdown-popover {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-overlay);
+}
+
+.revenue-breakdown-popover > strong,
+.revenue-breakdown-popover b {
+  color: var(--text-strong);
+}
+
+.revenue-breakdown-popover .revenue-total {
+  border-color: var(--border-strong);
+}
+
+.app-shell .stage:not(.current):not(.done),
+.app-shell .stage:not(.current):not(.done) .stage-dot {
+  color: var(--text-muted);
+}
+
+.app-shell .problem-score-center,
+.app-shell .score-ring::before {
+  background: var(--surface);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .timeline li::before {
+  background: var(--text-muted);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+
+.app-shell .timeline li::after {
+  border-color: var(--border-strong);
+}
+
+.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.setup-hub-compact-head {
+  min-height: var(--control-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.app-shell .crumb,
+.app-shell .subtle,
+.app-shell .metric-label,
+.app-shell .metric-delta,
+.app-shell .integration-suggestion-section-description,
+.app-shell .integration-suggestion-row-copy > span,
+.app-shell .integration-suggestion-row-copy > small,
+.app-shell .integration-group-heading p,
+.app-shell .integration-card-footer > span,
+.app-shell .integration-availability,
+.app-shell .integration-unavailable p,
+.app-shell .integration-import.quiet,
+.app-shell .integration-drawer-summary,
+.app-shell .integration-drawer-section p,
+.app-shell .integration-drawer-section li,
+.landing .pricing-cadence {
+  color: var(--text-muted);
+}
+
+/* Semantic foregrounds for feature-specific copy. These selectors replace
+ * fixed light-palette ink from the structural stylesheet, preventing the same
+ * low-contrast regression inside authenticated dark-theme routes. */
+.app-shell :is(
+  .integration-card-summary,
+  .integration-copilot-busy,
+  .integration-copilot-connector-copy p,
+  .integration-copilot-working-body,
+  .integration-copilot-turn time,
+  .integration-demo-connection p,
+  .integration-import-progress,
+  .delphi-sub,
+  .delphi-product-description,
+  .public-discovery-note,
+  .delphi-recovery-copy p,
+  .delphi-workspace-links,
+  .onboarding-load-fallback,
+  .follow-card > p,
+  .ai-config-meta
+) {
+  color: var(--text-muted);
+}
+
+.app-shell :is(
+  .integration-copilot-working > summary,
+  .integration-copilot-working-state,
+  .integration-import-progress strong,
+  .delphi-recovery-copy strong,
+  .ai-config-meta strong
+) {
+  color: var(--text-strong);
+}
+
+.app-shell .delphi-recovery-copy .delphi-recovery-notice {
+  color: var(--success);
+}
+
+.app-shell .field > input,
+.app-shell .field > textarea,
+.app-shell .field > select,
+.app-shell .toolbar input,
+.app-shell .toolbar select,
+.app-shell .filter-panel input,
+.app-shell .filter-panel select,
+.app-shell .secret-input,
+.app-shell .feedback-review-actions select,
+.organization-create-form input,
+.organization-create-form textarea,
+.feature-request-dialog input,
+.feature-request-dialog textarea,
+.login-card input {
+  border-color: var(--control-border);
+}
+
+.app-shell input::placeholder,
+.app-shell textarea::placeholder,
+.organization-create-form input::placeholder,
+.organization-create-form textarea::placeholder,
+.feature-request-dialog input::placeholder,
+.feature-request-dialog textarea::placeholder,
+.login-card input::placeholder,
+.landing input::placeholder,
+.landing textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.app-shell :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
+.landing :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
+.feature-requests-page :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
+.login-page :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Final legacy-authority overrides
+ *
+ * globals.css still owns structural layout for these components and contains
+ * older, more-specific visual declarations. Keep their geometry, but make the
+ * shared theme authoritative for color, borders, and interaction depth. */
+.app-shell :is(
+  .card,
+  .problem-card,
+  .integration-summary-card,
+  .integration,
+  .provider-option,
+  .follow-card,
+  .fact,
+  .filter-panel,
+  .board-col,
+  .empty-state,
+  .table-wrap,
+  table
+) {
+  border-color: var(--border-subtle);
+}
+
+.app-shell :is(
+  .btn,
+  .icon-button,
+  .icon-btn,
+  .guided-demo-trigger,
+  .organization-switcher-trigger,
+  .integration-suggestion-row-action
+) {
+  border-color: var(--border-subtle);
+}
+
+.organization-switcher-menu,
+.user-menu-panel,
+.guided-demo-panel,
+.mobile-menu-panel,
+.organization-create-panel,
+.feedback-drawer,
+.integration-drawer,
+.feature-request-dialog {
+  border-color: var(--border-subtle) !important;
+}
+
+.app-shell .integration-view-tabs,
+.app-shell .integration-suggestions-agent,
+.app-shell .integration-suggestion-board {
+  border-color: var(--border-subtle);
+}
+
+.app-shell .integration-view-tabs button {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .integration-view-tabs button.active,
+.app-shell .integration-view-tabs button[aria-selected="true"],
+.app-shell .segmented button.active,
+.app-shell .segmented button[aria-pressed="true"],
+.app-shell .integration-filterbar button.active,
+.app-shell .integration-filterbar button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell :is(
+  .integration-view-tabs button > span,
+  .integration-filterbar button > span,
+  .integration-summary-card > span,
+  .integration-group-heading > span,
+  .integration-suggestion-section > summary small
+) {
+  border-color: var(--border-subtle);
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset-sm);
+  font-size: var(--text-xs);
+}
+
+.app-shell .integration-suggestion-live-badge {
+  border-color: rgba(81, 70, 229, 0.2);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-shell :is(.integration-filterbar, .integration-copilot-replies) button {
+  border-color: var(--border-subtle);
+}
+
+.app-shell .chart-tooltip small {
+  color: var(--text-muted);
+}
+
+.landing :is(
+  .preview-evidence,
+  .outcome-metric,
+  .pricing-section,
+  .faq-section,
+  .pricing-grid article > ul,
+  .faq-list details > p
+) {
+  border-color: var(--border-subtle);
+}
+
+.landing .preview-metrics small,
+.landing .trust-card-head small,
+.landing .trust-card dt {
+  color: var(--text-muted);
+}
+
+/* Approval evidence is primary content, not disabled metadata. The legacy
+ * landing styles used a fixed dark gray here, which became unreadable on the
+ * dark surface. Keep these values on the shared body-text token in both modes. */
+.landing .trust-card dd {
+  color: var(--text);
+}
+
+.landing .preview-metrics small { font-size: 9px; }
+
+.landing .preview-evidence > span {
+  color: var(--success);
+  font-size: 9px;
+}
+
+.landing .trust-card-head small,
+.landing .trust-card dt { font-size: 11px; }
+
+/* Finish feature-level surfaces that previously kept isolated flat styling. */
+
+.app-shell .btn.danger,
+.app-shell .integration-disconnect-confirmation .danger {
+  border-color: rgba(169, 47, 64, 0.28);
+  color: var(--danger);
+}
+
+.app-shell .stage::after {
+  border-color: var(--control-border);
+}
+
+.app-shell .stage.current .stage-dot {
+  border-color: var(--accent);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .queue-item {
+  align-items: center;
+  border-color: var(--border-subtle);
+  background: var(--surface);
+}
+
+.app-shell .queue-item-badge {
+  width: 78px;
+  height: 32px;
+  min-width: 78px;
+  min-height: 32px;
+  flex: 0 0 78px;
+  align-self: center;
+  justify-content: center;
+  padding: 0 var(--space-2);
+  line-height: 1;
+  text-align: center;
+}
+
+.app-shell .queue-item.selected {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm), inset 3px 0 var(--accent);
+}
+
+.app-shell .queue-item.disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.app-shell .queue-item.disabled :is(strong, .subtle) {
+  color: var(--text-muted);
+}
+
+.app-shell :is(.rank-row, .evidence) {
+  border-color: var(--border-subtle);
+}
+
+.app-shell button.integration-suggestion-row:hover,
+.app-shell a.rank-row:hover,
+.app-shell button.queue-item:hover {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell :is(div.rank-row, div.queue-item, .pipedream-account-row):hover {
+  box-shadow: none;
+}
+
+/* Raised interactive cards must outrank the fixed light-only shadows that
+ * remain in the structural stylesheet. The active theme supplies both depth
+ * directions, so dark mode never produces a white hover halo. */
+.app-shell :is(
+  .problem-card,
+  .provider-option,
+  .integration,
+  .pipedream-account-row
+):hover {
+  border-color: transparent;
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-hover);
+}
+
+.app-shell :is(.provider-option, .delphi-product-icon, .public-discovery-note) {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .provider-option:hover {
+  border-color: var(--accent-line);
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-hover);
+}
+
+.app-shell .provider-option.selected {
+  border-color: var(--accent);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell :is(.delphi-source-unavailable span, .user-role) {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .google-mark {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .connector-input-guidance code {
+  background: var(--surface-pressed);
+  color: var(--accent-active);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .feedback-journey li::after {
+  border-color: var(--control-border);
+}
+
+.app-shell .feedback-journey li > span {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .feedback-journey li.current > span {
+  border-color: var(--accent);
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .feedback-drawer-footer {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.app-shell .integration-suggestion-board-head,
+.app-shell .integration-suggestion-section,
+.app-shell .integration-copilot-working-body {
+  border-color: var(--border-subtle);
+}
+
+.app-shell .integration-copilot-skip {
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell :is(.integration, .delphi-source):hover .integration-provider-icon {
+  box-shadow: var(--shadow-hover);
+}
+
+.app-shell :is(.integration-demo-connection, .integration-disconnect-confirmation) {
+  border-color: var(--border-subtle);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.landing :is(
+  .preview-status,
+  .preview-title-row > span,
+  .trust-card-head > span,
+  .pricing-flag,
+  .signal-result-card span
+) {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.landing :is(
+  .preview-metrics,
+  .preview-grid > section,
+  .preview-recommendation,
+  .preview-approval
+) {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.landing .preview-metrics > div,
+.landing .landing-trustbar {
+  border-color: var(--border-subtle);
+}
+
+.landing .signal-source-list span {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+/* Landing outcome cards and connector rail rely on depth, not outlines. */
+.landing .outcome-grid article,
+.landing .outcome-icon {
+  border: 0;
+}
+
+.landing .outcome-metric {
+  border-top: 0;
+}
+
+.landing .landing-trustbar {
+  border: 0;
+  box-shadow: none;
+}
+
+.landing .landing-trustbar :is(strong, .landing-trustbar-link) {
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+}
+
+.landing .landing-trustbar-link:hover,
+.landing .landing-trustbar-link:focus-visible {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* Borderless neumorphic authority
+ *
+ * Legacy feature CSS still declares one-pixel outlines on many controls and
+ * surfaces. The product now communicates hierarchy with raised and inset
+ * shadows instead. This late, scoped contract deliberately removes decorative
+ * borders without touching focus outlines, native checkbox/radio affordances,
+ * chart geometry, or relationship lines. Forced-colors restores explicit
+ * boundaries below because shadows are unavailable in that mode. */
+:where(.app-shell, .landing, .feature-requests-page, .login-page, .delphi-onboarding)
+  :where(
+    button,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    textarea,
+    select,
+    .btn,
+    .card,
+    .metric,
+    .problem-card,
+    .integration-summary-card,
+    .integration,
+    .provider-option,
+    .follow-card,
+    .fact,
+    .filter-panel,
+    .board-col,
+    .empty,
+    .empty-state,
+    .chart-empty-state,
+    .feedback-analysis-card,
+    .feedback-journey,
+    .feedback-detail-grid,
+    .feedback-detail-grid > div,
+    .feedback-proposed-match,
+    .setup-card,
+    .setup-progress-card,
+    .delphi-product-card,
+    .delphi-sync,
+    .delphi-source,
+    .delphi-bubble,
+    .public-source-card,
+    .pipedream-account-row,
+    .integration-suggestions-agent,
+    .integration-suggestion-board,
+    .integration-copilot-connector,
+    .integration-copilot-thread,
+    .integration-filter-empty,
+    .integration-suggestion-empty,
+    .feature-request-review-queue,
+    .feature-request-row,
+    .feature-request-empty,
+    .login-card,
+    .waitlist-card,
+    .callout,
+    .toast,
+    .success-panel,
+    .waitlist-success,
+    .login-alert,
+    .delphi-soft-error,
+    .setup-alert,
+    .turnstile-unavailable,
+    .guided-demo-notice,
+    .connector-input-guidance,
+    .connector-waiting-help,
+    .segmented,
+    .integration-view-tabs,
+    .integration-filterbar button,
+    .integration-copilot-replies button,
+    .badge,
+    .feature-request-count,
+    .table-wrap,
+    table,
+    th,
+    td,
+    .rank-row,
+    .queue-item,
+    .integration-suggestion-row,
+    .code-path,
+    .code-block,
+    .credential-value,
+    .setup-copy-row code,
+    .delphi-credentials,
+    .setup-credentials,
+    .avatar,
+    .organization-avatar,
+    .guided-demo-icon,
+    .brandmark,
+    .provider-monogram,
+    .provider-icon,
+    .integration-provider-icon,
+    .google-mark,
+    .chart-tooltip,
+    .chart-select,
+    .revenue-tooltip,
+    .revenue-breakdown,
+    .hero-product,
+    .outcome-grid article,
+    .signal-story,
+    .signal-source-list > div,
+    .signal-source-list span,
+    .signal-result-card,
+    .workflow-step,
+    .trust-card,
+    .pricing-grid article,
+    .faq-list details,
+    .preview-chrome,
+    .preview-grid > section,
+    .preview-recommendation,
+    .preview-approval,
+    .preview-status,
+    .preview-title-row > span,
+    .trust-card-head > span,
+    .pricing-flag,
+    .section-resource-link,
+    .landing-secondary,
+    .landing-trustbar-link
+  ) {
+  border: 0 !important;
+}
+
+:where(
+  .organization-switcher-menu,
+  .user-menu-panel,
+  .guided-demo-panel,
+  .mobile-menu-panel,
+  .organization-create-panel,
+  .feedback-drawer,
+  .integration-drawer,
+  .feature-request-dialog,
+  .landing .landing-mobile-menu nav
+) {
+  border: 0 !important;
+}
+
+/* Structural regions keep a quiet directional shadow instead of a rule. */
+:where(
+  .topbar,
+  .immersive-topbar,
+  .landing-header,
+  .feature-requests-header,
+  .card-head,
+  .feedback-drawer-head,
+  .feedback-drawer-footer,
+  .integration-drawer-head,
+  .guided-demo-head,
+  .guided-demo-footer,
+  .feature-request-dialog > header
+) {
+  border: 0 !important;
+}
+
+.card-head,
+.feedback-drawer-head,
+.integration-drawer-head,
+.guided-demo-head,
+.feature-request-dialog > header {
+  box-shadow: inset 0 -5px 10px -10px rgba(91, 107, 137, 0.48);
+}
+
+.feedback-drawer-footer,
+.guided-demo-footer {
+  box-shadow: inset 0 5px 10px -10px rgba(91, 107, 137, 0.48);
+}
+
+:where(.app-shell, .landing, .feature-requests-page, .login-page)
+  :where(.rank-row, .queue-item, .integration-suggestion-row, tbody tr, .feature-request-row) {
+  border: 0 !important;
+}
+
+/* Inputs remain visibly editable through an inset well and an accent focus
+ * ring. Semantic errors use color and a ring rather than a red outline box. */
+:where(.app-shell, .landing, .feature-requests-page, .login-page)
+  :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    textarea,
+    select,
+    .searchbox,
+    .secret-input,
+    .delphi-composer,
+    .integration-copilot-composer
+  ) {
+  border: 0 !important;
+  background-color: var(--surface-pressed);
+  box-shadow: var(--shadow-inset);
+}
+
+:where(.app-shell, .landing, .feature-requests-page, .login-page)
+  :where(input, textarea, select)[aria-invalid="true"] {
+  background: color-mix(in srgb, var(--danger-soft) 72%, var(--surface-pressed));
+  box-shadow: var(--shadow-inset-sm), 0 0 0 3px rgba(169, 47, 64, 0.22);
+}
+
+.toggle-row input[type="checkbox"],
+.app-shell .weight-row input[type="range"]::-webkit-slider-runnable-track,
+.app-shell .weight-row input[type="range"]::-webkit-slider-thumb,
+.app-shell .weight-row input[type="range"]::-moz-range-track,
+.app-shell .weight-row input[type="range"]::-moz-range-thumb {
+  border: 0 !important;
+}
+
+/* Selected and pressed controls rely only on inset depth and accent color. */
+:where(.app-shell, .landing, .feature-requests-page)
+  :where(
+    .nav a.active,
+    .settings-nav a.active,
+    .segmented button.active,
+    .segmented button[aria-pressed="true"],
+    .integration-view-tabs button.active,
+    .integration-view-tabs button[aria-selected="true"],
+    .integration-filterbar button.active,
+    .integration-filterbar button[aria-pressed="true"],
+    .provider-option.selected,
+    .organization-option.active,
+    .queue-item.selected,
+    .feature-request-row > button[aria-pressed="true"]
+  ) {
+  border: 0 !important;
+  box-shadow: var(--shadow-inset-sm);
+}
+
+/* Account appearance control */
+
+.theme-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 60px;
+  margin-top: var(--space-2);
+  padding: var(--space-3) 0;
+  color: var(--text);
+  box-shadow: inset 0 -5px 10px -10px var(--separator-shadow);
+}
+
+.theme-control-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.theme-control-copy strong {
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.theme-control-copy small {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.user-menu-panel .theme-toggle {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  flex: 0 0 88px;
+  min-width: 88px;
+  width: 88px;
+  min-height: var(--control-height);
+  height: var(--control-height);
+  padding: 0 5px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset-sm);
+  cursor: pointer;
+}
+
+.user-menu-panel .theme-toggle:hover,
+.user-menu-panel .theme-toggle:active {
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset);
+  transform: none;
+}
+
+.theme-toggle svg {
+  position: relative;
+  z-index: 2;
+  justify-self: center;
+  pointer-events: none;
+  transition: color var(--duration-normal) var(--ease-standard);
+}
+
+.theme-toggle-sun { color: var(--warning); }
+.theme-toggle-moon { color: var(--text-muted); }
+
+.theme-toggle-thumb {
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  left: 4px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+  transition: transform var(--duration-normal) var(--ease-standard);
+}
+
+:root[data-theme="dark"] .theme-toggle-thumb {
+  transform: translateX(44px);
+}
+
+:root[data-theme="dark"] .theme-toggle-sun { color: var(--text-muted); }
+:root[data-theme="dark"] .theme-toggle-moon { color: var(--accent); }
+
+.user-menu-panel form {
+  padding-top: var(--space-3);
+  border: 0;
+  box-shadow: inset 0 5px 10px -10px var(--separator-shadow);
+}
+
+.user-menu-panel form button:hover {
+  background: var(--danger-soft);
+}
+
+/* Animate an explicit theme change, never the pre-paint initialization. */
+html[data-theme-transitioning="true"],
+html[data-theme-transitioning="true"] body,
+html[data-theme-transitioning="true"] body * {
+  transition-property: background-color, color, border-color, fill, stroke;
+  transition-duration: var(--duration-slow);
+  transition-timing-function: var(--ease-standard);
+}
+
+html[data-theme-transitioning="true"] body :where(
+  .sidebar,
+  .topbar,
+  .immersive-topbar,
+  .card,
+  .metric,
+  .problem-card,
+  .integration,
+  .user-menu-panel,
+  .organization-switcher-menu,
+  button,
+  input,
+  textarea,
+  select
+) {
+  transition-property: background-color, color, border-color, box-shadow, fill, stroke;
+}
+
+html[data-theme-transitioning="true"] .theme-toggle-thumb {
+  transition-property: transform, background-color, box-shadow;
+}
+
+/* Legacy selectors occasionally carried light surfaces after the central
+ * theme layer. These mode-specific declarations keep every overlay and native
+ * control inside the same dark surface system. */
+:root[data-theme="dark"] :where(
+  .shell,
+  .main,
+  .content,
+  .sidebar,
+  .topbar,
+  .immersive-topbar,
+  .landing,
+  .landing-top,
+  .landing-header,
+  .landing-section,
+  .workflow-section,
+  .landing-cta,
+  .feature-requests-page,
+  .feature-requests-header,
+  .feature-requests-main,
+  .login-page
+) {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* The legacy landing stylesheet gives these large feature panels a white
+ * top-left highlight. In dark mode that reads as a bright halo, so keep their
+ * elevated hierarchy while sourcing both depth directions from dark tokens. */
+:root[data-theme="dark"] .landing :is(.workflow-section, .landing-cta) {
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+}
+
+:root[data-theme="dark"] :where(
+  .card,
+  .metric,
+  .problem-card,
+  .integration,
+  .integration-suggestions-agent,
+  .integration-suggestion-board,
+  .integration-copilot-connector,
+  .guided-demo-panel,
+  .organization-switcher-menu,
+  .user-menu-panel,
+  .mobile-menu-panel,
+  .organization-create-panel,
+  .feedback-drawer,
+  .integration-drawer,
+  .feature-request-dialog,
+  .login-card,
+  .waitlist-card
+) {
+  background: var(--surface) !important;
+  color: var(--text);
+}
+
+:root[data-theme="dark"] :where(input, textarea, select, option) {
+  color-scheme: dark;
+  caret-color: var(--accent);
+}
+
+:root[data-theme="dark"] :where(input, textarea, select):-webkit-autofill,
+:root[data-theme="dark"] :where(input, textarea, select):-webkit-autofill:hover,
+:root[data-theme="dark"] :where(input, textarea, select):-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-strong);
+  box-shadow: 0 0 0 1000px var(--surface-pressed) inset, var(--shadow-inset-sm);
+  transition: background-color 9999s ease-out 0s;
+}
+
+:root[data-theme="dark"] .app-shell .sidebar {
+  border: 0 !important;
+  background: var(--surface);
+  box-shadow: var(--shadow-sidebar);
+}
+
+:root[data-theme="dark"] :is(.app-shell .topbar, .immersive-topbar) {
+  border: 0 !important;
+  background: var(--surface);
+  box-shadow: var(--shadow-topbar);
+}
+
+:root[data-theme="dark"] :is(
+  .app-shell .nav a.active,
+  .app-shell .settings-nav a.active,
+  .app-shell .mobile-menu-panel nav a.active,
+  .app-shell .queue-item.selected,
+  .app-shell .segmented button.active,
+  .organization-option.active
+) {
+  border: 0 !important;
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+:root[data-theme="dark"] .app-shell .demo-label {
+  border: 0 !important;
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+:root[data-theme="dark"] .app-shell .demo-label strong {
+  color: var(--warning);
+}
+
+:root[data-theme="dark"] :is(
+  .organization-switcher-trigger,
+  .organization-switcher-trigger:hover,
+  .organization-switcher-trigger:active
+) {
+  border: 0 !important;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+:root[data-theme="dark"] :is(
+  .organization-trigger-copy strong,
+  .organization-option strong,
+  .mobile-menu-panel strong
+) {
+  color: var(--text-strong);
+}
+
+:root[data-theme="dark"] :is(
+  .organization-trigger-copy small,
+  .organization-option small,
+  .mobile-menu-panel small
+) {
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] :is(
+  .organization-switcher-menu,
+  .user-menu-panel,
+  .guided-demo-panel,
+  .mobile-menu-panel,
+  .organization-create-panel,
+  .feedback-drawer,
+  .integration-drawer,
+  .feature-request-dialog
+) {
+  border: 0 !important;
+  background: var(--surface) !important;
+  color: var(--text);
+  box-shadow: var(--shadow-overlay) !important;
+}
+
+/* High-specificity dark-mode color repair for legacy feature selectors.
+ * The old structural stylesheet still assigns fixed light-palette ink to a
+ * few links, buttons, filters, and integration rows. Keep the structure but
+ * always source foregrounds and control fills from the active theme. */
+:root[data-theme="dark"] .app-shell :is(
+  .btn:not(.primary):not(.danger):not(.success),
+  .search-action,
+  .icon-button,
+  .icon-btn
+) {
+  color: var(--text-strong);
+}
+
+:root[data-theme="dark"] .app-shell :is(.text-link, .row-link) {
+  color: var(--accent);
+}
+
+:root[data-theme="dark"] .app-shell .organization-create-action {
+  color: var(--accent);
+}
+
+:root[data-theme="dark"] .app-shell :is(
+  input,
+  textarea,
+  select,
+  option
+) {
+  background-color: var(--surface-pressed);
+  color: var(--text-strong);
+}
+
+:root[data-theme="dark"] .app-shell :is(
+  .truncate,
+  .integration-copilot-message.assistant,
+  .integration-copilot-message.assistant p,
+  .integration-suggestion-section > summary,
+  .integration-suggestion-section > summary > span,
+  .integration-suggestion-row-action
+) {
+  color: var(--text);
+}
+
+:root[data-theme="dark"] .app-shell .integration-suggestion-section > summary small {
+  border: 0;
+  background: var(--surface-muted);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+:root[data-theme="dark"] .app-shell .integration-suggestion-section.section-working > summary small {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+:root[data-theme="dark"] .app-shell .integration-suggestion-section.section-review > summary small {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+:root[data-theme="dark"] .app-shell .integration-view-tabs button.active > span,
+:root[data-theme="dark"] .app-shell .integration-view-tabs button[aria-selected="true"] > span {
+  border: 0;
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+:root[data-theme="dark"] .closespan-logo__syntax,
+:root[data-theme="dark"] .landing .preview-status {
+  color: var(--accent);
+}
+
+:root[data-theme="dark"] .landing .preview-section-title {
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] .landing .preview-evidence strong {
+  color: var(--text-strong);
+}
+
+:root[data-theme="dark"] .landing .preview-eyebrow {
+  color: var(--danger);
+}
+
+/* Dark-theme foreground contract
+ *
+ * The structural landing stylesheet predates theme tokens and still assigns
+ * several light-palette ink values directly. Those colors are readable on the
+ * light canvas but collapse against the dark neumorphic surface. Keep the
+ * existing hierarchy while routing every remaining marketing foreground
+ * through semantic theme tokens. */
+:root[data-theme="dark"] .landing :is(
+  .faq-list summary,
+  .pricing-name,
+  .signal-source-list strong
+) {
+  color: var(--text-strong);
+}
+
+:root[data-theme="dark"] .landing :is(
+  .trust-section ul,
+  .pricing-grid ul,
+  .pricing-note
+) {
+  color: var(--text);
+}
+
+:root[data-theme="dark"] .landing :is(
+  .signal-result-card span,
+  .pricing-cadence
+) {
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] .landing :is(
+  .text-link,
+  .pricing-flag,
+  .signal-source-list > div > span,
+  .signal-result-card small
+) {
+  color: var(--accent);
+}
+
+:root[data-theme="dark"] .landing :is(
+  .trust-card-head > span,
+  .preview-title-row > span
+) {
+  color: var(--success);
+}
+
+/* Prioritization uses a true two-state switch rather than two independent
+ * raised tabs. The recessed rail communicates the shared control, while the
+ * selected view is the single raised thumb. */
+.app-shell .prioritization-view-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+  width: min(240px, 100%);
+  min-height: calc(var(--control-height) + var(--space-2));
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset);
+}
+
+.app-shell .prioritization-view-switch button {
+  min-width: 0;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  transform: none;
+}
+
+.app-shell .prioritization-view-switch button:hover:not(.active) {
+  border: 0;
+  background: transparent;
+  color: var(--text-strong);
+  box-shadow: none;
+  transform: none;
+}
+
+.app-shell .prioritization-view-switch button.active,
+.app-shell .prioritization-view-switch button[aria-pressed="true"] {
+  border: 0;
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+  transform: none;
+}
+
+.app-shell .prioritization-view-switch button:active {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .prioritization-view-switch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Override the shared selected-tab treatment in both themes. This control is a
+ * switch: its rail is inset, while the selected option is a raised thumb. */
+:root .app-shell .prioritization-view-switch button.active,
+:root .app-shell .prioritization-view-switch button[aria-pressed="true"] {
+  border: 0 !important;
+  background: var(--surface) !important;
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm) !important;
+}
+
+:root .app-shell .prioritization-view-switch button:active {
+  background: var(--surface-pressed) !important;
+  box-shadow: var(--shadow-inset-sm) !important;
+}
+
+/* Colored actions share one neumorphic interaction model. Their semantic fill
+ * communicates intent; the surrounding theme supplies the raised depth, and
+ * activation always resolves to an inset surface instead of a flat color. */
+:is(.app-shell, .landing, .feature-requests-page, .login-page, .error-page)
+  :is(
+    .btn.primary,
+    .organization-create-submit,
+    .organization-rename-submit,
+    .feature-request-primary,
+    .delphi-send,
+    .integration-copilot-primary-action,
+    .integration-copilot-composer button,
+    .guided-demo-footer button.primary,
+    .trust-card-actions button:last-child
+  ) {
+  border: 0;
+  background: var(--accent-fill);
+  background-image: none;
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-cta-raised);
+  transform: translateY(0);
+}
+
+:is(.app-shell, .landing, .feature-requests-page, .login-page, .error-page)
+  :is(
+    .btn.primary,
+    .organization-create-submit,
+    .organization-rename-submit,
+    .feature-request-primary,
+    .delphi-send,
+    .integration-copilot-primary-action,
+    .integration-copilot-composer button,
+    .guided-demo-footer button.primary,
+    .trust-card-actions button:last-child
+  ):hover:not(:disabled) {
+  border: 0;
+  background: var(--accent-fill-hover);
+  background-image: none;
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-cta-hover);
+  transform: translateY(-1px);
+}
+
+:is(.app-shell, .landing, .feature-requests-page, .login-page, .error-page)
+  :is(
+    .btn.primary,
+    .organization-create-submit,
+    .organization-rename-submit,
+    .feature-request-primary,
+    .delphi-send,
+    .integration-copilot-primary-action,
+    .integration-copilot-composer button,
+    .guided-demo-footer button.primary,
+    .trust-card-actions button:last-child
+  ):active:not(:disabled) {
+  background: var(--accent-fill-active);
+  box-shadow: var(--shadow-accent-cta-inset);
+  transform: translateY(0);
+}
+
+:is(.app-shell, .landing, .feature-requests-page, .login-page, .error-page)
+  :is(
+    .btn.primary,
+    .organization-create-submit,
+    .organization-rename-submit,
+    .feature-request-primary,
+    .delphi-send,
+    .integration-copilot-primary-action,
+    .integration-copilot-composer button,
+    .guided-demo-footer button.primary,
+    .trust-card-actions button:last-child
+  ):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  box-shadow: var(--shadow-accent-cta-raised), var(--shadow-focus);
+}
+
+.app-shell :is(.btn.success),
+.app-shell .integration-copilot-connector.connected .integration-copilot-primary-action {
+  border: 0;
+  background: var(--success-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-color-raised);
+}
+
+.app-shell :is(.btn.success):hover:not(:disabled),
+.app-shell .integration-copilot-connector.connected .integration-copilot-primary-action:hover:not(:disabled) {
+  border: 0;
+  background: var(--success-fill-hover);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-color-hover);
+  transform: translateY(-1px);
+}
+
+.app-shell :is(.btn.success):active:not(:disabled),
+.app-shell .integration-copilot-connector.connected .integration-copilot-primary-action:active:not(:disabled) {
+  background: var(--success-fill-active);
+  box-shadow: var(--shadow-color-inset);
+  transform: translateY(0);
+}
+
+.app-shell :is(.btn.danger, .integration-disconnect-confirmation .danger),
+.app-shell .guided-demo-reset > div button:last-child {
+  border: 0;
+  background: var(--danger-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-color-raised);
+}
+
+.app-shell :is(.btn.danger, .integration-disconnect-confirmation .danger):hover:not(:disabled),
+.app-shell .guided-demo-reset > div button:last-child:hover:not(:disabled) {
+  border: 0;
+  background: var(--danger-fill-hover);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-color-hover);
+  transform: translateY(-1px);
+}
+
+.app-shell :is(.btn.danger, .integration-disconnect-confirmation .danger):active:not(:disabled),
+.app-shell .guided-demo-reset > div button:last-child:active:not(:disabled) {
+  background: var(--danger-fill-active);
+  box-shadow: var(--shadow-color-inset);
+  transform: translateY(0);
+}
+
+.app-shell .btn.warning {
+  border: 0;
+  background: var(--warning-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-color-raised);
+}
+
+.app-shell .btn.warning:hover:not(:disabled) {
+  background: var(--warning-fill-hover);
+  box-shadow: var(--shadow-color-hover);
+  transform: translateY(-1px);
+}
+
+.app-shell .btn.warning:active:not(:disabled) {
+  background: var(--warning-fill-active);
+  box-shadow: var(--shadow-color-inset);
+  transform: translateY(0);
+}
+
+/* Decorative separators from the flat theme are removed. Spacing and surface
+ * depth continue to group the content. Relationship paths and chart baselines
+ * are intentionally left intact. */
+:where(.app-shell, .landing, .feature-requests-page, .login-page)
+  :where(
+    .integration-card-footer,
+    .integration-suggestion-board-head,
+    .integration-suggestion-section,
+    .integration-group-heading,
+    .integration-drawer-section,
+    .integration-drawer-actions,
+    .feedback-drawer-footer,
+    .login-trust,
+    .landing-footer,
+    .pricing-section,
+    .faq-section,
+    .fit-section,
+    .workflow-summary,
+    .pricing-grid article > ul,
+    .faq-list details > p,
+    .hero-product-proof,
+    .hero-product-proof > div,
+    .preview-metrics,
+    .preview-metrics > div,
+    .feature-request-group > header,
+    .feature-request-review-queue > header
+  ) {
+  border: 0 !important;
+}
+
+/* Responsive density and scroll affordances */
+
+@media (max-width: 1050px) {
+  .content { padding-inline: var(--space-5); }
+}
+
+@media (min-width: 721px) and (max-width: 1050px) {
+  .app-shell .nav {
+    overflow: visible;
+  }
+
+  .app-shell .nav a {
+    position: relative;
+  }
+
+  .app-shell .nav a::after {
+    content: attr(data-nav-label);
+    position: absolute;
+    z-index: 120;
+    top: 50%;
+    left: calc(100% + 12px);
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-strong);
+    box-shadow: var(--shadow-raised-sm);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-4px, -50%);
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+    white-space: nowrap;
+  }
+
+  .app-shell .nav a:hover::after,
+  .app-shell .nav a:focus-visible::after {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --space-6: 20px;
+    --space-8: 28px;
+  }
+
+  .content,
+  .immersive-content { padding-inline: var(--space-4); }
+
+  .cols-2 { grid-template-columns: 1fr; }
+
+  .topbar,
+  .immersive-topbar { padding-inline: var(--space-4); }
+
+  .card-head,
+  .card-body { padding: var(--space-4); }
+
+  .setup-hub-compact-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .integration-filterbar,
+  .integration-copilot-replies,
+  .settings-nav,
+  .segmented {
+    max-width: calc(100vw - (var(--space-4) * 2));
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--space-2) var(--space-7);
+    -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 32px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 32px), transparent 100%);
+  }
+
+  :where(.integration-filterbar, .integration-copilot-replies, .settings-nav, .segmented) > * {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  :where(.integration-filterbar, .integration-copilot-replies, .settings-nav, .segmented) > *:last-child {
+    margin-right: var(--space-7);
+  }
+
+  .landing-nav,
+  .feature-requests-header { padding-inline: var(--space-4); }
+
+  .hero-product,
+  .integration-suggestions-agent,
+  .integration-suggestion-board,
+  .feature-request-row,
+  .feature-request-review-queue {
+    box-shadow: var(--shadow-raised-sm);
+  }
+
+  .chart {
+    gap: var(--space-1);
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+  }
+
+  .chart::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 480px) {
+  .content,
+  .immersive-content { padding-inline: var(--space-3); }
+
+  .page-head { gap: var(--space-4); }
+
+  .card-head,
+  .card-body { padding: var(--space-4); }
+
+  .integration-filterbar,
+  .integration-copilot-replies,
+  .settings-nav,
+  .segmented {
+    max-width: calc(100vw - (var(--space-3) * 2));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --text: #303c52;
+    --text-muted: #526079;
+    --border-subtle: rgba(63, 75, 99, 0.34);
+    --accent-line: rgba(81, 70, 229, 0.58);
+  }
+}
+
+/* Shared alignment contract
+ *
+ * The public site previously centered each section independently while using
+ * different widths and gutters for feature panels, FAQs, the CTA, and the
+ * footer. Each block was technically centered, but their visible edges did
+ * not form one rail. Keep one outer rail for section copy and one inner rail
+ * for raised panels so the page reads as a single composition. The app-shell
+ * rules below apply the same principle to repeated headers and action rows. */
+.landing {
+  --landing-outer-rail: 1184px;
+  --landing-panel-rail: 1128px;
+  --landing-inline-gutter: 28px;
+}
+
+.landing :is(.signal-story, .workflow-section, .landing-cta) {
+  width: min(var(--landing-panel-rail), calc(100% - (var(--landing-inline-gutter) * 2)));
+}
+
+.landing .faq-list {
+  grid-auto-rows: 1fr;
+}
+
+.landing .faq-list summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 21px 22px;
+}
+
+.landing .faq-list summary::after {
+  position: static;
+  transform: none;
+}
+
+.landing .landing-cta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  column-gap: clamp(28px, 5vw, 64px);
+}
+
+.landing .landing-cta > div:first-child {
+  min-width: 0;
+}
+
+.landing .landing-cta-actions {
+  align-self: end;
+  justify-content: flex-end;
+}
+
+.landing .landing-footer {
+  padding-inline: var(--landing-inline-gutter);
+  align-items: start;
+}
+
+.landing .landing-footer-meta,
+.landing .landing-footer-links {
+  align-self: start;
+}
+
+.login-back {
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--space-2);
+}
+
+.app-shell .page-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.app-shell .page-head > :first-child {
+  min-width: min(100%, 260px);
+  flex: 1 1 320px;
+}
+
+.app-shell .page-head > :last-child:not(:first-child) {
+  flex: 0 1 auto;
+  align-self: flex-start;
+}
+
+.app-shell :is(.page-head, .card-head, .split, .toolbar, .top-actions) > * {
+  min-width: 0;
+}
+
+.app-shell .card-head > :first-child {
+  flex: 1 1 220px;
+}
+
+.app-shell :is(
+  .grid,
+  .dashboard-grid,
+  .approval-layout,
+  .approval-facts,
+  .integrations-grid,
+  .integration-summary,
+  .pricing-grid
+) > * {
+  min-width: 0;
+}
+
+.app-shell :is(.toolbar, .top-actions, .approval-actions, .organization-create-actions) {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.app-shell :is(.field, .filter-panel label) > :is(input, textarea, select) {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-shell .integrations-grid > .integration,
+.app-shell .grid > .metric {
+  height: 100%;
+}
+
+@media (max-width: 1050px) {
+  .landing .landing-cta {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .landing .landing-cta-actions {
+    align-self: start;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .landing :is(.signal-story, .workflow-section, .landing-cta) {
+    width: calc(100% - 32px);
+  }
+
+  .landing .landing-footer {
+    padding-inline: 16px;
+  }
+
+  .app-shell .page-head > :first-child,
+  .app-shell .page-head > :last-child:not(:first-child) {
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .app-shell .page-head :is(.top-actions, .toolbar) {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (forced-colors: active) {
+  * { box-shadow: none !important; }
+
+  :where(.btn, button, a, input, select, textarea, summary, .card, .badge) {
+    border: 1px solid CanvasText !important;
+  }
+
+  :where(button, a, input, select, textarea, summary):focus-visible {
+    outline: 3px solid Highlight;
+  }
+
+  :where(
+    [role="tab"][aria-selected="true"],
+    .segmented button[aria-pressed="true"],
+    .settings-nav a.active
+  ) {
+    border: 3px solid Highlight !important;
+    color: Highlight;
+  }
+
+  .stage.current .stage-dot {
+    border: 2px solid Highlight !important;
+  }
+}

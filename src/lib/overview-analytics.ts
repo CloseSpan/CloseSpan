@@ -1,8 +1,9 @@
 import { otherProblems, primaryProblem } from "./seed";
+import type { FeedbackType } from "./domain";
 
 export interface AccountImpactRecord { accountId: string; accountName: string; arr: number }
 export interface ProblemAnalyticsRecord {
-  id: string; title: string; severity: string; stage: string; productArea: string;
+  id: string; title: string; severity: string; stage: string; type: FeedbackType; productArea: string;
   currentSignals: number; previousSignals: number; membershipScores: number[]; accounts: AccountImpactRecord[];
 }
 
@@ -118,16 +119,16 @@ const weeklySignals = {
 } as const;
 
 const problemRecords: ProblemAnalyticsRecord[] = [
-  { id: primaryProblem.id, title: primaryProblem.title, severity: primaryProblem.severity, stage: primaryProblem.stage, productArea: "Analytics exports · Data Experience", currentSignals: 3, previousSignals: 2, membershipScores: [0.91, 0.94, 0.91], accounts: [
+  { id: primaryProblem.id, title: primaryProblem.title, severity: primaryProblem.severity, stage: primaryProblem.stage, type: "Bug", productArea: "Analytics exports · Data Experience", currentSignals: 3, previousSignals: 2, membershipScores: [0.91, 0.94, 0.91], accounts: [
     { accountId: "acct_northstar", accountName: "Northstar Labs", arr: 184000 }, { accountId: "acct_acme", accountName: "Acme Health", arr: 142000 }, { accountId: "acct_atlas", accountName: "Atlas Cloud", arr: 68000 },
   ] },
-  { id: otherProblems[0].id, title: otherProblems[0].title, severity: otherProblems[0].severity, stage: otherProblems[0].stage, productArea: "Platform experience", currentSignals: 7, previousSignals: 5, membershipScores: [0.82, 0.86, 0.9], accounts: [
+  { id: otherProblems[0].id, title: otherProblems[0].title, severity: otherProblems[0].severity, stage: otherProblems[0].stage, type: "Feature request", productArea: "Platform experience", currentSignals: 7, previousSignals: 5, membershipScores: [0.82, 0.86, 0.9], accounts: [
     { accountId: "acct_luma", accountName: "Luma Systems", arr: 124000 }, { accountId: "acct_nova", accountName: "Nova Commerce", arr: 92000 },
   ] },
-  { id: otherProblems[1].id, title: otherProblems[1].title, severity: otherProblems[1].severity, stage: otherProblems[1].stage, productArea: "Platform experience", currentSignals: 4, previousSignals: 3, membershipScores: [0.96, 0.93, 0.94], accounts: [
+  { id: otherProblems[1].id, title: otherProblems[1].title, severity: otherProblems[1].severity, stage: otherProblems[1].stage, type: "Bug", productArea: "Platform experience", currentSignals: 4, previousSignals: 3, membershipScores: [0.96, 0.93, 0.94], accounts: [
     { accountId: "acct_apex", accountName: "Apex Financial", arr: 220000 }, { accountId: "acct_meridian", accountName: "Meridian AI", arr: 168000 }, { accountId: "acct_harbor", accountName: "Harbor Security", arr: 126000 }, { accountId: "acct_vertex", accountName: "Vertex Systems", arr: 98000 },
   ] },
-  { id: otherProblems[2].id, title: otherProblems[2].title, severity: otherProblems[2].severity, stage: otherProblems[2].stage, productArea: "Platform experience", currentSignals: 12, previousSignals: 13, membershipScores: [0.76, 0.8, 0.78], accounts: [
+  { id: otherProblems[2].id, title: otherProblems[2].title, severity: otherProblems[2].severity, stage: otherProblems[2].stage, type: "Usability", productArea: "Platform experience", currentSignals: 12, previousSignals: 13, membershipScores: [0.76, 0.8, 0.78], accounts: [
     { accountId: "acct_orbit", accountName: "Orbit Works", arr: 54000 }, { accountId: "acct_pulse", accountName: "Pulse Studio", arr: 44000 },
   ] },
 ];

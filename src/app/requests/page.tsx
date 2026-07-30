@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ArrowLeft } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { CloseSpanLogo } from "@/components/closespan-logo";
+import { CloseSpan3DLogo } from "@/components/closespan-3d-logo";
 import { FeatureRequestsBoard } from "@/components/feature-requests-board";
 import {
   listPendingFeatureRequests,
@@ -97,7 +97,7 @@ export default async function FeatureRequestsPage() {
       </a>
       <header className="feature-requests-header">
         <Link href="/" aria-label="CloseSpan home">
-          <CloseSpanLogo size="md" tone="inverse" />
+          <CloseSpan3DLogo priority size="md" />
         </Link>
         <Link href="/" className="feature-requests-home-link">
           <ArrowLeft aria-hidden="true" size={15} /> Home

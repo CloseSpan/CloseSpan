@@ -239,7 +239,7 @@ Or run the complete sequential quality gate with `npm run check`. Do not run `ne
 5. A code-aware investigation presents a hypothesis, uncertainty, assumptions, missing evidence, suspected files, and tests.
 6. The proposed GitHub action enters a human approval request with risk, reversibility, systems, and data-sharing scope.
 7. Each problem can be expanded into a structured engineering ticket with measurable acceptance criteria and Given/When/Then coverage, then rendered into an immutable SHA-256-addressed `.prompt` revision.
-8. A single-use approval can launch one isolated Cloudflare Sandbox coding run against one allowlisted GitHub repository and exact base commit; successful runs publish two commits and a draft PR without merging or deploying.
+8. A single-use approval can launch one isolated Tenki Sandbox coding run against one allowlisted GitHub repository and exact base commit; successful runs publish two commits and a draft PR without merging or deploying.
 9. Automated checks can reach `Tests passed`, while `Verified` remains release-level and requires human-supplied evidence for the current ticket revision.
 
 The application also includes real routes and interactive seeded experiences for:
@@ -273,7 +273,7 @@ All workspace business data is persisted in PostgreSQL: feedback, problems, acco
 - `src/lib/public-feedback-discovery.ts`: optional You.com public-source discovery and the disabled Bright Data adapter boundary
 - `src/lib/pipedream*`: Pipedream Connect client, connector catalog, and tenant-scoped account metadata
 - `.prompt`: approved-prompt format, template, and committed ticket artifacts
-- `workers/agent-executor`: isolated Cloudflare Sandbox queue consumer and OpenAI coding-agent boundary
+- `workers/agent-executor`: durable Cloudflare Queue consumer that drives a network-isolated Tenki microVM while keeping the AI credential outside the sandbox
 - `db/migrations` and `db/seeds`: idempotent schema and demonstration data
 - `docs/architecture`: decisions and production migration plan
 
@@ -281,7 +281,7 @@ All workspace business data is persisted in PostgreSQL: feedback, problems, acco
 
 - Workspace switching and tenant-scoped data access are implemented; member invitations and role administration are not yet self-service.
 - Google identity and database-backed membership enforcement are enabled, but PostgreSQL row-level-security policies are not enabled yet.
-- Feedback classification is real when a supported AI provider key is configured. Pipedream Connect authorization is implemented; provider-specific backfill and continuous import workers still need to be completed before every connector is a live feedback feed. The legacy demo approval still creates a simulated external work item; the engineering-ticket flow uses the separate GitHub App and Cloudflare executor described below.
+- Feedback classification is real when a supported AI provider key is configured. Pipedream Connect authorization is implemented; provider-specific backfill and continuous import workers still need to be completed before every connector is a live feedback feed. The legacy demo approval still creates a simulated external work item; the engineering-ticket flow uses the separate GitHub App and Tenki-backed executor described below.
 - No production data should be used with this phase.
 - Non-AI demo policy controls are still browser-local and reset between sessions; AI provider configuration is durable in PostgreSQL.
 
@@ -299,6 +299,10 @@ See [Production architecture](docs/architecture/production-architecture.md) for 
 
 ## Approval-bound coding executor
 
-Run migration `022_engineering_prompt_workflow.sql`, install the GitHub App on only the intended repositories, and add each installation/repository pair through `PUT /api/integrations/github/repositories`. Configure `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `AGENT_EXECUTOR_URL`, `AGENT_EXECUTOR_SHARED_SECRET`, and `CLOSESPAN_INTERNAL_BASE_URL` in the Vercel application.
+Run migrations `022_engineering_prompt_workflow.sql` and `023_workflow_automation.sql`, install the GitHub App on only the intended repositories, and add each installation/repository pair through `PUT /api/integrations/github/repositories`. Configure `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `AGENT_EXECUTOR_URL`, `AGENT_EXECUTOR_SHARED_SECRET`, and `CLOSESPAN_INTERNAL_BASE_URL` in the Vercel application.
 
-The Cloudflare Worker is isolated in `workers/agent-executor`; its deployment and secret setup are documented in [its README](workers/agent-executor/README.md). It must receive the same shared secret plus an `OPENAI_API_KEY`. Verify its TypeScript independently with `npm run typecheck:executor`.
+The Vercel cron calls `/api/internal/workflow/automation` once per minute. Each workspace uses an advisory lock plus a durable 30-second transition lease, so one evidence-qualified ticket can move by only one stage at a time even when cron, an open board, or a retry overlap. `Approved` is the human decision queue; every other transition requires stored evidence and is agent-managed. Configure `CRON_SECRET` in Vercel before enabling the schedule.
+
+The durable queue coordinator is isolated in `workers/agent-executor`; its deployment and secret setup are documented in [its README](workers/agent-executor/README.md). It receives only `TENKI_EXECUTOR_URL`, the shared signing secret, and the status-probe secret. The Node application keeps `OPENAI_API_KEY` and `TENKI_API_KEY`, runs the agent control plane, and sends bounded repository operations to a fresh Tenki microVM with inbound and outbound networking disabled. Verify the coordinator independently with `npm run typecheck:executor`.
+
+After the executor reports success, the application automatically replays the result in a second fresh Tenki microVM before CloseSpan publishes the draft PR. The verifier loads the exact approved base archive, applies only the validated changed files, verifies the prompt hash, and reruns the approved commands with inbound and outbound networking disabled. Configure a repository-specific `TENKI_SANDBOX_IMAGE` or `TENKI_SANDBOX_SNAPSHOT_ID` when tests need an offline dependency environment. Set `TENKI_VERIFICATION_REQUIRED=true` in Vercel to fail closed when verification is unavailable. The implementation and independent replay use the existing one-run approval; the operator is not asked to approve the same work twice.

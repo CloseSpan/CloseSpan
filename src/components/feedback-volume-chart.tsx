@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { useState } from "react";
 import type { OverviewAnalytics } from "@/lib/overview-analytics";
+import { CustomSelect } from "./custom-select";
 
 export function normalizeChartBarHeight(value: number, maximum: number): number {
   if (value <= 0 || maximum <= 0) return 0;
@@ -30,7 +31,17 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
   return <section className="card feedback-volume-card">
     <div className="card-head">
       <div><h2>Feedback volume</h2><p className="subtle">Customer signals received · last 8 weeks</p></div>
-      <label className="chart-source"><span className="sr-only">Feedback source</span><select value={source} onChange={(event) => { setSource(event.target.value); setActiveWeek(null); setPinnedWeek(null); }}>{Object.keys(series).map((name) => <option key={name}>{name}</option>)}</select></label>
+      <CustomSelect
+        ariaLabel="Feedback source"
+        className="chart-source"
+        value={source}
+        options={Object.keys(series)}
+        onValueChange={(nextSource) => {
+          setSource(nextSource);
+          setActiveWeek(null);
+          setPinnedWeek(null);
+        }}
+      />
     </div>
     <div className="card-body">
       <div className="chart-summary" aria-live="polite"><strong>{total}</strong> signals from {source.toLowerCase()}</div>

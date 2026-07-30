@@ -57,17 +57,18 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-function Layout({ children, active }: { children: ReactNode; active: "status" | "maintenance" | "incidents" | "admin" }) {
+function Layout({ children, active }: { children: ReactNode; active?: "status" | "maintenance" | "incidents" | "admin" }) {
   return <div className="site-shell">
+    <a className="skip-link" href="#status-content">Skip to status content</a>
     <header className="topbar">
       <a className="brand" href="/" aria-label="CloseSpan status home"><CloseSpanMark /><span>CloseSpan</span><span className="brand-divider" /><span className="brand-status">Status</span></a>
       <nav aria-label="Status navigation">
-        <a className={active === "status" ? "active" : ""} href="/">Status</a>
-        <a className={active === "maintenance" ? "active" : ""} href="/maintenance">Maintenance</a>
-        <a className={active === "incidents" ? "active" : ""} href="/incidents">Previous incidents</a>
+        <a className={active === "status" ? "active" : ""} aria-current={active === "status" ? "page" : undefined} href="/">Status</a>
+        <a className={active === "maintenance" ? "active" : ""} aria-current={active === "maintenance" ? "page" : undefined} href="/maintenance">Maintenance</a>
+        <a className={active === "incidents" ? "active" : ""} aria-current={active === "incidents" ? "page" : undefined} href="/incidents">Previous incidents</a>
       </nav>
     </header>
-    <main>{children}</main>
+    <main id="status-content" tabIndex={-1}>{children}</main>
     <footer><span>© {new Date().getUTCFullYear()} CloseSpan</span><span>Independent service monitoring</span><a href="https://www.closespan.com">Return to CloseSpan</a></footer>
   </div>;
 }
@@ -77,7 +78,7 @@ function PageIntro({ eyebrow, title, detail }: { eyebrow: string; title: string;
 }
 
 function LoadingCard() {
-  return <div className="loading-card" aria-live="polite"><span className="spinner" /><p>Loading current status…</p></div>;
+  return <div className="loading-card" aria-live="polite"><span className="spinner" aria-hidden="true" /><p>Loading current status…</p></div>;
 }
 
 function ErrorCard({ error, retry }: { error: string; retry: () => void }) {
@@ -134,8 +135,14 @@ function StatusPage() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { const timer = window.setInterval(load, 60_000); return () => window.clearInterval(timer); }, [load]);
   const awaitingServices = data?.services.filter((service) => service.lastCheckedAt === null).length ?? 0;
+  const statusAnnouncement = !data
+    ? ""
+    : !data.lastCheckedAt
+      ? "Monitoring is starting. No availability checks have completed yet."
+      : `${headline[data.overallStatus].title}. ${data.activeIncidents.length} active incident${data.activeIncidents.length === 1 ? "" : "s"}.`;
   return <Layout active="status">
     <section className="hero-space">
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{statusAnnouncement}</p>
       {error ? <ErrorCard error={error} retry={load} /> : !data ? <LoadingCard /> : <>
         <div className={`overall-card ${data.lastCheckedAt ? `status-${data.overallStatus}` : "status-no_data"}`}>
           <span className="overall-icon">{data.lastCheckedAt ? <StatusIcon status={data.overallStatus} size={24} /> : <span className="awaiting-glyph" aria-hidden="true" />}</span>
@@ -249,7 +256,7 @@ function App() {
   if (path === "/incidents") return <IncidentsPage />;
   if (path.startsWith("/incidents/")) return <IncidentPage slug={decodeURIComponent(path.slice("/incidents/".length))} />;
   if (path === "/admin") return <AdminPage />;
-  return <Layout active="status"><EmptyState title="Page not found" detail="The requested status page does not exist." /></Layout>;
+  return <Layout><EmptyState title="Page not found" detail="The requested status page does not exist." /></Layout>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

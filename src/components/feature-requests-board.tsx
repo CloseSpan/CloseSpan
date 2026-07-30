@@ -98,6 +98,8 @@ export function FeatureRequestsBoard({
     message: string;
   } | null>(initialError ? { kind: "error", message: initialError } : null);
   const titleInput = useRef<HTMLInputElement>(null);
+  const dialog = useRef<HTMLElement>(null);
+  const dialogTrigger = useRef<HTMLElement | null>(null);
   const voteTurnstileTokenRef = useRef<string | null>(null);
 
   function updateVoteTurnstileToken(token: string | null) {
@@ -106,18 +108,42 @@ export function FeatureRequestsBoard({
   }
 
   function openRequestDialog() {
+    dialogTrigger.current = document.activeElement as HTMLElement | null;
     setRequestTurnstileToken(null);
     setDialogOpen(true);
   }
 
   useEffect(() => {
     if (!dialogOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     titleInput.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setDialogOpen(false);
+      if (event.key !== "Tab" || !dialog.current) return;
+
+      const focusable = Array.from(
+        dialog.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute("hidden"));
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      document.body.style.overflow = previousOverflow;
+      dialogTrigger.current?.focus();
+    };
   }, [dialogOpen]);
 
   async function vote(requestId: string) {
@@ -518,6 +544,7 @@ export function FeatureRequestsBoard({
           }}
         >
           <section
+            ref={dialog}
             className="feature-request-dialog"
             role="dialog"
             aria-modal="true"

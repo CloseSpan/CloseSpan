@@ -15,6 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { CloseSpanLogo } from "@/components/closespan-logo";
+import { CloseSpan3DLogo } from "@/components/closespan-3d-logo";
 import { launchPlans, launchPricingNote } from "@/lib/plans";
 import {
   LANDING_FAQS,
@@ -55,7 +56,7 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "CloseSpan turns customer feedback into verified product fixes.",
+        alt: "CloseSpan turns customer voice into verified product fixes.",
       },
     ],
   },
@@ -237,7 +238,7 @@ export default function LandingPage() {
       <div className="landing-header">
         <header className="landing-nav">
           <Link className="landing-brand" href="/" aria-label="CloseSpan home">
-            <CloseSpanLogo size="md" tone="inverse" />
+            <CloseSpan3DLogo className="landing-3d-logo" priority size="md" />
           </Link>
           <nav aria-label="Landing navigation">
             <Link href="/customer-feedback-operations">Product</Link>
@@ -279,12 +280,11 @@ export default function LandingPage() {
         <section className="landing-hero">
           <div className="hero-copy">
             <h1>
-              Turn customer feedback into <span>verified product fixes.</span>
+              Turn customer voice into <span>verified product fixes.</span>
             </h1>
             <p>
-              CloseSpan is customer feedback intelligence that connects support
-              evidence, revenue impact, engineering context, human approval,
-              and customer follow-up in one governed workflow.
+              Connect support signals to revenue impact and engineering context,
+              then move every fix through approval and customer follow-up.
             </p>
             <div className="hero-actions">
               <a className="btn primary large" href={pilotHref}>
@@ -348,7 +348,7 @@ export default function LandingPage() {
         <section className="landing-section" id="product">
           <div className="section-intro">
             <span>What is CloseSpan?</span>
-            <h2>AI customer feedback intelligence that finishes the job.</h2>
+            <h2>AI customer voice intelligence that finishes the job.</h2>
             <p>
               CloseSpan gives B2B SaaS product and operations teams one
               feedback-to-fix workspace. Every customer signal stays connected
@@ -356,7 +356,7 @@ export default function LandingPage() {
               your team made, and the outcome your customer experienced.
             </p>
             <Link className="text-link" href="/customer-feedback-operations">
-              Explore customer feedback operations
+              Explore customer voice operations
               <ChevronRight aria-hidden="true" size={15} />
             </Link>
           </div>
@@ -583,7 +583,7 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <div className="landing-footer-meta">
           <Link className="landing-brand" href="/" aria-label="CloseSpan home">
-            <CloseSpanLogo size="sm" />
+            <CloseSpan3DLogo size="sm" />
           </Link>
           <p>Customer-reported problem to verified fix.</p>
         </div>

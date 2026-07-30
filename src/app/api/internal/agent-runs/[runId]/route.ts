@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { agentImplementationReportSchema, validateAgentImplementationReport } from "@/lib/agent-run-verification";
 import {
   completeAgentRun,
@@ -9,6 +9,12 @@ import {
 } from "@/lib/engineering-workflow-repository";
 import { publishAgentRun } from "@/lib/github-agent-publisher";
 import { noStoreHeaders } from "@/lib/request-security";
+import {
+  TenkiIndependentVerificationError,
+  verifyAgentRunWithTenki,
+} from "@/lib/tenki-agent-verification";
+
+export const maxDuration = 800;
 
 function validSignature(body: string, provided: string, secret: string): boolean {
   const expected = createHmac("sha256", secret).update(body).digest();
@@ -58,9 +64,36 @@ export async function POST(
       await completeAgentRun(context, report);
       return NextResponse.json({ ok: true }, { headers: noStoreHeaders });
     }
-    const publication = await publishAgentRun(context, report);
-    await completeAgentRun(context, { ...report, status: "Draft PR opened" }, publication);
-    return NextResponse.json({ ok: true, pullRequestUrl: publication.pullRequestUrl }, { headers: noStoreHeaders });
+    await completeAgentRun(context, { ...report, status: "Tests passed" });
+    after(async () => {
+      try {
+        const verified = await verifyAgentRunWithTenki(context, report);
+        if (verified.status === "Failed") {
+          await completeAgentRun(context, verified);
+          return;
+        }
+        const publication = await publishAgentRun(context, verified);
+        await completeAgentRun(
+          context,
+          { ...verified, status: "Draft PR opened" },
+          publication,
+        );
+      } catch (error) {
+        await failAgentRun(
+          context,
+          error instanceof TenkiIndependentVerificationError
+            ? "independent_verification_failed"
+            : "publication_failed",
+          error instanceof Error
+            ? error.message
+            : "Independent verification or publication failed",
+        );
+      }
+    });
+    return NextResponse.json(
+      { ok: true, status: "independent_verification_queued" },
+      { status: 202, headers: noStoreHeaders },
+    );
   } catch (error) {
     if (failureContext) {
       await failAgentRun(failureContext, "callback_processing_failed", error instanceof Error ? error.message : "Executor callback failed").catch(() => undefined);

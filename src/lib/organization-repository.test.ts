@@ -5,12 +5,17 @@ const database = vi.hoisted(() => ({
   pool: { query: vi.fn() },
   transaction: vi.fn(),
   mode: "postgres",
+  workspaceMode: "postgres",
 }));
 
 vi.mock("./db", () => ({
   persistenceMode: () => database.mode,
   databasePool: () => database.pool,
   transaction: database.transaction,
+}));
+
+vi.mock("./workspace-persistence", () => ({
+  workspacePersistenceMode: () => database.workspaceMode,
 }));
 
 import { integrationCatalog } from "./integration-catalog";
@@ -29,6 +34,7 @@ const sqlIncludes = (sql: unknown, text: string) =>
 describe("organization repository", () => {
   beforeEach(() => {
     database.mode = "postgres";
+    database.workspaceMode = "postgres";
     database.client.query.mockReset().mockResolvedValue({ rows: [], rowCount: 1 });
     database.pool.query.mockReset();
     database.transaction.mockReset().mockImplementation(
@@ -207,7 +213,8 @@ describe("organization repository", () => {
   });
 
   it("requires PostgreSQL persistence for a rename", async () => {
-    database.mode = "memory";
+    database.mode = "postgres";
+    database.workspaceMode = "memory";
 
     await expect(
       renameOrganization({

@@ -59,7 +59,16 @@ function promptUserStory(promptContent: string): string | null {
     storyLines.push(line);
   }
   const story = storyLines.join("\n").trim();
-  return story || null;
+  if (!story) return null;
+  const tagged = /^<user_story>\n([\s\S]*)\n<\/user_story>$/.exec(story);
+  if (!tagged) return story;
+  return tagged[1]
+    .replaceAll("&#96;", "`")
+    .replaceAll("&#45;", "-")
+    .replaceAll("&#35;", "#")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&amp;", "&");
 }
 
 export function evaluateUserStoryPromptMatch(

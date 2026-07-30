@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { databasePool, persistenceMode, transaction } from "./db";
 import { integrationCatalog } from "./integration-catalog";
+import { workspacePersistenceMode } from "./workspace-persistence";
 
 export interface OrganizationMembership {
   memberId: string;
@@ -261,7 +262,7 @@ export async function createOrganization(
 export async function renameOrganization(
   input: RenameOrganizationInput,
 ): Promise<RenamedOrganization> {
-  if (persistenceMode() !== "postgres")
+  if (workspacePersistenceMode(input.orgId) !== "postgres")
     throw new Error("PostgreSQL persistence is required to rename organizations");
 
   const organizationName = requiredTrimmed(

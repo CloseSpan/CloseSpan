@@ -1,5 +1,9 @@
 import { approval, primaryProblem } from "./seed";
 import type { ApprovalRequest, AuditEvent, Stage } from "./domain";
+import {
+  resetMemoryProblemStages,
+  setMemoryProblemStage,
+} from "./problem-automation-memory";
 
 export interface DemoState {
   orgId: string;
@@ -61,6 +65,7 @@ export function approveMemoryAction(orgId: string, context: ActionContext): Demo
   if (state.approval.status !== "Pending") throw new Error("Approval is no longer pending");
   state.approval.status = "Approved";
   state.problemStage = "Approved";
+  setMemoryProblemStage(orgId, primaryProblem.id, "Approved");
   state.workItem = { id: "GH-1842", url: "#simulated-work-item", simulated: true };
   state.version += 1;
   state.processedActions[context.idempotencyKey] = "approve";
@@ -73,6 +78,8 @@ export function rejectMemoryAction(orgId: string, context: ActionContext): DemoS
   if (alreadyProcessed(state, context, "reject")) return state;
   if (state.approval.status !== "Pending") throw new Error("Approval is no longer pending");
   state.approval.status = "Rejected";
+  state.problemStage = "Needs review";
+  setMemoryProblemStage(orgId, primaryProblem.id, "Needs review");
   state.version += 1;
   state.processedActions[context.idempotencyKey] = "reject";
   state.audit.unshift(event(orgId, context.actorId, context.actorName, "Rejected simulated GitHub issue proposal", "ApprovalRequest", state.approval.id, context.traceId));
@@ -86,6 +93,7 @@ export function advanceMemoryLifecycle(orgId: string, context: ActionContext): D
   const target = next[state.problemStage];
   if (!target) throw new Error("The problem cannot advance from its current stage");
   state.problemStage = target;
+  setMemoryProblemStage(orgId, primaryProblem.id, target);
   state.version += 1;
   state.processedActions[context.idempotencyKey] = "advance";
   if (target === "Verified") state.notifications = "Drafted";
@@ -107,7 +115,9 @@ export function approveMemoryNotifications(orgId: string, context: ActionContext
 export function resetMemoryState(orgId?: string): void {
   if (orgId) {
     states().delete(orgId);
+    resetMemoryProblemStages(orgId);
     return;
   }
   globalStore.closespanStates = new Map();
+  resetMemoryProblemStages();
 }

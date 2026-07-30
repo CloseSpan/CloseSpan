@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { launchPricingNote } from "@/lib/plans";
 import type { SettingsView } from "@/lib/workspace-repository";
 import { AiProviderSettings } from "./ai-provider-settings";
+import { CustomSelect } from "./custom-select";
 import { PageTitle } from "./screens";
+import { TenkiSandboxCheck } from "./tenki-sandbox-check";
 
 const settingsSections = [
   ["agent", "Agent autonomy"],
@@ -29,14 +31,19 @@ function sectionFromHash(hash: string): SettingsSectionId {
 export function SettingsScreen({
   settings,
   orgId,
+  userRole,
+  tenkiConfigured,
 }: {
   settings: SettingsView;
   orgId: string;
+  userRole: string;
+  tenkiConfigured: boolean;
 }) {
   const [weights, setWeights] = useState<Record<string, number>>(
     settings.priorityWeights,
   );
   const [autonomy, setAutonomy] = useState(settings.autonomyLevel);
+  const [retention, setRetention] = useState(`${settings.retentionDays} days`);
   const [pii, setPii] = useState(settings.piiRedaction);
   const [saved, setSaved] = useState(false);
   const [activeSection, setActiveSection] =
@@ -108,22 +115,24 @@ export function SettingsScreen({
               </div>
             </div>
             <div className="card-body">
-              <label className="field">
-                Autonomy level
-                <select
+              <div className="field">
+                <span>Autonomy level</span>
+                <CustomSelect
+                  ariaLabel="Autonomy level"
                   value={autonomy}
-                  onChange={(event) => {
-                    setAutonomy(event.target.value);
+                  options={[
+                    "Observe",
+                    "Recommend",
+                    "Organize",
+                    "Execute with approval",
+                    "Limited autonomy",
+                  ]}
+                  onValueChange={(value) => {
+                    setAutonomy(value);
                     setSaved(false);
                   }}
-                >
-                  <option>Observe</option>
-                  <option>Recommend</option>
-                  <option>Organize</option>
-                  <option>Execute with approval</option>
-                  <option>Limited autonomy</option>
-                </select>
-              </label>
+                />
+              </div>
               <div className="callout section-gap-sm">
                 <div className="callout-title">Protected actions</div>
                 <p className="subtle">
@@ -131,6 +140,11 @@ export function SettingsScreen({
                   This cannot be overridden by workspace autonomy.
                 </p>
               </div>
+              <TenkiSandboxCheck
+                orgId={orgId}
+                configured={tenkiConfigured}
+                isAdmin={userRole === "Admin"}
+              />
             </div>
           </section>
           <AiProviderSettings initial={settings.ai} orgId={orgId} />
@@ -184,14 +198,18 @@ export function SettingsScreen({
                   }}
                 />
               </label>
-              <label className="field">
-                Feedback retention
-                <select defaultValue={`${settings.retentionDays} days`}>
-                  <option>90 days</option>
-                  <option>365 days</option>
-                  <option>Custom policy</option>
-                </select>
-              </label>
+              <div className="field">
+                <span>Feedback retention</span>
+                <CustomSelect
+                  ariaLabel="Feedback retention"
+                  value={retention}
+                  options={["90 days", "365 days", "Custom policy"]}
+                  onValueChange={(value) => {
+                    setRetention(value);
+                    setSaved(false);
+                  }}
+                />
+              </div>
             </div>
           </section>
           <section className="card" id="members">

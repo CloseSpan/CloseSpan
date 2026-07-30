@@ -39,6 +39,13 @@ export const agentImplementationReportSchema = z.object({
   assumptions: z.array(z.string().trim().min(1).max(2_000)).max(30),
   manualVerification: z.array(z.string().trim().min(1).max(2_000)).max(30),
   logs: z.array(z.string().max(5_000)).max(200),
+  independentVerification: z.object({
+    provider: z.literal("Tenki Sandbox"),
+    sessionId: z.string().trim().min(1).max(200),
+    status: z.enum(["passed", "failed"]),
+    completedAt: z.string().datetime(),
+    durationMs: z.number().int().nonnegative(),
+  }).optional(),
 });
 
 export type AgentImplementationReport = z.infer<typeof agentImplementationReportSchema>;

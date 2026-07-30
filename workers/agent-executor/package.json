@@ -9,8 +9,6 @@
     "types": "wrangler types"
   },
   "dependencies": {
-    "@cloudflare/sandbox": "^0.10.3",
-    "@openai/agents": "^0.3.7",
     "zod": "^3.25.76"
   },
   "devDependencies": {

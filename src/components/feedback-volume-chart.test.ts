@@ -54,6 +54,17 @@ describe("feedback volume chart", () => {
     expect(markup).not.toMatch(/>W[1-8]</);
   });
 
+  it("uses the themed source listbox instead of the operating-system select menu", () => {
+    const markup = renderToStaticMarkup(
+      createElement(FeedbackVolumeChart, { analytics }),
+    );
+
+    expect(markup).toContain('class="custom-select chart-source"');
+    expect(markup).toContain('aria-haspopup="listbox"');
+    expect(markup).toContain('aria-label="Feedback source: All sources"');
+    expect(markup).not.toContain("<select");
+  });
+
   it("renders neutral, noninteractive zero-week markers while keeping nonzero bars interactive", () => {
     const markup = renderToStaticMarkup(
       createElement(FeedbackVolumeChart, { analytics }),

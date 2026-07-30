@@ -56,6 +56,7 @@ export const PUBLIC_DISCOVERY_PATHS = [
 export const PRIVATE_APP_PATHS = [
   "/api/",
   "/overview",
+  "/onboarding",
   "/feedback",
   "/problems",
   "/prioritization",

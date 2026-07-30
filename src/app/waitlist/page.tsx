@@ -4,7 +4,7 @@ import { ArrowLeft, CircleCheckBig, ShieldCheck } from "lucide-react";
 import { redirect } from "next/navigation";
 import { signOutCurrentUser } from "@/app/auth-actions";
 import { AccessRequestEmail } from "@/components/access-request-email";
-import { CloseSpanLogo } from "@/components/closespan-logo";
+import { CloseSpan3DLogo } from "@/components/closespan-3d-logo";
 import { ensureWorkspaceAccessWaitlistEntry } from "@/lib/access-waitlist-repository";
 import { resolveWorkspaceAccess } from "@/lib/auth-user";
 import { PUBLIC_EMAILS } from "@/lib/site";
@@ -44,7 +44,7 @@ export default async function WaitlistPage() {
 
       <section className="login-card waitlist-card" aria-labelledby="waitlist-title">
         <div className="login-brand">
-          <CloseSpanLogo size="lg" />
+          <CloseSpan3DLogo decorative={false} priority size="lg" />
         </div>
         <div className="login-heading">
           <span>Google account connected</span>

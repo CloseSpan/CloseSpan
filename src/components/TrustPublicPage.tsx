@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Menu } from "lucide-react";
-import { CloseSpanLogo } from "@/components/closespan-logo";
+import { CloseSpan3DLogo } from "@/components/closespan-3d-logo";
 import { PUBLIC_EMAILS } from "@/lib/site";
 import styles from "./TrustPublicPage.module.css";
 
@@ -63,7 +63,7 @@ export function TrustPublicPage({
       <header className={styles.header}>
         <div className={styles.headerInner}>
           <Link className={styles.brand} href="/" aria-label="CloseSpan home">
-            <CloseSpanLogo size="md" tone="inverse" />
+            <CloseSpan3DLogo priority size="md" />
           </Link>
           <nav className={styles.nav} aria-label="Public website navigation">
             <Link href="/customer-feedback-operations">Feedback operations</Link>
@@ -188,7 +188,7 @@ export function TrustPublicPage({
         <div className={styles.footerInner}>
           <div className={styles.footerMeta}>
             <Link className={styles.brand} href="/" aria-label="CloseSpan home">
-              <CloseSpanLogo size="sm" />
+              <CloseSpan3DLogo size="sm" />
             </Link>
             <p>Customer-reported problem to verified fix.</p>
           </div>

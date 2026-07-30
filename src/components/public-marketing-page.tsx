@@ -6,7 +6,7 @@ import {
   FileCheck2,
   Menu,
 } from "lucide-react";
-import { CloseSpanLogo } from "@/components/closespan-logo";
+import { CloseSpan3DLogo } from "@/components/closespan-3d-logo";
 import type { PublicSeoPage } from "@/lib/public-seo-pages";
 import { PUBLIC_EMAILS } from "@/lib/site";
 import styles from "./public-marketing-page.module.css";
@@ -38,7 +38,7 @@ export function PublicMarketingPage({ page }: { page: PublicSeoPage }) {
 
       <header className={styles.header}>
         <Link className={styles.brand} href="/" aria-label="CloseSpan home">
-          <CloseSpanLogo size="md" tone="default" />
+          <CloseSpan3DLogo priority size="md" />
         </Link>
 
         <nav className={styles.desktopNav} aria-label="Primary navigation">
@@ -248,7 +248,7 @@ export function PublicMarketingPage({ page }: { page: PublicSeoPage }) {
       <footer className={styles.footer}>
         <div>
           <Link href="/" aria-label="CloseSpan home">
-            <CloseSpanLogo size="sm" tone="default" />
+            <CloseSpan3DLogo size="sm" />
           </Link>
           <p>Customer feedback intelligence for accountable product operations.</p>
         </div>

@@ -46,7 +46,7 @@ async function readState(
       ORDER BY item.created_at DESC,item.id
       LIMIT 1
     ) e ON true
-    WHERE a.org_id=$1
+    WHERE a.org_id=$1 AND a.action_type='external_work_item'
     ORDER BY coalesce(w.primary_approval_id=a.id,false) DESC,
       (a.status='Pending') DESC,a.updated_at DESC,a.id
     LIMIT 1`, [orgId]);
@@ -69,7 +69,7 @@ async function workflowTarget(
       FROM approval_requests a
       JOIN product_problems p ON p.org_id=a.org_id AND p.id=a.problem_id
       LEFT JOIN workspaces w ON w.org_id=a.org_id
-      WHERE a.org_id=$1
+      WHERE a.org_id=$1 AND a.action_type='external_work_item'
       ORDER BY coalesce(w.primary_approval_id=a.id,false) DESC,
         (a.status='Pending') DESC,a.updated_at DESC,a.id
       LIMIT 1
@@ -146,7 +146,7 @@ export async function getPostgresState(orgId: string): Promise<DemoState> {
 
 export function approvePostgresAction(orgId: string, context: ActionContext) {
   return mutate(orgId, context, "approve", async (client,target) => {
-    const result = await client.query("UPDATE approval_requests SET status='Approved',updated_at=now() WHERE org_id=$1 AND id=$2 AND status='Pending'", [orgId,target.approvalId]);
+    const result = await client.query("UPDATE approval_requests SET status='Approved',updated_at=now() WHERE org_id=$1 AND id=$2 AND action_type='external_work_item' AND status='Pending'", [orgId,target.approvalId]);
     if (!result.rowCount)
       throw new WorkflowConflictError("Approval is no longer pending");
     await client.query("UPDATE product_problems SET stage='Approved',updated_at=now() WHERE org_id=$1 AND id=$2", [orgId,target.problemId]);
@@ -158,9 +158,10 @@ export function approvePostgresAction(orgId: string, context: ActionContext) {
 
 export function rejectPostgresAction(orgId: string, context: ActionContext) {
   return mutate(orgId, context, "reject", async (client,target) => {
-    const result = await client.query("UPDATE approval_requests SET status='Rejected',updated_at=now() WHERE org_id=$1 AND id=$2 AND status='Pending'", [orgId,target.approvalId]);
+    const result = await client.query("UPDATE approval_requests SET status='Rejected',updated_at=now() WHERE org_id=$1 AND id=$2 AND action_type='external_work_item' AND status='Pending'", [orgId,target.approvalId]);
     if (!result.rowCount)
       throw new WorkflowConflictError("Approval is no longer pending");
+    await client.query("UPDATE product_problems SET stage='Needs review',updated_at=now() WHERE org_id=$1 AND id=$2", [orgId,target.problemId]);
     await audit(client, orgId, context, "Rejected simulated external action proposal", "ApprovalRequest", target.approvalId);
   });
 }

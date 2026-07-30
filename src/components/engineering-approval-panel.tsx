@@ -46,7 +46,7 @@ export function EngineeringApprovalPanel({
   return (
     <section className="card section-gap">
       <div className="card-head">
-        <div><h2>Approval-bound coding run</h2><p className="subtle">One prompt, one base commit, one isolated run, one draft PR.</p></div>
+        <div><h2>Approval-bound coding run</h2><p className="subtle">One approval starts implementation in Tenki and an independent replay in a second fresh session. CloseSpan asks again only if the scope changes.</p></div>
         <span className={`badge ${approval.status === "Pending" ? "medium" : approval.status === "Approved" ? "success" : "high"}`}>{approval.status}</span>
       </div>
       <div className="card-body detail-stack">

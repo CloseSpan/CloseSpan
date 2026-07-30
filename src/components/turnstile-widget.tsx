@@ -7,7 +7,7 @@ import type { TurnstileAction } from "@/lib/turnstile-config";
 interface TurnstileRenderOptions {
   sitekey: string;
   action: string;
-  theme: "dark";
+  theme: "auto";
   size: "flexible";
   appearance: "interaction-only";
   callback: (token: string) => void;
@@ -67,7 +67,7 @@ export function TurnstileWidget({
     widgetIdRef.current = api.render(container, {
       sitekey: siteKey,
       action,
-      theme: "dark",
+      theme: "auto",
       size: "flexible",
       appearance: "interaction-only",
       callback: (token) => {

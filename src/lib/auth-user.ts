@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { auth } from "@/auth";
 import { persistenceMode } from "./db";
 import {
@@ -227,7 +228,7 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
   return { status: "unavailable", email };
 }
 
-export async function requireWorkspaceUser(): Promise<WorkspaceUser> {
+async function requireWorkspaceUserForRequest(): Promise<WorkspaceUser> {
   const access = await resolveWorkspaceAccess();
   if (access.status === "granted") return access.user;
   if (access.status === "denied") redirect("/waitlist");
@@ -235,3 +236,5 @@ export async function requireWorkspaceUser(): Promise<WorkspaceUser> {
     redirect("/login?error=WorkspaceUnavailable");
   redirect("/login");
 }
+
+export const requireWorkspaceUser = cache(requireWorkspaceUserForRequest);

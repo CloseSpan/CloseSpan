@@ -18,7 +18,15 @@ function repositoryParts(repository: string): { owner: string; repo: string } {
   return { owner, repo };
 }
 
-async function installationClient(installationId: string): Promise<Octokit> {
+interface GithubPublisherDependencies {
+  createClient?: (installationId: string) => Promise<Octokit> | Octokit;
+}
+
+async function installationClient(
+  installationId: string,
+  dependencies: GithubPublisherDependencies = {},
+): Promise<Octokit> {
+  if (dependencies.createClient) return dependencies.createClient(installationId);
   const { appId, privateKey } = githubConfiguration();
   const auth = createAppAuth({ appId, privateKey, installationId: Number(installationId) });
   const installation = await auth({ type: "installation" });
@@ -141,6 +149,7 @@ async function existingPublication(
 export async function publishAgentRun(
   context: AgentRunExecutionContext,
   report: AgentImplementationReport,
+  dependencies: GithubPublisherDependencies = {},
 ): Promise<{
   promptCommitSha: string;
   implementationCommitSha: string;
@@ -148,7 +157,7 @@ export async function publishAgentRun(
   pullRequestUrl: string;
 }> {
   const repository = repositoryParts(context.repository);
-  const octokit = await installationClient(context.installationId);
+  const octokit = await installationClient(context.installationId, dependencies);
   const baseRef = await octokit.rest.git.getRef({ ...repository, ref: `heads/${context.baseBranch}` });
   if (baseRef.data.object.sha !== context.baseSha)
     throw new Error("stale_base: repository branch moved after approval");
@@ -194,9 +203,10 @@ export async function publishAgentRun(
 
 export async function createRepositoryArchiveUrl(
   context: AgentRunExecutionContext,
+  dependencies: GithubPublisherDependencies = {},
 ): Promise<string> {
   const repository = repositoryParts(context.repository);
-  const octokit = await installationClient(context.installationId);
+  const octokit = await installationClient(context.installationId, dependencies);
   const baseRef = await octokit.rest.git.getRef({ ...repository, ref: `heads/${context.baseBranch}` });
   if (baseRef.data.object.sha !== context.baseSha)
     throw new Error("stale_base: repository branch moved after approval");

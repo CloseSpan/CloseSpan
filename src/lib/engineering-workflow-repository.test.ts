@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ORG_ID, primaryProblem } from "./seed";
 import {
   approveImplementationRun,
   generateImplementationPrompt,
   getEngineeringWorkflow,
+  rejectImplementationApproval,
   requestImplementationApproval,
   resetMemoryEngineeringWorkflows,
   saveEngineeringSpecification,
@@ -14,6 +15,7 @@ const actor = { actorId: "admin", actorName: "Admin", traceId: "trace", idempote
 
 describe("approval-bound engineering workflow", () => {
   beforeEach(() => resetMemoryEngineeringWorkflows());
+  afterEach(() => vi.useRealTimers());
 
   it("consumes one approval exactly once", async () => {
     const promptWorkflow = await generateImplementationPrompt(ORG_ID, primaryProblem.id, actor);
@@ -21,6 +23,45 @@ describe("approval-bound engineering workflow", () => {
     const approved = await approveImplementationRun(ORG_ID, approvalWorkflow.approval!.id, actor);
     expect(approved.run?.status).toBe("Queued");
     await expect(approveImplementationRun(ORG_ID, approvalWorkflow.approval!.id, actor)).rejects.toThrow("no longer pending");
+  });
+
+  it("does not create a second approval for a prompt that is already awaiting approval", async () => {
+    const promptWorkflow = await generateImplementationPrompt(ORG_ID, primaryProblem.id, actor);
+    const first = await requestImplementationApproval(ORG_ID, promptWorkflow.prompt!.id, actor);
+
+    await expect(
+      requestImplementationApproval(ORG_ID, promptWorkflow.prompt!.id, actor),
+    ).rejects.toThrow("Only the latest ready prompt can be submitted");
+    expect((await getEngineeringWorkflow(ORG_ID, primaryProblem.id)).approval?.id)
+      .toBe(first.approval?.id);
+  });
+
+  it("returns a rejected prompt to Ready so the same immutable revision can be resubmitted", async () => {
+    const promptWorkflow = await generateImplementationPrompt(ORG_ID, primaryProblem.id, actor);
+    const awaiting = await requestImplementationApproval(ORG_ID, promptWorkflow.prompt!.id, actor);
+    const rejected = await rejectImplementationApproval(ORG_ID, awaiting.approval!.id, actor);
+
+    expect(rejected.prompt).toMatchObject({ id: promptWorkflow.prompt!.id, revision: 1, status: "Ready" });
+    expect(rejected.approval?.status).toBe("Rejected");
+    const resubmitted = await requestImplementationApproval(ORG_ID, promptWorkflow.prompt!.id, actor);
+    expect(resubmitted.prompt?.revision).toBe(1);
+    expect(resubmitted.approval?.status).toBe("Pending");
+  });
+
+  it("returns an expired prompt to Ready so it can be resubmitted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-29T12:00:00Z"));
+    const promptWorkflow = await generateImplementationPrompt(ORG_ID, primaryProblem.id, actor);
+    const awaiting = await requestImplementationApproval(ORG_ID, promptWorkflow.prompt!.id, actor);
+    vi.advanceTimersByTime(31 * 60_000);
+
+    await expect(approveImplementationRun(ORG_ID, awaiting.approval!.id, actor))
+      .rejects.toThrow("Approval expired");
+    const expired = await getEngineeringWorkflow(ORG_ID, primaryProblem.id);
+    expect(expired.prompt?.status).toBe("Ready");
+    expect(expired.approval?.status).toBe("Expired");
+    expect((await requestImplementationApproval(ORG_ID, promptWorkflow.prompt!.id, actor)).approval?.status)
+      .toBe("Pending");
   });
 
   it("invalidates the prompt and pending approval when the ticket changes", async () => {
@@ -52,7 +93,9 @@ describe("approval-bound engineering workflow", () => {
     expect(first.storyTest).toMatchObject({
       status: "included",
     });
-    expect(first.workflow.prompt?.content).toContain(`## User story\n${story}`);
+    expect(first.workflow.approval?.status).toBe("Pending");
+    expect(first.workflow.prompt?.status).toBe("Awaiting approval");
+    expect(first.workflow.prompt?.content).toContain(`## User story\n<user_story>\n${story}\n</user_story>`);
 
     const repeated = await testUserStoryAgainstPrompt(
       ORG_ID,
@@ -62,6 +105,7 @@ describe("approval-bound engineering workflow", () => {
     );
     expect(repeated.workflow.prompt?.id).toBe(first.workflow.prompt?.id);
     expect(repeated.workflow.prompt?.revision).toBe(1);
+    expect(repeated.workflow.approval?.id).toBe(first.workflow.approval?.id);
   });
 
   it("rejects a vague story without changing prompt state", async () => {
@@ -84,7 +128,6 @@ describe("approval-bound engineering workflow", () => {
       initial.specification!.userStory,
       actor,
     );
-    await requestImplementationApproval(ORG_ID, first.workflow.prompt!.id, actor);
     const tested = await testUserStoryAgainstPrompt(
       ORG_ID,
       primaryProblem.id,

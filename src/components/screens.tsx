@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -27,6 +34,7 @@ import { calculateImpact } from "@/lib/domain";
 import { launchPricingNote } from "@/lib/plans";
 import type { DemoState } from "@/lib/store";
 import { FeedbackVolumeChart } from "./feedback-volume-chart";
+import { CustomSelect } from "./custom-select";
 import { IntegrationSyncStatus } from "./integration-sync-status";
 import { PipedreamAccountManager } from "./pipedream-account-manager";
 import { IntegrationProviderIcon } from "./integration-provider-icon";
@@ -62,6 +70,7 @@ import type {
   SettingsView,
 } from "@/lib/workspace-repository";
 import type {
+  FeedbackType,
   FeedbackItem,
   ProductProblem,
   Recommendation,
@@ -72,6 +81,68 @@ const compactMoney = (value: number) =>
   value >= 1_000_000
     ? `$${(value / 1_000_000).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}m`
     : money(value);
+
+const MODAL_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+function getModalFocusableElements(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(MODAL_FOCUSABLE_SELECTOR),
+  ).filter(
+    (element) =>
+      element.getAttribute("aria-hidden") !== "true" &&
+      !element.closest("[aria-hidden='true']") &&
+      (element.offsetWidth > 0 ||
+        element.offsetHeight > 0 ||
+        element.getClientRects().length > 0),
+  );
+}
+
+function containModalFocus(
+  event: KeyboardEvent,
+  container: HTMLElement,
+  onClose: () => void,
+) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    onClose();
+    return;
+  }
+  if (event.key !== "Tab") return;
+
+  const focusableElements = getModalFocusableElements(container);
+  if (!focusableElements.length) {
+    event.preventDefault();
+    container.focus({ preventScroll: true });
+    return;
+  }
+
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+  const activeElement = document.activeElement;
+  const activeElementIsFocusable =
+    activeElement instanceof HTMLElement &&
+    focusableElements.includes(activeElement);
+  if (
+    event.shiftKey &&
+    (activeElement === firstElement || !activeElementIsFocusable)
+  ) {
+    event.preventDefault();
+    lastElement.focus();
+  } else if (
+    !event.shiftKey &&
+    (activeElement === lastElement || !activeElementIsFocusable)
+  ) {
+    event.preventDefault();
+    firstElement.focus();
+  }
+}
 
 export function PageTitle({
   eyebrow,
@@ -289,6 +360,9 @@ export function FeedbackScreen({
   const [reviewedProblems, setReviewedProblems] = useState<
     Record<string, { id: string; title: string; stage: string }>
   >({});
+  const feedbackDrawerRef = useRef<HTMLElement | null>(null);
+  const feedbackDrawerCloseRef = useRef<HTMLButtonElement | null>(null);
+  const feedbackDrawerTriggerRef = useRef<HTMLElement | null>(null);
   const router = useRouter();
   const visible = useMemo(
     () =>
@@ -322,19 +396,41 @@ export function FeedbackScreen({
   const proposedAnalyses = analyses.filter(
     (analysis) => analysis.reviewStatus === "Proposed",
   );
+  const feedbackDrawerOpen = Boolean(openFeedback);
   useEffect(() => {
-    if (!openFeedbackId) return;
+    if (!feedbackDrawerOpen) return;
+    const drawer = feedbackDrawerRef.current;
+    if (!drawer) return;
     const previousOverflow = document.body.style.overflow;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpenFeedbackId(null);
+    const previouslyFocused = feedbackDrawerTriggerRef.current;
+    const focusFrame = window.requestAnimationFrame(() => {
+      (feedbackDrawerCloseRef.current ?? getModalFocusableElements(drawer)[0] ?? drawer).focus({
+        preventScroll: true,
+      });
+    });
+    const handleDrawerKeyDown = (event: KeyboardEvent) => {
+      containModalFocus(event, drawer, () => setOpenFeedbackId(null));
     };
     document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("keydown", handleDrawerKeyDown);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("keydown", handleDrawerKeyDown);
+      if (!drawer.isConnected && previouslyFocused?.isConnected) {
+        previouslyFocused.focus({ preventScroll: true });
+      }
     };
-  }, [openFeedbackId]);
+  }, [feedbackDrawerOpen]);
+  function openFeedbackDetails(feedbackId: string) {
+    if (!openFeedbackId) {
+      feedbackDrawerTriggerRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+    }
+    setOpenFeedbackId(feedbackId);
+  }
   function toggle(id: string) {
     setSelected((value) =>
       value.includes(id) ? value.filter((item) => item !== id) : [...value, id],
@@ -549,18 +645,16 @@ export function FeedbackScreen({
             placeholder="Search customer feedback…"
           />
         </label>
-        <select
+        <CustomSelect
+          className="toolbar-select"
+          ariaLabel="Filter by source"
           value={source}
-          onChange={(event) => setSource(event.target.value)}
-          aria-label="Filter by source"
-        >
-          <option>All</option>
-          {[...new Set(feedbackItems.map((item) => item.source))].map(
-            (item) => (
-              <option key={item}>{item}</option>
-            ),
-          )}
-        </select>
+          onValueChange={setSource}
+          options={[
+            "All",
+            ...new Set(feedbackItems.map((item) => item.source)),
+          ]}
+        />
         <button
           type="button"
           className="btn"
@@ -572,31 +666,24 @@ export function FeedbackScreen({
       </div>
       {advanced && (
         <div className="filter-panel">
-          <label>
-            Severity
-            <select
+          <div className="filter-field">
+            <span>Severity</span>
+            <CustomSelect
+              ariaLabel="Filter by severity"
               value={severity}
-              onChange={(event) => setSeverity(event.target.value)}
-            >
-              <option>All</option>
-              <option>Critical</option>
-              <option>High</option>
-              <option>Medium</option>
-              <option>Low</option>
-            </select>
-          </label>
-          <label>
-            Customer tier
-            <select
+              onValueChange={setSeverity}
+              options={["All", "Critical", "High", "Medium", "Low"]}
+            />
+          </div>
+          <div className="filter-field">
+            <span>Customer tier</span>
+            <CustomSelect
+              ariaLabel="Filter by customer tier"
               value={tier}
-              onChange={(event) => setTier(event.target.value)}
-            >
-              <option>All</option>
-              <option>Enterprise</option>
-              <option>Growth</option>
-              <option>Starter</option>
-            </select>
-          </label>
+              onValueChange={setTier}
+              options={["All", "Enterprise", "Growth", "Starter"]}
+            />
+          </div>
           <button
             type="button"
             className="btn"
@@ -663,12 +750,14 @@ export function FeedbackScreen({
               return (
                 <tr key={item.id}>
                   <td>
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(item.id)}
-                      onChange={() => toggle(item.id)}
-                      aria-label={`Select feedback from ${item.customer}`}
-                    />
+                    <label className="feedback-select-control">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(item.id)}
+                        onChange={() => toggle(item.id)}
+                        aria-label={`Select feedback from ${item.customer}`}
+                      />
+                    </label>
                   </td>
                   <td>
                     <div className="feedback-signal-heading">
@@ -678,7 +767,7 @@ export function FeedbackScreen({
                         className="feedback-expand-button"
                         aria-expanded={openFeedbackId === item.id}
                         aria-controls={`feedback-detail-${item.id}`}
-                        onClick={() => setOpenFeedbackId(item.id)}
+                        onClick={() => openFeedbackDetails(item.id)}
                       >
                         View details <ChevronRight size={13} />
                       </button>
@@ -780,11 +869,13 @@ export function FeedbackScreen({
           }}
         >
           <aside
+            ref={feedbackDrawerRef}
             className="feedback-drawer"
             id={`feedback-detail-${openFeedback.id}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="feedback-detail-title"
+            tabIndex={-1}
           >
             <header className="feedback-drawer-head">
               <IntegrationProviderIcon
@@ -803,10 +894,10 @@ export function FeedbackScreen({
                 <h2 id="feedback-detail-title">{openFeedback.customer}</h2>
               </div>
               <button
+                ref={feedbackDrawerCloseRef}
                 type="button"
                 className="icon-button"
                 aria-label="Close feedback details"
-                autoFocus
                 onClick={() => setOpenFeedbackId(null)}
               >
                 <X size={18} />
@@ -944,30 +1035,34 @@ export function FeedbackScreen({
                 </Link>
               ) : openAnalysis?.reviewStatus === "Proposed" ? (
                 <div className="feedback-review-actions">
-                  <label>
-                    Review destination
-                    <select
+                  <div className="field">
+                    <span>Review destination</span>
+                    <CustomSelect
+                      ariaLabel="Review destination"
                       value={reviewProblemByFeedback[openFeedback.id] ?? openAnalysis.proposedProblemId ?? "__new__"}
-                      onChange={(event) =>
+                      onValueChange={(value) =>
                         setReviewProblemByFeedback((current) => ({
                           ...current,
-                          [openFeedback.id]: event.target.value,
+                          [openFeedback.id]: value,
                         }))
                       }
-                    >
-                      <option value="__new__">Create a new product problem</option>
-                      {openAnalysis.proposedProblemId && !problemOptions.some((problem) => problem.id === openAnalysis.proposedProblemId) && (
-                        <option value={openAnalysis.proposedProblemId}>Suggested problem · {openAnalysis.proposedProblemId}</option>
-                      )}
-                      {problemOptions
-                        .filter((problem) => problem.stage !== "Closed")
-                        .map((problem) => (
-                          <option value={problem.id} key={problem.id}>
-                            {problem.id === openAnalysis.proposedProblemId ? "Suggested · " : ""}{problem.title}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
+                      options={[
+                        { value: "__new__", label: "Create a new product problem" },
+                        ...(openAnalysis.proposedProblemId && !problemOptions.some((problem) => problem.id === openAnalysis.proposedProblemId)
+                          ? [{
+                              value: openAnalysis.proposedProblemId,
+                              label: `Suggested problem · ${openAnalysis.proposedProblemId}`,
+                            }]
+                          : []),
+                        ...problemOptions
+                          .filter((problem) => problem.stage !== "Closed")
+                          .map((problem) => ({
+                            value: problem.id,
+                            label: `${problem.id === openAnalysis.proposedProblemId ? "Suggested · " : ""}${problem.title}`,
+                          })),
+                      ]}
+                    />
+                  </div>
                   <p>
                     Approval creates a reviewed evidence link. Choose “Create” when this is a new problem, or select an existing problem to add the signal there.
                   </p>
@@ -1023,37 +1118,129 @@ export function FeedbackScreen({
 
 function RevenueCell({
   problemId,
+  problemTitle,
   revenue,
   accounts,
 }: {
   problemId: string;
+  problemTitle: string;
   revenue: number;
   accounts: OverviewAnalytics["problems"][number]["accounts"];
 }) {
   const breakdownId = `revenue-breakdown-${problemId}`;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      const panel = panelRef.current;
+      if (!trigger || !panel) return;
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const viewportGutter = 12;
+      const popoverGap = 8;
+      const centeredLeft =
+        triggerRect.left + triggerRect.width / 2 - panelRect.width / 2;
+      const left = Math.min(
+        Math.max(viewportGutter, centeredLeft),
+        window.innerWidth - panelRect.width - viewportGutter,
+      );
+      const below = triggerRect.bottom + popoverGap;
+      const top =
+        below + panelRect.height <= window.innerHeight - viewportGutter
+          ? below
+          : Math.max(
+              viewportGutter,
+              triggerRect.top - panelRect.height - popoverGap,
+            );
+
+      setPosition({ left, top });
+    };
+
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        !triggerRef.current?.contains(target) &&
+        !panelRef.current?.contains(target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+
+    updatePosition();
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [accounts.length, open]);
+
   return (
     <div className="revenue-with-info">
       {money(revenue)}
       {accounts.length > 0 && (
-        <details className="revenue-details">
-          <summary
+        <div className="revenue-popover">
+          <button
+            ref={triggerRef}
+            type="button"
             className="revenue-info"
-            aria-label={`Show affected account revenue breakdown for ${problemId}`}
+            aria-label={`${open ? "Hide" : "Show"} affected account revenue breakdown for ${problemTitle}`}
+            aria-controls={breakdownId}
+            aria-expanded={open}
+            aria-haspopup="dialog"
+            onClick={() => setOpen((current) => !current)}
           >
-            <Info size={13} />
-          </summary>
-          <div className="revenue-breakdown" id={breakdownId}>
-            <strong>Affected account ARR</strong>
-            {accounts.map((account) => (
-              <div key={account.accountId}>
-                {account.accountName} <b>{money(account.arr)}</b>
-              </div>
-            ))}
-            <div className="revenue-total">
-              Total <b>{money(revenue)}</b>
-            </div>
-          </div>
-        </details>
+            <Info size={13} aria-hidden="true" />
+          </button>
+          {open &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <div
+                ref={panelRef}
+                className="revenue-breakdown revenue-breakdown-popover"
+                id={breakdownId}
+                role="dialog"
+                aria-label={`Affected account revenue for ${problemTitle}`}
+                style={{
+                  left: position?.left ?? 0,
+                  top: position?.top ?? 0,
+                  visibility: position ? "visible" : "hidden",
+                }}
+              >
+                <strong>Affected account ARR</strong>
+                {accounts.map((account) => (
+                  <div key={account.accountId}>
+                    {account.accountName} <b>{money(account.arr)}</b>
+                  </div>
+                ))}
+                <div className="revenue-total">
+                  Total <b>{money(revenue)}</b>
+                </div>
+              </div>,
+              document.body,
+            )}
+        </div>
       )}
     </div>
   );
@@ -1099,6 +1286,7 @@ function ProblemTable({
               <td>
                 <RevenueCell
                   problemId={problem.id}
+                  problemTitle={problem.title}
                   revenue={problem.revenue}
                   accounts={problem.accounts}
                 />
@@ -1191,40 +1379,143 @@ export function ProblemsScreen({
 export function PrioritizationScreen({
   analytics,
   focusProblem,
+  orgId,
 }: {
   analytics: OverviewAnalytics;
   focusProblem: ProductProblem | null;
+  orgId: string;
 }) {
   const [view, setView] = useState<"board" | "ranked">("board");
+  const [typeFilter, setTypeFilter] = useState<"All" | FeedbackType>("All");
+  const [displayRows, setDisplayRows] = useState(analytics.problems);
+  const [automationStatus, setAutomationStatus] = useState(
+    "Assessing the next eligible ticket…",
+  );
   const impact = focusProblem
     ? calculateImpact(focusProblem.impactFactors)
     : null;
-  const rows = analytics.problems;
+  const allRows = displayRows;
+  const rows =
+    typeFilter === "All"
+      ? allRows
+      : allRows.filter((problem) => problem.type === typeFilter);
+
+  useEffect(() => {
+    let active = true;
+    let requestRunning = false;
+    async function tick() {
+      if (requestRunning) return;
+      requestRunning = true;
+      try {
+        const response = await fetch("/api/workflow/automation/tick", {
+          method: "POST",
+          headers: {
+            "x-org-id": orgId,
+            "idempotency-key": crypto.randomUUID(),
+            "x-request-id": crypto.randomUUID(),
+          },
+        });
+        const payload = (await response.json()) as {
+          result?: {
+            moved: boolean;
+            problemId: string | null;
+            fromStage: string | null;
+            toStage: string | null;
+            reason: string;
+          };
+          error?: string;
+        };
+        if (!response.ok || !payload.result)
+          throw new Error(payload.error ?? "Automation check failed");
+        if (!active) return;
+        setAutomationStatus(
+          payload.result.moved
+            ? `${payload.result.problemId} moved from ${payload.result.fromStage} to ${payload.result.toStage}.`
+            : payload.result.reason,
+        );
+        if (
+          payload.result.moved &&
+          payload.result.problemId &&
+          payload.result.toStage
+        ) {
+          setDisplayRows((current) =>
+            current.map((problem) =>
+              problem.id === payload.result?.problemId
+                ? { ...problem, stage: payload.result.toStage ?? problem.stage }
+                : problem,
+            ),
+          );
+        }
+      } catch (error) {
+        if (active)
+          setAutomationStatus(
+            error instanceof Error
+              ? error.message
+              : "Automation check failed",
+          );
+      } finally {
+        requestRunning = false;
+      }
+    }
+    const initialTick = window.setTimeout(() => void tick(), 1_000);
+    const interval = window.setInterval(tick, 10_000);
+    return () => {
+      active = false;
+      window.clearTimeout(initialTick);
+      window.clearInterval(interval);
+    };
+  }, [orgId]);
+
   return (
     <>
       <PageTitle
         title="Prioritization"
         description="An explainable ranking based on customer impact and product strategy."
         action={
-          <div className="segmented">
-            <button
-              type="button"
-              className={view === "board" ? "active" : ""}
-              onClick={() => setView("board")}
+          <div className="prioritization-actions">
+            <CustomSelect
+              className="prioritization-type-filter"
+              ariaLabel="Filter tickets by type"
+              leadingIcon={<Filter aria-hidden="true" size={14} />}
+              value={typeFilter}
+              onValueChange={(value) =>
+                setTypeFilter(value as "All" | FeedbackType)
+              }
+              options={[
+                { value: "All", label: "All types" },
+                { value: "Bug", label: "Bugs" },
+                { value: "Feature request", label: "Features" },
+                { value: "Usability", label: "Usability" },
+                { value: "Incident", label: "Incidents" },
+                { value: "Question", label: "Questions" },
+              ]}
+            />
+            <div
+              className="segmented prioritization-view-switch"
+              role="group"
+              aria-label="Prioritization view"
             >
-              Board
-            </button>
-            <button
-              type="button"
-              className={view === "ranked" ? "active" : ""}
-              onClick={() => setView("ranked")}
-            >
-              <List size={13} /> Ranked
-            </button>
+              <button
+                type="button"
+                className={view === "board" ? "active" : ""}
+                aria-pressed={view === "board"}
+                onClick={() => setView("board")}
+              >
+                Board
+              </button>
+              <button
+                type="button"
+                className={view === "ranked" ? "active" : ""}
+                aria-pressed={view === "ranked"}
+                onClick={() => setView("ranked")}
+              >
+                <List size={13} /> Ranked
+              </button>
+            </div>
           </div>
         }
       />
-      {rows.length === 0 ? (
+      {allRows.length === 0 ? (
         <EmptyWorkspaceState
           title="Nothing to prioritize"
           description="The prioritization board is empty because this workspace has no product problems."
@@ -1233,7 +1524,23 @@ export function PrioritizationScreen({
         />
       ) : (
         <>
-      {view === "ranked" ? (
+      <div className="callout automation-status" role="status">
+        <div className="callout-title">
+          <RefreshCw size={14} /> Automated stage coordinator
+        </div>
+        <p className="subtle">
+          One evidence-qualified ticket moves one stage at a time. Approval is
+          the only human waiting queue and may contain multiple tickets.
+        </p>
+        <small>{automationStatus}</small>
+      </div>
+      {rows.length === 0 ? (
+        <section className="card section-gap">
+          <div className="card-body">
+            <p className="subtle">No {typeFilter.toLowerCase()} tickets match this filter.</p>
+          </div>
+        </section>
+      ) : view === "ranked" ? (
         <section className="card">
           <ProblemTable problems={rows} />
         </section>
@@ -1251,7 +1558,10 @@ export function PrioritizationScreen({
           ].map((stage) => (
             <section className="board-col" key={stage}>
               <div className="board-head">
-                <strong>{stage}</strong>
+                <div>
+                  <strong>{stage === "Approved" ? "Approval" : stage}</strong>
+                  <small>{stage === "Approved" ? "Human decision" : "Agent managed"}</small>
+                </div>
                 <span>
                   {rows.filter((problem) => problem.stage === stage).length}
                 </span>
@@ -1265,11 +1575,14 @@ export function PrioritizationScreen({
                     key={problem.id}
                   >
                     <div className="split">
-                      <span
-                        className={`badge ${problem.severity.toLowerCase()}`}
-                      >
-                        {problem.severity}
-                      </span>
+                      <div className="ticket-badges">
+                        <span className="badge">{problem.type}</span>
+                        <span
+                          className={`badge ${problem.severity.toLowerCase()}`}
+                        >
+                          {problem.severity}
+                        </span>
+                      </div>
                       {problem.id === focusProblem?.id && impact ? (
                         <strong className="score-small">{impact.score}</strong>
                       ) : null}
@@ -1536,24 +1849,22 @@ export function ApprovalsScreen({
             <h2>Queue</h2>
             <span className="badge">Risk ordered</span>
           </div>
-          <button
-            type="button"
-            className="queue-item selected"
-            aria-pressed="true"
-          >
+          <div className="queue-item selected" aria-current="true">
             <div>
               <strong>{state.approval.action}</strong>
               <p className="subtle">{problem.id} · Proposed by agent</p>
             </div>
-            <span className="badge">{state.approval.risk}</span>
-          </button>
+            <span className="badge queue-item-badge">
+              {state.approval.risk}
+            </span>
+          </div>
           {queue.map((item) => (
             <div className="queue-item disabled" key={item.id}>
               <div>
                 <strong>{item.title}</strong>
                 <p className="subtle">{item.status}</p>
               </div>
-              <span className="badge">Queued</span>
+              <span className="badge queue-item-badge">Queued</span>
             </div>
           ))}
         </section>
@@ -1708,6 +2019,9 @@ export function IntegrationsScreen({
   const focusedCardRef = useRef<HTMLElement | null>(null);
   const suggestionsTabRef = useRef<HTMLButtonElement | null>(null);
   const connectionsTabRef = useRef<HTMLButtonElement | null>(null);
+  const integrationDrawerRef = useRef<HTMLElement | null>(null);
+  const integrationDrawerCloseRef = useRef<HTMLButtonElement | null>(null);
+  const integrationDrawerTriggerRef = useRef<HTMLElement | null>(null);
   const simulated = integrations.some((item) =>
     isSimulatedConnectedState(item.state),
   );
@@ -1803,6 +2117,7 @@ export function IntegrationsScreen({
   const selectedRow = connectorRows.find(
     (row) => row.item.id === selectedIntegrationId,
   );
+  const integrationDrawerOpen = Boolean(selectedRow);
   const connectedFeedbackSources = connectorRows.filter(
     (row) => row.connected && isFeedbackSourceIntegration(row.item.id),
   );
@@ -1898,10 +2213,19 @@ export function IntegrationsScreen({
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
       return;
     event.preventDefault();
+    const views = ["suggestions", "connections"] as const;
+    const currentIndex = views.indexOf(activeView);
     const nextView =
-      event.key === "ArrowRight" || event.key === "End"
-        ? "connections"
-        : "suggestions";
+      event.key === "Home"
+        ? views[0]
+        : event.key === "End"
+          ? views[views.length - 1]
+          : views[
+              (currentIndex +
+                (event.key === "ArrowRight" ? 1 : -1) +
+                views.length) %
+                views.length
+            ];
     selectIntegrationView(nextView);
     window.requestAnimationFrame(() =>
       (nextView === "suggestions"
@@ -1909,6 +2233,16 @@ export function IntegrationsScreen({
         : connectionsTabRef.current
       )?.focus(),
     );
+  }
+
+  function openIntegrationDetails(integrationId: string) {
+    if (!selectedIntegrationId) {
+      integrationDrawerTriggerRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+    }
+    setSelectedIntegrationId(integrationId);
   }
 
   async function createWebhook() {
@@ -1976,18 +2310,34 @@ export function IntegrationsScreen({
   }, [focusedIntegrationId]);
 
   useEffect(() => {
-    if (!selectedIntegrationId) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSelectedIntegrationId(null);
+    if (!integrationDrawerOpen) return;
+    const drawer = integrationDrawerRef.current;
+    if (!drawer) return;
+    const previouslyFocused = integrationDrawerTriggerRef.current;
+    const focusFrame = window.requestAnimationFrame(() => {
+      (
+        integrationDrawerCloseRef.current ??
+        getModalFocusableElements(drawer)[0] ??
+        drawer
+      ).focus({ preventScroll: true });
+    });
+    const handleDrawerKeyDown = (event: KeyboardEvent) => {
+      containModalFocus(event, drawer, () =>
+        setSelectedIntegrationId(null),
+      );
     };
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", handleDrawerKeyDown);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleDrawerKeyDown);
       document.body.style.overflow = previousOverflow;
+      if (!drawer.isConnected && previouslyFocused?.isConnected) {
+        previouslyFocused.focus({ preventScroll: true });
+      }
     };
-  }, [selectedIntegrationId]);
+  }, [integrationDrawerOpen]);
 
   return (
     <>
@@ -2049,6 +2399,7 @@ export function IntegrationsScreen({
             className="integration-suggestions-panel"
             role="tabpanel"
             aria-labelledby="integration-suggestions-tab"
+            tabIndex={0}
             hidden={activeView !== "suggestions"}
           >
             <div className="integration-suggestions-agent">
@@ -2063,7 +2414,7 @@ export function IntegrationsScreen({
                   importedData: row.experience.importedData,
                   requestedPermissions: row.experience.requestedPermissions,
                 }))}
-                onInspect={setSelectedIntegrationId}
+                onInspect={openIntegrationDetails}
                 onConnected={(integrationId) =>
                   updateConnectionState(integrationId, "Connected")
                 }
@@ -2078,7 +2429,7 @@ export function IntegrationsScreen({
             <IntegrationSuggestionsView
               items={suggestionItems}
               productName={productName}
-              onInspect={setSelectedIntegrationId}
+              onInspect={openIntegrationDetails}
             />
           </section>
 
@@ -2087,6 +2438,7 @@ export function IntegrationsScreen({
             className="integration-catalog-shell"
             role="tabpanel"
             aria-labelledby="integration-connections-tab"
+            tabIndex={0}
             hidden={activeView !== "connections"}
           >
           <section className="integration-summary" aria-label="Integration health summary">
@@ -2114,7 +2466,7 @@ export function IntegrationsScreen({
             </div>
           </section>
 
-          <div className="integration-filterbar" aria-label="Filter integrations">
+          <div className="integration-filterbar" role="group" aria-label="Filter integrations">
             {(["All", "Feedback", "Engineering", "Analytics", "Support"] as const).map((filter) => {
               const count = connectorRows.filter(
                 (row) => filter === "All" || row.experience.filter === filter,
@@ -2124,10 +2476,11 @@ export function IntegrationsScreen({
                   key={filter}
                   type="button"
                   className={activeFilter === filter ? "active" : ""}
+                  aria-label={`${filter === "All" ? "All integrations" : `${filter} integrations`}, ${count}`}
                   aria-pressed={activeFilter === filter}
                   onClick={() => setActiveFilter(filter)}
                 >
-                  {filter}<span>{count}</span>
+                  {filter}<span aria-hidden="true">{count}</span>
                 </button>
               );
             })}
@@ -2167,6 +2520,18 @@ export function IntegrationsScreen({
                         <h3 id={headingId}>{item.name}</h3>
                         <p className="integration-card-summary">{experience.summary}</p>
                         <div className="integration-card-footer">
+                          {observedConnectionState === "Needs reconnect" ? (
+                            <p className="integration-import failed"><AlertTriangle size={13} aria-hidden="true" />Reconnect required</p>
+                          ) : connected && !demonstration && isPipedreamConnectorId(item.id) && isFeedbackSourceIntegration(item.id) ? (
+                            <IntegrationSyncStatus
+                              orgId={orgId}
+                              integrationId={item.id}
+                              active
+                              onConnectionStateChange={(nextState) =>
+                                updateConnectionState(item.id, nextState)
+                              }
+                            />
+                          ) : null}
                           <span>
                             {connected && !isFeedbackSourceIntegration(item.id)
                               ? "Ready for approved actions"
@@ -2178,23 +2543,10 @@ export function IntegrationsScreen({
                                     ? "Ready to connect"
                                     : "Not yet available"}
                           </span>
-                          <button className="btn" type="button" onClick={() => setSelectedIntegrationId(item.id)}>
+                          <button className="btn" type="button" onClick={() => openIntegrationDetails(item.id)}>
                             {connected ? "View details" : available ? "Review & connect" : "View details"}
                           </button>
                         </div>
-                        {connected && !demonstration && isPipedreamConnectorId(item.id) && isFeedbackSourceIntegration(item.id) && (
-                          <IntegrationSyncStatus
-                            orgId={orgId}
-                            integrationId={item.id}
-                            active
-                            onConnectionStateChange={(nextState) =>
-                              updateConnectionState(item.id, nextState)
-                            }
-                          />
-                        )}
-                        {observedConnectionState === "Needs reconnect" && (
-                          <p className="integration-import failed"><AlertTriangle size={13} aria-hidden="true" />Reconnect required</p>
-                        )}
                       </article>
                     );
                   })}
@@ -2211,11 +2563,11 @@ export function IntegrationsScreen({
         <div className="integration-drawer-layer" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setSelectedIntegrationId(null);
         }}>
-          <aside className="integration-drawer" role="dialog" aria-modal="true" aria-labelledby="integration-drawer-title">
+          <aside ref={integrationDrawerRef} className="integration-drawer" role="dialog" aria-modal="true" aria-labelledby="integration-drawer-title" tabIndex={-1}>
             <div className="integration-drawer-head">
               <IntegrationProviderIcon integrationId={selectedRow.item.id} size={22} />
               <div><span>{selectedRow.experience.filter}</span><h2 id="integration-drawer-title">{selectedRow.connected ? selectedRow.item.name : `Connect ${selectedRow.item.name}`}</h2></div>
-              <button type="button" className="icon-button" aria-label="Close connector details" autoFocus onClick={() => setSelectedIntegrationId(null)}><X size={18} /></button>
+              <button ref={integrationDrawerCloseRef} type="button" className="icon-button" aria-label="Close connector details" onClick={() => setSelectedIntegrationId(null)}><X size={18} /></button>
             </div>
             <p className="integration-drawer-summary">{selectedRow.experience.summary}</p>
             <section className="integration-drawer-section">
@@ -2491,6 +2843,7 @@ export function SettingsScreen({
     settings.priorityWeights,
   );
   const [autonomy, setAutonomy] = useState(settings.autonomyLevel);
+  const [retention, setRetention] = useState(`${settings.retentionDays} days`);
   const [pii, setPii] = useState(settings.piiRedaction);
   const [saved, setSaved] = useState(false);
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
@@ -2547,22 +2900,24 @@ export function SettingsScreen({
               </div>
             </div>
             <div className="card-body">
-              <label className="field">
-                Autonomy level
-                <select
+              <div className="field">
+                <span>Autonomy level</span>
+                <CustomSelect
+                  ariaLabel="Autonomy level"
                   value={autonomy}
-                  onChange={(event) => {
-                    setAutonomy(event.target.value);
+                  options={[
+                    "Observe",
+                    "Recommend",
+                    "Organize",
+                    "Execute with approval",
+                    "Limited autonomy",
+                  ]}
+                  onValueChange={(value) => {
+                    setAutonomy(value);
                     setSaved(false);
                   }}
-                >
-                  <option>Observe</option>
-                  <option>Recommend</option>
-                  <option>Organize</option>
-                  <option>Execute with approval</option>
-                  <option>Limited autonomy</option>
-                </select>
-              </label>
+                />
+              </div>
               <div className="callout section-gap-sm">
                 <div className="callout-title">Protected actions</div>
                 <p className="subtle">
@@ -2677,14 +3032,18 @@ export function SettingsScreen({
                   }}
                 />
               </label>
-              <label className="field">
-                Feedback retention
-                <select defaultValue={`${settings.retentionDays} days`}>
-                  <option>90 days</option>
-                  <option>365 days</option>
-                  <option>Custom policy</option>
-                </select>
-              </label>
+              <div className="field">
+                <span>Feedback retention</span>
+                <CustomSelect
+                  ariaLabel="Feedback retention"
+                  value={retention}
+                  options={["90 days", "365 days", "Custom policy"]}
+                  onValueChange={(value) => {
+                    setRetention(value);
+                    setSaved(false);
+                  }}
+                />
+              </div>
             </div>
           </section>
           <section className="card" id="members">

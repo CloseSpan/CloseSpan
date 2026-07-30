@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, CheckCircle2, ShieldCheck } from "lucide-react";
 import type {
   EngineeringWorkflowView,
   UserStoryPromptTestView,
@@ -43,6 +44,7 @@ export function EngineeringTicketPanel({
   );
   const [storyTest, setStoryTest] = useState<UserStoryPromptTestView>();
   const [busy, setBusy] = useState(false);
+  const [approvalBusy, setApprovalBusy] = useState(false);
   const [error, setError] = useState<string>();
 
   async function testAgainstPrompt() {
@@ -74,6 +76,26 @@ export function EngineeringTicketPanel({
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function decideApproval(action: "approve" | "reject") {
+    const approval = workflow.approval;
+    if (!approval) return;
+    setApprovalBusy(true);
+    setError(undefined);
+    try {
+      const result = await request<{ workflow: EngineeringWorkflowView }>(
+        `/api/engineering-approvals/${approval.id}/${action}`,
+        orgId,
+      );
+      setWorkflow(result.workflow);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Approval action failed",
+      );
+    } finally {
+      setApprovalBusy(false);
     }
   }
 
@@ -143,6 +165,54 @@ export function EngineeringTicketPanel({
             </div>
             <p className="subtle">{storyTest.message}</p>
             <p className="subtle">Prompt SHA-256: {storyTest.promptHash}</p>
+          </div>
+        )}
+
+        {storyTest?.status === "included" &&
+          workflow.approval?.status === "Pending" && (
+            <div className="callout" role="region" aria-label="Implementation approval">
+              <div className="callout-title">
+                <ShieldCheck size={14} />
+                Ready for one isolated run
+              </div>
+              <p className="subtle">
+                This approval is bound to prompt revision {workflow.prompt?.revision},
+                repository {workflow.approval.repository}, and base commit {workflow.approval.baseSha}.
+                CloseSpan will run the coding agent in a fresh Tenki microVM, verify the
+                result in a second isolated session, and open a draft pull request only
+                if verification passes.
+              </p>
+              <div className="top-actions">
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={approvalBusy}
+                  onClick={() => decideApproval("approve")}
+                >
+                  {approvalBusy ? "Starting…" : "Approve one run"}
+                </button>
+                <button
+                  type="button"
+                  className="btn danger"
+                  disabled={approvalBusy}
+                  onClick={() => decideApproval("reject")}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+
+        {workflow.run && (
+          <div className="callout" role="status">
+            <div className="callout-title">Run {workflow.run.status}</div>
+            <p className="subtle">
+              The approved run continues automatically. Open the run to follow coding,
+              tests, independent verification, and the draft pull request.
+            </p>
+            <Link className="btn secondary" href={`/agent-runs/${workflow.run.id}`}>
+              View run
+            </Link>
           </div>
         )}
 

@@ -12,30 +12,43 @@ import {
   Settings,
   Users,
 } from "lucide-react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
+import {
+  WORKSPACE_NAVIGATION,
+  type WorkspaceNavigationId,
+} from "@/lib/workspace-navigation";
 import { CloseSpanLogo } from "./closespan-logo";
 import {
   OrganizationSwitcher,
   type OrganizationSwitcherItem,
 } from "./organization-switcher";
 
-export const navigationItems = [
-  [CircleGauge, "Overview", "/overview"],
-  [Inbox, "Feedback inbox", "/feedback"],
-  [Network, "Product problems", "/problems"],
-  [ListChecks, "Prioritization", "/prioritization"],
-  [Activity, "Investigations", "/investigations"],
-  [BadgeCheck, "Approvals", "/approvals"],
-  [GitPullRequest, "Follow-up", "/follow-up"],
-  [Blocks, "Integrations", "/integrations"],
-  [Users, "Customers", "/customers"],
-  [Settings, "Settings", "/settings"],
-] as const;
+const navigationIcons: Record<WorkspaceNavigationId, typeof CircleGauge> = {
+  overview: CircleGauge,
+  feedback: Inbox,
+  problems: Network,
+  prioritization: ListChecks,
+  investigations: Activity,
+  approvals: BadgeCheck,
+  "follow-up": GitPullRequest,
+  integrations: Blocks,
+  customers: Users,
+  settings: Settings,
+};
+
+function NavigationPendingIndicator() {
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <i className="nav-link-pending" aria-hidden="true" />
+  ) : null;
+}
 
 function NavigationLinks() {
   const pathname = usePathname();
-  return navigationItems.map(([Icon, label, href]) => {
+  return WORKSPACE_NAVIGATION.map(({ id, label, href }) => {
+    const Icon = navigationIcons[id];
     const active = pathname === href || pathname.startsWith(`${href}/`);
     return (
       <Link
@@ -43,11 +56,12 @@ function NavigationLinks() {
         className={active ? "active" : ""}
         aria-current={active ? "page" : undefined}
         aria-label={label}
-        title={label}
+        data-nav-label={label}
         key={label}
       >
         <Icon aria-hidden="true" />
         <span>{label}</span>
+        <NavigationPendingIndicator />
       </Link>
     );
   });
@@ -98,8 +112,25 @@ export function MobileNavigation({
   activeOrganizationId: string;
   canRenameWorkspace: boolean;
 }) {
+  const pathname = usePathname();
+  const menuRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+
+    const moveFocusToContent = menu.contains(document.activeElement);
+    menu.open = false;
+
+    if (moveFocusToContent) {
+      window.requestAnimationFrame(() => {
+        document.getElementById("main-content")?.focus();
+      });
+    }
+  }, [pathname]);
+
   return (
-    <details className="mobile-menu">
+    <details className="mobile-menu" ref={menuRef}>
       <summary>Menu</summary>
       <div className="mobile-menu-panel">
         <nav aria-label="Mobile navigation">

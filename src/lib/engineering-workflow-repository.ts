@@ -68,6 +68,7 @@ export interface AgentRunView {
   remainingRisks?: string[];
   manualVerification?: string[];
   logs?: string[];
+  independentVerification?: AgentImplementationReport["independentVerification"];
 }
 
 export interface AgentTestResult {
@@ -351,6 +352,7 @@ async function readRun(
     remainingRisks: row.implementation_report?.remainingRisks,
     manualVerification: row.implementation_report?.manualVerification,
     logs: row.implementation_report?.logs,
+    independentVerification: row.implementation_report?.independentVerification,
   };
 }
 
@@ -402,7 +404,13 @@ interface MemoryWorkflow {
   run: AgentRunView | null;
   releaseEvidence: ReleaseVerificationEvidence | null;
 }
-const memoryWorkflows = new Map<string, MemoryWorkflow>();
+
+const workflowMemory = globalThis as typeof globalThis & {
+  __closeSpanEngineeringWorkflows?: Map<string, MemoryWorkflow>;
+};
+const memoryWorkflows =
+  workflowMemory.__closeSpanEngineeringWorkflows ??=
+    new Map<string, MemoryWorkflow>();
 
 function memoryKey(orgId: string, problemId: string): string {
   return `${orgId}:${problemId}`;
@@ -629,7 +637,15 @@ export async function testUserStoryAgainstPrompt(
       409,
     );
   }
-  const result = evaluateUserStoryPromptMatch(story, workflow.prompt?.content);
+  const prompt = workflow.prompt;
+  const result = evaluateUserStoryPromptMatch(story, prompt.content);
+  if (result.matches && prompt.status === "Ready") {
+    workflow = await requestImplementationApproval(
+      orgId,
+      prompt.id,
+      actor,
+    );
+  }
   return {
     workflow,
     storyTest: {
@@ -637,7 +653,7 @@ export async function testUserStoryAgainstPrompt(
       message: result.matches
         ? "This exact user story is included in the implementation prompt."
         : "This user story is not included in the current implementation prompt.",
-      promptHash: workflow.prompt.contentHash,
+      promptHash: prompt.contentHash,
     },
   };
 }
@@ -650,6 +666,7 @@ export async function requestImplementationApproval(
   if (workspacePersistenceMode(orgId) === "memory") {
     const entry = [...memoryWorkflows.values()].find((item) => item.prompt?.id === promptId);
     if (!entry?.prompt) throw new EngineeringWorkflowError("Implementation prompt was not found", 404);
+    if (entry.prompt.status !== "Ready") throw new EngineeringWorkflowError("Only the latest ready prompt can be submitted", 409);
     entry.prompt.status = "Awaiting approval";
     entry.specification.implementationState = "Awaiting approval";
     entry.approval = { id: `apr_prompt_${randomUUID().replaceAll("-", "")}`, status: "Pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(), promptHash: entry.prompt.contentHash, repository: entry.prompt.repository, baseBranch: entry.prompt.baseBranch, baseSha: entry.prompt.baseSha, allowedCapabilities: ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"] };
@@ -677,7 +694,7 @@ export async function requestImplementationApproval(
       [approvalId, orgId, row.problem_id, promptId,
         `Run one coding agent and open a draft PR in ${row.repository}`,
         "The approval is bound to an immutable prompt, base commit, repository, expiry, and single execution.",
-        JSON.stringify(["Cloudflare Sandbox", "GitHub"]),
+        JSON.stringify(["Tenki Sandbox", "GitHub"]),
         JSON.stringify(["Approved prompt", "Redacted evidence", "Repository snapshot"]),
         promptId, row.content_hash, row.repository, row.base_branch, row.base_sha,
         JSON.stringify(capabilities)],
@@ -704,6 +721,7 @@ export async function approveImplementationRun(
     if (approval.status !== "Pending") throw new EngineeringWorkflowError("Approval is no longer pending", 409);
     if (Date.parse(approval.expiresAt) <= Date.now()) {
       approval.status = "Expired";
+      prompt.status = "Ready";
       current.specification.implementationState = "Prompt ready";
       throw new EngineeringWorkflowError("Approval expired; generate a fresh approval", 409);
     }
@@ -730,6 +748,7 @@ export async function approveImplementationRun(
     if (row.status !== "Pending") throw new EngineeringWorkflowError("Approval is no longer pending", 409);
     if (row.expires_at.getTime() <= Date.now()) {
       await client.query("UPDATE approval_requests SET status='Expired',updated_at=now() WHERE org_id=$1 AND id=$2", [orgId, approvalId]);
+      await client.query("UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2", [orgId, row.prompt_revision_id]);
       await client.query("UPDATE engineering_ticket_specifications SET implementation_state='Prompt ready',updated_at=now() WHERE org_id=$1 AND problem_id=$2", [orgId, row.problem_id]);
       expired = true;
       return;
@@ -774,18 +793,20 @@ export async function rejectImplementationApproval(
     if (!pair?.[1].approval) throw new EngineeringWorkflowError("Approval was not found", 404);
     if (pair[1].approval.status !== "Pending") throw new EngineeringWorkflowError("Approval is no longer pending", 409);
     pair[1].approval.status = "Rejected";
+    if (pair[1].prompt) pair[1].prompt.status = "Ready";
     pair[1].specification.implementationState = "Prompt ready";
     return getEngineeringWorkflow(orgId, pair[0].split(":").slice(1).join(":"));
   }
   let problemId = "";
   await transaction(async (client) => {
-    const result = await client.query<{ problem_id: string }>(
+    const result = await client.query<{ problem_id: string; prompt_revision_id: string }>(
       `UPDATE approval_requests SET status='Rejected',updated_at=now()
         WHERE org_id=$1 AND id=$2 AND action_type='agent_run' AND status='Pending'
-        RETURNING problem_id`, [orgId, approvalId],
+        RETURNING problem_id,prompt_revision_id`, [orgId, approvalId],
     );
     if (!result.rows[0]) throw new EngineeringWorkflowError("Approval is no longer pending", 409);
     problemId = result.rows[0].problem_id;
+    await client.query("UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2", [orgId, result.rows[0].prompt_revision_id]);
     await client.query("UPDATE engineering_ticket_specifications SET implementation_state='Prompt ready',updated_at=now() WHERE org_id=$1 AND problem_id=$2", [orgId, problemId]);
     await audit(client, orgId, actor, "Rejected approval-bound coding run", "ApprovalRequest", approvalId);
   });
@@ -837,10 +858,32 @@ export async function markAgentRunRunning(
 ): Promise<void> {
   const result = await databasePool().query(
     `UPDATE agent_runs SET status='Running',sandbox_id=$3,started_at=coalesce(started_at,now())
-      WHERE org_id=$1 AND id=$2 AND status='Queued'`,
+      WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running')`,
     [orgId, runId, sandboxId],
   );
-  if (!result.rowCount) throw new EngineeringWorkflowError("Agent run is not queued", 409);
+  if (!result.rowCount) throw new EngineeringWorkflowError("Agent run cannot be started", 409);
+}
+
+export async function claimQueuedAgentRun(
+  orgId: string,
+  runId: string,
+): Promise<"claimed" | "active" | "terminal"> {
+  if (workspacePersistenceMode(orgId) === "memory") return "terminal";
+  const result = await databasePool().query<{ status: AgentRunView["status"] }>(
+    `UPDATE agent_runs
+        SET status='Running',sandbox_id='tenki:provisioning',started_at=coalesce(started_at,now())
+      WHERE org_id=$1 AND id=$2
+        AND (status='Queued' OR (status='Running' AND started_at < now()-interval '13 minutes'))
+      RETURNING status`,
+    [orgId, runId],
+  );
+  if (result.rowCount) return "claimed";
+  const current = await databasePool().query<{ status: AgentRunView["status"] }>(
+    "SELECT status FROM agent_runs WHERE org_id=$1 AND id=$2",
+    [orgId, runId],
+  );
+  if (current.rows[0]?.status === "Running") return "active";
+  return "terminal";
 }
 
 export async function completeAgentRun(
