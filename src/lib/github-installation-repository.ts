@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { databasePool, transaction } from "./db";
 import type { VerifiedGithubInstallation } from "./github-app-auth";
 import { HttpError } from "./request-security";
@@ -19,6 +20,75 @@ export interface GithubAppInstallationRecord {
   settingsUrl: string;
   active: boolean;
   lastSyncedAt: string;
+}
+
+export async function syncGithubInstallationRecords(
+  client: PoolClient,
+  orgId: string,
+  installation: VerifiedGithubInstallation,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO github_app_installations(
+       id,org_id,installation_id,account_id,account_login,account_type,
+       repository_selection,settings_url,permissions,active,last_synced_at
+     ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,true,now())
+     ON CONFLICT(installation_id) DO UPDATE SET
+       account_id=excluded.account_id,
+       account_login=excluded.account_login,
+       account_type=excluded.account_type,
+       repository_selection=excluded.repository_selection,
+       settings_url=excluded.settings_url,
+       permissions=excluded.permissions,
+       active=true,last_synced_at=now(),updated_at=now()`,
+    [
+      randomUUID(),
+      orgId,
+      installation.installationId,
+      installation.accountId,
+      installation.accountLogin,
+      installation.accountType,
+      installation.repositorySelection,
+      installation.settingsUrl,
+      JSON.stringify(installation.permissions),
+    ],
+  );
+
+  const repositoryNames = installation.repositories.map((item) => item.repository);
+  await client.query(
+    `UPDATE github_repository_allowlists
+        SET active=false,updated_at=now()
+      WHERE org_id=$1 AND installation_id=$2
+        AND NOT (repository=ANY($3::text[]))`,
+    [orgId, installation.installationId, repositoryNames],
+  );
+  for (const repository of installation.repositories) {
+    await client.query(
+      `INSERT INTO github_repository_allowlists(
+         id,org_id,installation_id,repository,default_branch,active
+       ) VALUES($1,$2,$3,$4,$5,true)
+       ON CONFLICT(org_id,repository) DO UPDATE SET
+         installation_id=excluded.installation_id,
+         default_branch=excluded.default_branch,
+         active=true,updated_at=now()`,
+      [
+        randomUUID(),
+        orgId,
+        installation.installationId,
+        repository.repository,
+        repository.defaultBranch,
+      ],
+    );
+  }
+
+  await client.query(
+    `UPDATE integrations
+        SET connection_state='Connected',last_sync_at=now(),
+            data_scope=$2,
+            permissions='["metadata:read","contents:write","pull_requests:write:draft"]'::jsonb,
+            error_message=NULL
+      WHERE org_id=$1 AND id='int_github'`,
+    [orgId, `${installation.repositories.length} explicitly authorized GitHub repositories`],
+  );
 }
 
 export async function requireGithubInstallAttempt(
@@ -64,71 +134,7 @@ export async function connectGithubInstallation(
     if (existing.rows[0] && existing.rows[0].org_id !== orgId)
       throw new HttpError(409, "This GitHub installation is connected to another workspace");
 
-    await client.query(
-      `INSERT INTO github_app_installations(
-         id,org_id,installation_id,account_id,account_login,account_type,
-         repository_selection,settings_url,permissions,active,last_synced_at
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,true,now())
-       ON CONFLICT(installation_id) DO UPDATE SET
-         account_id=excluded.account_id,
-         account_login=excluded.account_login,
-         account_type=excluded.account_type,
-         repository_selection=excluded.repository_selection,
-         settings_url=excluded.settings_url,
-         permissions=excluded.permissions,
-         active=true,last_synced_at=now(),updated_at=now()`,
-      [
-        randomUUID(),
-        orgId,
-        installation.installationId,
-        installation.accountId,
-        installation.accountLogin,
-        installation.accountType,
-        installation.repositorySelection,
-        installation.settingsUrl,
-        JSON.stringify(installation.permissions),
-      ],
-    );
-
-    const repositoryNames = installation.repositories.map((item) => item.repository);
-    await client.query(
-      `UPDATE github_repository_allowlists
-          SET active=false,updated_at=now()
-        WHERE org_id=$1 AND installation_id=$2
-          AND NOT (repository=ANY($3::text[]))`,
-      [orgId, installation.installationId, repositoryNames],
-    );
-    for (const repository of installation.repositories) {
-      await client.query(
-        `INSERT INTO github_repository_allowlists(
-           id,org_id,installation_id,repository,default_branch,active
-         ) VALUES($1,$2,$3,$4,$5,true)
-         ON CONFLICT(org_id,repository) DO UPDATE SET
-           installation_id=excluded.installation_id,
-           default_branch=excluded.default_branch,
-           active=true,updated_at=now()`,
-        [
-          randomUUID(),
-          orgId,
-          installation.installationId,
-          repository.repository,
-          repository.defaultBranch,
-        ],
-      );
-    }
-
-    await client.query(
-      `UPDATE integrations
-          SET connection_state='Connected',last_sync_at=now(),
-              data_scope=$2,
-              permissions='["metadata:read","contents:write","pull_requests:write:draft"]'::jsonb,
-              error_message=NULL
-        WHERE org_id=$1 AND id='int_github'`,
-      [
-        orgId,
-        `${installation.repositories.length} explicitly authorized GitHub repositories`,
-      ],
-    );
+    await syncGithubInstallationRecords(client, orgId, installation);
     await client.query(
       `INSERT INTO audit_events(
          id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
