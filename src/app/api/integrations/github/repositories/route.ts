@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeGithubRepository, listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
-import { authorizeAdminMutation, authorizeRead, errorResponse, noStoreHeaders } from "@/lib/request-security";
+import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
+import { authorizeRead, errorResponse, HttpError, noStoreHeaders } from "@/lib/request-security";
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,8 +11,10 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const context = await authorizeAdminMutation(request);
-    const repositories = await authorizeGithubRepository(context.orgId, await request.json(), context);
-    return NextResponse.json({ repositories }, { headers: noStoreHeaders });
+    await authorizeRead(request);
+    throw new HttpError(
+      405,
+      "Repository access is synchronized from the CloseSpan GitHub App. Change repository access in GitHub and return to CloseSpan.",
+    );
   } catch (error) { return errorResponse(error); }
 }
