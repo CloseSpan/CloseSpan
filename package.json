@@ -22,6 +22,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "typecheck:executor": "npm --prefix workers/agent-executor exec tsc -- --noEmit",
+    "typecheck:scheduler": "tsc --project workers/workflow-scheduler/tsconfig.json --noEmit",
     "check": "npm run lint && npm test && npm run build && npm run typecheck"
   },
   "dependencies": {
