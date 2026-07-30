@@ -14,7 +14,7 @@ import {
   verifyAgentRunWithTenki,
 } from "@/lib/tenki-agent-verification";
 
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 function validSignature(body: string, provided: string, secret: string): boolean {
   const expected = createHmac("sha256", secret).update(body).digest();

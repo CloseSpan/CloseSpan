@@ -26,8 +26,10 @@ const MAX_CHANGED_BYTES = 5_000_000;
 const WORKSPACE = "/home/tenki/repo";
 const ARCHIVE_PATH = "/home/tenki/closespan-repository.tar.gz";
 const CREATE_TIMEOUT_MS = 60_000;
-const RUN_DURATION_MS = 12 * 60_000;
-const AGENT_DURATION_MS = 8 * 60_000;
+// Keep the entire execution, report callback, and sandbox cleanup inside
+// Vercel Hobby's five-minute function ceiling.
+const RUN_DURATION_MS = 4 * 60_000;
+const AGENT_DURATION_MS = 3 * 60_000;
 const COMMAND_TIMEOUT_MS = 300_000;
 const OUTPUT_LIMIT = 20_000;
 

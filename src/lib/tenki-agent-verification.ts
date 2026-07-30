@@ -11,7 +11,8 @@ import { createRepositoryArchiveUrl } from "./github-agent-publisher";
 const ARCHIVE_LIMIT_BYTES = 80_000_000;
 const CREATE_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 300_000;
-const SESSION_DURATION_MS = 15 * 60_000;
+// Leave time in the callback's five-minute window to publish the draft PR.
+const SESSION_DURATION_MS = 3 * 60_000;
 const OUTPUT_LIMIT = 20_000;
 const WORKSPACE = "/home/tenki/repo";
 const ARCHIVE_PATH = "/home/tenki/closespan-repository.tar.gz";

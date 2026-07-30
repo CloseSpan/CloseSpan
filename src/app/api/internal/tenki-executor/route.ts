@@ -11,7 +11,7 @@ import {
 } from "@/lib/tenki-coding-executor";
 import { noStoreHeaders } from "@/lib/request-security";
 
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 function validSignature(body: string, provided: string, secret: string): boolean {
   if (!/^[a-f0-9]{64}$/.test(provided)) return false;
