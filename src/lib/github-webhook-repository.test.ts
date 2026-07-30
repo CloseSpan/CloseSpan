@@ -47,12 +47,19 @@ describe("GitHub webhook persistence", () => {
       rawBody: '{"zen":"hello"}',
       payload: {},
     })).resolves.toEqual({ accepted: true, duplicate: false, outcome: "ping_acknowledged" });
-    expect(database.pool.query).toHaveBeenCalledTimes(1);
+    expect(database.pool.query.mock.calls.some(([query]) => sql(query).includes("CREATE TABLE IF NOT EXISTS github_webhook_deliveries")))
+      .toBe(true);
+    expect(database.pool.query.mock.calls.some(([query]) => sql(query).includes("SELECT 1 FROM github_webhook_deliveries")))
+      .toBe(true);
     expect(github.verify).not.toHaveBeenCalled();
   });
 
   it("deduplicates a repeated GitHub delivery", async () => {
-    database.pool.query.mockResolvedValue({ rows: [{ exists: 1 }], rowCount: 1 });
+    database.pool.query.mockImplementation(async (query: unknown) =>
+      sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
+        ? { rows: [{ exists: 1 }], rowCount: 1 }
+        : { rows: [], rowCount: 0 },
+    );
     await expect(processGithubWebhook({
       deliveryId,
       event: "ping",
@@ -75,9 +82,11 @@ describe("GitHub webhook persistence", () => {
 
   it("resynchronizes a previously bound installation from GitHub, not the payload", async () => {
     database.pool.query.mockImplementation(async (query: unknown) =>
-      sql(query).includes("FROM github_webhook_deliveries")
+      sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
         ? { rows: [], rowCount: 0 }
-        : { rows: [{ org_id: "org-1" }], rowCount: 1 },
+        : sql(query).includes("FROM github_app_installations")
+          ? { rows: [{ org_id: "org-1" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 },
     );
     const verified = {
       installationId: "150109806",
@@ -110,9 +119,11 @@ describe("GitHub webhook persistence", () => {
 
   it("audits only pull requests created by a tracked CloseSpan run", async () => {
     database.pool.query.mockImplementation(async (query: unknown) =>
-      sql(query).includes("FROM github_webhook_deliveries")
+      sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
         ? { rows: [], rowCount: 0 }
-        : { rows: [{ org_id: "org-1" }], rowCount: 1 },
+        : sql(query).includes("FROM github_app_installations")
+          ? { rows: [{ org_id: "org-1" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 },
     );
     database.client.query.mockImplementation(async (query: unknown) => {
       if (sql(query).includes("INSERT INTO github_webhook_deliveries"))

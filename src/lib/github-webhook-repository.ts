@@ -44,6 +44,36 @@ const pullRequestActions = new Set([
   "closed",
 ]);
 
+let schemaInitialization: Promise<void> | undefined;
+
+async function ensureGithubWebhookSchema(): Promise<void> {
+  schemaInitialization ??= databasePool()
+    .query(`
+      CREATE TABLE IF NOT EXISTS github_webhook_deliveries (
+        delivery_id uuid PRIMARY KEY,
+        event text NOT NULL,
+        action text,
+        installation_id bigint,
+        org_id text REFERENCES organizations(id) ON DELETE SET NULL,
+        payload_sha256 text NOT NULL CHECK (payload_sha256 ~ '^[a-f0-9]{64}$'),
+        outcome text NOT NULL,
+        received_at timestamptz NOT NULL DEFAULT now(),
+        processed_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS github_webhook_deliveries_org_time_idx
+        ON github_webhook_deliveries(org_id,received_at DESC);
+      CREATE INDEX IF NOT EXISTS github_webhook_deliveries_installation_time_idx
+        ON github_webhook_deliveries(installation_id,received_at DESC)
+        WHERE installation_id IS NOT NULL;
+    `)
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      schemaInitialization = undefined;
+      throw error;
+    });
+  await schemaInitialization;
+}
+
 function stringAction(payload: GithubWebhookPayload): string | null {
   return typeof payload.action === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(payload.action)
     ? payload.action
@@ -190,6 +220,7 @@ async function auditPullRequest(
 export async function processGithubWebhook(
   input: GithubWebhookInput,
 ): Promise<GithubWebhookResult> {
+  await ensureGithubWebhookSchema();
   const existingDelivery = await databasePool().query(
     "SELECT 1 FROM github_webhook_deliveries WHERE delivery_id=$1",
     [input.deliveryId],
