@@ -21,7 +21,7 @@ CloseSpan has two complementary logo systems. Choose by context rather than subs
 
 - Use [`CloseSpan3DLogo`](src/components/closespan-3d-logo.tsx) for public marketing headers and footers, login and waitlist identity, public feature requests, branded public error states, the product sidebar, and the immersive app header. It automatically swaps between transparent light and dark 3D lockups without layout shift.
 - Use [`CloseSpanLogo`](src/components/closespan-logo.tsx) for data previews, dense controls, and other very small in-product placements where the raster depth would lose clarity.
-- Use the square `</>` mark for browser favicons, PWA icons, bookmarks, and device home-screen icons. The active files are `favicon.ico`, `favicon-48.png`, `favicon-192.png`, `favicon-512.png`, and `apple-touch-icon.png` in `public/`.
+- Use the square 3D `</>` mark for browser favicons, PWA icons, bookmarks, and device home-screen icons. The active versioned files are `closespan-title-icon-v3.ico` and `closespan-title-icon-{48,180,192,512}-v3.png` in `public/`; increment the version whenever the artwork changes so browsers do not retain an obsolete tab icon.
 - Keep `closespan-3d-logo-light-transparent-v2.png`, `closespan-3d-logo-dark-transparent-v2.png`, and the versioned `closespan-tab-logo-*-v1.png` files as the active authored assets.
 - Present the 3D lockup directly on the page with a transparent background. It is identity, not a control, so never add a containing plaque, hover lift, pressed animation, border, background, shadow, or CTA styling.
 - Never stretch, recolor, filter, outline, glow, or place the 3D lockup inside another raised button or card. Preserve its aspect ratio and let the supplied asset provide its own depth.

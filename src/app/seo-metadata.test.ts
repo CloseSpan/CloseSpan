@@ -100,8 +100,8 @@ describe("public search metadata", () => {
       url: `${SITE_URL}/`,
       logo: {
         "@type": "ImageObject",
-        url: `${SITE_URL}/favicon-512.png`,
-        contentUrl: `${SITE_URL}/favicon-512.png`,
+        url: `${SITE_URL}/closespan-title-icon-512-v3.png`,
+        contentUrl: `${SITE_URL}/closespan-title-icon-512-v3.png`,
         width: 512,
         height: 512,
       },
@@ -129,12 +129,12 @@ describe("public search metadata", () => {
     expect(appManifest.icons).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          src: "/favicon-192.png",
+          src: "/closespan-title-icon-192-v3.png",
           sizes: "192x192",
           type: "image/png",
         }),
         expect.objectContaining({
-          src: "/favicon-512.png",
+          src: "/closespan-title-icon-512-v3.png",
           sizes: "512x512",
           type: "image/png",
         }),

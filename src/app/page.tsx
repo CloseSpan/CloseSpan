@@ -90,8 +90,8 @@ export const structuredData = {
       url: `${SITE_URL}/`,
       logo: {
         "@type": "ImageObject",
-        url: `${SITE_URL}/favicon-512.png`,
-        contentUrl: `${SITE_URL}/favicon-512.png`,
+        url: `${SITE_URL}/closespan-title-icon-512-v3.png`,
+        contentUrl: `${SITE_URL}/closespan-title-icon-512-v3.png`,
         width: 512,
         height: 512,
         caption: `${SITE_NAME} logo`,

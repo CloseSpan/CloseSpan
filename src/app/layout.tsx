@@ -22,13 +22,37 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/favicon.ico", type: "image/x-icon", sizes: "48x48" },
-      { url: "/favicon-48.png", type: "image/png", sizes: "48x48" },
-      { url: "/favicon-192.png", type: "image/png", sizes: "192x192" },
-      { url: "/favicon-512.png", type: "image/png", sizes: "512x512" },
+      {
+        url: "/closespan-title-icon-v3.ico",
+        type: "image/x-icon",
+        sizes: "48x48",
+      },
+      {
+        url: "/closespan-title-icon-48-v3.png",
+        type: "image/png",
+        sizes: "48x48",
+      },
+      {
+        url: "/closespan-title-icon-192-v3.png",
+        type: "image/png",
+        sizes: "192x192",
+      },
+      {
+        url: "/closespan-title-icon-512-v3.png",
+        type: "image/png",
+        sizes: "512x512",
+      },
     ],
-    shortcut: [{ url: "/favicon.ico", type: "image/x-icon" }],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: [
+      { url: "/closespan-title-icon-v3.ico", type: "image/x-icon" },
+    ],
+    apple: [
+      {
+        url: "/closespan-title-icon-180-v3.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
   },
   verification: {
     ...(process.env.GOOGLE_SITE_VERIFICATION
