@@ -2262,7 +2262,8 @@ p { margin:0; line-height:1.55; }
   font-size:13px;
 }
 .feature-request-vote-note {
-  max-width:600px;
+  width:100%;
+  max-width:none;
   margin:-8px 0 0;
   color:#646d7d;
   font-size:11px;
