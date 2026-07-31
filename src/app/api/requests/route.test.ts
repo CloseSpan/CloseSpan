@@ -40,7 +40,10 @@ function publicRequest(
     ...(method === "POST"
       ? {
           body: JSON.stringify(
-            options.body ?? { turnstileToken: "test-turnstile-token" },
+            options.body ?? {
+              turnstileToken: "test-turnstile-token",
+              direction: "up",
+            },
           ),
         }
       : {}),
@@ -170,14 +173,16 @@ describe("public feature requests API", () => {
     expect(first.status).toBe(201);
     expect(await first.json()).toMatchObject({
       status: "recorded",
-      voteCount: 1,
-      viewerHasVoted: true,
+      upvoteCount: 1,
+      downvoteCount: 0,
+      viewerVote: "up",
     });
     expect(replay.status).toBe(200);
     expect(await replay.json()).toMatchObject({
       status: "already_voted",
-      voteCount: 1,
-      viewerHasVoted: true,
+      upvoteCount: 1,
+      downvoteCount: 0,
+      viewerVote: "up",
     });
     expect(turnstile.verify).toHaveBeenCalledWith(
       "test-turnstile-token",
@@ -220,7 +225,11 @@ describe("public feature requests API", () => {
         ip: "203.0.113.31",
       }),
     );
-    expect((await board.json()).requests[0].voteCount).toBe(0);
+    expect((await board.json()).requests[0]).toMatchObject({
+      upvoteCount: 0,
+      downvoteCount: 0,
+      viewerVote: null,
+    });
   });
 
   it("rate-limits repeated vote attempts across the shared store", async () => {
@@ -257,7 +266,7 @@ describe("public feature requests API", () => {
         { params: Promise.resolve({ requestId }) },
       );
       expect(response.status).toBe(201);
-      expect((await response.json()).voteCount).toBe(1);
+      expect((await response.json()).upvoteCount).toBe(1);
     }
   });
 
@@ -283,8 +292,40 @@ describe("public feature requests API", () => {
       }),
     );
 
-    expect((await votedBoard.json()).requests[0].viewerHasVoted).toBe(true);
-    expect((await otherBoard.json()).requests[0].viewerHasVoted).toBe(false);
+    expect((await votedBoard.json()).requests[0].viewerVote).toBe("up");
+    expect((await otherBoard.json()).requests[0].viewerVote).toBeNull();
+  });
+
+  it("lets a voter change from an upvote to a downvote", async () => {
+    const created = await createPublished("Let customers revise their vote");
+    const context = {
+      params: Promise.resolve({ requestId: created.requestId }),
+    };
+    const url = `http://localhost/api/requests/${created.requestId}/vote`;
+    await vote(
+      publicRequest(url, {
+        method: "POST",
+        ip: "203.0.113.23",
+        body: { turnstileToken: "test-turnstile-token", direction: "up" },
+      }),
+      context,
+    );
+    const changed = await vote(
+      publicRequest(url, {
+        method: "POST",
+        ip: "203.0.113.23",
+        body: { turnstileToken: "test-turnstile-token", direction: "down" },
+      }),
+      context,
+    );
+
+    expect(changed.status).toBe(200);
+    expect(await changed.json()).toMatchObject({
+      status: "updated",
+      upvoteCount: 0,
+      downvoteCount: 1,
+      viewerVote: "down",
+    });
   });
 
   it("rejects cross-origin and invalid public submissions", async () => {

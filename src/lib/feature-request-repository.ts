@@ -9,6 +9,7 @@ export const FEATURE_REQUEST_STATUSES = [
 ] as const;
 
 export type FeatureRequestStatus = (typeof FEATURE_REQUEST_STATUSES)[number];
+export type FeatureRequestVoteDirection = "up" | "down";
 
 export interface PublicFeatureRequest {
   id: string;
@@ -16,8 +17,9 @@ export interface PublicFeatureRequest {
   description: string;
   status: FeatureRequestStatus;
   votingOpen: boolean;
-  voteCount: number;
-  viewerHasVoted: boolean;
+  upvoteCount: number;
+  downvoteCount: number;
+  viewerVote: FeatureRequestVoteDirection | null;
   createdAt: string;
 }
 
@@ -30,7 +32,7 @@ export interface FeatureRequestSubmission {
   id: string;
   title: string;
   description: string;
-  moderationStatus: "Pending review";
+  moderationStatus: "Pending review" | "Rejected";
   createdAt: string;
 }
 
@@ -40,6 +42,7 @@ export interface FeatureRequestModerationResult {
   requestId: string;
   decision: FeatureRequestModerationDecision;
   request: PublicFeatureRequest | null;
+  submission: FeatureRequestSubmission | null;
   replayed: boolean;
 }
 
@@ -71,7 +74,10 @@ export class FeatureRequestRepositoryError extends Error {
 
 const globalFeatureRequests = globalThis as typeof globalThis & {
   closespanFeatureRequests?: Map<string, StoredFeatureRequest>;
-  closespanFeatureRequestVotes?: Map<string, Set<string>>;
+  closespanFeatureRequestVotes?: Map<
+    string,
+    Map<string, FeatureRequestVoteDirection>
+  >;
   closespanFeatureRequestRateLimits?: Map<string, number>;
   closespanFeatureRequestModerations?: Map<
     string,
@@ -84,9 +90,25 @@ function memoryRequests(): Map<string, StoredFeatureRequest> {
   return globalFeatureRequests.closespanFeatureRequests;
 }
 
-function memoryVotes(): Map<string, Set<string>> {
+function memoryVotes(): Map<string, Map<string, FeatureRequestVoteDirection>> {
   globalFeatureRequests.closespanFeatureRequestVotes ??= new Map();
   return globalFeatureRequests.closespanFeatureRequestVotes;
+}
+
+function memoryRequestVotes(
+  requestId: string,
+): Map<string, FeatureRequestVoteDirection> {
+  const existing = memoryVotes().get(requestId);
+  if (existing instanceof Map) return existing;
+
+  // Preserve votes created by an older hot-reloaded development process.
+  const legacyVotes = existing as unknown as Set<string> | undefined;
+  const migrated = new Map<string, FeatureRequestVoteDirection>();
+  if (legacyVotes instanceof Set) {
+    for (const voterHash of legacyVotes) migrated.set(voterHash, "up");
+  }
+  memoryVotes().set(requestId, migrated);
+  return migrated;
 }
 
 function memoryRateLimits(): Map<string, number> {
@@ -111,8 +133,11 @@ function compareRequests(
     (statusOrder.get(first.status) ?? 99) -
     (statusOrder.get(second.status) ?? 99);
   if (group !== 0) return group;
-  if (first.voteCount !== second.voteCount)
-    return second.voteCount - first.voteCount;
+  const firstScore = first.upvoteCount - first.downvoteCount;
+  const secondScore = second.upvoteCount - second.downvoteCount;
+  if (firstScore !== secondScore) return secondScore - firstScore;
+  if (first.upvoteCount !== second.upvoteCount)
+    return second.upvoteCount - first.upvoteCount;
   return second.createdAt.localeCompare(first.createdAt);
 }
 
@@ -120,17 +145,19 @@ function publicMemoryRequest(
   request: StoredFeatureRequest,
   viewerHashForRequest?: (requestId: string) => string,
 ): PublicFeatureRequest {
-  const votes = memoryVotes().get(request.id) ?? new Set<string>();
+  const votes = memoryRequestVotes(request.id);
+  const viewerVote = viewerHashForRequest
+    ? (votes.get(viewerHashForRequest(request.id)) ?? null)
+    : null;
   return {
     id: request.id,
     title: request.title,
     description: request.description,
     status: request.status,
     votingOpen: request.votingOpen,
-    voteCount: votes.size,
-    viewerHasVoted: viewerHashForRequest
-      ? votes.has(viewerHashForRequest(request.id))
-      : false,
+    upvoteCount: [...votes.values()].filter((vote) => vote === "up").length,
+    downvoteCount: [...votes.values()].filter((vote) => vote === "down").length,
+    viewerVote,
     createdAt: request.createdAt,
   };
 }
@@ -152,10 +179,13 @@ export async function listFeatureRequests(
     description: string;
     status: FeatureRequestStatus;
     voting_open: boolean;
-    vote_count: number;
+    upvote_count: number;
+    downvote_count: number;
     created_at: Date | string;
   }>(`SELECT request.id,request.title,request.description,request.status,
-       request.voting_open,count(vote.request_id)::int AS vote_count,
+       request.voting_open,
+       count(vote.request_id) FILTER (WHERE vote.direction='up')::int AS upvote_count,
+       count(vote.request_id) FILTER (WHERE vote.direction='down')::int AS downvote_count,
        request.created_at
       FROM feature_requests request
       LEFT JOIN feature_request_votes vote ON vote.request_id=request.id
@@ -164,16 +194,22 @@ export async function listFeatureRequests(
      ORDER BY CASE request.status
        WHEN 'Planned' THEN 0 WHEN 'In progress' THEN 1
        WHEN 'Backlog' THEN 2 WHEN 'Shipped' THEN 3 ELSE 99 END,
-       count(vote.request_id) DESC,request.created_at DESC`);
+       (count(vote.request_id) FILTER (WHERE vote.direction='up') -
+        count(vote.request_id) FILTER (WHERE vote.direction='down')) DESC,
+       count(vote.request_id) FILTER (WHERE vote.direction='up') DESC,
+       request.created_at DESC`);
 
-  const votedRequestIds = new Set<string>();
+  const viewerVotes = new Map<string, FeatureRequestVoteDirection>();
   if (viewerHashForRequest && result.rows.length > 0) {
     const identities = result.rows.map((row) => ({
       request_id: row.id,
       voter_hash: viewerHashForRequest(row.id),
     }));
-    const viewerVotes = await pool.query<{ request_id: string }>(
-      `SELECT vote.request_id
+    const recordedVotes = await pool.query<{
+      request_id: string;
+      direction: FeatureRequestVoteDirection;
+    }>(
+      `SELECT vote.request_id,vote.direction
          FROM feature_request_votes vote
          JOIN jsonb_to_recordset($1::jsonb)
            AS viewer(request_id uuid,voter_hash text)
@@ -181,7 +217,8 @@ export async function listFeatureRequests(
           AND viewer.voter_hash=vote.voter_hash`,
       [JSON.stringify(identities)],
     );
-    for (const row of viewerVotes.rows) votedRequestIds.add(row.request_id);
+    for (const row of recordedVotes.rows)
+      viewerVotes.set(row.request_id, row.direction);
   }
 
   return result.rows.map((row) => ({
@@ -190,8 +227,9 @@ export async function listFeatureRequests(
     description: row.description,
     status: row.status,
     votingOpen: row.voting_open,
-    voteCount: row.vote_count,
-    viewerHasVoted: votedRequestIds.has(row.id),
+    upvoteCount: row.upvote_count,
+    downvoteCount: row.downvote_count,
+    viewerVote: viewerVotes.get(row.id) ?? null,
     createdAt: new Date(row.created_at).toISOString(),
   }));
 }
@@ -201,13 +239,17 @@ export async function listPendingFeatureRequests(): Promise<
 > {
   if (persistenceMode() === "memory") {
     return [...memoryRequests().values()]
-      .filter((request) => request.moderationStatus === "Pending review")
+      .filter((request) =>
+        ["Pending review", "Rejected"].includes(request.moderationStatus),
+      )
       .sort((first, second) => first.createdAt.localeCompare(second.createdAt))
       .map((request) => ({
         id: request.id,
         title: request.title,
         description: request.description,
-        moderationStatus: "Pending review",
+        moderationStatus: request.moderationStatus as
+          | "Pending review"
+          | "Rejected",
         createdAt: request.createdAt,
       }));
   }
@@ -216,16 +258,18 @@ export async function listPendingFeatureRequests(): Promise<
     id: string;
     title: string;
     description: string;
+    moderation_status: "Pending review" | "Rejected";
     created_at: Date | string;
-  }>(`SELECT id,title,description,created_at
+  }>(`SELECT id,title,description,moderation_status,created_at
         FROM feature_requests
-       WHERE moderation_status='Pending review'
-       ORDER BY created_at ASC`);
+       WHERE moderation_status IN ('Pending review','Rejected')
+       ORDER BY CASE moderation_status WHEN 'Pending review' THEN 0 ELSE 1 END,
+                created_at ASC`);
   return result.rows.map((row) => ({
     id: row.id,
     title: row.title,
     description: row.description,
-    moderationStatus: "Pending review",
+    moderationStatus: row.moderation_status,
     createdAt: new Date(row.created_at).toISOString(),
   }));
 }
@@ -292,8 +336,9 @@ export async function createFeatureRequest(
       description,
       status: "Backlog",
       votingOpen: true,
-      voteCount: 0,
-      viewerHasVoted: false,
+      upvoteCount: 0,
+      downvoteCount: 0,
+      viewerVote: null,
       createdAt,
       moderationStatus: "Pending review",
     };
@@ -393,6 +438,16 @@ export async function moderateFeatureRequest(
       requestId,
       decision,
       request: decision === "publish" ? publicMemoryRequest(request) : null,
+      submission:
+        decision === "reject"
+          ? {
+              id: request.id,
+              title: request.title,
+              description: request.description,
+              moderationStatus: "Rejected",
+              createdAt: request.createdAt,
+            }
+          : null,
       replayed: false,
     };
     memoryModerations().set(replayKey, result);
@@ -419,10 +474,13 @@ export async function moderateFeatureRequest(
         description: string;
         status: FeatureRequestStatus;
         voting_open: boolean;
-        vote_count: number;
+        upvote_count: number;
+        downvote_count: number;
         created_at: Date | string;
       }>(`SELECT request.id,request.title,request.description,request.status,
-            request.voting_open,count(vote.request_id)::int AS vote_count,
+            request.voting_open,
+            count(vote.request_id) FILTER (WHERE vote.direction='up')::int AS upvote_count,
+            count(vote.request_id) FILTER (WHERE vote.direction='down')::int AS downvote_count,
             request.created_at
            FROM feature_requests request
            LEFT JOIN feature_request_votes vote ON vote.request_id=request.id
@@ -439,11 +497,13 @@ export async function moderateFeatureRequest(
               description: row.description,
               status: row.status,
               votingOpen: row.voting_open,
-              voteCount: row.vote_count,
-              viewerHasVoted: false,
+              upvoteCount: row.upvote_count,
+              downvoteCount: row.downvote_count,
+              viewerVote: null,
               createdAt: new Date(row.created_at).toISOString(),
             }
           : null,
+        submission: null,
         replayed: true,
       };
     }
@@ -506,8 +566,19 @@ export async function moderateFeatureRequest(
               description: row.description,
               status: row.status,
               votingOpen: row.voting_open,
-              voteCount: 0,
-              viewerHasVoted: false,
+              upvoteCount: 0,
+              downvoteCount: 0,
+              viewerVote: null,
+              createdAt: new Date(row.created_at).toISOString(),
+            }
+          : null,
+      submission:
+        decision === "reject"
+          ? {
+              id: row.id,
+              title: row.title,
+              description: row.description,
+              moderationStatus: "Rejected",
               createdAt: new Date(row.created_at).toISOString(),
             }
           : null,
@@ -519,11 +590,14 @@ export async function moderateFeatureRequest(
 export async function voteForFeatureRequest(
   requestId: string,
   voterHash: string,
+  direction: FeatureRequestVoteDirection,
 ): Promise<{
   requestId: string;
-  voteCount: number;
-  viewerHasVoted: true;
+  upvoteCount: number;
+  downvoteCount: number;
+  viewerVote: FeatureRequestVoteDirection;
   recorded: boolean;
+  changed: boolean;
 }> {
   if (persistenceMode() === "memory") {
     const request = memoryRequests().get(requestId);
@@ -531,15 +605,17 @@ export async function voteForFeatureRequest(
       throw new FeatureRequestRepositoryError(404, "Request not found");
     if (!request.votingOpen)
       throw new FeatureRequestRepositoryError(409, "Voting is closed");
-    const votes = memoryVotes().get(requestId) ?? new Set<string>();
-    const before = votes.size;
-    votes.add(voterHash);
+    const votes = memoryRequestVotes(requestId);
+    const previous = votes.get(voterHash);
+    votes.set(voterHash, direction);
     memoryVotes().set(requestId, votes);
     return {
       requestId,
-      voteCount: votes.size,
-      viewerHasVoted: true,
-      recorded: votes.size > before,
+      upvoteCount: [...votes.values()].filter((vote) => vote === "up").length,
+      downvoteCount: [...votes.values()].filter((vote) => vote === "down").length,
+      viewerVote: direction,
+      recorded: previous === undefined,
+      changed: previous !== undefined && previous !== direction,
     };
   }
 
@@ -556,23 +632,39 @@ export async function voteForFeatureRequest(
     if (!request.voting_open)
       throw new FeatureRequestRepositoryError(409, "Voting is closed");
 
-    const inserted = await client.query<{ request_id: string }>(
-      `INSERT INTO feature_request_votes(request_id,voter_hash)
-       VALUES ($1,$2)
-       ON CONFLICT DO NOTHING
-       RETURNING request_id`,
+    const prior = await client.query<{
+      direction: FeatureRequestVoteDirection;
+    }>(
+      `SELECT direction FROM feature_request_votes
+        WHERE request_id=$1 AND voter_hash=$2`,
       [requestId, voterHash],
     );
-    const count = await client.query<{ vote_count: number }>(
-      `SELECT count(*)::int AS vote_count
+    const previous = prior.rows[0]?.direction;
+    await client.query(
+      `INSERT INTO feature_request_votes(request_id,voter_hash,direction)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (request_id,voter_hash) DO UPDATE
+         SET direction=EXCLUDED.direction,
+             created_at=now()`,
+      [requestId, voterHash, direction],
+    );
+    const count = await client.query<{
+      upvote_count: number;
+      downvote_count: number;
+    }>(
+      `SELECT
+         count(*) FILTER (WHERE direction='up')::int AS upvote_count,
+         count(*) FILTER (WHERE direction='down')::int AS downvote_count
          FROM feature_request_votes WHERE request_id=$1`,
       [requestId],
     );
     return {
       requestId,
-      voteCount: count.rows[0]?.vote_count ?? 0,
-      viewerHasVoted: true,
-      recorded: inserted.rows.length > 0,
+      upvoteCount: count.rows[0]?.upvote_count ?? 0,
+      downvoteCount: count.rows[0]?.downvote_count ?? 0,
+      viewerVote: direction,
+      recorded: previous === undefined,
+      changed: previous !== undefined && previous !== direction,
     };
   });
 }

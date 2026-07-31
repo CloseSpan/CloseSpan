@@ -23,7 +23,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const voteBodySchema = z
-  .object({ turnstileToken: z.string().trim().min(1).max(2048) })
+  .object({
+    turnstileToken: z.string().trim().min(1).max(2048),
+    direction: z.enum(["up", "down"]),
+  })
   .strict();
 const requestIdSchema = z.string().uuid();
 
@@ -53,13 +56,19 @@ export async function POST(
     const result = await voteForFeatureRequest(
       requestId.data,
       featureRequestVoteHash(request.headers, requestId.data),
+      body.data.direction,
     );
     return NextResponse.json(
       {
-        status: result.recorded ? "recorded" : "already_voted",
+        status: result.recorded
+          ? "recorded"
+          : result.changed
+            ? "updated"
+            : "already_voted",
         requestId: result.requestId,
-        voteCount: result.voteCount,
-        viewerHasVoted: result.viewerHasVoted,
+        upvoteCount: result.upvoteCount,
+        downvoteCount: result.downvoteCount,
+        viewerVote: result.viewerVote,
       },
       {
         status: result.recorded ? 201 : 200,

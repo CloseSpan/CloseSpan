@@ -71,6 +71,9 @@
   --shadow-overlay:
     -12px -12px 24px rgba(255, 255, 255, 0.72),
     12px 12px 28px rgba(122, 136, 160, 0.42);
+  --shadow-dialog:
+    -5px -5px 14px rgba(255, 255, 255, 0.38),
+    10px 12px 24px rgba(122, 136, 160, 0.3);
   --shadow-accent-raised:
     -4px -4px 9px rgba(255, 255, 255, 0.68),
     5px 5px 11px rgba(89, 84, 164, 0.34);
@@ -261,6 +264,9 @@
   --shadow-overlay:
     -12px -12px 24px rgba(49, 60, 81, 0.42),
     12px 12px 28px rgba(2, 5, 11, 0.76);
+  --shadow-dialog:
+    -5px -5px 14px rgba(49, 60, 81, 0.24),
+    10px 12px 24px rgba(2, 5, 11, 0.58);
   --shadow-accent-raised:
     -4px -4px 9px rgba(49, 60, 81, 0.42),
     5px 5px 11px rgba(3, 7, 14, 0.62);
@@ -1616,6 +1622,47 @@ table tbody tr:hover {
   background: var(--surface);
 }
 
+/* The guided demo's legacy structural rules use a fixed light gradient and
+ * fixed light-palette text. Keep the layout, but make the complete panel read
+ * from the active theme so presentation mode remains legible in dark mode. */
+.app-shell .guided-demo-panel .guided-demo-head {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  color: var(--text-strong);
+}
+
+.app-shell .guided-demo-panel .guided-demo-head small {
+  color: var(--text-muted);
+}
+
+.app-shell .guided-demo-panel .guided-demo-head strong,
+.app-shell .guided-demo-panel .guided-demo-body h2 {
+  color: var(--text-strong);
+}
+
+.app-shell .guided-demo-panel .guided-demo-head > button {
+  border: 0;
+  background: var(--surface);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .guided-demo-panel .guided-demo-head > button:hover {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.app-shell .guided-demo-panel .guided-demo-progress {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .guided-demo-panel .guided-demo-body > p,
+.app-shell .guided-demo-panel .guided-demo-body li {
+  color: var(--text);
+}
+
 .feedback-drawer-head,
 .feedback-drawer-footer,
 .integration-drawer-head {
@@ -2063,6 +2110,12 @@ table tbody tr:hover {
 .feature-requests-header {
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-topbar);
+}
+
+.feature-requests-header {
+  position: relative;
+  z-index: 10;
+  background: var(--surface);
 }
 
 .landing-nav,
@@ -2697,7 +2750,7 @@ table tbody tr:hover {
 }
 
 .feature-requests-page .feature-request-empty {
-  border: 1px solid var(--border-subtle);
+  border: 0;
   background: var(--surface-pressed);
   color: var(--text);
   box-shadow: var(--shadow-inset);
@@ -2760,7 +2813,7 @@ table tbody tr:hover {
   box-shadow: var(--shadow-raised-sm);
 }
 
-.feature-request-row > button,
+.feature-request-votes > button,
 .feature-request-review-queue article button {
   min-width: var(--control-height);
   min-height: var(--control-height);
@@ -2771,7 +2824,7 @@ table tbody tr:hover {
   box-shadow: var(--shadow-raised-sm);
 }
 
-.feature-request-row > button[aria-pressed="true"] {
+.feature-request-votes > button[aria-pressed="true"] {
   border-color: var(--accent-line);
   background: var(--accent-soft);
   color: var(--accent);
@@ -2795,7 +2848,7 @@ table tbody tr:hover {
 }
 
 .feature-requests-page .feature-request-secondary,
-.feature-requests-page .feature-request-row > button,
+.feature-requests-page .feature-request-votes > button,
 .feature-requests-page .feature-request-review-queue article button,
 .feature-requests-page .feature-request-dialog > header button {
   min-height: var(--control-height);
@@ -2805,12 +2858,65 @@ table tbody tr:hover {
   box-shadow: var(--shadow-raised-sm);
 }
 
-.feature-requests-page .feature-request-row > button.voted,
-.feature-requests-page .feature-request-row > button[aria-pressed="true"] {
+.feature-requests-page
+  :is(
+    .feature-request-secondary,
+    .feature-request-votes > button:not(.voted),
+    .feature-request-review-queue article button:not(.publish),
+    .feature-request-dialog > header button
+  ):hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface-hover);
+  color: var(--accent);
+  box-shadow: var(--shadow-hover);
+}
+
+.feature-requests-page
+  :is(
+    .feature-request-secondary,
+    .feature-request-votes > button:not(.voted),
+    .feature-request-review-queue article button:not(.publish),
+    .feature-request-dialog > header button
+  ):active:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page
+  .feature-request-review-queue
+  article
+  button.publish:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--accent-fill-hover);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-hover);
+}
+
+.feature-requests-page .feature-request-votes > button.voted,
+.feature-requests-page .feature-request-votes > button[aria-pressed="true"] {
   border-color: var(--accent-line);
   background: var(--accent-soft);
   color: var(--accent);
   box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-votes > button.voted.down {
+  background:var(--danger-soft);
+  color:var(--danger);
+  box-shadow:var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-review-queue article.rejected {
+  background:var(--danger-soft);
+  box-shadow:var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-rejected-label {
+  background:var(--danger-soft);
+  color:var(--danger);
+  box-shadow:var(--shadow-inset-sm);
 }
 
 .feature-requests-page .feature-request-notice {
@@ -2833,10 +2939,101 @@ table tbody tr:hover {
   align-items: center;
 }
 
+.feature-requests-home-link {
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-strong);
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.feature-requests-home-link:hover,
+.feature-requests-home-link:focus-visible {
+  background: var(--surface-hover);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+  transform: translateY(-1px);
+}
+
+.feature-requests-home-link:active {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
 .feature-request-dialog {
   max-height: min(calc(100dvh - 24px), 760px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  box-shadow: var(--shadow-dialog) !important;
+}
+
+.feature-request-dialog-backdrop {
+  --feature-request-dialog-offset: 18px;
+  animation: feature-request-backdrop-enter var(--duration-normal)
+    var(--ease-standard) both;
+}
+
+.feature-request-dialog-backdrop .feature-request-dialog {
+  transform-origin: center;
+  animation: feature-request-dialog-enter var(--duration-slow)
+    var(--ease-standard) both;
+  will-change: opacity, transform;
+}
+
+.feature-request-dialog-backdrop.is-closing {
+  pointer-events: none;
+  animation: feature-request-backdrop-exit var(--duration-slow)
+    var(--ease-standard) both;
+}
+
+.feature-request-dialog-backdrop.is-closing .feature-request-dialog {
+  animation: feature-request-dialog-exit var(--duration-slow)
+    var(--ease-standard) both;
+}
+
+@keyframes feature-request-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes feature-request-backdrop-exit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes feature-request-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--feature-request-dialog-offset)) scale(0.975);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes feature-request-dialog-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(7px) scale(0.99);
+  }
 }
 
 .feature-requests-page .feature-request-dialog > header {
@@ -2878,6 +3075,23 @@ table tbody tr:hover {
   min-width: var(--control-height);
   width: var(--control-height);
   height: var(--control-height);
+}
+
+.feature-request-dialog-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.feature-requests-page .feature-request-sound-toggle[aria-pressed="true"],
+.feature-requests-page
+  .feature-request-sound-toggle[aria-pressed="true"]:hover {
+  border-color: transparent;
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
 }
 
 .integration-copilot-turn time,
@@ -3992,7 +4206,7 @@ table tbody tr:hover {
     .provider-option.selected,
     .organization-option.active,
     .queue-item.selected,
-    .feature-request-row > button[aria-pressed="true"]
+    .feature-request-votes > button[aria-pressed="true"]
   ) {
   border: 0 !important;
   box-shadow: var(--shadow-inset-sm);
@@ -4276,6 +4490,16 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   background: var(--surface) !important;
   color: var(--text);
   box-shadow: var(--shadow-overlay) !important;
+}
+
+/* The request form is a broad surface, so its directional highlight must stay
+ * quieter than the compact menus and drawers that use the overlay shadow. */
+.feature-requests-page .feature-request-dialog {
+  box-shadow: var(--shadow-dialog) !important;
+}
+
+:root[data-theme="dark"] .feature-requests-page .feature-request-dialog {
+  box-shadow: var(--shadow-dialog) !important;
 }
 
 /* High-specificity dark-mode color repair for legacy feature selectors.

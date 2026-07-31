@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowDown,
   ArrowUp,
   CheckCircle2,
   Clock3,
@@ -8,9 +9,17 @@ import {
   LoaderCircle,
   Plus,
   Rocket,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import type {
   FeatureRequestSubmission,
@@ -51,6 +60,8 @@ const groups: Array<{
   },
 ];
 
+const TYPING_SOUND_PREFERENCE_KEY = "closespan-feature-request-typing-sound";
+
 function responseError(body: unknown, fallback: string): string {
   if (
     body &&
@@ -80,11 +91,13 @@ export function FeatureRequestsBoard({
     initialPendingRequests,
   );
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogClosing, setDialogClosing] = useState(false);
   const [pendingVotes, setPendingVotes] = useState<Set<string>>(new Set());
   const [pendingModerations, setPendingModerations] = useState<Set<string>>(
     new Set(),
   );
   const [submitting, setSubmitting] = useState(false);
+  const [typingSoundEnabled, setTypingSoundEnabled] = useState(true);
   const [voteTurnstileToken, setVoteTurnstileToken] = useState<string | null>(
     null,
   );
@@ -101,6 +114,212 @@ export function FeatureRequestsBoard({
   const dialog = useRef<HTMLElement>(null);
   const dialogTrigger = useRef<HTMLElement | null>(null);
   const voteTurnstileTokenRef = useRef<string | null>(null);
+  const typingAudioContext = useRef<AudioContext | null>(null);
+  const lastTypingSoundAt = useRef(0);
+
+  useEffect(() => {
+    let preferenceFrame = 0;
+    try {
+      const storedPreference = window.sessionStorage.getItem(
+        TYPING_SOUND_PREFERENCE_KEY,
+      );
+      if (storedPreference === "off") {
+        preferenceFrame = window.requestAnimationFrame(() => {
+          setTypingSoundEnabled(false);
+        });
+      }
+    } catch {
+      // Session storage may be unavailable in privacy-restricted browsers.
+    }
+
+    return () => {
+      if (preferenceFrame) window.cancelAnimationFrame(preferenceFrame);
+      const context = typingAudioContext.current;
+      typingAudioContext.current = null;
+      if (context && context.state !== "closed") void context.close();
+    };
+  }, []);
+
+  function toggleTypingSound() {
+    setTypingSoundEnabled((current) => {
+      const next = !current;
+      try {
+        window.sessionStorage.setItem(
+          TYPING_SOUND_PREFERENCE_KEY,
+          next ? "on" : "off",
+        );
+      } catch {
+        // The toggle still works for this visit without storage.
+      }
+      return next;
+    });
+  }
+
+  function getInterfaceAudioContext() {
+    const context =
+      typingAudioContext.current ??
+      (typingAudioContext.current = new window.AudioContext());
+    if (context.state === "suspended") void context.resume();
+    return context;
+  }
+
+  function playButtonClickSound(force = false) {
+    if (!typingSoundEnabled && !force) return;
+
+    try {
+      const context = getInterfaceAudioContext();
+      const now = context.currentTime;
+      const duration = 0.045;
+      const sampleCount = Math.max(1, Math.floor(context.sampleRate * duration));
+      const buffer = context.createBuffer(1, sampleCount, context.sampleRate);
+      const samples = buffer.getChannelData(0);
+      for (let index = 0; index < sampleCount; index += 1) {
+        const decay = Math.pow(1 - index / sampleCount, 5);
+        samples[index] = (Math.random() * 2 - 1) * decay;
+      }
+
+      const switchStrike = context.createBufferSource();
+      const strikeFilter = context.createBiquadFilter();
+      const strikeGain = context.createGain();
+      strikeFilter.type = "bandpass";
+      strikeFilter.frequency.value = 980;
+      strikeFilter.Q.value = 1.15;
+      strikeGain.gain.setValueAtTime(0.038, now);
+      strikeGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      switchStrike.buffer = buffer;
+      switchStrike.connect(strikeFilter);
+      strikeFilter.connect(strikeGain);
+      strikeGain.connect(context.destination);
+
+      const buttonBody = context.createOscillator();
+      const bodyGain = context.createGain();
+      buttonBody.type = "triangle";
+      buttonBody.frequency.setValueAtTime(122, now);
+      bodyGain.gain.setValueAtTime(0.016, now);
+      bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+      buttonBody.connect(bodyGain);
+      bodyGain.connect(context.destination);
+
+      switchStrike.start(now);
+      switchStrike.stop(now + duration);
+      buttonBody.start(now);
+      buttonBody.stop(now + 0.065);
+    } catch {
+      // Sound feedback must never prevent the underlying button action.
+    }
+  }
+
+  function playTypingSound(
+    event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    if (
+      !typingSoundEnabled ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.nativeEvent.isComposing
+    )
+      return;
+
+    const isCharacter = event.key.length === 1;
+    const isEditingKey = ["Backspace", "Delete", "Enter"].includes(event.key);
+    if (!isCharacter && !isEditingKey) return;
+
+    const timestamp = performance.now();
+    if (timestamp - lastTypingSoundAt.current < 24) return;
+    lastTypingSoundAt.current = timestamp;
+
+    try {
+      const context = getInterfaceAudioContext();
+
+      const isSpace = event.key === " ";
+      const isErase = event.key === "Backspace" || event.key === "Delete";
+      const isEnter = event.key === "Enter";
+      const isLongKey = isSpace || isErase || isEnter;
+      const keySignature = Array.from(event.key).reduce(
+        (total, character) => total + character.charCodeAt(0),
+        0,
+      );
+      const pitchVariation = (keySignature % 9) - 4;
+      const duration = isEnter ? 0.07 : isLongKey ? 0.055 : 0.042;
+      const now = context.currentTime;
+      const sampleCount = Math.max(1, Math.floor(context.sampleRate * duration));
+      const buffer = context.createBuffer(1, sampleCount, context.sampleRate);
+      const samples = buffer.getChannelData(0);
+      const releaseIndex = Math.floor(context.sampleRate * 0.012);
+      for (let index = 0; index < sampleCount; index += 1) {
+        const strikeDecay = Math.pow(1 - index / sampleCount, 4.5);
+        const releasePosition = Math.max(0, index - releaseIndex);
+        const releaseLength = Math.max(1, sampleCount - releaseIndex);
+        const releaseDecay =
+          index >= releaseIndex
+            ? Math.pow(1 - releasePosition / releaseLength, 7) * 0.34
+            : 0;
+        samples[index] =
+          (Math.random() * 2 - 1) * (strikeDecay + releaseDecay);
+      }
+
+      const strike = context.createBufferSource();
+      const strikeFilter = context.createBiquadFilter();
+      const strikeGain = context.createGain();
+      strikeFilter.type = "bandpass";
+      strikeFilter.Q.value = 0.9;
+      strikeFilter.frequency.value = isEnter
+        ? 820
+        : isSpace
+          ? 1050
+          : isErase
+            ? 1250
+            : 1650 + pitchVariation * 55;
+      strikeGain.gain.setValueAtTime(isLongKey ? 0.04 : 0.032, now);
+      strikeGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      strike.buffer = buffer;
+      strike.connect(strikeFilter);
+      strikeFilter.connect(strikeGain);
+      strikeGain.connect(context.destination);
+
+      const body = context.createOscillator();
+      const bodyGain = context.createGain();
+      body.type = "triangle";
+      body.frequency.setValueAtTime(
+        isEnter
+          ? 92
+          : isSpace
+            ? 112
+            : isErase
+              ? 128
+              : 168 + pitchVariation * 4,
+        now,
+      );
+      bodyGain.gain.setValueAtTime(isLongKey ? 0.017 : 0.012, now);
+      bodyGain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        now + duration + 0.018,
+      );
+      body.connect(bodyGain);
+      bodyGain.connect(context.destination);
+
+      strike.start(now);
+      body.start(now);
+      strike.stop(now + duration);
+      body.stop(now + duration + 0.02);
+
+      if (isEnter) {
+        const returnBell = context.createOscillator();
+        const returnBellGain = context.createGain();
+        returnBell.type = "sine";
+        returnBell.frequency.setValueAtTime(880, now + 0.015);
+        returnBellGain.gain.setValueAtTime(0.007, now + 0.015);
+        returnBellGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+        returnBell.connect(returnBellGain);
+        returnBellGain.connect(context.destination);
+        returnBell.start(now + 0.015);
+        returnBell.stop(now + 0.125);
+      }
+    } catch {
+      // Audio is an enhancement; unsupported audio must never block typing.
+    }
+  }
 
   function updateVoteTurnstileToken(token: string | null) {
     voteTurnstileTokenRef.current = token;
@@ -108,10 +327,32 @@ export function FeatureRequestsBoard({
   }
 
   function openRequestDialog() {
+    playButtonClickSound();
     dialogTrigger.current = document.activeElement as HTMLElement | null;
     setRequestTurnstileToken(null);
+    setDialogClosing(false);
     setDialogOpen(true);
   }
+
+  function closeRequestDialog() {
+    if (!dialogOpen || dialogClosing) return;
+    setDialogClosing(true);
+  }
+
+  useEffect(() => {
+    if (!dialogClosing) return;
+
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const closeDelay = reducedMotion ? 0 : 420;
+    const closeTimer = window.setTimeout(() => {
+      setDialogOpen(false);
+      setDialogClosing(false);
+    }, closeDelay);
+
+    return () => window.clearTimeout(closeTimer);
+  }, [dialogClosing]);
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -119,7 +360,7 @@ export function FeatureRequestsBoard({
     document.body.style.overflow = "hidden";
     titleInput.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDialogOpen(false);
+      if (event.key === "Escape") setDialogClosing(true);
       if (event.key !== "Tab" || !dialog.current) return;
 
       const focusable = Array.from(
@@ -146,7 +387,10 @@ export function FeatureRequestsBoard({
     };
   }, [dialogOpen]);
 
-  async function vote(requestId: string) {
+  async function vote(
+    requestId: string,
+    direction: "up" | "down",
+  ) {
     if (pendingVotes.has(requestId)) return;
     const turnstileToken = voteTurnstileTokenRef.current;
     if (!turnstileToken) {
@@ -163,12 +407,13 @@ export function FeatureRequestsBoard({
       const response = await fetch(`/api/requests/${requestId}/vote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ turnstileToken }),
+        body: JSON.stringify({ turnstileToken, direction }),
       });
       const body = (await response.json()) as {
         requestId?: string;
-        voteCount?: number;
-        viewerHasVoted?: boolean;
+        upvoteCount?: number;
+        downvoteCount?: number;
+        viewerVote?: "up" | "down";
         status?: string;
         error?: string;
       };
@@ -179,11 +424,15 @@ export function FeatureRequestsBoard({
           item.id === requestId
             ? {
                 ...item,
-                voteCount:
-                  typeof body.voteCount === "number"
-                    ? body.voteCount
-                    : item.voteCount,
-                viewerHasVoted: body.viewerHasVoted === true,
+                upvoteCount:
+                  typeof body.upvoteCount === "number"
+                    ? body.upvoteCount
+                    : item.upvoteCount,
+                downvoteCount:
+                  typeof body.downvoteCount === "number"
+                    ? body.downvoteCount
+                    : item.downvoteCount,
+                viewerVote: body.viewerVote ?? item.viewerVote,
               }
             : item,
         ),
@@ -192,8 +441,10 @@ export function FeatureRequestsBoard({
         kind: "success",
         message:
           body.status === "already_voted"
-            ? "Your vote was already counted."
-            : "Your vote was counted.",
+            ? `Your ${direction}vote was already counted.`
+            : body.status === "updated"
+              ? `Your vote was changed to a ${direction}vote.`
+              : `Your ${direction}vote was counted.`,
       });
     } catch (error) {
       setNotice({
@@ -252,7 +503,7 @@ export function FeatureRequestsBoard({
         setPendingRequests((current) => [...current, body.submission!]);
       }
       form.reset();
-      setDialogOpen(false);
+      closeRequestDialog();
       setNotice({
         kind: "success",
         message: "Your request was submitted for review.",
@@ -289,12 +540,22 @@ export function FeatureRequestsBoard({
       });
       const body = (await response.json()) as {
         request?: PublicFeatureRequest | null;
+        submission?: FeatureRequestSubmission | null;
         error?: string;
       };
       if (!response.ok)
         throw new Error(responseError(body, "The review could not be saved"));
       setPendingRequests((current) =>
-        current.filter((request) => request.id !== requestId),
+        decision === "publish"
+          ? current.filter((request) => request.id !== requestId)
+          : current.map((request) =>
+              request.id === requestId
+                ? (body.submission ?? {
+                    ...request,
+                    moderationStatus: "Rejected",
+                  })
+                : request,
+            ),
       );
       if (decision === "publish" && body.request) {
         setRequests((current) => [...current, body.request!]);
@@ -304,7 +565,7 @@ export function FeatureRequestsBoard({
         message:
           decision === "publish"
             ? "The request is now public and open for voting."
-            : "The request was rejected and remains private.",
+            : "The request was marked as rejected and remains visible to moderators.",
       });
     } catch (error) {
       setNotice({
@@ -330,11 +591,16 @@ export function FeatureRequestsBoard({
         .filter((request) => request.status === group.status)
         .sort(
           (first, second) =>
-            second.voteCount - first.voteCount ||
+            second.upvoteCount -
+              second.downvoteCount -
+              (first.upvoteCount - first.downvoteCount) ||
+            second.upvoteCount - first.upvoteCount ||
             second.createdAt.localeCompare(first.createdAt),
         ),
     }))
     .filter((group) => group.requests.length > 0);
+  const hasAnyRequests =
+    requests.length > 0 || (canModerate && pendingRequests.length > 0);
 
   return (
     <>
@@ -359,7 +625,10 @@ export function FeatureRequestsBoard({
             <span>{notice.message}</span>
             <button
               type="button"
-              onClick={() => setNotice(null)}
+              onClick={() => {
+                playButtonClickSound();
+                setNotice(null);
+              }}
               aria-label="Dismiss message"
             >
               <X aria-hidden="true" size={15} />
@@ -385,50 +654,68 @@ export function FeatureRequestsBoard({
               <div>
                 <span>Moderator view</span>
                 <h2 id="feature-request-review-heading">
-                  Waiting for review
+                  Request review
                 </h2>
               </div>
-              <span>{pendingRequests.length}</span>
+              <span>
+                {
+                  pendingRequests.filter(
+                    (request) => request.moderationStatus === "Pending review",
+                  ).length
+                }
+              </span>
             </header>
             <div>
               {pendingRequests.map((request) => {
                 const reviewing = pendingModerations.has(request.id);
+                const rejected = request.moderationStatus === "Rejected";
                 return (
-                  <article key={request.id}>
+                  <article
+                    className={rejected ? "rejected" : undefined}
+                    key={request.id}
+                  >
                     <div>
                       <h3>{request.title}</h3>
                       <p>{request.description}</p>
                     </div>
-                    <div>
-                      <button
-                        type="button"
-                        disabled={reviewing}
-                        onClick={() =>
-                          void moderateRequest(request.id, "reject")
-                        }
-                      >
-                        Reject
-                      </button>
-                      <button
-                        type="button"
-                        className="publish"
-                        disabled={reviewing}
-                        onClick={() =>
-                          void moderateRequest(request.id, "publish")
-                        }
-                      >
-                        {reviewing ? (
-                          <LoaderCircle
-                            className="feature-request-spinner"
-                            aria-hidden="true"
-                            size={14}
-                          />
-                        ) : (
-                          <CheckCircle2 aria-hidden="true" size={14} />
-                        )}
-                        Publish
-                      </button>
-                    </div>
+                    {rejected ? (
+                      <span className="feature-request-rejected-label">
+                        Rejected
+                      </span>
+                    ) : (
+                      <div>
+                        <button
+                          type="button"
+                          disabled={reviewing}
+                          onClick={() => {
+                            playButtonClickSound();
+                            void moderateRequest(request.id, "reject");
+                          }}
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          className="publish"
+                          disabled={reviewing}
+                          onClick={() => {
+                            playButtonClickSound();
+                            void moderateRequest(request.id, "publish");
+                          }}
+                        >
+                          {reviewing ? (
+                            <LoaderCircle
+                              className="feature-request-spinner"
+                              aria-hidden="true"
+                              size={14}
+                            />
+                          ) : (
+                            <CheckCircle2 aria-hidden="true" size={14} />
+                          )}
+                          Publish
+                        </button>
+                      </div>
+                    )}
                   </article>
                 );
               })}
@@ -436,7 +723,7 @@ export function FeatureRequestsBoard({
           </section>
         )}
 
-        {visibleGroups.length === 0 ? (
+        {!hasAnyRequests ? (
           <section className="feature-request-empty">
             <span aria-hidden="true">
               <ListTodo size={24} />
@@ -454,7 +741,7 @@ export function FeatureRequestsBoard({
               <Plus aria-hidden="true" size={16} /> New request
             </button>
           </section>
-        ) : (
+        ) : visibleGroups.length > 0 ? (
           <div className="feature-request-groups">
             {visibleGroups.map(({ icon: Icon, ...group }) => (
               <section
@@ -485,34 +772,64 @@ export function FeatureRequestsBoard({
                           <h3>{request.title}</h3>
                           <p>{request.description}</p>
                         </div>
-                        <button
-                          type="button"
-                          className={request.viewerHasVoted ? "voted" : ""}
-                          aria-label={`${
-                            request.viewerHasVoted ? "Voted for" : "Vote for"
-                          } ${request.title}. ${request.voteCount} ${
-                            request.voteCount === 1 ? "vote" : "votes"
-                          }`}
-                          aria-pressed={request.viewerHasVoted}
-                          disabled={
-                            voting ||
-                            !voteTurnstileToken ||
-                            request.viewerHasVoted ||
-                            !request.votingOpen
-                          }
-                          onClick={() => void vote(request.id)}
-                        >
-                          {voting ? (
-                            <LoaderCircle
-                              className="feature-request-spinner"
-                              aria-hidden="true"
-                              size={14}
-                            />
-                          ) : (
-                            <ArrowUp aria-hidden="true" size={14} />
-                          )}
-                          <span>{request.voteCount}</span>
-                        </button>
+                        <div className="feature-request-votes">
+                          <button
+                            type="button"
+                            className={
+                              request.viewerVote === "up" ? "voted" : ""
+                            }
+                            aria-label={`Upvote ${request.title}. ${request.upvoteCount} ${
+                              request.upvoteCount === 1
+                                ? "upvote"
+                                : "upvotes"
+                            }`}
+                            aria-pressed={request.viewerVote === "up"}
+                            disabled={
+                              voting ||
+                              !voteTurnstileToken ||
+                              !request.votingOpen
+                            }
+                            onClick={() => {
+                              playButtonClickSound();
+                              void vote(request.id, "up");
+                            }}
+                          >
+                            {voting ? (
+                              <LoaderCircle
+                                className="feature-request-spinner"
+                                aria-hidden="true"
+                                size={14}
+                              />
+                            ) : (
+                              <ArrowUp aria-hidden="true" size={14} />
+                            )}
+                            <span>{request.upvoteCount}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={
+                              request.viewerVote === "down" ? "voted down" : ""
+                            }
+                            aria-label={`Downvote ${request.title}. ${request.downvoteCount} ${
+                              request.downvoteCount === 1
+                                ? "downvote"
+                                : "downvotes"
+                            }`}
+                            aria-pressed={request.viewerVote === "down"}
+                            disabled={
+                              voting ||
+                              !voteTurnstileToken ||
+                              !request.votingOpen
+                            }
+                            onClick={() => {
+                              playButtonClickSound();
+                              void vote(request.id, "down");
+                            }}
+                          >
+                            <ArrowDown aria-hidden="true" size={14} />
+                            <span>{request.downvoteCount}</span>
+                          </button>
+                        </div>
                       </article>
                     );
                   })}
@@ -520,27 +837,44 @@ export function FeatureRequestsBoard({
               </section>
             ))}
           </div>
-        )}
+        ) : null}
 
-        <p className="feature-request-vote-note">
-          One vote per request, per network address. CloseSpan stores only a
-          one-way security fingerprint. Your raw IP address is not stored.
-        </p>
+        {visibleGroups.length > 0 && (
+          <p className="feature-request-vote-note">
+            One upvote or downvote per request, per network address. You can
+            change your choice. CloseSpan stores only a one-way security
+            fingerprint; your raw IP address is not stored.
+          </p>
+        )}
       </main>
 
-      <button
-        className="feature-request-new"
-        type="button"
-        onClick={openRequestDialog}
-      >
-        <Plus aria-hidden="true" size={17} /> New request
-      </button>
+      {hasAnyRequests && (
+        <button
+          className="feature-request-new"
+          type="button"
+          onClick={openRequestDialog}
+        >
+          <Plus aria-hidden="true" size={17} /> New request
+        </button>
+      )}
 
       {dialogOpen && (
         <div
-          className="feature-request-dialog-backdrop"
+          className={`feature-request-dialog-backdrop${
+            dialogClosing ? " is-closing" : ""
+          }`}
+          onAnimationEnd={(event) => {
+            if (
+              event.currentTarget === event.target &&
+              dialogClosing &&
+              event.animationName === "feature-request-backdrop-exit"
+            ) {
+              setDialogOpen(false);
+              setDialogClosing(false);
+            }
+          }}
           onMouseDown={(event) => {
-            if (event.currentTarget === event.target) setDialogOpen(false);
+            if (event.currentTarget === event.target) closeRequestDialog();
           }}
         >
           <section
@@ -555,13 +889,41 @@ export function FeatureRequestsBoard({
                 <span>Suggest an improvement</span>
                 <h2 id="new-feature-request-title">New feature request</h2>
               </div>
-              <button
-                type="button"
-                onClick={() => setDialogOpen(false)}
-                aria-label="Close request form"
-              >
-                <X aria-hidden="true" size={18} />
-              </button>
+              <div className="feature-request-dialog-controls">
+                <button
+                  type="button"
+                  className="feature-request-sound-toggle"
+                  onClick={() => {
+                    playButtonClickSound(true);
+                    toggleTypingSound();
+                  }}
+                  aria-label={
+                    typingSoundEnabled
+                      ? "Mute form sounds"
+                      : "Turn on form sounds"
+                  }
+                  aria-pressed={typingSoundEnabled}
+                  title={
+                    typingSoundEnabled ? "Form sounds on" : "Form sounds off"
+                  }
+                >
+                  {typingSoundEnabled ? (
+                    <Volume2 aria-hidden="true" size={18} />
+                  ) : (
+                    <VolumeX aria-hidden="true" size={18} />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playButtonClickSound();
+                    closeRequestDialog();
+                  }}
+                  aria-label="Close request form"
+                >
+                  <X aria-hidden="true" size={18} />
+                </button>
+              </div>
             </header>
             <form onSubmit={submitRequest}>
               <label>
@@ -573,6 +935,7 @@ export function FeatureRequestsBoard({
                   maxLength={120}
                   required
                   placeholder="What should CloseSpan add or improve?"
+                  onKeyDown={playTypingSound}
                 />
               </label>
               <label>
@@ -583,6 +946,7 @@ export function FeatureRequestsBoard({
                   maxLength={2000}
                   required
                   placeholder="Describe the workflow, pain point, and outcome you need."
+                  onKeyDown={playTypingSound}
                 />
               </label>
               <TurnstileWidget
@@ -600,7 +964,10 @@ export function FeatureRequestsBoard({
                 <button
                   type="button"
                   className="feature-request-secondary"
-                  onClick={() => setDialogOpen(false)}
+                  onClick={() => {
+                    playButtonClickSound();
+                    closeRequestDialog();
+                  }}
                 >
                   Cancel
                 </button>
@@ -608,6 +975,7 @@ export function FeatureRequestsBoard({
                   type="submit"
                   className="feature-request-primary"
                   disabled={submitting || !requestTurnstileToken}
+                  onClick={() => playButtonClickSound()}
                 >
                   {submitting ? (
                     <LoaderCircle

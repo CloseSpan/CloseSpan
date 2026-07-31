@@ -8,7 +8,10 @@ vi.mock("@/lib/turnstile", async (importOriginal) => {
   return { ...actual, verifyTurnstileToken: turnstile.verify };
 });
 
-import { resetFeatureRequestStoreForTests } from "@/lib/feature-request-repository";
+import {
+  listPendingFeatureRequests,
+  resetFeatureRequestStoreForTests,
+} from "@/lib/feature-request-repository";
 import { GET, POST as submit } from "../../route";
 import { POST as moderate } from "./route";
 
@@ -85,7 +88,7 @@ describe("feature request moderation API", () => {
     expect((await board.json()).requests).toHaveLength(1);
   });
 
-  it("keeps rejected requests private", async () => {
+  it("keeps rejected requests private and visible to moderators", async () => {
     const requestId = await pendingRequest("Expose unsafe internal details");
     const response = await moderate(
       request(
@@ -100,6 +103,10 @@ describe("feature request moderation API", () => {
     expect(await response.json()).toMatchObject({
       decision: "reject",
       request: null,
+      submission: {
+        id: requestId,
+        moderationStatus: "Rejected",
+      },
     });
     const board = await GET(
       new NextRequest("http://localhost/api/requests", {
@@ -107,6 +114,9 @@ describe("feature request moderation API", () => {
       }),
     );
     expect((await board.json()).requests).toHaveLength(0);
+    expect(await listPendingFeatureRequests()).toMatchObject([
+      { id: requestId, moderationStatus: "Rejected" },
+    ]);
   });
 
   it("requires an administrator moderator", async () => {

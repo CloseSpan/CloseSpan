@@ -4,7 +4,20 @@ import { FeatureRequestsBoard } from "./feature-requests-board";
 import { TURNSTILE_TEST_SITE_KEY } from "@/lib/turnstile-config";
 
 describe("FeatureRequestsBoard", () => {
-  it("renders grouped requests with accessible one-way vote state", () => {
+  it("shows one centered request action in the empty roadmap state", () => {
+    const markup = renderToStaticMarkup(
+      <FeatureRequestsBoard
+        turnstileSiteKey={TURNSTILE_TEST_SITE_KEY}
+        initialRequests={[]}
+      />,
+    );
+
+    expect(markup).toContain("Start the roadmap conversation");
+    expect(markup.match(/New request/g)).toHaveLength(1);
+    expect(markup).not.toContain("feature-request-vote-note");
+  });
+
+  it("renders grouped requests with separate accessible vote counts", () => {
     const markup = renderToStaticMarkup(
       <FeatureRequestsBoard
         turnstileSiteKey={TURNSTILE_TEST_SITE_KEY}
@@ -15,8 +28,9 @@ describe("FeatureRequestsBoard", () => {
             description: "Show feedback changes before and after every release.",
             status: "Planned",
             votingOpen: true,
-            voteCount: 7,
-            viewerHasVoted: true,
+            upvoteCount: 7,
+            downvoteCount: 2,
+            viewerVote: "up",
             createdAt: "2026-07-22T00:00:00.000Z",
           },
         ]}
@@ -26,7 +40,11 @@ describe("FeatureRequestsBoard", () => {
     expect(markup).toContain("Feature requests");
     expect(markup).toContain("Add release health summaries");
     expect(markup).toContain('aria-pressed="true"');
-    expect(markup).toContain("One vote per request, per network address");
+    expect(markup).toContain("Upvote Add release health summaries. 7 upvotes");
+    expect(markup).toContain("Downvote Add release health summaries. 2 downvotes");
+    expect(markup).toContain(
+      "One upvote or downvote per request, per network address",
+    );
     expect(markup).toContain("New request");
     expect(markup).toContain("turnstile-challenge");
   });
@@ -42,8 +60,9 @@ describe("FeatureRequestsBoard", () => {
             description: "Require browser verification before recording votes.",
             status: "Backlog",
             votingOpen: true,
-            voteCount: 0,
-            viewerHasVoted: false,
+            upvoteCount: 0,
+            downvoteCount: 0,
+            viewerVote: null,
             createdAt: "2026-07-22T00:00:00.000Z",
           },
         ]}
@@ -65,8 +84,9 @@ describe("FeatureRequestsBoard", () => {
             description: "Keep this request safely rendered as plain text.",
             status: "Backlog",
             votingOpen: true,
-            voteCount: 0,
-            viewerHasVoted: false,
+            upvoteCount: 0,
+            downvoteCount: 0,
+            viewerVote: null,
             createdAt: "2026-07-22T00:00:00.000Z",
           },
         ]}
@@ -103,8 +123,34 @@ describe("FeatureRequestsBoard", () => {
       />,
     );
 
-    expect(moderatorMarkup).toContain("Waiting for review");
+    expect(moderatorMarkup).toContain("Request review");
     expect(moderatorMarkup).toContain("Publish");
-    expect(publicMarkup).not.toContain("Waiting for review");
+    expect(moderatorMarkup).toContain("feature-request-new");
+    expect(moderatorMarkup).not.toContain("Start the roadmap conversation");
+    expect(publicMarkup).not.toContain("Request review");
+    expect(publicMarkup).toContain("Start the roadmap conversation");
+  });
+
+  it("keeps rejected moderator requests visible with a struck state", () => {
+    const markup = renderToStaticMarkup(
+      <FeatureRequestsBoard
+        turnstileSiteKey={TURNSTILE_TEST_SITE_KEY}
+        initialRequests={[]}
+        initialPendingRequests={[
+          {
+            id: "55555555-5555-4555-8555-555555555555",
+            title: "Remove the roadmap history",
+            description: "This rejected request should remain inspectable.",
+            moderationStatus: "Rejected",
+            createdAt: "2026-07-22T00:00:00.000Z",
+          },
+        ]}
+        canModerate
+      />,
+    );
+
+    expect(markup).toContain('class="rejected"');
+    expect(markup).toContain("Rejected");
+    expect(markup).not.toContain(">Publish<");
   });
 });

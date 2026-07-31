@@ -18,4 +18,20 @@ describe("feature request database migration", () => {
     expect(migration).not.toContain("submitted_by_hash");
     expect(migration).not.toMatch(/\braw_ip\b|\bip_address\b/i);
   });
+
+  it("stores one directional vote per request and fingerprint", async () => {
+    const migration = await readFile(
+      path.join(
+        process.cwd(),
+        "db/migrations/026_feature_request_vote_directions.sql",
+      ),
+      "utf8",
+    );
+
+    expect(migration).toContain(
+      "ADD COLUMN IF NOT EXISTS direction text NOT NULL DEFAULT 'up'",
+    );
+    expect(migration).toContain("CHECK (direction IN ('up','down'))");
+    expect(migration).not.toMatch(/\braw_ip\b|\bip_address\b/i);
+  });
 });
