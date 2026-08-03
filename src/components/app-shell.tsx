@@ -9,8 +9,10 @@ import { GuidedDemo } from "./guided-demo";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { MobileNavigation, Sidebar } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
+import { UserMenu } from "./user-menu";
 import { WorkspaceBreadcrumb } from "./workspace-breadcrumb";
 import { WorkspaceRouteTransition } from "./workspace-route-transition";
+import { unreadPromptReviewNotificationCount } from "@/lib/prompt-review-notification-repository";
 
 function initials(name: string): string {
   return (
@@ -20,6 +22,31 @@ function initials(name: string): string {
       .slice(0, 2)
       .map((part) => part[0]?.toUpperCase())
       .join("") || "U"
+  );
+}
+
+function AccountMenu({ user }: { user: WorkspaceUser }) {
+  return (
+    <UserMenu
+      label={`Open account menu for ${user.name}`}
+      avatar={initials(user.name)}
+    >
+      <div className="user-menu-identity">
+        <UserRound aria-hidden="true" size={17} />
+        <span>
+          <strong>{user.name}</strong>
+          <small>{user.email}</small>
+        </span>
+      </div>
+      <span className="user-role">{user.role}</span>
+      <ThemeToggle />
+      <form action={signOutCurrentUser}>
+        <button type="submit">
+          <LogOut aria-hidden="true" size={15} />
+          Sign out
+        </button>
+      </form>
+    </UserMenu>
   );
 }
 
@@ -35,6 +62,7 @@ export async function AppShell({
   const demoGuide = await getWorkspaceDemoGuide(user.orgId);
   const durableWorkspace = workspacePersistenceMode(user.orgId) === "postgres";
   const canRenameWorkspace = durableWorkspace && user.role === "Admin";
+  const unreadNotifications = await unreadPromptReviewNotificationCount(user.orgId, user.id);
   if (immersive) {
     return (
       <div className="shell shell-immersive">
@@ -60,30 +88,7 @@ export async function AppShell({
               <Link className="btn" href="/settings#ai">
                 AI settings
               </Link>
-              <details className="user-menu">
-                <summary aria-label={`Open account menu for ${user.name}`}>
-                  <span className="avatar" aria-hidden="true">
-                    {initials(user.name)}
-                  </span>
-                </summary>
-                <div className="user-menu-panel">
-                  <div className="user-menu-identity">
-                    <UserRound aria-hidden="true" size={17} />
-                    <span>
-                      <strong>{user.name}</strong>
-                      <small>{user.email}</small>
-                    </span>
-                  </div>
-                  <span className="user-role">{user.role}</span>
-                  <ThemeToggle />
-                  <form action={signOutCurrentUser}>
-                    <button type="submit">
-                      <LogOut aria-hidden="true" size={15} />
-                      Sign out
-                    </button>
-                  </form>
-                </div>
-              </details>
+              <AccountMenu user={user} />
             </div>
           </header>
           <div
@@ -106,7 +111,7 @@ export async function AppShell({
       <Sidebar
         organizations={user.organizations}
         activeOrganizationId={user.orgId}
-        demoMode={!durableWorkspace}
+        demoMode={!durableWorkspace || Boolean(demoGuide)}
         canRenameWorkspace={canRenameWorkspace}
       />
       <main className="main">
@@ -122,33 +127,11 @@ export async function AppShell({
               <Search size={15} />
               <span>Search feedback</span>
             </Link>
-            <Link className="btn icon-btn" href="/approvals" aria-label="Open approvals">
+            <Link className="btn icon-btn notification-button" href="/notifications" aria-label={`Open notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}>
               <Bell size={15} />
+              {unreadNotifications > 0 && <span className="notification-count">{Math.min(unreadNotifications, 99)}</span>}
             </Link>
-            <details className="user-menu">
-              <summary aria-label={`Open account menu for ${user.name}`}>
-                <span className="avatar" aria-hidden="true">
-                  {initials(user.name)}
-                </span>
-              </summary>
-              <div className="user-menu-panel">
-                <div className="user-menu-identity">
-                  <UserRound aria-hidden="true" size={17} />
-                  <span>
-                    <strong>{user.name}</strong>
-                    <small>{user.email}</small>
-                  </span>
-                </div>
-                <span className="user-role">{user.role}</span>
-                <ThemeToggle />
-                <form action={signOutCurrentUser}>
-                  <button type="submit">
-                    <LogOut aria-hidden="true" size={15} />
-                    Sign out
-                  </button>
-                </form>
-              </div>
-            </details>
+            <AccountMenu user={user} />
           </div>
         </header>
         <div className="content" id="main-content" tabIndex={-1}>

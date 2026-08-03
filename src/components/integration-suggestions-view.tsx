@@ -13,6 +13,7 @@ import type {
   IntegrationActivityItem,
   IntegrationActivitySection,
 } from "@/lib/integration-suggestions";
+import { FitText } from "./fit-text";
 import { IntegrationProviderIcon } from "./integration-provider-icon";
 
 const sections: readonly IntegrationActivitySection[] = [
@@ -175,7 +176,9 @@ export function IntegrationSuggestionsView({
                             className="compact"
                           />
                           <span className="integration-suggestion-row-copy">
-                            <strong>{item.title}</strong>
+                            <FitText as="strong" minFontSize={11} maxLines={2}>
+                              {item.title}
+                            </FitText>
                             <span>{item.description}</span>
                             <small>
                               <SectionStatusIcon section={section} />

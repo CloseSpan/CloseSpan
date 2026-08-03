@@ -3,6 +3,7 @@ import {
   demoWorkspaceGuide,
   parseDemoGuideSteps,
 } from "./demo-guide-repository";
+import { resolveDemoGuideStepIndex } from "./demo-guide-navigation";
 
 describe("guided demo parsing", () => {
   it("ships an internal presentation route for every demo step", () => {
@@ -55,5 +56,31 @@ describe("guided demo parsing", () => {
         talkingPoints: ["PII redaction", "Human review"],
       }),
     ]);
+  });
+
+  it("preserves a later walkthrough step when the guide revisits a route", () => {
+    const repeatedRouteSteps = [
+      ...demoWorkspaceGuide.steps,
+      {
+        ...demoWorkspaceGuide.steps[4]!,
+        id: "lifecycle",
+        title: "Return to the problem lifecycle",
+      },
+    ];
+    const laterIndex = repeatedRouteSteps.length - 1;
+
+    expect(resolveDemoGuideStepIndex(
+      repeatedRouteSteps,
+      repeatedRouteSteps[laterIndex]!.path,
+      laterIndex,
+    )).toBe(laterIndex);
+  });
+
+  it("uses the current route when the saved walkthrough step is stale", () => {
+    expect(resolveDemoGuideStepIndex(
+      demoWorkspaceGuide.steps,
+      "/settings",
+      2,
+    )).toBe(demoWorkspaceGuide.steps.length - 1);
   });
 });

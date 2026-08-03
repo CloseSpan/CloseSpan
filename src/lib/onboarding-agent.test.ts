@@ -5,6 +5,7 @@ import {
   isIntegrationAvailable,
 } from "./integration-catalog";
 import {
+  confirmCompanyProfileTurn,
   onboardingGuidanceForWorkspace,
   runOnboardingTurn,
   type OnboardingWorkspaceConnectionStatus,
@@ -30,6 +31,7 @@ function connectorState(): OnboardingState {
       productName: "Northstar",
       productUrl: null,
       productDescription: "B2B analytics SaaS",
+      companyProfileConfirmed: true,
       feedbackSources: [],
       engineeringTools: [],
     },
@@ -115,7 +117,23 @@ describe("discoverFeedbackSourcesFromProduct", () => {
 });
 
 describe("runOnboardingTurn product-first", () => {
-  it("discovers connectors from a product brief without asking for tools", async () => {
+  it("does not treat a temporary signup workspace name as discovered company data", () => {
+    const state = defaultOnboardingState();
+    state.productProfile.productName = "Sam's workspace";
+
+    const guidance = onboardingGuidanceForWorkspace({
+      state,
+      workspaceStatus: emptyWorkspaceStatus,
+    });
+
+    expect(guidance.recommendedConnectors).toEqual([]);
+    expect(guidance.suggestedActions).toEqual([]);
+    expect(guidance.suggestedReplies).toEqual([
+      "We don't have a website yet",
+    ]);
+  });
+
+  it("requires company confirmation before recommending connectors", async () => {
     const state = defaultOnboardingState();
     const turn = await runOnboardingTurn({
       orgId: "org_test",
@@ -140,21 +158,36 @@ describe("runOnboardingTurn product-first", () => {
       workspaceStatus: emptyWorkspaceStatus,
     });
 
-    expect(turn.phase).toBe("connect");
+    expect(turn.phase).toBe("discover");
     expect(turn.productProfile.productDescription).toBeTruthy();
-    expect(turn.recommendedConnectors.length).toBeGreaterThan(0);
+    expect(turn.productProfile.companyProfileConfirmed).toBe(false);
+    expect(turn.productProfile.companyProfileReadyForConfirmation).toBe(true);
+    expect(turn.recommendedConnectors).toEqual([]);
+
+    const confirmed = await confirmCompanyProfileTurn({
+      orgId: "org_test",
+      state: {
+        ...state,
+        productProfile: turn.productProfile,
+      },
+      workspaceStatus: emptyWorkspaceStatus,
+    });
+
+    expect(confirmed.phase).toBe("connect");
+    expect(confirmed.productProfile.companyProfileConfirmed).toBe(true);
+    expect(confirmed.recommendedConnectors.length).toBeGreaterThan(0);
     expect(
-      turn.recommendedConnectors.some((item) =>
+      confirmed.recommendedConnectors.some((item) =>
         ["int_zendesk", "int_slack", "int_intercom"].includes(item.integrationId),
       ),
     ).toBe(true);
     expect(
-      turn.recommendedConnectors.every((connector) =>
+      confirmed.recommendedConnectors.every((connector) =>
         isIntegrationAvailable(connector.integrationId),
       ),
     ).toBe(true);
     expect(
-      turn.recommendedConnectors.some((connector) =>
+      confirmed.recommendedConnectors.some((connector) =>
         isFeedbackSourceIntegration(connector.integrationId),
       ),
     ).toBe(true);

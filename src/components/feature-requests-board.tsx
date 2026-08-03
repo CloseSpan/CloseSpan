@@ -21,6 +21,7 @@ import {
   useState,
 } from "react";
 import { TurnstileWidget } from "@/components/turnstile-widget";
+import { FitText } from "@/components/fit-text";
 import type {
   FeatureRequestSubmission,
   FeatureRequestStatus,
@@ -61,6 +62,7 @@ const groups: Array<{
 ];
 
 const TYPING_SOUND_PREFERENCE_KEY = "closespan-feature-request-typing-sound";
+const RECENT_SUBMISSIONS_KEY = "closespan-feature-request-submissions";
 
 function responseError(body: unknown, fallback: string): string {
   if (
@@ -90,6 +92,9 @@ export function FeatureRequestsBoard({
   const [pendingRequests, setPendingRequests] = useState(
     initialPendingRequests,
   );
+  const [recentSubmissions, setRecentSubmissions] = useState<
+    FeatureRequestSubmission[]
+  >([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogClosing, setDialogClosing] = useState(false);
   const [pendingVotes, setPendingVotes] = useState<Set<string>>(new Set());
@@ -116,6 +121,37 @@ export function FeatureRequestsBoard({
   const voteTurnstileTokenRef = useRef<string | null>(null);
   const typingAudioContext = useRef<AudioContext | null>(null);
   const lastTypingSoundAt = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    try {
+      const stored = window.sessionStorage.getItem(RECENT_SUBMISSIONS_KEY);
+      if (!stored) return () => void (active = false);
+      const parsed = JSON.parse(stored) as unknown;
+      if (!Array.isArray(parsed)) return () => void (active = false);
+      const validSubmissions = parsed.filter(
+        (item): item is FeatureRequestSubmission =>
+          Boolean(item) &&
+          typeof item === "object" &&
+          "id" in item &&
+          typeof item.id === "string" &&
+          "title" in item &&
+          typeof item.title === "string" &&
+          "description" in item &&
+          typeof item.description === "string" &&
+          "moderationStatus" in item &&
+          item.moderationStatus === "Pending review" &&
+          "createdAt" in item &&
+          typeof item.createdAt === "string",
+      );
+      queueMicrotask(() => {
+        if (active) setRecentSubmissions(validSubmissions);
+      });
+    } catch {
+      window.sessionStorage.removeItem(RECENT_SUBMISSIONS_KEY);
+    }
+    return () => void (active = false);
+  }, []);
 
   useEffect(() => {
     let preferenceFrame = 0;
@@ -501,12 +537,25 @@ export function FeatureRequestsBoard({
         );
       if (canModerate) {
         setPendingRequests((current) => [...current, body.submission!]);
+      } else {
+        setRecentSubmissions((current) => {
+          const next = [
+            body.submission!,
+            ...current.filter((item) => item.id !== body.submission!.id),
+          ];
+          window.sessionStorage.setItem(
+            RECENT_SUBMISSIONS_KEY,
+            JSON.stringify(next),
+          );
+          return next;
+        });
       }
       form.reset();
       closeRequestDialog();
       setNotice({
         kind: "success",
-        message: "Your request was submitted for review.",
+        message:
+          "Your request is saved and awaiting review. You can see it below until it is published.",
       });
     } catch (error) {
       setNotice({
@@ -600,7 +649,9 @@ export function FeatureRequestsBoard({
     }))
     .filter((group) => group.requests.length > 0);
   const hasAnyRequests =
-    requests.length > 0 || (canModerate && pendingRequests.length > 0);
+    requests.length > 0 ||
+    recentSubmissions.length > 0 ||
+    (canModerate && pendingRequests.length > 0);
 
   return (
     <>
@@ -675,7 +726,9 @@ export function FeatureRequestsBoard({
                     key={request.id}
                   >
                     <div>
-                      <h3>{request.title}</h3>
+                      <FitText as="h3" minFontSize={12} maxLines={2}>
+                        {request.title}
+                      </FitText>
                       <p>{request.description}</p>
                     </div>
                     {rejected ? (
@@ -719,6 +772,36 @@ export function FeatureRequestsBoard({
                   </article>
                 );
               })}
+            </div>
+          </section>
+        )}
+
+        {!canModerate && recentSubmissions.length > 0 && (
+          <section
+            className="feature-request-submission-queue"
+            aria-labelledby="feature-request-submission-heading"
+          >
+            <header>
+              <div>
+                <span>Your submissions</span>
+                <h2 id="feature-request-submission-heading">
+                  Awaiting review
+                </h2>
+              </div>
+              <span>{recentSubmissions.length}</span>
+            </header>
+            <div>
+              {recentSubmissions.map((request) => (
+                <article key={request.id}>
+                  <div>
+                    <FitText as="h3" minFontSize={12} maxLines={2}>
+                      {request.title}
+                    </FitText>
+                    <p>{request.description}</p>
+                  </div>
+                  <span>Pending</span>
+                </article>
+              ))}
             </div>
           </section>
         )}
@@ -769,7 +852,9 @@ export function FeatureRequestsBoard({
                     return (
                       <article className="feature-request-row" key={request.id}>
                         <div>
-                          <h3>{request.title}</h3>
+                          <FitText as="h3" minFontSize={13} maxLines={2}>
+                            {request.title}
+                          </FitText>
                           <p>{request.description}</p>
                         </div>
                         <div className="feature-request-votes">

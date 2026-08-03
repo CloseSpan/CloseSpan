@@ -24,6 +24,8 @@ export async function dispatchAgentRun(context: AgentRunExecutionContext): Promi
     return;
   }
   const archiveUrl = await createRepositoryArchiveUrl(context);
+  const generatedTests = context.generatedTests ?? [];
+  const pddCommands = generatedTests.map((test) => test.command);
   const body = JSON.stringify({
     schemaVersion: 1,
     orgId: context.orgId,
@@ -34,8 +36,9 @@ export async function dispatchAgentRun(context: AgentRunExecutionContext): Promi
     promptContent: context.promptContent,
     promptArtifactPath: context.promptArtifactPath,
     repositoryArchiveUrl: archiveUrl,
-    requiredCommands: context.promptSnapshot.ticket.requiredCommands,
+    requiredCommands: [...new Set([...context.promptSnapshot.ticket.requiredCommands, ...pddCommands])],
     permittedPaths: context.promptSnapshot.ticket.permittedPaths,
+    generatedTests,
     acceptanceCriteria: context.promptSnapshot.ticket.acceptanceCriteria.map((criterion) => ({
       id: criterion.id,
       scenarioIds: context.promptSnapshot.ticket.testScenarios

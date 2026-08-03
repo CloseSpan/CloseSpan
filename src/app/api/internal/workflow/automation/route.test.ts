@@ -5,8 +5,16 @@ const { runAll } = vi.hoisted(() => ({
   runAll: vi.fn(async () => []),
 }));
 
+const { runSlack } = vi.hoisted(() => ({
+  runSlack: vi.fn(async () => []),
+}));
+
 vi.mock("@/lib/problem-automation-repository", () => ({
   runProblemAutomationForAllOrganizations: runAll,
+}));
+
+vi.mock("@/lib/slack-intake", () => ({
+  runSlackAutomationForAllOrganizations: runSlack,
 }));
 
 import { GET } from "./route";
@@ -15,6 +23,7 @@ describe("workflow automation cron boundary", () => {
   afterEach(() => {
     delete process.env.CRON_SECRET;
     runAll.mockClear();
+    runSlack.mockClear();
   });
 
   it("rejects a missing cron secret", async () => {
@@ -35,6 +44,7 @@ describe("workflow automation cron boundary", () => {
       }),
     );
     expect(response.status).toBe(200);
+    expect(runSlack).toHaveBeenCalledOnce();
     expect(runAll).toHaveBeenCalledOnce();
   });
 });

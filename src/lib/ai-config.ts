@@ -6,8 +6,8 @@ import {
 import { workspacePersistenceMode } from "./workspace-persistence";
 
 export const aiProviders = [
-  "xai",
   "openai",
+  "xai",
   "anthropic",
   "openrouter",
 ] as const;
@@ -33,7 +33,7 @@ export const aiProviderDefinitions: Record<AiProvider, AiProviderDefinition> = {
     id: "openai",
     label: "OpenAI",
     description: "Direct OpenAI Responses API access.",
-    defaultModel: "gpt-5.6",
+    defaultModel: "gpt-5.6-sol",
     baseUrl: "https://api.openai.com/v1",
   },
   anthropic: {
@@ -104,7 +104,7 @@ function environmentKey(provider: AiProvider): string | null {
 function environmentProvider(): AiProvider {
   if (isAiProvider(process.env.AI_PROVIDER?.trim().toLowerCase()))
     return process.env.AI_PROVIDER.trim().toLowerCase() as AiProvider;
-  return aiProviders.find((provider) => environmentKey(provider)) ?? "xai";
+  return aiProviders.find((provider) => environmentKey(provider)) ?? "openai";
 }
 
 function environmentModel(provider: AiProvider): string {

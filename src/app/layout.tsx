@@ -89,7 +89,7 @@ const themeBootstrap = `(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
     document.querySelectorAll('meta[name="theme-color"]')
-      .forEach((meta) => meta.setAttribute("content", theme === "dark" ? "#151b27" : "#e9eef7"));
+      .forEach((meta) => meta.setAttribute("content", theme === "dark" ? "#151b27" : "#f0f2f9"));
   } catch {
     document.documentElement.dataset.theme = "light";
   }
@@ -99,7 +99,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta id="closespan-theme-color" name="theme-color" content="#e9eef7" />
+        <meta id="closespan-theme-color" name="theme-color" content="#f0f2f9" />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
       <body>

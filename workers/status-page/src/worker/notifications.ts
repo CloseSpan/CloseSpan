@@ -68,7 +68,7 @@ async function deliver(row: OutboxRow, payload: NotificationPayload, env: Env): 
   const subject = `[CloseSpan ${payload.status}] ${payload.title}`;
   if (row.channel === "email") {
     await env.STATUS_EMAIL.send({
-      to: env.STATUS_EMAIL_TO,
+      to: env.STATUS_ALERT_TO,
       from: { email: env.STATUS_EMAIL_FROM, name: "CloseSpan Status" },
       replyTo: "support@closespan.com",
       subject,

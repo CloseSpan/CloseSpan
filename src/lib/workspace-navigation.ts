@@ -90,8 +90,17 @@ export function workspaceRouteDirection(
   if (!previousPathname) return "none";
   const previousIndex = workspaceRouteIndex(previousPathname);
   const nextIndex = workspaceRouteIndex(nextPathname);
-  if (previousIndex === null || nextIndex === null || previousIndex === nextIndex) {
+  if (previousIndex === null || nextIndex === null) {
     return "none";
+  }
+  if (previousIndex === nextIndex) {
+    const previousNormalized = pathnameOnly(previousPathname);
+    const nextNormalized = pathnameOnly(nextPathname);
+    if (previousNormalized === nextNormalized) return "none";
+
+    const previousDepth = previousNormalized.split("/").filter(Boolean).length;
+    const nextDepth = nextNormalized.split("/").filter(Boolean).length;
+    return nextDepth < previousDepth ? "backward" : "forward";
   }
   return nextIndex > previousIndex ? "forward" : "backward";
 }

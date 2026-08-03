@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pretext Text Fit"
+  short_description: "Fit and measure UI text without DOM reflow"
+  default_prompt: "Use $pretext-text-fit to fit responsive UI text without clipping or inaccessible canvas rendering."

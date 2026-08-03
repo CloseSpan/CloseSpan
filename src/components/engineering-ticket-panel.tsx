@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, CheckCircle2, ShieldCheck } from "lucide-react";
 import type {
@@ -46,6 +46,34 @@ export function EngineeringTicketPanel({
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    if (!workflow.verification || !["Queued", "Generating tests"].includes(workflow.verification.status)) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await fetch(`/api/problems/${problemId}/engineering`, {
+          headers: { "x-org-id": orgId },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json() as { workflow: EngineeringWorkflowView };
+        setWorkflow(payload.workflow);
+        if (payload.workflow.verification) {
+          setStoryTest({
+            id: payload.workflow.verification.id,
+            status: payload.workflow.verification.status,
+            message: payload.workflow.verification.summary
+              ?? payload.workflow.verification.failureMessage
+              ?? "PDD is preparing the executable acceptance contract.",
+            promptHash: payload.workflow.verification.promptHash,
+          });
+        }
+      } catch {
+        // A later poll or a manual refresh can recover from a transient read failure.
+      }
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [orgId, problemId, workflow.verification]);
 
   async function testAgainstPrompt() {
     const issue = userStoryInputIssue(userStory);
@@ -100,6 +128,8 @@ export function EngineeringTicketPanel({
   }
 
   const promptStatus = workflow.prompt?.status ?? "No prompt yet";
+  const verification = workflow.verification;
+  const verificationReady = verification?.status === "Ready for approval";
 
   return (
     <section className="card section-gap" id="engineering-ticket">
@@ -107,18 +137,39 @@ export function EngineeringTicketPanel({
         <div>
           <h2>Test the implementation prompt</h2>
           <p className="subtle">
-            Write one user story. CloseSpan will compare it with the current
-            implementation prompt.
+            Write the outcome as a user story. PDD will turn it into executable
+            acceptance tests for the agent&apos;s proposed solution.
           </p>
         </div>
         <span
-          className={`badge ${storyTest?.status === "included" ? "success" : "medium"}`}
+          className={`badge ${verificationReady ? "success" : "medium"}`}
         >
           {promptStatus}
         </span>
       </div>
 
       <div className="card-body detail-stack">
+        {workflow.prompt?.status === "Draft" && (
+          <div className="callout" role="status">
+            <div className="callout-title">Agent-created draft ready for review</div>
+            <p className="subtle">{workflow.prompt.draftReason}</p>
+            {workflow.prompt.reviewerId && (
+              <p className="subtle">
+                Reviewer: {workflow.prompt.reviewerName ?? workflow.prompt.reviewerId}
+                {workflow.prompt.reviewerNotificationRequested ? " · notification created" : ""}
+                {workflow.prompt.reviewerEmailNotificationRequested ? " · email queued" : ""}
+              </p>
+            )}
+            {!workflow.readiness.ready && (
+              <>
+                <p className="subtle">Complete these ticket details before PDD testing:</p>
+                <ul className="evidence-list">
+                  {workflow.readiness.issues.slice(0, 6).map((issue) => <li key={issue}>{issue}</li>)}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
         <label className="field">
           User story
           <textarea
@@ -144,31 +195,56 @@ export function EngineeringTicketPanel({
             onClick={testAgainstPrompt}
           >
             <CheckCircle2 size={14} />
-            {busy ? "Testing…" : "Test against prompt"}
+            {busy ? "Queuing…" : "Generate acceptance test"}
           </button>
         </div>
 
         {storyTest && (
           <div
-            className={`callout ${storyTest.status === "not-included" ? "warning" : ""}`}
+            className={`callout ${storyTest.status === "Failed" ? "warning" : ""}`}
             role="status"
           >
             <div className="callout-title">
-              {storyTest.status === "included" ? (
+              {storyTest.status === "Ready for approval" ? (
                 <CheckCircle2 size={14} />
               ) : (
                 <AlertCircle size={14} />
               )}
-              {storyTest.status === "included"
-                ? "Story included in prompt"
-                : "Story not included"}
+              {storyTest.status === "Ready for approval"
+                ? "Executable contract ready"
+                : storyTest.status}
             </div>
             <p className="subtle">{storyTest.message}</p>
             <p className="subtle">Prompt SHA-256: {storyTest.promptHash}</p>
           </div>
         )}
 
-        {storyTest?.status === "included" &&
+        {verificationReady && verification && (
+          <div className="callout" role="region" aria-label="PDD acceptance contract">
+            <div className="callout-title">
+              <CheckCircle2 size={14} />
+              What the proposed solution must prove
+            </div>
+            <p className="subtle">{verification.summary}</p>
+            <ul className="evidence-list">
+              {verification.generatedTests.map((test) => (
+                <li key={test.path}>
+                  <strong>{test.path}</strong> — run with <code>{test.command}</code>
+                </li>
+              ))}
+            </ul>
+            <details>
+              <summary>Technical details</summary>
+              <p className="subtle">
+                PDD {verification.pddVersion} · model {verification.model ?? "provider default"}
+                {verification.costUsd === null ? ` · budget $${verification.budgetUsd.toFixed(2)}` : ` · cost $${verification.costUsd.toFixed(4)}`}
+              </p>
+              <p className="subtle">Generated files are hash-locked and cannot be edited by the coding agent.</p>
+            </details>
+          </div>
+        )}
+
+        {verificationReady &&
           workflow.approval?.status === "Pending" && (
             <div className="callout" role="region" aria-label="Implementation approval">
               <div className="callout-title">

@@ -2,6 +2,22 @@
 
 An evidence-driven B2B SaaS product that turns fragmented customer feedback into a verified product resolution. This repository implements a complete, launchable seeded MVP with explicit simulation boundaries.
 
+## PDD acceptance verification
+
+Engineering tickets use PDD as a product-manager-facing acceptance gate. A PM
+writes an English user story; the signed PDD runner converts it into a
+repository-native automated test. CloseSpan stores the PDD version, model,
+cost, prompt hash, generated file hash, and approved command. Approval remains
+locked until that contract is ready. During implementation the test is injected
+into the network-disabled Tenki workspace as an immutable file, so the coding
+agent can implement against it but cannot weaken it.
+
+PDD is MIT-licensed and does not add a software-license fee. Local PDD model
+calls and runner compute can still cost money. Configure `PDD_MAX_BUDGET_USD`,
+deploy the pinned runner through `npm run pdd:deploy:tenki`, and use a model
+gateway with a hard spend policy when a strict pre-spend ceiling is required.
+PDD Cloud is not used.
+
 The initial go-to-market wedge is **feedback-to-fix operations for mid-market B2B SaaS**: detect repeated customer-reported defects, quantify account and revenue impact, prepare engineering evidence, govern external actions, verify the release, and close the affected customer conversations. See the [product-market-fit and pricing plan](docs/product-market-fit.md).
 
 ## Run locally
@@ -137,7 +153,7 @@ AI_CREDENTIAL_ENCRYPTION_KEY=<32 random bytes encoded as base64>
 
 The settings UI supports xAI Grok, OpenAI, Anthropic Claude, and OpenRouter. Provider keys are encrypted with AES-256-GCM, bound to both the organization and provider, masked in the UI, and never returned to the browser. Environment-managed provider keys remain available as a deployment fallback.
 
-Never commit `.env.local`. AI runs use strict structured output, no tools, PII preprocessing, prompt-injection boundaries, tenant-scoped model-run records, token counts, and an audit event. Cluster changes remain proposals for human review; a model response never merges clusters directly.
+Never commit `.env.local`. AI runs use strict structured output, no tools, PII preprocessing, prompt-injection boundaries, tenant-scoped model-run records, token counts, and an audit event. Interactive inbox analysis remains a proposal for human review. The Slack intake automation may accept only high-confidence, non-noise classifications and clusters; ambiguous Slack signals remain in the feedback inbox for review.
 
 ### Configure Pipedream Connect
 
@@ -153,6 +169,25 @@ PIPEDREAM_PROJECT_ENVIRONMENT=development
 ```
 
 Use `production` for the production project. CloseSpan opens Pipedream's secure account UI from chat and from the Integrations drawer, polls for verified accounts, supports multiple accounts per provider, and lets workspace admins remove individual accounts. Run `npm run db:migrate` after pulling the connector schema.
+
+#### Slack intake channel
+
+After a workspace administrator connects Slack, CloseSpan automatically adopts
+an existing public `#closespan-feedback` channel or creates it when missing. It
+does not ask the administrator to select a channel and does not inspect the
+rest of the workspace. The minute scheduler reads new channel messages and
+recent thread activity, stores redacted customer signals, and uses the
+workspace's configured AI provider to classify and cluster high-confidence
+signals. Message text, thread replies, reaction counts, and bounded attachment
+metadata are included; file bodies and private channels are not read.
+
+Each Product Problem receives one Slack thread. CloseSpan posts only meaningful
+events: detection, approval required, blocked run, draft PR, release,
+verification required, and verification passed. Slack links return authorized
+users to CloseSpan for the three human decisions: approve one run, change
+scope, and verify a release. The scheduler and application deployment must use
+the same `CRON_SECRET`; Slack credentials remain in Pipedream rather than the
+CloseSpan database.
 
 ### Configure optional public feedback discovery
 

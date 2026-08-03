@@ -544,8 +544,7 @@
 .mobileMenu nav a:focus-visible,
 .section a:focus-visible,
 .notice a:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 3px;
+  outline: 0;
   box-shadow: var(--shadow-focus);
 }
 

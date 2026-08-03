@@ -15,6 +15,13 @@ interface Account {
   lastImportCount: number;
 }
 
+interface SlackIntake {
+  state: "Connected" | "Needs reconnect" | "Disconnected" | "Error";
+  channelName: string;
+  lastPolledAt: string | null;
+  lastError: string | null;
+}
+
 export function PipedreamAccountManager({
   orgId,
   integrationId,
@@ -32,6 +39,8 @@ export function PipedreamAccountManager({
   const [pulling, setPulling] = useState<string | null>(null);
   const [pullNotice, setPullNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [slackIntake, setSlackIntake] = useState<SlackIntake | null>(null);
+  const [slackSetupWarning, setSlackSetupWarning] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -46,9 +55,17 @@ export function PipedreamAccountManager({
         body: JSON.stringify({ integrationId }),
         cache: "no-store",
       });
-      const payload = (await response.json().catch(() => ({}))) as { accounts?: Account[] };
+      const payload = (await response.json().catch(() => ({}))) as {
+        accounts?: Account[];
+        slackIntake?: SlackIntake | null;
+        slackSetupWarning?: string | null;
+      };
       if (!response.ok) throw new Error("status_failed");
       setAccounts(Array.isArray(payload.accounts) ? payload.accounts : []);
+      if (integrationId === "int_slack") {
+        setSlackIntake(payload.slackIntake ?? null);
+        setSlackSetupWarning(payload.slackSetupWarning ?? null);
+      }
       setError(null);
     } catch {
       setError("Account status is temporarily unavailable.");
@@ -155,6 +172,18 @@ export function PipedreamAccountManager({
           ))}
         </div>
       ) : <p className="subtle">No account is connected yet.</p>}
+      {integrationId === "int_slack" && slackIntake?.state === "Connected" && (
+        <p className="integration-import succeeded" role="status">
+          <Check size={13} aria-hidden="true" />
+          Listening automatically in #{slackIntake.channelName}
+          {slackIntake.lastPolledAt
+            ? ` · checked ${new Date(slackIntake.lastPolledAt).toLocaleString()}`
+            : " · monitoring begins with the next scheduled check"}
+        </p>
+      )}
+      {integrationId === "int_slack" && slackSetupWarning && (
+        <p className="integration-import failed" role="status">{slackSetupWarning}</p>
+      )}
       <PipedreamConnectButton
         orgId={orgId}
         integrationId={integrationId}

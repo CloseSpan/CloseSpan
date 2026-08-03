@@ -5,6 +5,7 @@ const repository = vi.hoisted(() => ({
   state: null as unknown,
   setup: null as unknown,
   save: vi.fn(),
+  rename: vi.fn(),
 }));
 
 vi.mock("@/lib/auth-user", () => ({
@@ -32,11 +33,19 @@ vi.mock("@/lib/integration-repository", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/organization-repository", () => ({
+  renameOrganization: repository.rename,
+}));
+
 import { GET, PATCH, POST } from "./route";
 import type { WorkspaceSetupStatus } from "@/lib/integration-repository";
 import type { OnboardingState } from "@/lib/onboarding-repository";
 
-function request(method: "GET" | "POST" | "PATCH", body?: unknown) {
+function request(
+  method: "GET" | "POST" | "PATCH",
+  body?: unknown,
+  role = "Contributor",
+) {
   return new NextRequest("http://localhost/api/onboarding", {
     method,
     headers: {
@@ -49,7 +58,7 @@ function request(method: "GET" | "POST" | "PATCH", body?: unknown) {
       "x-test-user-name": "Sam Operator",
       "x-test-user-email": "sam@example.com",
       "x-test-organization-name": "CloseSpan",
-      "x-test-user-role": "Contributor",
+      "x-test-user-role": role,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -62,6 +71,7 @@ function state(): OnboardingState {
       productName: "Northstar",
       productUrl: null,
       productDescription: "B2B analytics SaaS",
+      companyProfileConfirmed: true,
       feedbackSources: [],
       engineeringTools: [],
     },
@@ -113,6 +123,11 @@ describe("onboarding route workspace reconciliation", () => {
     repository.state = state();
     repository.setup = setup();
     repository.save.mockReset();
+    repository.rename.mockReset();
+    repository.rename.mockResolvedValue({
+      organizationId: "org_alpha",
+      organizationName: "Northstar",
+    });
     repository.save.mockImplementation(async (_orgId, nextState) => {
       repository.state = structuredClone(nextState);
     });
@@ -183,6 +198,40 @@ describe("onboarding route workspace reconciliation", () => {
       expect.objectContaining({
         feedbackConnected: true,
         githubConnected: false,
+      }),
+    );
+  });
+
+  it("confirms company details, renames the first workspace, and opens connector setup", async () => {
+    const candidate = state();
+    candidate.phase = "discover";
+    candidate.productProfile.companyProfileConfirmed = false;
+    candidate.productProfile.companyProfileReadyForConfirmation = true;
+    candidate.productProfile.companyLogo = "data:image/png;base64,iVBORw==";
+    candidate.recommendedConnectors = [];
+    repository.state = candidate;
+    repository.setup = { ...setup(), feedbackConnected: false };
+
+    const response = await PATCH(
+      request("PATCH", { action: "confirm_company" }, "Admin"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.phase).toBe("connect");
+    expect(body.productProfile.companyProfileConfirmed).toBe(true);
+    expect(body.organizationName).toBe("Northstar");
+    expect(body.recommendedConnectors.length).toBeGreaterThan(0);
+    expect(repository.rename).toHaveBeenCalledWith(expect.objectContaining({
+      orgId: "org_alpha",
+      name: "Northstar",
+    }));
+    expect(repository.save).toHaveBeenCalledWith(
+      "org_alpha",
+      expect.objectContaining({
+        productProfile: expect.objectContaining({
+          companyProfileConfirmed: true,
+        }),
       }),
     );
   });

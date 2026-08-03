@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+import type { ImplementationPromptSnapshot } from "./engineering-prompt";
+import {
+  PDD_CLI_VERSION,
+  renderPddPrompt,
+  sha256,
+  validateGeneratedTests,
+} from "./pdd-verification";
+
+const snapshot: ImplementationPromptSnapshot = {
+  schemaVersion: 1,
+  ticket: {
+    userStory: "As an analyst, I want complete exports, so that reports are accurate.",
+    currentBehavior: "Large exports can be empty.",
+    expectedBehavior: "Large exports contain every selected row.",
+    reproductionSteps: ["Export a large dataset."],
+    businessOutcome: "Reports stay accurate.",
+    acceptanceCriteria: [{ id: "AC-1", statement: "Every selected row is exported.", measurable: true }],
+    testScenarios: [{ id: "TEST-1", title: "Large export", given: "many rows", when: "exported", then: "all rows are present", testLevel: "unit", criterionIds: ["AC-1"] }],
+    regressionScenarios: ["Small exports still work."],
+    negativeScenarios: ["A failed write is not marked complete."],
+    qualityExpectations: [], requiredTestLevels: ["unit"],
+    releaseVerification: "Run an export.", nonGoals: [],
+    permittedPaths: ["src/**", "tests/**"], requiredCommands: ["npm test"],
+    repository: "close/span", baseBranch: "main", baseSha: "a".repeat(40),
+  },
+  evidence: {
+    problemId: "problem-1", title: "Empty exports", statement: "", summary: "",
+    severity: "High", productArea: "Exports", team: "Core", assumptions: [],
+    missingInformation: [], suspectedFiles: ["src/export.ts"], redactedEvidence: [],
+  },
+};
+
+describe("PDD acceptance verification", () => {
+  it("renders the PM story and measurable contract for PDD", () => {
+    const prompt = renderPddPrompt(snapshot.ticket.userStory, snapshot);
+    expect(prompt).toContain("## Product-manager user story");
+    expect(prompt).toContain("AC-1: Every selected row is exported.");
+    expect(prompt).toContain("Do not implement the solution.");
+  });
+
+  it("accepts only hash-valid tests in approved paths and commands", () => {
+    const content = "describe('export', () => { it('keeps rows', () => {}) })";
+    const result = validateGeneratedTests({
+      schemaVersion: 1,
+      verificationId: "11111111-1111-4111-8111-111111111111",
+      promptHash: "b".repeat(64),
+      status: "Ready for approval",
+      pddVersion: PDD_CLI_VERSION,
+      model: "openai/test",
+      costUsd: 0.01,
+      summary: "Generated one acceptance test.",
+      generatedTests: [{ path: "tests/export.pdd.test.ts", content, contentHash: sha256(content), command: "npm test" }],
+      failureMessage: null,
+    }, snapshot);
+    expect(result.generatedTests[0]?.contentHash).toBe(sha256(content));
+  });
+
+  it("rejects an unapproved validation command", () => {
+    const content = "test('unsafe', () => {})";
+    expect(() => validateGeneratedTests({
+      schemaVersion: 1,
+      verificationId: "11111111-1111-4111-8111-111111111111",
+      promptHash: "b".repeat(64), status: "Ready for approval",
+      pddVersion: PDD_CLI_VERSION, model: null, costUsd: null,
+      summary: "Generated.",
+      generatedTests: [{ path: "tests/export.pdd.test.ts", content, contentHash: sha256(content), command: "curl example.com" }],
+      failureMessage: null,
+    }, snapshot)).toThrow("was not approved");
+  });
+});

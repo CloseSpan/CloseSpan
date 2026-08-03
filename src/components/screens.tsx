@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -34,7 +35,14 @@ import { calculateImpact } from "@/lib/domain";
 import { launchPricingNote } from "@/lib/plans";
 import type { DemoState } from "@/lib/store";
 import { FeedbackVolumeChart } from "./feedback-volume-chart";
+import { FitText } from "./fit-text";
 import { CustomSelect } from "./custom-select";
+import {
+  CUSTOM_RETENTION_OPTION,
+  CustomRetentionInput,
+  initialRetentionSelection,
+  isValidCustomRetention,
+} from "./custom-retention-input";
 import { IntegrationSyncStatus } from "./integration-sync-status";
 import { PipedreamAccountManager } from "./pipedream-account-manager";
 import { IntegrationProviderIcon } from "./integration-provider-icon";
@@ -304,7 +312,7 @@ export function OverviewScreen({
             View board
           </Link>
         </div>
-        <ProblemTable problems={problems} />
+        <ProblemTable problems={problems} view="problems" />
       </section>
         </>
       )}
@@ -338,6 +346,7 @@ export function FeedbackScreen({
   initialAnalyses?: FeedbackAnalysisView[];
   problemOptions?: Array<{ id: string; title: string; stage: string }>;
 }) {
+  const reduceMotion = useReducedMotion();
   const [query, setQuery] = useState("");
   const [source, setSource] = useState("All");
   const [severity, setSeverity] = useState("All");
@@ -860,15 +869,21 @@ export function FeedbackScreen({
           </div>
         )}
       </section>
+      <AnimatePresence initial={false}>
       {openFeedback && (
-        <div
+        <motion.div
+          key={openFeedback.id}
           className="feedback-drawer-layer"
           role="presentation"
+          initial={reduceMotion ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
           onMouseDown={(event) => {
             if (event.currentTarget === event.target) setOpenFeedbackId(null);
           }}
         >
-          <aside
+          <motion.aside
             ref={feedbackDrawerRef}
             className="feedback-drawer"
             id={`feedback-detail-${openFeedback.id}`}
@@ -876,6 +891,10 @@ export function FeedbackScreen({
             aria-modal="true"
             aria-labelledby="feedback-detail-title"
             tabIndex={-1}
+            initial={reduceMotion ? false : { x: 28, opacity: 0.72 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 28, opacity: 0.72 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
           >
             <header className="feedback-drawer-head">
               <IntegrationProviderIcon
@@ -1109,9 +1128,10 @@ export function FeedbackScreen({
                 </button>
               )}
             </footer>
-          </aside>
-        </div>
+          </motion.aside>
+        </motion.div>
       )}
+      </AnimatePresence>
     </>
   );
 }
@@ -1248,8 +1268,10 @@ function RevenueCell({
 
 function ProblemTable({
   problems,
+  view,
 }: {
   problems: OverviewAnalytics["problems"];
+  view: "problems" | "classification";
 }) {
   if (problems.length === 0) {
     return (
@@ -1259,18 +1281,30 @@ function ProblemTable({
       </div>
     );
   }
+  const isClassification = view === "classification";
   return (
-    <div className="table-wrap">
-      <table>
+    <div className="table-wrap problem-table-wrap">
+      <table className="problem-table">
         <thead>
           <tr>
             <th>Product problem</th>
-            <th>Signals</th>
-            <th>Revenue</th>
-            <th>Severity</th>
-            <th>Trend</th>
-            <th>Confidence</th>
-            <th>Stage</th>
+            {isClassification ? (
+              <>
+                <th>Product area</th>
+                <th>Feedback type</th>
+                <th>Severity</th>
+                <th>Confidence</th>
+              </>
+            ) : (
+              <>
+                <th>Signals</th>
+                <th>Revenue</th>
+                <th>Severity</th>
+                <th>Trend</th>
+                <th>Confidence</th>
+                <th>Stage</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -1278,34 +1312,50 @@ function ProblemTable({
             <tr key={problem.id}>
               <td>
                 <Link className="row-link" href={`/problems/${problem.id}`}>
-                  <strong>{problem.title}</strong>
-                  <small>{problem.productArea}</small>
+                  <FitText as="strong" minFontSize={11} maxLines={2}>
+                    {problem.title}
+                  </FitText>
                 </Link>
               </td>
-              <td>{problem.count}</td>
-              <td>
-                <RevenueCell
-                  problemId={problem.id}
-                  problemTitle={problem.title}
-                  revenue={problem.revenue}
-                  accounts={problem.accounts}
-                />
-              </td>
-              <td>
-                <span className={`badge ${problem.severity.toLowerCase()}`}>
-                  {problem.severity}
-                </span>
-              </td>
-              <td
-                className="trend"
-                title={`${problem.currentSignals} signals this period versus ${problem.previousSignals} previously`}
-              >
-                {formatTrend(problem.trend)}
-              </td>
-              <td>{problem.confidence}%</td>
-              <td>
-                <span className="badge brand">{problem.stage}</span>
-              </td>
+              {isClassification ? (
+                <>
+                  <td><span className="problem-taxonomy">{problem.productArea}</span></td>
+                  <td><span className="problem-taxonomy">{problem.type}</span></td>
+                  <td>
+                    <span className={`badge ${problem.severity.toLowerCase()}`}>
+                      {problem.severity}
+                    </span>
+                  </td>
+                  <td>{problem.confidence}%</td>
+                </>
+              ) : (
+                <>
+                  <td>{problem.count}</td>
+                  <td>
+                    <RevenueCell
+                      problemId={problem.id}
+                      problemTitle={problem.title}
+                      revenue={problem.revenue}
+                      accounts={problem.accounts}
+                    />
+                  </td>
+                  <td>
+                    <span className={`badge ${problem.severity.toLowerCase()}`}>
+                      {problem.severity}
+                    </span>
+                  </td>
+                  <td
+                    className="trend"
+                    title={`${problem.currentSignals} signals this period versus ${problem.previousSignals} previously`}
+                  >
+                    {formatTrend(problem.trend)}
+                  </td>
+                  <td>{problem.confidence}%</td>
+                  <td>
+                    <span className="badge brand">{problem.stage}</span>
+                  </td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>
@@ -1319,6 +1369,10 @@ export function ProblemsScreen({
 }: {
   analytics: OverviewAnalytics;
 }) {
+  const reduceMotion = useReducedMotion();
+  const [tableView, setTableView] = useState<"problems" | "classification">(
+    "problems",
+  );
   const uncertain = analytics.problems.filter(
     (problem) => problem.confidence < 80,
   ).length;
@@ -1362,13 +1416,77 @@ export function ProblemsScreen({
         ))}
       </div>
       <section className="card">
-        <div className="card-head">
-          <h2>All product problems</h2>
-          <span className="badge">
-            {analytics.metrics.activeProblems} active
-          </span>
+        <div className="card-head problem-table-head">
+          <div>
+            <h2>All product problems</h2>
+            <p>
+              {tableView === "problems"
+                ? "Decision metrics for each persistent problem."
+                : "Product area and feedback taxonomy for each problem."}
+            </p>
+          </div>
+          <div
+            className="problem-view-tabs"
+            data-view={tableView}
+            role="tablist"
+            aria-label="Product problem table view"
+          >
+            <span className="problem-view-switch-thumb" aria-hidden="true" />
+            {(["problems", "classification"] as const).map((view) => (
+              <button
+                key={view}
+                id={`problem-view-tab-${view}`}
+                type="button"
+                role="tab"
+                aria-controls={`problem-view-panel-${view}`}
+                aria-selected={tableView === view}
+                className={tableView === view ? "active" : ""}
+                tabIndex={tableView === view ? 0 : -1}
+                onClick={() => setTableView(view)}
+                onKeyDown={(event) => {
+                  const nextView =
+                    event.key === "ArrowRight" ||
+                    event.key === "ArrowDown" ||
+                    event.key === "End"
+                      ? "classification"
+                      : event.key === "ArrowLeft" ||
+                          event.key === "ArrowUp" ||
+                          event.key === "Home"
+                        ? "problems"
+                        : null;
+                  if (!nextView) return;
+                  event.preventDefault();
+                  setTableView(nextView);
+                  window.requestAnimationFrame(() => {
+                    document
+                      .getElementById(`problem-view-tab-${nextView}`)
+                      ?.focus();
+                  });
+                }}
+              >
+                {view === "problems" ? "Problems" : "Classification"}
+              </button>
+            ))}
+          </div>
         </div>
-        <ProblemTable problems={analytics.problems} />
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={tableView}
+            id={`problem-view-panel-${tableView}`}
+            role="tabpanel"
+            aria-labelledby={`problem-view-tab-${tableView}`}
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -6 }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
+            }
+          >
+            <ProblemTable problems={analytics.problems} view={tableView} />
+          </motion.div>
+        </AnimatePresence>
       </section>
         </>
       )}
@@ -1543,7 +1661,7 @@ export function PrioritizationScreen({
         </section>
       ) : view === "ranked" ? (
         <section className="card">
-          <ProblemTable problems={rows} />
+          <ProblemTable problems={rows} view="problems" />
         </section>
       ) : (
         <div className="board">
@@ -2017,15 +2135,13 @@ export function IntegrationsScreen({
   }>;
   initialView: "suggestions" | "connections";
 }) {
+  const reduceMotion = useReducedMotion();
   const focusedCardRef = useRef<HTMLElement | null>(null);
   const suggestionsTabRef = useRef<HTMLButtonElement | null>(null);
   const connectionsTabRef = useRef<HTMLButtonElement | null>(null);
   const integrationDrawerRef = useRef<HTMLElement | null>(null);
   const integrationDrawerCloseRef = useRef<HTMLButtonElement | null>(null);
   const integrationDrawerTriggerRef = useRef<HTMLElement | null>(null);
-  const simulated = integrations.some((item) =>
-    isSimulatedConnectedState(item.state),
-  );
   const [connectedIds, setConnectedIds] = useState(() =>
     integrations
       .filter(
@@ -2518,7 +2634,9 @@ export function IntegrationsScreen({
                             {connected ? "Connected" : available ? experience.filter : "Coming soon"}
                           </span>
                         </div>
-                        <h3 id={headingId}>{item.name}</h3>
+                        <FitText as="h3" id={headingId} minFontSize={13} maxLines={2}>
+                          {item.name}
+                        </FitText>
                         <p className="integration-card-summary">{experience.summary}</p>
                         <div className="integration-card-footer">
                           {observedConnectionState === "Needs reconnect" ? (
@@ -2560,11 +2678,31 @@ export function IntegrationsScreen({
         </div>
       )}
 
+      <AnimatePresence initial={false}>
       {selectedRow && (
-        <div className="integration-drawer-layer" role="presentation" onMouseDown={(event) => {
+        <motion.div
+          key={selectedRow.item.id}
+          className="integration-drawer-layer"
+          role="presentation"
+          initial={reduceMotion ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
+          onMouseDown={(event) => {
           if (event.target === event.currentTarget) setSelectedIntegrationId(null);
         }}>
-          <aside ref={integrationDrawerRef} className="integration-drawer" role="dialog" aria-modal="true" aria-labelledby="integration-drawer-title" tabIndex={-1}>
+          <motion.aside
+            ref={integrationDrawerRef}
+            className="integration-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="integration-drawer-title"
+            tabIndex={-1}
+            initial={reduceMotion ? false : { x: 28, opacity: 0.72 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 28, opacity: 0.72 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
+          >
             <div className="integration-drawer-head">
               <IntegrationProviderIcon integrationId={selectedRow.item.id} size={22} />
               <div><span>{selectedRow.experience.filter}</span><h2 id="integration-drawer-title">{selectedRow.connected ? selectedRow.item.name : `Connect ${selectedRow.item.name}`}</h2></div>
@@ -2632,18 +2770,10 @@ export function IntegrationsScreen({
                 <button type="button" className="btn" onClick={() => void copyWebhookValue("secret", webhookCredentials.signingSecret)}><Copy size={13} />{webhookCopied === "secret" ? "Copied" : "Copy secret"}</button>
               </div>
             )}
-          </aside>
-        </div>
+          </motion.aside>
+        </motion.div>
       )}
-      {simulated && (
-        <div className="callout section-gap">
-          <div className="callout-title">Simulation disclosure</div>
-          <p className="subtle">
-            These demonstration connector records are not live. No OAuth
-            handshake, synchronization, or external request is performed.
-          </p>
-        </div>
-      )}
+      </AnimatePresence>
     </>
   );
 }
@@ -2844,10 +2974,17 @@ export function SettingsScreen({
     settings.priorityWeights,
   );
   const [autonomy, setAutonomy] = useState(settings.autonomyLevel);
-  const [retention, setRetention] = useState(`${settings.retentionDays} days`);
+  const initialRetention = initialRetentionSelection(settings.retentionDays);
+  const [retention, setRetention] = useState(initialRetention.option);
+  const [customRetention, setCustomRetention] = useState(
+    initialRetention.customValue,
+  );
   const [pii, setPii] = useState(settings.piiRedaction);
   const [saved, setSaved] = useState(false);
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
+  const retentionValid =
+    retention !== CUSTOM_RETENTION_OPTION ||
+    isValidCustomRetention(customRetention);
   const labels: Record<string, string> = {
     frequency: "Frequency",
     severity: "Severity",
@@ -2867,7 +3004,7 @@ export function SettingsScreen({
           <button
             type="button"
             className="btn primary"
-            disabled={total !== 100}
+            disabled={total !== 100 || !retentionValid}
             onClick={() => setSaved(true)}
           >
             Save demo policy
@@ -2965,12 +3102,12 @@ export function SettingsScreen({
                 <div className="callout-title">
                   {settings.ai.configured
                     ? "Ready for governed analysis"
-                    : "Add your xAI key"}
+                    : `Add your ${settings.ai.providerLabel} key`}
                 </div>
                 <p className="subtle">
                   {settings.ai.configured
-                    ? "Grok calls use strict structured outputs, no tools, provider storage disabled, PII preprocessing, and review-only cluster recommendations."
-                    : "Set XAI_API_KEY in .env.local, then restart the app. The key is read only by the server and is never returned to the browser."}
+                    ? `${settings.ai.providerLabel} calls use strict structured outputs, no tools, provider storage disabled, PII preprocessing, and review-only cluster recommendations.`
+                    : "Add the provider key in AI settings or configure the matching server environment secret, then restart the app. Credentials are read only by the server and are never returned to the browser."}
                 </p>
               </div>
               {settings.ai.lastRunStatus && (
@@ -3012,7 +3149,7 @@ export function SettingsScreen({
               ))}
             </div>
           </section>
-          <section className="card" id="data">
+          <section className="card settings-data-card" id="data">
             <div className="card-head">
               <h2>Data protection</h2>
             </div>
@@ -3037,10 +3174,20 @@ export function SettingsScreen({
                 <span>Feedback retention</span>
                 <CustomSelect
                   ariaLabel="Feedback retention"
+                  className="settings-retention-select"
+                  inlineMenu
                   value={retention}
-                  options={["90 days", "365 days", "Custom policy"]}
+                  options={["90 days", "365 days", CUSTOM_RETENTION_OPTION]}
                   onValueChange={(value) => {
                     setRetention(value);
+                    setSaved(false);
+                  }}
+                />
+                <CustomRetentionInput
+                  open={retention === CUSTOM_RETENTION_OPTION}
+                  value={customRetention}
+                  onValueChange={(value) => {
+                    setCustomRetention(value);
                     setSaved(false);
                   }}
                 />
@@ -3173,13 +3320,13 @@ export function GenericProblemScreen({
             </div>
           </div>
         </section>
-        <section className="card">
+        <section className="card problem-lifecycle-card">
           <div className="card-head">
             <h2>Lifecycle</h2>
           </div>
-          <div className="card-body">
+          <div className="card-body problem-lifecycle-body">
             <span className="badge brand">{problem.stage}</span>
-            <p className="subtle section-gap-sm">
+            <p className="subtle">
               Trend {formatTrend(problem.trend)} · {problem.count} signals
             </p>
             <Link className="btn full-width" href="/problems">

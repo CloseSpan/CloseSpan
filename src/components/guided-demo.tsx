@@ -12,6 +12,8 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { WorkspaceDemoGuide } from "@/lib/demo-guide-repository";
+import { resolveDemoGuideStepIndex } from "@/lib/demo-guide-navigation";
+import { FitText } from "./fit-text";
 
 export function GuidedDemo({
   guide,
@@ -26,21 +28,21 @@ export function GuidedDemo({
   const [stepIndex, setStepIndex] = useState(0);
   const [resetConfirmation, setResetConfirmation] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{
+    message: string;
+    tone: "success" | "error";
+  } | null>(null);
   const storageKey = useMemo(() => `closespan-demo-guide:${orgId}`, [orgId]);
   const step = guide.steps[stepIndex] ?? guide.steps[0];
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const stored = Number(window.localStorage.getItem(`${storageKey}:step`));
-      const pathIndex = guide.steps.findIndex(
-        (candidate) => candidate.path === pathname,
+      const initialIndex = resolveDemoGuideStepIndex(
+        guide.steps,
+        pathname,
+        stored,
       );
-      const initialIndex = pathIndex >= 0
-        ? pathIndex
-        : Number.isInteger(stored) && stored >= 0 && stored < guide.steps.length
-          ? stored
-          : 0;
       setStepIndex(initialIndex);
       if (!window.localStorage.getItem(`${storageKey}:seen`)) {
         setOpen(true);
@@ -74,10 +76,16 @@ export function GuidedDemo({
       if (!response.ok) throw new Error("reset_failed");
       setResetConfirmation(false);
       selectStep(0);
-      setNotice("Demo workflow restored to its starting point.");
+      setNotice({
+        message: "Demo workflow restored to its starting point.",
+        tone: "success",
+      });
       router.refresh();
     } catch {
-      setNotice("The demo could not be reset right now. Try again shortly.");
+      setNotice({
+        message: "The demo could not be reset right now. Try again shortly.",
+        tone: "error",
+      });
     } finally {
       setResetting(false);
     }
@@ -97,7 +105,9 @@ export function GuidedDemo({
             </span>
             <div>
               <small>Presentation mode</small>
-              <strong>{guide.title}</strong>
+              <FitText as="strong" minFontSize={11} maxLines={1}>
+                {guide.title}
+              </FitText>
             </div>
             <button
               type="button"
@@ -114,7 +124,9 @@ export function GuidedDemo({
             <div className="guided-demo-step-label">
               Step {stepIndex + 1} of {guide.steps.length}
             </div>
-            <h2>{step.title}</h2>
+            <FitText as="h2" minFontSize={16} maxLines={2}>
+              {step.title}
+            </FitText>
             <p>{step.description}</p>
             {step.talkingPoints.length > 0 && (
               <ul>
@@ -135,7 +147,15 @@ export function GuidedDemo({
                 {step.actionLabel} <ChevronRight size={14} />
               </button>
             )}
-            {notice && <p className="guided-demo-notice" role="status">{notice}</p>}
+            {notice && (
+              <p
+                className="guided-demo-notice"
+                data-tone={notice.tone}
+                role={notice.tone === "error" ? "alert" : "status"}
+              >
+                {notice.message}
+              </p>
+            )}
           </div>
           <footer className="guided-demo-footer">
             <button

@@ -55,6 +55,18 @@ describe("Tenki coding executor approval boundary", () => {
     expect(tenkiExecutorAllowsPath(policy, "/etc/passwd")).toBe(false);
   });
 
+  it("prevents the coding agent from editing a PDD-generated acceptance test", () => {
+    expect(tenkiExecutorAllowsPath({
+      ...policy,
+      generatedTests: [{
+        path: "tests/export.pdd.test.ts",
+        content: "test('contract', () => {})",
+        contentHash: "a".repeat(64),
+        command: "npm test",
+      }],
+    }, "tests/export.pdd.test.ts")).toBe(false);
+  });
+
   it("allows bounded repository inspection and rejects command composition or network tools", () => {
     expect(tenkiExecutorAllowsInspectionCommand("git status --short")).toBe(true);
     expect(tenkiExecutorAllowsInspectionCommand("rg -n export src")).toBe(true);

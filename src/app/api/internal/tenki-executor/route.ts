@@ -40,6 +40,8 @@ function sameList(actual: string[], expected: string[]): boolean {
 
 function assertCurrentApproval(job: TenkiAgentJob, context: Awaited<ReturnType<typeof getAgentRunExecutionContext>>): void {
   const ticket = context.promptSnapshot.ticket;
+  const generatedTests = context.generatedTests ?? [];
+  const requiredCommands = [...new Set([...ticket.requiredCommands, ...generatedTests.map((test) => test.command)])];
   if (
     job.orgId !== context.orgId
     || job.runId !== context.runId
@@ -48,8 +50,9 @@ function assertCurrentApproval(job: TenkiAgentJob, context: Awaited<ReturnType<t
     || job.promptHash !== context.promptHash
     || job.promptContent !== context.promptContent
     || job.promptArtifactPath !== context.promptArtifactPath
-    || !sameList(job.requiredCommands, ticket.requiredCommands)
+    || !sameList(job.requiredCommands, requiredCommands)
     || !sameList(job.permittedPaths, ticket.permittedPaths)
+    || JSON.stringify(job.generatedTests ?? []) !== JSON.stringify(generatedTests)
     || !sameList(job.capabilities, context.allowedCapabilities)
     || Date.parse(job.expiresAt) !== Date.parse(context.expiresAt)
   ) throw new Error("Queued executor payload no longer matches the approval-bound run");

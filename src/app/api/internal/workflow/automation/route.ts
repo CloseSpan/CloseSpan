@@ -1,7 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { runProblemAutomationForAllOrganizations } from "@/lib/problem-automation-repository";
+import { runSlackAutomationForAllOrganizations } from "@/lib/slack-intake";
 import { noStoreHeaders } from "@/lib/request-security";
+
+export const maxDuration = 300;
 
 function authorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -26,8 +29,9 @@ export async function GET(request: NextRequest) {
     );
   }
   try {
+    const slack = await runSlackAutomationForAllOrganizations();
     const results = await runProblemAutomationForAllOrganizations();
-    return NextResponse.json({ results }, { headers: noStoreHeaders });
+    return NextResponse.json({ slack, results }, { headers: noStoreHeaders });
   } catch {
     return NextResponse.json(
       { error: "Workflow automation failed" },

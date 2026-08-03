@@ -191,7 +191,7 @@ export async function publishAgentRun(
 }
 
 export async function createRepositoryArchiveUrl(
-  context: AgentRunExecutionContext,
+  context: Pick<AgentRunExecutionContext, "repository" | "installationId" | "baseBranch" | "baseSha">,
   dependencies: GithubPublisherDependencies = {},
 ): Promise<string> {
   const repository = repositoryParts(context.repository);

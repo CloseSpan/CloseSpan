@@ -3,6 +3,7 @@ import { displayFirstName } from "@/lib/auth-user";
 import {
   appendMessage,
   bootstrapOnboardingState,
+  confirmCompanyProfileTurn,
   onboardingGuidanceForWorkspace,
   runOnboardingTurn,
   type OnboardingWorkspaceConnectionStatus,
@@ -15,6 +16,7 @@ import {
   getOnboardingState,
   saveOnboardingState,
 } from "@/lib/onboarding-repository";
+import { renameOrganization } from "@/lib/organization-repository";
 import {
   authorizeMutation,
   authorizeRead,
@@ -50,6 +52,7 @@ function onboardingErrorResponse(error: unknown): Response {
       "Too many requests",
       "A valid idempotency key is required",
       "Message is required",
+      "Company details are incomplete",
       "Select a supported onboarding action.",
     ]);
     if (safeAuthMessages.has(error.message)) return errorResponse(error);
@@ -82,6 +85,7 @@ export async function GET(request: NextRequest) {
         suggestedActions: guidance.suggestedActions,
         suggestedReplies: guidance.suggestedReplies,
         workspaceStatus,
+        organizationName: context.organizationName,
       },
       { headers: noStoreHeaders },
     );
@@ -134,6 +138,7 @@ export async function POST(request: NextRequest) {
         suggestedActions: turn.suggestedActions,
         suggestedReplies: turn.suggestedReplies,
         workspaceStatus: workspaceConnectionStatus(setup),
+        organizationName: context.organizationName,
       },
       { headers: noStoreHeaders },
     );
@@ -148,7 +153,8 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json().catch(() => null)) as {
       action?: unknown;
     } | null;
-    if (body?.action !== "continue") {
+    const action = typeof body?.action === "string" ? body.action : "";
+    if (!["continue", "confirm_company", "restart_company"].includes(action)) {
       return errorResponse(
         new HttpError(400, "Select a supported onboarding action."),
       );
@@ -160,6 +166,85 @@ export async function PATCH(request: NextRequest) {
       getWorkspaceSetupStatus(context.orgId),
     ]);
     const existing = bootstrapOnboardingState(firstName, storedState);
+
+    if (action === "restart_company") {
+      const restarted = {
+        ...existing,
+        phase: "discover" as const,
+        productProfile: {
+          productName: null,
+          productUrl: null,
+          productDescription: null,
+          companyLogo: null,
+          companyProfileConfirmed: false,
+          companyProfileReadyForConfirmation: false,
+          feedbackSources: [],
+          engineeringTools: [],
+        },
+        recommendedConnectors: [],
+        messages: appendMessage(
+          existing.messages,
+          "assistant",
+          "Send the correct company website URL and I'll fetch the details again.",
+        ),
+      };
+      await saveOnboardingState(context.orgId, restarted);
+      return NextResponse.json(
+        {
+          ...restarted,
+          suggestedActions: [],
+          suggestedReplies: [],
+          workspaceStatus: workspaceConnectionStatus(setup),
+          organizationName: context.organizationName,
+        },
+        { headers: noStoreHeaders },
+      );
+    }
+
+    if (action === "confirm_company") {
+      if (context.role !== "Admin") {
+        throw new HttpError(403, "Administrator permission is required");
+      }
+      if (!existing.productProfile.productName?.trim()) {
+        throw new HttpError(400, "Company details are incomplete");
+      }
+      const turn = await confirmCompanyProfileTurn({
+        orgId: context.orgId,
+        state: existing,
+        workspaceStatus: workspaceConnectionStatus(setup),
+      });
+      const confirmed = {
+        phase: turn.phase,
+        productProfile: turn.productProfile,
+        recommendedConnectors: turn.recommendedConnectors,
+        messages: appendMessage(
+          existing.messages,
+          "assistant",
+          turn.assistantMessage,
+        ),
+      };
+      await renameOrganization({
+        orgId: context.orgId,
+        name: turn.productProfile.productName!,
+        actor: {
+          actorId: context.actorId,
+          actorName: context.actorName,
+          traceId: context.traceId,
+        },
+      });
+      await saveOnboardingState(context.orgId, confirmed);
+      return NextResponse.json(
+        {
+          ...confirmed,
+          suggestedActions: turn.suggestedActions,
+          suggestedReplies: turn.suggestedReplies,
+          workspaceStatus: workspaceConnectionStatus(setup),
+          organizationName: turn.productProfile.productName,
+        },
+        { headers: noStoreHeaders },
+      );
+    }
+
     const completed = { ...existing, phase: "complete" as const };
     await saveOnboardingState(context.orgId, completed);
     const workspaceStatus = workspaceConnectionStatus(setup);
@@ -169,6 +254,7 @@ export async function PATCH(request: NextRequest) {
         suggestedActions: [],
         suggestedReplies: [],
         workspaceStatus,
+        organizationName: context.organizationName,
       },
       { headers: noStoreHeaders },
     );

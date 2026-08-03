@@ -8,6 +8,10 @@ import {
   type AiRuntimeConfiguration,
 } from "./ai-config";
 import {
+  discoverCompanyProfile,
+  extractCompanyUrl,
+} from "./company-profile-discovery";
+import {
   connectorCatalogForAgent,
   isFeedbackSourceIntegration,
   isIntegrationAvailable,
@@ -185,11 +189,7 @@ function buildSystemPrompt(catalog: readonly ConnectorCatalogEntry[]): string {
 }
 
 function hasProductBrief(profile: ProductProfile): boolean {
-  return Boolean(
-    profile.productName?.trim() ||
-      profile.productDescription?.trim() ||
-      profile.productUrl?.trim(),
-  );
+  return Boolean(profile.companyProfileConfirmed && profile.productName?.trim());
 }
 
 function connectedIds(
@@ -477,6 +477,124 @@ async function productDiscoveryTurn(input: {
   };
 }
 
+async function companyProfileCandidateTurn(input: {
+  orgId: string;
+  message: string;
+  existingProfile: ProductProfile;
+}): Promise<OnboardingTurnResult> {
+  const companyUrl = extractCompanyUrl(input.message);
+  if (companyUrl) {
+    try {
+      const company = await discoverCompanyProfile(companyUrl);
+      return {
+        assistantMessage: `I found ${company.name}. Review the company details below and confirm them before I create the workspace and recommend feedback integrations.`,
+        phase: "discover",
+        productProfile: {
+          ...input.existingProfile,
+          productName: company.name,
+          productUrl: company.url,
+          productDescription: company.description,
+          companyLogo: company.logo,
+          companyProfileConfirmed: false,
+          companyProfileReadyForConfirmation: true,
+        },
+        recommendedConnectors: [],
+        suggestedActions: [],
+        suggestedReplies: [],
+      };
+    } catch {
+      return {
+        assistantMessage:
+          "I couldn't read that public website safely. Check the company URL and send it again, or tell me the company name and what it does.",
+        phase: "discover",
+        productProfile: input.existingProfile,
+        recommendedConnectors: [],
+        suggestedActions: [],
+        suggestedReplies: ["We don't have a website yet"],
+      };
+    }
+  }
+
+  if (/\b(?:don't|do not|no)\b.{0,24}\b(?:website|site|url)\b/i.test(input.message)) {
+    return {
+      assistantMessage:
+        "No problem. Tell me the company name, what it does, and who it serves. I'll draft the same details for you to confirm.",
+      phase: "discover",
+      productProfile: input.existingProfile,
+      recommendedConnectors: [],
+      suggestedActions: [],
+      suggestedReplies: [],
+    };
+  }
+
+  if (!looksLikeProductBrief(input.message)) {
+    return {
+      assistantMessage:
+        "Send your company website URL. I'll fetch its public name, logo, and description for you to confirm.",
+      phase: "discover",
+      productProfile: input.existingProfile,
+      recommendedConnectors: [],
+      suggestedActions: [],
+      suggestedReplies: ["We don't have a website yet"],
+    };
+  }
+
+  const discovery = await discoverFeedbackSourcesFromProduct({
+    orgId: input.orgId,
+    productBrief: input.message,
+  });
+  return {
+    assistantMessage:
+      "I drafted the company details from your description. Confirm them below, or send the company URL or corrected details.",
+    phase: "discover",
+    productProfile: {
+      ...input.existingProfile,
+      ...discovery.productProfile,
+      companyLogo: input.existingProfile.companyLogo ?? null,
+      companyProfileConfirmed: false,
+      companyProfileReadyForConfirmation: true,
+    },
+    recommendedConnectors: [],
+    suggestedActions: [],
+    suggestedReplies: [],
+  };
+}
+
+export async function confirmCompanyProfileTurn(input: {
+  orgId: string;
+  state: OnboardingState;
+  workspaceStatus: OnboardingWorkspaceConnectionStatus;
+}): Promise<OnboardingTurnResult> {
+  const profile = input.state.productProfile;
+  if (!profile.productName?.trim()) {
+    throw new Error("Company details are incomplete");
+  }
+  const brief = [
+    profile.productName,
+    profile.productDescription,
+    profile.productUrl,
+  ].filter(Boolean).join(". ");
+  const turn = await productDiscoveryTurn({
+    orgId: input.orgId,
+    productBrief: brief,
+    existingProfile: profile,
+    workspaceStatus: input.workspaceStatus,
+  });
+  return {
+    ...turn,
+    assistantMessage: `${profile.productName} is confirmed and the workspace is ready. ${turn.assistantMessage}`,
+    productProfile: {
+      ...turn.productProfile,
+      productName: profile.productName,
+      productUrl: profile.productUrl,
+      productDescription: profile.productDescription,
+      companyLogo: profile.companyLogo ?? null,
+      companyProfileConfirmed: true,
+      companyProfileReadyForConfirmation: true,
+    },
+  };
+}
+
 function buildSuggestedActions(
   connectors: RecommendedConnector[],
   connectedIntegrationIds: ReadonlySet<string>,
@@ -532,6 +650,15 @@ export function onboardingGuidanceForWorkspace(input: {
   suggestedActions: OnboardingAction[];
   suggestedReplies: string[];
 } {
+  if (!input.state.productProfile.companyProfileConfirmed) {
+    return {
+      recommendedConnectors: [],
+      suggestedActions: [],
+      suggestedReplies: input.state.productProfile.companyProfileReadyForConfirmation
+        ? []
+        : initialSuggestedReplies(),
+    };
+  }
   let recommendedConnectors = availableRecommendations(
     input.state.recommendedConnectors,
   ).slice(0, 6);
@@ -594,16 +721,11 @@ export function onboardingGuidanceForWorkspace(input: {
 }
 
 export function initialAssistantMessage(firstName: string): string {
-  return `Hi ${firstName}. I'm your CloseSpan Operations Manager. Start with the product only: its name, what it does, and a URL if you have one. I'll identify where feedback likely lives and connect those sources.`;
+  return `Hi ${firstName}. I'm your CloseSpan Operations Manager. Send me your company website URL first. I'll fetch the public name, logo, and a short description for you to confirm, then set up the workspace and connect your feedback apps here in chat.`;
 }
 
 export function initialSuggestedReplies(): string[] {
-  return [
-    "B2B analytics SaaS for enterprise teams",
-    "Consumer iOS + Android fitness app",
-    "Developer API platform at https://example.com",
-    "Marketplace connecting buyers and sellers",
-  ];
+  return ["We don't have a website yet"];
 }
 
 function looksLikeProductBrief(message: string): boolean {
@@ -626,7 +748,7 @@ export async function runOnboardingTurn(input: {
   if (!trimmed) {
     return {
       assistantMessage:
-        "Tell me about the product itself: what you're shipping and who it's for. I'll handle finding the feedback apps.",
+        "Send your company website URL. I'll fetch its public identity for you to confirm before setup continues.",
       phase: "discover",
       productProfile: input.state.productProfile,
       recommendedConnectors: availableRecommendations(
@@ -635,6 +757,14 @@ export async function runOnboardingTurn(input: {
       suggestedActions: [],
       suggestedReplies: initialSuggestedReplies(),
     };
+  }
+
+  if (!input.state.productProfile.companyProfileConfirmed) {
+    return companyProfileCandidateTurn({
+      orgId: input.orgId,
+      message: trimmed,
+      existingProfile: input.state.productProfile,
+    });
   }
 
   const failure = reportedConnectorFailure(trimmed);

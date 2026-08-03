@@ -1,5 +1,8 @@
 const AUTOMATION_PATH = "/api/internal/workflow/automation";
-const REQUEST_TIMEOUT_MS = 25_000;
+// Keep this just below the Vercel function ceiling. Slack intake can include a
+// provider-backed classification pass, so a short transport timeout can abort
+// a healthy run before the application finishes its bounded work.
+const REQUEST_TIMEOUT_MS = 290_000;
 
 type Fetcher = typeof fetch;
 

@@ -44,6 +44,13 @@ const scenarioSchema = z.object({
   criterionIds: z.array(z.string().regex(/^AC-[1-9][0-9]*$/)).min(1).max(30),
 });
 
+const generatedTestSchema = z.object({
+  path: z.string().min(1).max(500),
+  content: z.string().min(1).max(750_000),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  command: z.string().min(1).max(500),
+}).strict();
+
 export const tenkiAgentJobSchema = z.object({
   schemaVersion: z.literal(1),
   orgId: z.string().min(1).max(200),
@@ -56,6 +63,7 @@ export const tenkiAgentJobSchema = z.object({
   repositoryArchiveUrl: z.string().url().max(4_000),
   requiredCommands: z.array(z.string().min(1).max(500)).min(1).max(30),
   permittedPaths: z.array(z.string().min(1).max(500)).min(1).max(100),
+  generatedTests: z.array(generatedTestSchema).max(20).optional(),
   acceptanceCriteria: z.array(criterionSchema).min(1).max(30),
   testScenarios: z.array(scenarioSchema).min(1).max(50),
   callbackUrl: z.string().url().max(2_000),
@@ -125,7 +133,7 @@ export function resolveExecutorAiConfiguration(
     return {
       apiKey: openAiApiKey,
       baseUrl: optionalHttpsBaseUrl(dependencies.aiBaseUrl ?? process.env.OPENAI_BASE_URL),
-      model: dependencies.aiModel?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-5.1-codex-mini",
+      model: dependencies.aiModel?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-5.6-sol",
       provider: "OpenAI",
     };
   }
@@ -165,14 +173,20 @@ function pathMatches(pattern: string, path: string): boolean {
   return new RegExp(`^${escaped}$`).test(path);
 }
 
-export function tenkiExecutorAllowsPath(job: Pick<TenkiAgentJob, "permittedPaths" | "promptArtifactPath">, path: string): boolean {
+export function tenkiExecutorAllowsPath(job: Pick<TenkiAgentJob, "permittedPaths" | "promptArtifactPath" | "generatedTests">, path: string): boolean {
   return !path.startsWith("/")
     && !path.split("/").includes("..")
     && path !== job.promptArtifactPath
     && path !== ".prompt/README.md"
     && path !== ".prompt/template.prompt.md"
     && !path.startsWith(".github/workflows/")
+    && !(job.generatedTests ?? []).some((test) => test.path === path)
     && job.permittedPaths.some((pattern) => pathMatches(pattern, path));
+}
+
+function tenkiExecutorAllowsPublishedPath(job: TenkiAgentJob, path: string): boolean {
+  return (job.generatedTests ?? []).some((test) => test.path === path)
+    || tenkiExecutorAllowsPath(job, path);
 }
 
 export function tenkiExecutorAllowsInspectionCommand(command: string): boolean {
@@ -330,7 +344,7 @@ async function collectChangedFiles(session: Session, job: TenkiAgentJob, reasons
     const status = fields[index];
     const path = fields[index + 1];
     if (!status || !path || !/^[AMD]$/.test(status)) throw new Error("Unsupported or malformed change in final diff");
-    if (!tenkiExecutorAllowsPath(job, path)) throw new Error(`Final diff includes prohibited path ${path}`);
+    if (!tenkiExecutorAllowsPublishedPath(job, path)) throw new Error(`Final diff includes prohibited path ${path}`);
     let contentBase64: string | null = null;
     if (status !== "D") {
       const target = `${WORKSPACE}/${path}`;
@@ -506,6 +520,17 @@ export async function executeTenkiCodingJob(
     await requireCommand(session, "git", { args: ["add", "-A"], cwd: WORKSPACE, timeoutMs: 30_000 }, "Could not capture the approved base snapshot");
     await requireCommand(session, "git", { args: ["commit", "-q", "-m", "approved-base"], cwd: WORKSPACE, timeoutMs: 30_000 }, "Could not capture the approved base snapshot");
 
+    for (const generatedTest of job.generatedTests ?? []) {
+      if (await sha256(generatedTest.content) !== generatedTest.contentHash)
+        throw new Error(`PDD test content hash does not match for ${generatedTest.path}`);
+      if (!tenkiExecutorAllowsPublishedPath(job, generatedTest.path))
+        throw new Error(`PDD test path is outside the approved ticket: ${generatedTest.path}`);
+      const target = `${WORKSPACE}/${generatedTest.path}`;
+      const directory = target.slice(0, target.lastIndexOf("/"));
+      await requireCommand(session, "mkdir", { args: ["-p", "--", directory], timeoutMs: 10_000 }, "Could not prepare the PDD test directory");
+      await session.writeFile(target, generatedTest.content);
+    }
+
     const shell = new RestrictedShell(session, job);
     const editor = new RestrictedEditor(session, job);
     const agentBudget = Math.min(AGENT_DURATION_MS, deadline - Date.now());
@@ -521,6 +546,11 @@ export async function executeTenkiCodingJob(
     const prompt = decode(await session.readFile(`${WORKSPACE}/${job.promptArtifactPath}`));
     const promptArtifactHash = await sha256(prompt);
     if (promptArtifactHash !== job.promptHash) throw new Error("Approved prompt artifact changed during execution");
+    for (const generatedTest of job.generatedTests ?? []) {
+      const content = decode(await session.readFile(`${WORKSPACE}/${generatedTest.path}`));
+      if (await sha256(content) !== generatedTest.contentHash)
+        throw new Error(`The immutable PDD acceptance test changed during execution: ${generatedTest.path}`);
+    }
 
     const tests: AgentImplementationReport["tests"] = [];
     for (const command of job.requiredCommands) {
@@ -553,7 +583,10 @@ export async function executeTenkiCodingJob(
     });
     const changedFiles = await collectChangedFiles(session, job, new Map(agentReport.files.map((file) => [file.path, file.reason])));
     const changedPaths = new Set(changedFiles.map((file) => file.path));
-    const testFiles = [...new Set(agentReport.testFiles)].filter((path) => changedPaths.has(path));
+    const testFiles = [...new Set([
+      ...agentReport.testFiles,
+      ...(job.generatedTests ?? []).map((test) => test.path),
+    ])].filter((path) => changedPaths.has(path));
     const successful = allTestsPassed
       && criteria.every((criterion) => criterion.status === "Passed" || criterion.status === "Pending manual")
       && (!job.testScenarios.some((scenario) => scenario.testLevel !== "manual") || testFiles.length > 0);

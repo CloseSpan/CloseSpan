@@ -8,6 +8,7 @@ function argument(name) {
 }
 
 const orgId = argument("org-id") || process.env.DEMO_ORG_ID?.trim();
+const requestedOrgName = argument("org-name")?.trim();
 const ownerEmail = (
   argument("owner-email") || process.env.DEMO_OWNER_EMAIL || ""
 ).trim().toLowerCase();
@@ -386,10 +387,14 @@ try {
       [orgId],
     );
     if (!existing.rowCount) throw new Error(`Organization ${orgId} does not exist`);
-    const orgName = existing.rows[0].name;
+    const existingOrgName = existing.rows[0].name;
+    const orgName = requestedOrgName || existingOrgName;
     const organizationCreatedAt = existing.rows[0].created_at;
+    if (!/demo/i.test(existingOrgName)) {
+      throw new Error(`Refusing to replace organization \"${existingOrgName}\" because its current name does not contain Demo`);
+    }
     if (!/demo/i.test(orgName)) {
-      throw new Error(`Refusing to replace organization \"${orgName}\" because its name does not contain Demo`);
+      throw new Error(`Refusing to rename the demo organization to \"${orgName}\" because its new name does not contain Demo`);
     }
 
     await client.query("DELETE FROM organizations WHERE id=$1", [orgId]);
@@ -582,7 +587,7 @@ try {
          id,org_id,prompt_version_id,provider,model,status,idempotency_key,
          input_record_ids,output,external_response_id,input_tokens,output_tokens,
          started_at,completed_at
-       ) VALUES($1,$2,'prompt_feedback_intelligence_v1','xai','grok-4.5','Succeeded',
+       ) VALUES($1,$2,'prompt_feedback_intelligence_v1','openai','gpt-5.6-sol','Succeeded',
          'demo-seed-analysis-v1',$3::jsonb,$4::jsonb,'demo-model-run',4820,2190,$5,$6)`,
       [modelRunId, orgId, JSON.stringify(analyzedFeedback.map((item) => item.id)), JSON.stringify({ analyzed: analyzedFeedback.length, proposedClusters: problems.length, message: "Demo analysis completed with human-reviewed cluster links." }), new Date(now.getTime() - 25 * 60 * 1_000), new Date(now.getTime() - 24 * 60 * 1_000)],
     );

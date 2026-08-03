@@ -49,6 +49,10 @@ export async function POST(request: NextRequest) {
       integrationId: parsed.data.integrationId,
       accountId: binding.accountId,
     });
+    if (parsed.data.integrationId === "int_slack") {
+      const { disconnectSlackIntake } = await import("@/lib/slack-intake");
+      await disconnectSlackIntake(context.orgId, binding.accountId);
+    }
     return NextResponse.json({ disconnected: true }, { headers: noStoreHeaders });
   } catch (error) {
     if (error instanceof HttpError) return errorResponse(error);

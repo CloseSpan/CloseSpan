@@ -13,6 +13,13 @@ const scenarioSchema = z.object({
   criterionIds: z.array(z.string().regex(/^AC-[1-9][0-9]*$/)).min(1).max(30),
 });
 
+const generatedTestSchema = z.object({
+  path: z.string().min(1).max(500),
+  content: z.string().min(1).max(750_000),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  command: z.string().min(1).max(500),
+}).strict();
+
 const jobSchema = z.object({
   schemaVersion: z.literal(1),
   orgId: z.string().min(1).max(200),
@@ -25,6 +32,7 @@ const jobSchema = z.object({
   repositoryArchiveUrl: z.string().url().max(4_000),
   requiredCommands: z.array(z.string().min(1).max(500)).min(1).max(30),
   permittedPaths: z.array(z.string().min(1).max(500)).min(1).max(100),
+  generatedTests: z.array(generatedTestSchema).max(20).optional(),
   acceptanceCriteria: z.array(criterionSchema).min(1).max(30),
   testScenarios: z.array(scenarioSchema).min(1).max(50),
   callbackUrl: z.string().url().max(2_000),

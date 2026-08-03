@@ -7,8 +7,10 @@ import {
   GitBranch,
   LoaderCircle,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import type {
   IntegrationCopilotHistoryItem,
   IntegrationCopilotResult,
@@ -88,6 +90,7 @@ export function IntegrationCopilot({
   const [suggestedReplies, setSuggestedReplies] = useState(initialReplies);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const reduceMotion = useReducedMotion();
   const [connectionProgress, setConnectionProgress] = useState<
     Partial<Record<string, PipedreamConnectState>>
   >({});
@@ -218,17 +221,27 @@ export function IntegrationCopilot({
     ]);
   }
 
-  const visibleMessages = result
-    ? messages.filter((message) => message.role === "user").slice(-4)
-    : messages.slice(-4);
+  const visibleMessages = messages.slice(-4);
   const liveMessage = busy
     ? "Checking the workspace and connector catalog."
     : result?.assistantMessage ?? messages.at(-1)?.content ?? initialMessage.content;
 
   return (
-    <section
+    <motion.section
       className="integration-copilot"
       aria-labelledby="integration-copilot-title"
+      initial={reduceMotion ? false : { opacity: 0, y: 18, scale: 0.992 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : {
+              type: "spring",
+              stiffness: 220,
+              damping: 26,
+              mass: 0.9,
+            }
+      }
     >
       <h2 id="integration-copilot-title" className="sr-only">
         Connect integrations with your Operations Manager
@@ -245,26 +258,76 @@ export function IntegrationCopilot({
       >
         {visibleMessages.map((message) => {
           const formattedTime = messageTime(message.at);
+          const isWelcomeMessage = message.id === initialMessage.id;
           return (
-            <div
+            <motion.div
               key={message.id}
-              className={`integration-copilot-turn ${message.role}`}
+              className={`integration-copilot-turn ${message.role}${isWelcomeMessage ? " welcome" : ""}`}
+              initial={
+                reduceMotion
+                  ? false
+                  : {
+                      opacity: 0,
+                      y: isWelcomeMessage ? 22 : 16,
+                      scale: isWelcomeMessage ? 0.985 : 0.975,
+                    }
+              }
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={
+                reduceMotion
+                  ? { duration: 0 }
+                  : {
+                      type: "spring",
+                      stiffness: 260,
+                      damping: 24,
+                      mass: 0.75,
+                      delay: isWelcomeMessage ? 0.12 : 0,
+                    }
+              }
             >
-              <div className={`integration-copilot-message ${message.role}`}>
-                <p>{message.content}</p>
+              {message.role === "assistant" && (
+                <span className="integration-copilot-sender">
+                  Operations Manager
+                </span>
+              )}
+              <div className="integration-copilot-bubble-row">
+                {message.role === "assistant" && (
+                  <span className="integration-copilot-avatar" aria-hidden="true">
+                    <Sparkles size={15} />
+                  </span>
+                )}
+                <div
+                  className={`integration-copilot-message ${message.role}${isWelcomeMessage ? " welcome" : ""}`}
+                >
+                  <p>{message.content}</p>
+                </div>
               </div>
               {formattedTime && (
                 <time dateTime={message.at ?? undefined}>{formattedTime}</time>
               )}
-            </div>
+            </motion.div>
           );
         })}
         {busy && (
-          <div className="integration-copilot-busy" role="status">
-            <LoaderCircle className="spin" size={16} aria-hidden="true" />
-            Working
+          <div className="integration-copilot-turn assistant busy-turn">
+            <span className="integration-copilot-sender">
+              Operations Manager
+            </span>
+            <div className="integration-copilot-bubble-row">
+              <span className="integration-copilot-avatar" aria-hidden="true">
+                <Sparkles size={15} />
+              </span>
+              <div
+                className="integration-copilot-message assistant integration-copilot-busy"
+                role="status"
+              >
+                <LoaderCircle className="spin" size={16} aria-hidden="true" />
+                <span>Working</span>
+              </div>
+            </div>
           </div>
         )}
+        <div ref={threadEndRef} className="integration-copilot-thread-end" />
       </div>
 
       {result && result.connectors.length > 0 && (
@@ -393,27 +456,66 @@ export function IntegrationCopilot({
         </div>
       )}
 
-      <div ref={threadEndRef} />
       <div className="integration-copilot-controls">
-        {(!result || result.connectors.length === 0) && (
-          <div
+        {!busy && (!result || result.connectors.length === 0) && (
+          <motion.div
             className="integration-copilot-replies"
             aria-label="Suggested questions"
+            initial={reduceMotion ? false : "hidden"}
+            animate="visible"
+            variants={{
+              hidden: {},
+              visible: {
+                transition: {
+                  staggerChildren: reduceMotion ? 0 : 0.09,
+                  delayChildren: reduceMotion ? 0 : 0.62,
+                },
+              },
+            }}
           >
             {suggestedReplies.slice(0, 4).map((reply) => (
-              <button
+              <motion.button
                 key={reply}
                 type="button"
                 disabled={busy}
                 onClick={() => void send(reply)}
+                variants={{
+                  hidden: { opacity: 0, y: 14, scale: 0.82 },
+                  visible: { opacity: 1, y: 0, scale: 1 },
+                }}
+                transition={
+                  reduceMotion
+                    ? { duration: 0 }
+                    : {
+                        type: "spring",
+                        stiffness: 360,
+                        damping: 20,
+                        mass: 0.68,
+                      }
+                }
+                whileHover={reduceMotion ? undefined : { y: -2, scale: 1.025 }}
+                whileTap={reduceMotion ? undefined : { scale: 0.96 }}
               >
                 {reply}
-              </button>
+              </motion.button>
             ))}
-          </div>
+          </motion.div>
         )}
-        <form
+        <motion.form
           className="integration-copilot-composer"
+          initial={reduceMotion ? false : { opacity: 0, y: 14, scale: 0.99 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : {
+                  type: "spring",
+                  stiffness: 250,
+                  damping: 25,
+                  mass: 0.8,
+                  delay: 1.02,
+                }
+          }
           onSubmit={(event) => {
             event.preventDefault();
             void send(draft);
@@ -432,12 +534,13 @@ export function IntegrationCopilot({
           <button
             type="submit"
             disabled={busy || draft.trim().length === 0}
+            data-ready={!busy && draft.trim().length > 0 ? "true" : "false"}
             aria-label="Send integration question"
           >
             <ArrowUp size={18} />
           </button>
-        </form>
+        </motion.form>
       </div>
-    </section>
+    </motion.section>
   );
 }

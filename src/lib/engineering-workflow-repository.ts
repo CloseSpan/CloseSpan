@@ -18,19 +18,28 @@ import {
 } from "./engineering-prompt";
 import { primaryProblem, recommendation } from "./seed";
 import { workspacePersistenceMode } from "./workspace-persistence";
+import { createMemoryPromptReviewNotification } from "./prompt-review-notification-repository";
 import {
   validateAgentImplementationReport,
   type AgentImplementationReport,
 } from "./agent-run-verification";
 import {
-  evaluateUserStoryPromptMatch,
   userStoryInputIssue,
 } from "./user-story-prompt-test";
+import {
+  PDD_CLI_VERSION,
+  pddRunnerResultSchema,
+  renderPddPrompt,
+  sha256,
+  validateGeneratedTests,
+  type PddGeneratedTest,
+  type PddVerificationView,
+} from "./pdd-verification";
 
 export interface ImplementationPromptView {
   id: string;
   revision: number;
-  status: "Ready" | "Awaiting approval" | "Approved" | "Superseded";
+  status: "Draft" | "Ready" | "Awaiting approval" | "Approved" | "Superseded";
   artifactPath: string;
   content: string;
   contentHash: string;
@@ -38,6 +47,20 @@ export interface ImplementationPromptView {
   baseBranch: string;
   baseSha: string;
   createdAt: string;
+  draftReason?: string | null;
+  reviewerId?: string | null;
+  reviewerName?: string | null;
+  reviewerNotificationRequested?: boolean;
+  reviewerEmailNotificationRequested?: boolean;
+}
+
+export interface AutomatedPromptDraftInput {
+  specification: unknown;
+  evidence: PromptEvidence;
+  reason: string;
+  reviewerId: string | null;
+  notifyInApp: boolean;
+  notifyByEmail: boolean;
 }
 
 export interface EngineeringApprovalView {
@@ -89,6 +112,7 @@ export interface EngineeringWorkflowView {
   specification: EngineeringTicketSpecification | null;
   readiness: { ready: boolean; issues: string[] };
   prompt: ImplementationPromptView | null;
+  verification: PddVerificationView | null;
   approval: EngineeringApprovalView | null;
   run: AgentRunView | null;
   releaseEvidence: ReleaseVerificationEvidence | null;
@@ -105,9 +129,29 @@ export interface ReleaseVerificationEvidence {
 }
 
 export interface UserStoryPromptTestView {
-  status: "included" | "not-included";
+  id: string;
+  status: PddVerificationView["status"];
   message: string;
   promptHash: string;
+}
+
+export interface PddVerificationExecutionContext {
+  orgId: string;
+  problemId: string;
+  verificationId: string;
+  repository: string;
+  installationId: string;
+  baseBranch: string;
+  baseSha: string;
+  promptId: string;
+  promptHash: string;
+  userStory: string;
+  pddPrompt: string;
+  pddVersion: string;
+  budgetUsd: number;
+  permittedPaths: string[];
+  requiredCommands: string[];
+  suspectedFiles: string[];
 }
 
 export interface AgentRunExecutionContext {
@@ -127,6 +171,7 @@ export interface AgentRunExecutionContext {
   promptSnapshot: ImplementationPromptSnapshot;
   expiresAt: string;
   allowedCapabilities: string[];
+  generatedTests?: PddGeneratedTest[];
 }
 
 export class EngineeringWorkflowError extends Error {
@@ -281,11 +326,21 @@ async function readPrompt(
     id: string; revision: number; status: ImplementationPromptView["status"];
     artifact_path: string; rendered_content: string; content_hash: string;
     repository: string; base_branch: string; base_sha: string; created_at: Date;
-  }>(`SELECT id,revision,status,artifact_path,rendered_content,content_hash,
-             repository,base_branch,base_sha,created_at
-        FROM implementation_prompts
-       WHERE org_id=$1 AND problem_id=$2
-       ORDER BY revision DESC LIMIT 1`, [orgId, problemId]);
+    draft_reason: string | null; reviewer_id: string | null;
+    reviewer_name: string | null;
+    reviewer_notification_requested: boolean;
+    reviewer_email_notification_requested: boolean;
+  }>(`SELECT prompt.id,prompt.revision,prompt.status,prompt.artifact_path,
+             prompt.rendered_content,prompt.content_hash,prompt.repository,
+             prompt.base_branch,prompt.base_sha,prompt.created_at,prompt.draft_reason,
+             prompt.reviewer_id,reviewer.display_name AS reviewer_name,
+             prompt.reviewer_notification_requested,
+             prompt.reviewer_email_notification_requested
+        FROM implementation_prompts prompt
+        LEFT JOIN workspace_members reviewer
+          ON reviewer.org_id=prompt.org_id AND reviewer.id=prompt.reviewer_id
+       WHERE prompt.org_id=$1 AND prompt.problem_id=$2
+       ORDER BY prompt.revision DESC LIMIT 1`, [orgId, problemId]);
   const row = result.rows[0];
   return row ? {
     id: row.id, revision: row.revision, status: row.status,
@@ -293,6 +348,38 @@ async function readPrompt(
     contentHash: row.content_hash, repository: row.repository,
     baseBranch: row.base_branch, baseSha: row.base_sha,
     createdAt: row.created_at.toISOString(),
+    draftReason: row.draft_reason,
+    reviewerId: row.reviewer_id,
+    reviewerName: row.reviewer_name,
+    reviewerNotificationRequested: row.reviewer_notification_requested,
+    reviewerEmailNotificationRequested: row.reviewer_email_notification_requested,
+  } : null;
+}
+
+async function readVerification(
+  database: Pool | PoolClient,
+  orgId: string,
+  problemId: string,
+): Promise<PddVerificationView | null> {
+  const result = await database.query<{
+    id: string; status: PddVerificationView["status"]; user_story: string;
+    prompt_hash: string; pdd_version: string; model: string | null;
+    budget_usd: string; cost_usd: string | null; summary: string | null;
+    generated_tests: PddGeneratedTest[]; failure_message: string | null;
+    created_at: Date; completed_at: Date | null;
+  }>(`SELECT id,status,user_story,prompt_hash,pdd_version,model,budget_usd,cost_usd,
+             summary,generated_tests,failure_message,created_at,completed_at
+        FROM pdd_prompt_verifications
+       WHERE org_id=$1 AND problem_id=$2
+       ORDER BY created_at DESC,id DESC LIMIT 1`, [orgId, problemId]);
+  const row = result.rows[0];
+  return row ? {
+    id: row.id, status: row.status, userStory: row.user_story,
+    promptHash: row.prompt_hash, pddVersion: row.pdd_version, model: row.model,
+    budgetUsd: Number(row.budget_usd), costUsd: row.cost_usd === null ? null : Number(row.cost_usd),
+    summary: row.summary, generatedTests: row.generated_tests,
+    failureMessage: row.failure_message, createdAt: row.created_at.toISOString(),
+    completedAt: row.completed_at?.toISOString() ?? null,
   } : null;
 }
 
@@ -372,14 +459,15 @@ export async function getAgentRunById(orgId: string, runId: string): Promise<{ p
 
 async function postgresWorkflow(orgId: string, problemId: string): Promise<EngineeringWorkflowView> {
   const pool = databasePool();
-  const [specification, prompt, approval, run, releaseEvidence] = await Promise.all([
+  const [specification, prompt, verification, approval, run, releaseEvidence] = await Promise.all([
     readSpecification(pool, orgId, problemId),
     readPrompt(pool, orgId, problemId),
+    readVerification(pool, orgId, problemId),
     readApproval(pool, orgId, problemId),
     readRun(pool, orgId, problemId),
     readReleaseEvidence(pool, orgId, problemId),
   ]);
-  return { problemId, specification, readiness: ticketReadiness(specification), prompt, approval, run, releaseEvidence };
+  return { problemId, specification, readiness: ticketReadiness(specification), prompt, verification, approval, run, releaseEvidence };
 }
 
 async function readReleaseEvidence(database: Pool | PoolClient, orgId: string, problemId: string): Promise<ReleaseVerificationEvidence | null> {
@@ -400,6 +488,7 @@ async function readReleaseEvidence(database: Pool | PoolClient, orgId: string, p
 interface MemoryWorkflow {
   specification: EngineeringTicketSpecification;
   prompt: ImplementationPromptView | null;
+  verification: PddVerificationView | null;
   approval: EngineeringApprovalView | null;
   run: AgentRunView | null;
   releaseEvidence: ReleaseVerificationEvidence | null;
@@ -420,7 +509,7 @@ function memoryWorkflow(orgId: string, problemId: string): MemoryWorkflow {
   const key = memoryKey(orgId, problemId);
   let current = memoryWorkflows.get(key);
   if (!current) {
-    current = { specification: defaultSpecification(problemId), prompt: null, approval: null, run: null, releaseEvidence: null };
+    current = { specification: defaultSpecification(problemId), prompt: null, verification: null, approval: null, run: null, releaseEvidence: null };
     memoryWorkflows.set(key, current);
   }
   return current;
@@ -458,6 +547,7 @@ export async function saveEngineeringSpecification(
     const current = memoryWorkflow(orgId, problemId);
     current.specification = { ...draft, id: current.specification.id ?? randomUUID(), revision: (current.specification.revision ?? 0) + 1, implementationState: "Draft specification" };
     if (current.prompt) current.prompt.status = "Superseded";
+    if (current.verification) current.verification.status = "Superseded";
     if (current.approval?.status === "Pending") current.approval.status = "Superseded";
     return getEngineeringWorkflow(orgId, problemId);
   }
@@ -510,10 +600,166 @@ export async function saveEngineeringSpecification(
       );
     }
     await client.query("UPDATE implementation_prompts SET status='Superseded' WHERE org_id=$1 AND problem_id=$2 AND status <> 'Superseded'", [orgId, problemId]);
+    await client.query("UPDATE pdd_prompt_verifications SET status='Superseded',completed_at=coalesce(completed_at,now()) WHERE org_id=$1 AND problem_id=$2 AND status NOT IN ('Failed','Superseded')", [orgId, problemId]);
     await client.query("UPDATE approval_requests SET status='Superseded',updated_at=now() WHERE org_id=$1 AND problem_id=$2 AND action_type='agent_run' AND status='Pending'", [orgId, problemId]);
     await audit(client, orgId, actor, `Saved engineering ticket specification revision ${revision}; prior pending prompt approvals were superseded`, "EngineeringTicket", problemId);
   });
   return postgresWorkflow(orgId, problemId);
+}
+
+export async function createAutomatedPromptDraft(
+  orgId: string,
+  problemId: string,
+  input: AutomatedPromptDraftInput,
+  actor: ActorContext,
+): Promise<{ created: boolean; promptId: string | null }> {
+  const draft = sanitizeEngineeringTicketDraft(input.specification);
+  const specificationId = randomUUID();
+  const promptId = randomUUID();
+  const artifactPath = promptArtifactPath(problemId, input.evidence.title);
+  const ticket: EngineeringTicketSpecification = {
+    ...draft,
+    id: specificationId,
+    revision: 1,
+    implementationState: "Draft specification",
+  };
+  const snapshot: ImplementationPromptSnapshot = {
+    schemaVersion: 1,
+    ticket,
+    evidence: input.evidence,
+  };
+  const content = renderImplementationPrompt(snapshot, {
+    promptRevision: 1,
+    artifactPath,
+  });
+  const contentHash = hashImplementationPrompt(content);
+
+  if (workspacePersistenceMode(orgId) === "memory") {
+    const current = memoryWorkflow(orgId, problemId);
+    if (current.prompt || current.specification.revision) return { created: false, promptId: null };
+    current.specification = ticket;
+    current.prompt = {
+      id: promptId,
+      revision: 1,
+      status: "Draft",
+      artifactPath,
+      content,
+      contentHash,
+      repository: ticket.repository,
+      baseBranch: ticket.baseBranch,
+      baseSha: ticket.baseSha,
+      createdAt: new Date().toISOString(),
+      draftReason: input.reason,
+      reviewerId: input.reviewerId,
+      reviewerNotificationRequested: input.notifyInApp && Boolean(input.reviewerId),
+      reviewerEmailNotificationRequested: input.notifyByEmail && Boolean(input.reviewerId),
+    };
+    if (input.notifyInApp && input.reviewerId) {
+      createMemoryPromptReviewNotification({
+        orgId,
+        reviewerId: input.reviewerId,
+        notification: {
+          id: randomUUID(),
+          problemId,
+          promptId,
+          title: input.evidence.title,
+          artifactPath,
+          status: "Unread",
+          createdAt: new Date().toISOString(),
+          readAt: null,
+        },
+      });
+    }
+    return { created: true, promptId };
+  }
+
+  return transaction(async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`closespan-prompt-draft:${orgId}:${problemId}`]);
+    await assertProblem(client, orgId, problemId);
+    const existing = await client.query(
+      `SELECT 1 FROM engineering_ticket_specifications WHERE org_id=$1 AND problem_id=$2
+       UNION ALL
+       SELECT 1 FROM implementation_prompts WHERE org_id=$1 AND problem_id=$2
+       LIMIT 1`,
+      [orgId, problemId],
+    );
+    if (existing.rowCount) return { created: false, promptId: null };
+    await client.query(
+      `INSERT INTO engineering_ticket_specifications(
+         id,org_id,problem_id,revision,implementation_state,user_story,current_behavior,
+         expected_behavior,reproduction_steps,business_outcome,regression_scenarios,
+         negative_scenarios,quality_expectations,required_test_levels,release_verification,
+         non_goals,permitted_paths,required_commands,repository,base_branch,base_sha,
+         created_by,updated_by
+       ) VALUES($1,$2,$3,1,'Draft specification',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$20)`,
+      [
+        specificationId, orgId, problemId, draft.userStory, draft.currentBehavior,
+        draft.expectedBehavior, JSON.stringify(draft.reproductionSteps), draft.businessOutcome,
+        JSON.stringify(draft.regressionScenarios), JSON.stringify(draft.negativeScenarios),
+        JSON.stringify(draft.qualityExpectations), JSON.stringify(draft.requiredTestLevels),
+        draft.releaseVerification, JSON.stringify(draft.nonGoals), JSON.stringify(draft.permittedPaths),
+        JSON.stringify(draft.requiredCommands), draft.repository, draft.baseBranch, draft.baseSha,
+        actor.actorId,
+      ],
+    );
+    for (const [ordinal, criterion] of draft.acceptanceCriteria.entries()) {
+      await client.query(
+        `INSERT INTO engineering_acceptance_criteria(org_id,specification_id,criterion_id,ordinal,statement,measurable)
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [orgId, specificationId, criterion.id, ordinal, criterion.statement, criterion.measurable],
+      );
+    }
+    for (const [ordinal, scenario] of draft.testScenarios.entries()) {
+      await client.query(
+        `INSERT INTO engineering_test_scenarios(org_id,specification_id,scenario_id,ordinal,title,given_text,when_text,then_text,test_level,criterion_ids)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [orgId, specificationId, scenario.id, ordinal, scenario.title, scenario.given, scenario.when, scenario.then, scenario.testLevel, JSON.stringify(scenario.criterionIds)],
+      );
+    }
+    await client.query(
+      `INSERT INTO implementation_prompts(
+         id,org_id,problem_id,specification_id,specification_revision,revision,status,
+         repository,base_branch,base_sha,artifact_path,structured_snapshot,rendered_content,
+         content_hash,created_by,draft_reason,reviewer_id,reviewer_notification_requested,
+         reviewer_email_notification_requested
+       ) VALUES($1,$2,$3,$4,1,1,'Draft',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [
+        promptId, orgId, problemId, specificationId, draft.repository, draft.baseBranch,
+        draft.baseSha, artifactPath, JSON.stringify(snapshot), content, contentHash,
+        actor.actorId, input.reason, input.reviewerId,
+        input.notifyInApp && Boolean(input.reviewerId),
+        input.notifyByEmail && Boolean(input.reviewerId),
+      ],
+    );
+    if (input.notifyInApp && input.reviewerId) {
+      await client.query(
+        `INSERT INTO prompt_review_notifications(id,org_id,prompt_id,problem_id,reviewer_id,status)
+         VALUES($1,$2,$3,$4,$5,'Unread') ON CONFLICT DO NOTHING`,
+        [randomUUID(), orgId, promptId, problemId, input.reviewerId],
+      );
+    }
+    if (input.notifyByEmail && input.reviewerId) {
+      await client.query(
+        `INSERT INTO prompt_review_email_outbox(
+           id,org_id,prompt_id,problem_id,reviewer_id,to_email,status
+         ) SELECT $1,$2,$3,$4,member.id,member.email,'Pending'
+             FROM workspace_members member
+            WHERE member.org_id=$2 AND member.id=$5
+         ON CONFLICT DO NOTHING`,
+        [randomUUID(), orgId, promptId, problemId, input.reviewerId],
+      );
+    }
+    await audit(
+      client,
+      orgId,
+      actor,
+      `Created automatic implementation prompt draft at ${artifactPath}; human review is required before PDD or Tenki execution`,
+      "ImplementationPrompt",
+      problemId,
+    );
+    await client.query("UPDATE workspaces SET version=version+1,updated_at=now() WHERE org_id=$1", [orgId]);
+    return { created: true, promptId };
+  });
 }
 
 async function promptEvidence(client: PoolClient, orgId: string, problemId: string): Promise<PromptEvidence> {
@@ -631,6 +877,15 @@ export async function testUserStoryAgainstPrompt(
     }
     workflow = await generateImplementationPrompt(orgId, problemId, actor);
   }
+  if (workflow.prompt?.status === "Draft") {
+    if (!workflow.readiness.ready) {
+      throw new EngineeringWorkflowError(
+        "The automatic prompt draft needs product-manager review and complete repository context before PDD can test it.",
+        409,
+      );
+    }
+    workflow = await generateImplementationPrompt(orgId, problemId, actor);
+  }
   if (!workflow.prompt) {
     throw new EngineeringWorkflowError(
       "Ticket context is incomplete. CloseSpan could not build a testable prompt yet.",
@@ -638,24 +893,203 @@ export async function testUserStoryAgainstPrompt(
     );
   }
   const prompt = workflow.prompt;
-  const result = evaluateUserStoryPromptMatch(story, prompt.content);
-  if (result.matches && prompt.status === "Ready") {
-    workflow = await requestImplementationApproval(
-      orgId,
-      prompt.id,
-      actor,
-    );
+  if (workflow.verification?.promptHash === prompt.contentHash && workflow.verification.userStory === story) {
+    return {
+      workflow,
+      storyTest: {
+        id: workflow.verification.id,
+        status: workflow.verification.status,
+        message: verificationMessage(workflow.verification.status),
+        promptHash: prompt.contentHash,
+      },
+    };
+  }
+  if (prompt.status !== "Ready") {
+    throw new EngineeringWorkflowError("This prompt already has a pending or consumed approval. Finish or reject it before testing another story.", 409);
+  }
+  const verificationId = randomUUID();
+  const budgetUsd = pddBudgetUsd();
+  if (workspacePersistenceMode(orgId) === "memory") {
+    const current = memoryWorkflow(orgId, problemId);
+    if (current.verification && !["Failed", "Superseded"].includes(current.verification.status))
+      current.verification.status = "Superseded";
+    const demoTestContent = `// Seeded demo acceptance contract\n// ${story}\n`;
+    current.verification = {
+      id: verificationId, status: "Ready for approval", userStory: story,
+      promptHash: prompt.contentHash, pddVersion: PDD_CLI_VERSION,
+      model: "demo-fixture", budgetUsd, costUsd: 0,
+      summary: "Seeded demo acceptance contract ready.",
+      generatedTests: [{ path: "tests/pdd.acceptance.test.ts", content: demoTestContent, contentHash: sha256(demoTestContent), command: "npm test" }],
+      failureMessage: null, createdAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+    };
+    workflow = await requestImplementationApproval(orgId, prompt.id, actor);
+  } else {
+    await transaction(async (client) => {
+      await client.query(
+        `UPDATE pdd_prompt_verifications SET status='Superseded',completed_at=coalesce(completed_at,now())
+          WHERE org_id=$1 AND problem_id=$2 AND status IN ('Queued','Generating tests','Ready for approval')`,
+        [orgId, problemId],
+      );
+      await client.query(
+        `INSERT INTO pdd_prompt_verifications(
+          id,org_id,problem_id,prompt_revision_id,prompt_hash,user_story,story_hash,status,
+          pdd_version,budget_usd,created_by
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,'Queued',$8,$9,$10)`,
+        [verificationId, orgId, problemId, prompt.id, prompt.contentHash, story,
+          sha256(story.replace(/\s+/g, " ").trim()), PDD_CLI_VERSION, budgetUsd, actor.actorId],
+      );
+      await audit(client, orgId, actor, `Queued PDD ${PDD_CLI_VERSION} acceptance-test generation for prompt ${prompt.contentHash}`, "PddPromptVerification", verificationId);
+    });
+    workflow = await postgresWorkflow(orgId, problemId);
   }
   return {
     workflow,
     storyTest: {
-      status: result.matches ? "included" : "not-included",
-      message: result.matches
-        ? "This exact user story is included in the implementation prompt."
-        : "This user story is not included in the current implementation prompt.",
+      id: verificationId,
+      status: workflow.verification?.status ?? "Queued",
+      message: verificationMessage(workflow.verification?.status ?? "Queued"),
       promptHash: prompt.contentHash,
     },
   };
+}
+
+function pddBudgetUsd(): number {
+  const value = Number(process.env.PDD_MAX_BUDGET_USD ?? "0.25");
+  if (!Number.isFinite(value) || value <= 0 || value > 100)
+    throw new Error("PDD_MAX_BUDGET_USD must be between 0 and 100");
+  return Math.round(value * 10_000) / 10_000;
+}
+
+function verificationMessage(status: PddVerificationView["status"]): string {
+  if (status === "Queued") return "The story is queued for executable acceptance-test generation.";
+  if (status === "Generating tests") return "PDD is translating the story into repository-native acceptance tests.";
+  if (status === "Ready for approval") return "The executable acceptance contract is ready for PM review.";
+  if (status === "Failed") return "PDD could not produce a safe executable acceptance contract.";
+  return "This verification was replaced by a newer ticket or story.";
+}
+
+export async function getPddVerificationExecutionContext(
+  orgId: string,
+  verificationId: string,
+): Promise<PddVerificationExecutionContext> {
+  if (workspacePersistenceMode(orgId) === "memory")
+    throw new EngineeringWorkflowError("Live PDD execution is unavailable in the seeded memory workspace", 409);
+  const result = await databasePool().query<{
+    problem_id: string; repository: string; installation_id: string; base_branch: string; base_sha: string;
+    prompt_revision_id: string; prompt_hash: string; user_story: string;
+    pdd_version: string; budget_usd: string; status: PddVerificationView["status"];
+    structured_snapshot: ImplementationPromptSnapshot;
+    }>(`SELECT verification.problem_id,prompt.repository,allowlist.installation_id::text,
+             prompt.base_branch,prompt.base_sha,verification.prompt_revision_id,verification.prompt_hash,
+             verification.user_story,verification.pdd_version,verification.budget_usd,
+             verification.status,prompt.structured_snapshot
+        FROM pdd_prompt_verifications verification
+        JOIN implementation_prompts prompt ON prompt.org_id=verification.org_id
+          AND prompt.id=verification.prompt_revision_id
+        JOIN github_repository_allowlists allowlist ON allowlist.org_id=verification.org_id
+          AND allowlist.repository=prompt.repository AND allowlist.active=true
+       WHERE verification.org_id=$1 AND verification.id=$2`, [orgId, verificationId]);
+  const row = result.rows[0];
+  if (!row) throw new EngineeringWorkflowError("PDD verification or repository authorization was not found", 404);
+  if (!["Queued", "Generating tests"].includes(row.status))
+    throw new EngineeringWorkflowError("PDD verification is no longer executable", 409);
+  return {
+    orgId, problemId: row.problem_id, verificationId,
+    repository: row.repository, installationId: row.installation_id,
+    baseBranch: row.base_branch, baseSha: row.base_sha, promptId: row.prompt_revision_id,
+    promptHash: row.prompt_hash, userStory: row.user_story,
+    pddPrompt: renderPddPrompt(row.user_story, row.structured_snapshot),
+    pddVersion: row.pdd_version, budgetUsd: Number(row.budget_usd),
+    permittedPaths: row.structured_snapshot.ticket.permittedPaths,
+    requiredCommands: row.structured_snapshot.ticket.requiredCommands,
+    suspectedFiles: row.structured_snapshot.evidence.suspectedFiles,
+  };
+}
+
+export async function markPddVerificationGenerating(
+  orgId: string,
+  verificationId: string,
+): Promise<void> {
+  if (workspacePersistenceMode(orgId) === "memory") return;
+  const result = await databasePool().query(
+    `UPDATE pdd_prompt_verifications SET status='Generating tests',started_at=coalesce(started_at,now())
+      WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Generating tests')`,
+    [orgId, verificationId],
+  );
+  if (!result.rowCount) throw new EngineeringWorkflowError("PDD verification cannot be started", 409);
+}
+
+export async function failPddVerification(
+  orgId: string,
+  verificationId: string,
+  message: string,
+): Promise<void> {
+  if (workspacePersistenceMode(orgId) === "memory") {
+    const entry = [...memoryWorkflows.values()].find((item) => item.verification?.id === verificationId);
+    if (entry?.verification) {
+      entry.verification.status = "Failed";
+      entry.verification.failureMessage = message.slice(0, 5_000);
+      entry.verification.completedAt = new Date().toISOString();
+    }
+    return;
+  }
+  await databasePool().query(
+    `UPDATE pdd_prompt_verifications SET status='Failed',failure_message=$3,completed_at=now()
+      WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Generating tests')`,
+    [orgId, verificationId, message.slice(0, 5_000)],
+  );
+}
+
+export async function completePddVerification(
+  orgId: string,
+  verificationId: string,
+  payload: unknown,
+  actor: ActorContext,
+): Promise<EngineeringWorkflowView> {
+  if (workspacePersistenceMode(orgId) === "memory")
+    throw new EngineeringWorkflowError("Live PDD completion is unavailable in the seeded memory workspace", 409);
+  const parsed = pddRunnerResultSchema.parse(payload);
+  if (parsed.verificationId !== verificationId)
+    throw new EngineeringWorkflowError("PDD callback does not match the requested verification", 409);
+  let problemId = "";
+  let shouldRequestApproval = false;
+  let promptId = "";
+  await transaction(async (client) => {
+    const current = await client.query<{
+      problem_id: string; prompt_revision_id: string; prompt_hash: string;
+      status: PddVerificationView["status"]; structured_snapshot: ImplementationPromptSnapshot;
+      pdd_version: string; budget_usd: string;
+    }>(`SELECT verification.problem_id,verification.prompt_revision_id,verification.prompt_hash,
+               verification.status,verification.pdd_version,verification.budget_usd,prompt.structured_snapshot
+          FROM pdd_prompt_verifications verification
+          JOIN implementation_prompts prompt ON prompt.org_id=verification.org_id
+            AND prompt.id=verification.prompt_revision_id
+         WHERE verification.org_id=$1 AND verification.id=$2 FOR UPDATE`, [orgId, verificationId]);
+    const row = current.rows[0];
+    if (!row) throw new EngineeringWorkflowError("PDD verification was not found", 404);
+    if (!["Queued", "Generating tests"].includes(row.status))
+      throw new EngineeringWorkflowError("PDD verification is already complete or superseded", 409);
+    if (parsed.promptHash !== row.prompt_hash)
+      throw new EngineeringWorkflowError("PDD callback prompt hash does not match", 409);
+    if (parsed.pddVersion !== row.pdd_version)
+      throw new EngineeringWorkflowError("PDD callback version does not match the pinned runner version", 409);
+    if (parsed.costUsd !== null && parsed.costUsd > Number(row.budget_usd))
+      throw new EngineeringWorkflowError("PDD callback exceeded the verification budget", 409);
+    const verified = validateGeneratedTests(parsed, row.structured_snapshot);
+    problemId = row.problem_id;
+    promptId = row.prompt_revision_id;
+    shouldRequestApproval = verified.status === "Ready for approval";
+    await client.query(
+      `UPDATE pdd_prompt_verifications SET status=$3,pdd_version=$4,model=$5,cost_usd=$6,
+              summary=$7,generated_tests=$8,failure_message=$9,completed_at=now()
+        WHERE org_id=$1 AND id=$2`,
+      [orgId, verificationId, verified.status, verified.pddVersion, verified.model,
+        verified.costUsd, verified.summary, JSON.stringify(verified.generatedTests), verified.failureMessage],
+    );
+    await audit(client, orgId, actor, `${verified.status}: ${verified.summary}`, "PddPromptVerification", verificationId);
+  });
+  if (shouldRequestApproval) return requestImplementationApproval(orgId, promptId, actor);
+  return postgresWorkflow(orgId, problemId);
 }
 
 export async function requestImplementationApproval(
@@ -667,6 +1101,8 @@ export async function requestImplementationApproval(
     const entry = [...memoryWorkflows.values()].find((item) => item.prompt?.id === promptId);
     if (!entry?.prompt) throw new EngineeringWorkflowError("Implementation prompt was not found", 404);
     if (entry.prompt.status !== "Ready") throw new EngineeringWorkflowError("Only the latest ready prompt can be submitted", 409);
+    if (entry.verification?.status !== "Ready for approval" || entry.verification.promptHash !== entry.prompt.contentHash)
+      throw new EngineeringWorkflowError("Generate and review a PDD acceptance contract before requesting approval", 409);
     entry.prompt.status = "Awaiting approval";
     entry.specification.implementationState = "Awaiting approval";
     entry.approval = { id: `apr_prompt_${randomUUID().replaceAll("-", "")}`, status: "Pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(), promptHash: entry.prompt.contentHash, repository: entry.prompt.repository, baseBranch: entry.prompt.baseBranch, baseSha: entry.prompt.baseSha, allowedCapabilities: ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"] };
@@ -682,6 +1118,14 @@ export async function requestImplementationApproval(
     const row = prompt.rows[0];
     if (!row) throw new EngineeringWorkflowError("Implementation prompt was not found", 404);
     if (row.status !== "Ready") throw new EngineeringWorkflowError("Only the latest ready prompt can be submitted", 409);
+    const verification = await client.query(
+      `SELECT 1 FROM pdd_prompt_verifications
+        WHERE org_id=$1 AND prompt_revision_id=$2 AND prompt_hash=$3 AND status='Ready for approval'
+        ORDER BY completed_at DESC LIMIT 1 FOR UPDATE`,
+      [orgId, promptId, row.content_hash],
+    );
+    if (!verification.rowCount)
+      throw new EngineeringWorkflowError("Generate and review a PDD acceptance contract before requesting approval", 409);
     problemId = row.problem_id;
     const approvalId = `apr_prompt_${randomUUID().replaceAll("-", "")}`;
     const capabilities = ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"];
@@ -765,16 +1209,24 @@ export async function approveImplementationRun(
       [orgId, row.repository],
     );
     if (!repository.rowCount) throw new EngineeringWorkflowError("The target repository is not allowlisted for agent execution", 409);
+    const verification = await client.query<{ id: string }>(
+      `SELECT id FROM pdd_prompt_verifications
+        WHERE org_id=$1 AND prompt_revision_id=$2 AND prompt_hash=$3 AND status='Ready for approval'
+        ORDER BY completed_at DESC LIMIT 1 FOR UPDATE`,
+      [orgId, row.prompt_revision_id, row.prompt_hash],
+    );
+    if (!verification.rows[0]) throw new EngineeringWorkflowError("The PDD acceptance contract is no longer ready", 409);
     const title = await client.query<{ title: string }>("SELECT title FROM product_problems WHERE org_id=$1 AND id=$2", [orgId, row.problem_id]);
     const runId = randomUUID();
     await client.query("UPDATE approval_requests SET status='Approved',consumed_at=now(),updated_at=now() WHERE org_id=$1 AND id=$2", [orgId, approvalId]);
     await client.query("UPDATE implementation_prompts SET status='Approved' WHERE org_id=$1 AND id=$2", [orgId, row.prompt_revision_id]);
     await client.query(
       `INSERT INTO agent_runs(id,org_id,problem_id,prompt_revision_id,approval_id,status,repository,
-        base_branch,base_sha,branch_name,prompt_hash)
-       VALUES($1,$2,$3,$4,$5,'Queued',$6,$7,$8,$9,$10)`,
+        base_branch,base_sha,branch_name,prompt_hash,pdd_verification_id)
+       VALUES($1,$2,$3,$4,$5,'Queued',$6,$7,$8,$9,$10,$11)`,
       [runId, orgId, row.problem_id, row.prompt_revision_id, approvalId, row.repository,
-        row.base_branch, row.base_sha, branchName(row.problem_id, runId, title.rows[0]?.title ?? "ticket"), row.prompt_hash],
+        row.base_branch, row.base_sha, branchName(row.problem_id, runId, title.rows[0]?.title ?? "ticket"), row.prompt_hash,
+        verification.rows[0].id],
     );
     await client.query("UPDATE engineering_ticket_specifications SET implementation_state='Running',updated_at=now() WHERE org_id=$1 AND problem_id=$2", [orgId, row.problem_id]);
     await audit(client, orgId, actor, `Approved and queued one coding run ${runId} for prompt ${row.prompt_hash}`, "AgentRun", runId);
@@ -828,13 +1280,16 @@ export async function getAgentRunExecutionContext(
     base_branch: string; base_sha: string; branch_name: string; prompt_revision_id: string;
     prompt_hash: string; rendered_content: string; artifact_path: string;
     structured_snapshot: ImplementationPromptSnapshot; expires_at: Date; allowed_capabilities: string[];
+    generated_tests: PddGeneratedTest[];
   }>(`SELECT run.problem_id,run.approval_id,run.repository,allowlist.installation_id::text,
              run.base_branch,run.base_sha,run.branch_name,run.prompt_revision_id,run.prompt_hash,
              prompt.rendered_content,prompt.artifact_path,prompt.structured_snapshot,
-             approval.expires_at,approval.allowed_capabilities
+             approval.expires_at,approval.allowed_capabilities,verification.generated_tests
         FROM agent_runs run
         JOIN implementation_prompts prompt ON prompt.org_id=run.org_id AND prompt.id=run.prompt_revision_id
         JOIN approval_requests approval ON approval.org_id=run.org_id AND approval.id=run.approval_id
+        JOIN pdd_prompt_verifications verification ON verification.org_id=run.org_id
+          AND verification.id=run.pdd_verification_id AND verification.status='Ready for approval'
         JOIN github_repository_allowlists allowlist ON allowlist.org_id=run.org_id
           AND allowlist.repository=run.repository AND allowlist.active=true
        WHERE run.org_id=$1 AND run.id=$2`, [orgId, runId]);
@@ -848,6 +1303,7 @@ export async function getAgentRunExecutionContext(
     promptContent: row.rendered_content, promptArtifactPath: row.artifact_path,
     promptSnapshot: row.structured_snapshot,
     expiresAt: row.expires_at.toISOString(), allowedCapabilities: row.allowed_capabilities,
+    generatedTests: row.generated_tests,
   };
 }
 

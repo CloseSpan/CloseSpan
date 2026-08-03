@@ -14,16 +14,16 @@ const providers: Array<{
   defaultModel: string;
 }> = [
   {
+    id: "openai",
+    label: "OpenAI",
+    description: "Responses API",
+    defaultModel: "gpt-5.6-sol",
+  },
+  {
     id: "xai",
     label: "xAI Grok",
     description: "Direct Grok access",
     defaultModel: "grok-4.5",
-  },
-  {
-    id: "openai",
-    label: "OpenAI",
-    description: "Responses API",
-    defaultModel: "gpt-5.6",
   },
   {
     id: "anthropic",
@@ -205,7 +205,7 @@ export function AiProviderSettings({
           <label className="field">
             API key
             <div className="secret-input">
-              <KeyRound size={15} />
+              <KeyRound size={17} aria-hidden="true" />
               <input
                 type="password"
                 value={apiKey}

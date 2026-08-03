@@ -258,19 +258,41 @@ export async function runScheduledMonitoring(env: Env, scheduledAt: number): Pro
   const started = Date.now();
   await updateMaintenance(env, scheduledAt);
   const services = await listServices(env.DB);
-  for (const service of services) {
+  const dueServices = services.filter((service) => {
     const intervalMs = service.probe_interval_minutes * 60_000;
-    if (service.last_checked_at !== null && scheduledAt - service.last_checked_at < intervalMs) continue;
-    await checkService(service, env, scheduledAt);
-  }
+    return service.last_checked_at === null || scheduledAt - service.last_checked_at >= intervalMs;
+  });
+  const checks = await Promise.allSettled(
+    dueServices.map((service) => checkService(service, env, scheduledAt)),
+  );
+  checks.forEach((result, index) => {
+    if (result.status === "rejected") {
+      console.error(JSON.stringify({
+        event: "status_probe_failed",
+        serviceId: dueServices[index]?.id,
+        error: result.reason instanceof Error ? result.reason.message : "unknown",
+      }));
+    }
+  });
   const today = utcDay(scheduledAt);
   const yesterday = utcDay(scheduledAt - 86_400_000);
-  for (const service of services) {
-    await rollupDay(env.DB, service.id, today, Date.now());
-    if (new Date(scheduledAt).getUTCHours() === 0) await rollupDay(env.DB, service.id, yesterday, Date.now());
+  await Promise.all(dueServices.map((service) => rollupDay(env.DB, service.id, today, Date.now())));
+  if (new Date(scheduledAt).getUTCHours() === 0 && new Date(scheduledAt).getUTCMinutes() === 0) {
+    await Promise.all(services.map((service) => rollupDay(env.DB, service.id, yesterday, Date.now())));
   }
-  await env.DB.prepare(`DELETE FROM checks WHERE checked_at<?`).bind(scheduledAt - 14 * 86_400_000).run();
-  await env.DB.prepare(`DELETE FROM daily_rollups WHERE day<?`).bind(utcDay(scheduledAt - 400 * 86_400_000)).run();
+  if (new Date(scheduledAt).getUTCMinutes() === 0) {
+    await Promise.all([
+      env.DB.prepare(`DELETE FROM checks WHERE checked_at<?`).bind(scheduledAt - 14 * 86_400_000).run(),
+      env.DB.prepare(`DELETE FROM daily_rollups WHERE day<?`).bind(utcDay(scheduledAt - 400 * 86_400_000)).run(),
+    ]);
+  }
   await processNotificationOutbox(env, scheduledAt);
-  console.log(JSON.stringify({ event: "status_monitor_completed", services: services.length, durationMs: Date.now() - started, scheduledAt }));
+  console.log(JSON.stringify({
+    event: "status_monitor_completed",
+    services: services.length,
+    dueServices: dueServices.length,
+    failedProbes: checks.filter((result) => result.status === "rejected").length,
+    durationMs: Date.now() - started,
+    scheduledAt,
+  }));
 }

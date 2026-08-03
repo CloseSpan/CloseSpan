@@ -21,7 +21,7 @@ export interface ConnectorCatalogEntry {
 
 export interface IntegrationCapabilities {
   connect: boolean;
-  feedbackImport: "manual" | "webhook" | "not_implemented";
+  feedbackImport: "manual" | "webhook" | "automatic" | "not_implemented";
   approvedActions: boolean;
 }
 
@@ -162,7 +162,7 @@ const integrationCapabilities: Readonly<Record<string, IntegrationCapabilities>>
   },
   int_slack: {
     connect: true,
-    feedbackImport: "not_implemented",
+    feedbackImport: "automatic",
     approvedActions: false,
   },
   int_app_store: {

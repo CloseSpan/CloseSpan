@@ -1,7 +1,8 @@
 "use client";
 
-import { Box, CheckCircle2, LoaderCircle, ShieldCheck } from "lucide-react";
+import { Box, CheckCircle2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { AnimatedStatusText } from "./animated-status-text";
 
 type CheckResult = {
   status: "ok";
@@ -80,9 +81,7 @@ export function TenkiSandboxCheck({
           onClick={() => void runCheck()}
         >
           {busy ? (
-            <>
-              <LoaderCircle size={14} aria-hidden="true" /> Testing sandbox…
-            </>
+            <AnimatedStatusText>Testing sandbox</AnimatedStatusText>
           ) : (
             <>
               <ShieldCheck size={14} aria-hidden="true" /> Test Tenki sandbox

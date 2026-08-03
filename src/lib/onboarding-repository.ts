@@ -13,6 +13,9 @@ export interface ProductProfile {
   productName: string | null;
   productUrl: string | null;
   productDescription: string | null;
+  companyLogo?: string | null;
+  companyProfileConfirmed?: boolean;
+  companyProfileReadyForConfirmation?: boolean;
   feedbackSources: string[];
   engineeringTools: string[];
 }
@@ -36,6 +39,9 @@ const emptyProfile = (): ProductProfile => ({
   productName: null,
   productUrl: null,
   productDescription: null,
+  companyLogo: null,
+  companyProfileConfirmed: false,
+  companyProfileReadyForConfirmation: false,
   feedbackSources: [],
   engineeringTools: [],
 });
@@ -57,6 +63,9 @@ export function demoOnboardingState(): OnboardingState {
       productUrl: "https://northstar.example",
       productDescription:
         "A B2B analytics platform used by operations teams to monitor customer and business performance.",
+      companyLogo: null,
+      companyProfileConfirmed: true,
+      companyProfileReadyForConfirmation: true,
       feedbackSources: ["Zendesk", "Intercom", "Slack"],
       engineeringTools: ["GitHub"],
     },

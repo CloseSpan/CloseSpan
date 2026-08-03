@@ -23,7 +23,10 @@ describe("workspace navigation", () => {
     expect(workspaceRouteDirection("/overview", "/approvals")).toBe("forward");
     expect(workspaceRouteDirection("/settings", "/problems")).toBe("backward");
     expect(workspaceRouteDirection("/problems", "/problems/problem_123")).toBe(
-      "none",
+      "forward",
+    );
+    expect(workspaceRouteDirection("/problems/problem_123", "/problems")).toBe(
+      "backward",
     );
     expect(workspaceRouteDirection(null, "/overview")).toBe("none");
   });

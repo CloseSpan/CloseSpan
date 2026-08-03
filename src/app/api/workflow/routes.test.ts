@@ -19,7 +19,10 @@ const request = (path: string, options: { orgId?: string; key?: string; origin?:
 
 describe("workflow API boundary", () => {
   beforeEach(() => { resetDemoState(); process.env.APP_MODE = "demo"; });
-  afterEach(() => { delete process.env.XAI_API_KEY; });
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.XAI_API_KEY;
+  });
 
   it("derives organization scope from the authenticated user", async () => {
     const response = await approve(request("/api/workflow/approve", { key: "approve_001" }));
@@ -101,8 +104,8 @@ describe("workflow API boundary", () => {
   });
 
   it("fails clearly without exposing a placeholder AI result when no provider is configured", async () => {
-    const response = await analyze(request("/api/ai/analyze", { orgId:"org_northstar", key:"grok_test_001" }));
+    const response = await analyze(request("/api/ai/analyze", { orgId:"org_northstar", key:"openai_test_001" }));
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error:"xAI Grok is not configured. Add its API key in Settings." });
+    expect(await response.json()).toEqual({ error:"OpenAI is not configured. Add its API key in Settings." });
   });
 });

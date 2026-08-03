@@ -30,14 +30,14 @@
   "send_email": [
     {
       "name": "STATUS_EMAIL",
-      "allowed_sender_addresses": ["status@closespan.com"]
+      "allowed_sender_addresses": ["status@closespan.com"],
+      "allowed_destination_addresses": ["shanmukhsain@gmail.com"]
     }
   ],
   "vars": {
     "ENVIRONMENT": "production",
     "STATUS_PUBLIC_ORIGIN": "https://uptime.closespan.com",
     "STATUS_EMAIL_FROM": "status@closespan.com",
-    "STATUS_EMAIL_TO": "support@closespan.com",
     "WEBSITE_URL": "https://www.closespan.com/",
     "APPLICATION_URL": "https://www.closespan.com/login",
     "API_HEALTH_URL": "https://www.closespan.com/api/health",

@@ -16,6 +16,7 @@ import {
   renameOrganizationAction,
   switchOrganizationAction,
 } from "@/app/organization-actions";
+import { FitText } from "./fit-text";
 
 export interface OrganizationSwitcherItem {
   id: string;
@@ -56,7 +57,9 @@ function SwitchButton({
         {initials(organization.name)}
       </span>
       <span className="organization-option-copy">
-        <strong>{organization.name}</strong>
+        <FitText as="strong" minFontSize={10} maxLines={1}>
+          {organization.name}
+        </FitText>
         <small>{organization.role}</small>
       </span>
       {pending ? (
@@ -366,7 +369,6 @@ export function OrganizationSwitcher({
               className="organization-rename-mobile"
               type="button"
               aria-label={`Rename workspace ${activeOrganization.name}`}
-              title="Rename workspace"
               onClick={() => setRenameOpen(true)}
             >
               <Pencil size={15} aria-hidden="true" />
@@ -402,7 +404,9 @@ export function OrganizationSwitcher({
             </span>
             <span className="organization-trigger-copy">
               <small>Organization</small>
-              <strong>{activeOrganization?.name ?? "Select organization"}</strong>
+              <FitText as="strong" minFontSize={10} maxLines={1}>
+                {activeOrganization?.name ?? "Select organization"}
+              </FitText>
             </span>
             <ChevronsUpDown size={16} aria-hidden="true" />
           </summary>
@@ -429,7 +433,6 @@ export function OrganizationSwitcher({
             className="organization-rename-trigger"
             type="button"
             aria-label={`Rename workspace ${activeOrganization.name}`}
-            title="Rename workspace"
             onClick={() => setRenameOpen(true)}
           >
             <Pencil size={14} aria-hidden="true" />

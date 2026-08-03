@@ -3,7 +3,7 @@ export const COLOR_THEME_STORAGE_KEY = "closespan-theme";
 export type ColorTheme = "light" | "dark";
 
 export const COLOR_THEME_COLORS: Record<ColorTheme, string> = {
-  light: "#e9eef7",
+  light: "#f0f2f9",
   dark: "#151b27",
 };
 

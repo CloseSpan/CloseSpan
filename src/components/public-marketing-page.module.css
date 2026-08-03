@@ -4,7 +4,7 @@
   min-height: 100vh;
   overflow-x: clip;
   color: var(--text, #3f4b63);
-  background: var(--bg, #e9eef7);
+  background: var(--bg, #f0f2f9);
   font-family: var(
     --font-sans,
     Inter,
@@ -28,9 +28,8 @@
 }
 
 .page :is(a, button, summary, [tabindex]):focus-visible {
-  outline: 2px solid var(--accent, #5146e5);
-  outline-offset: 3px;
-  box-shadow: var(--shadow-focus, 0 0 0 3px rgba(81, 70, 229, 0.28));
+  outline: 0;
+  box-shadow: var(--shadow-focus, 0 7px 18px rgba(81, 70, 229, 0.22));
 }
 
 .skipLink {
@@ -72,7 +71,7 @@
   gap: var(--space-6, 24px);
   border: 0;
   border-radius: var(--radius-lg, 20px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised-sm);
 }
 
@@ -188,7 +187,7 @@
 
 .secondaryButton {
   color: var(--text-strong, #263249) !important;
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised-sm);
 }
 
@@ -227,7 +226,7 @@
   border: 0;
   border-radius: var(--radius-md, 14px);
   color: var(--text-strong, #263249);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised-sm);
   cursor: pointer;
   list-style: none;
@@ -257,7 +256,7 @@
   gap: var(--space-1, 4px);
   border: 0;
   border-radius: var(--radius-lg, 20px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-overlay);
 }
 
@@ -276,6 +275,10 @@
 .mobileMenu nav a:hover,
 .mobileMenu nav a:focus-visible {
   color: var(--accent, #5146e5);
+  box-shadow: var(--shadow-hover, var(--shadow-raised-sm));
+}
+
+.mobileMenu nav a:active {
   box-shadow: var(--shadow-inset);
 }
 
@@ -381,7 +384,7 @@
   padding: clamp(24px, 3vw, 32px);
   border: 0;
   border-radius: var(--radius-xl, 26px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised);
 }
 
@@ -419,7 +422,7 @@
   place-items: center;
   border-radius: 50%;
   color: var(--accent, #5146e5);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-inset);
 }
 
@@ -500,7 +503,7 @@
   overflow: hidden;
   border: 0;
   border-radius: var(--radius-md, 14px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-inset);
 }
 
@@ -571,7 +574,7 @@
   padding: var(--space-5, 20px);
   border: 0;
   border-radius: var(--radius-lg, 20px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised-sm);
 }
 
@@ -620,7 +623,7 @@
   scroll-margin-top: var(--space-8, 32px);
   border: 0;
   border-radius: var(--radius-xl, 26px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised);
 }
 
@@ -650,7 +653,7 @@
   gap: var(--space-4, 16px);
   border: 0;
   border-radius: var(--radius-lg, 20px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised-sm);
 }
 
@@ -661,7 +664,7 @@
   place-items: center;
   border-radius: 50%;
   color: var(--accent, #5146e5);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-inset);
   font: 780 12px/1 ui-monospace, monospace;
 }
@@ -702,7 +705,7 @@
   flex-direction: column;
   border: 0;
   border-radius: var(--radius-lg, 20px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised-sm);
   text-decoration: none;
   transition:
@@ -766,7 +769,7 @@
   gap: var(--space-8, 32px);
   border: 0;
   border-radius: var(--radius-xl, 26px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised);
 }
 
@@ -801,7 +804,7 @@
   gap: var(--space-8, 32px);
   border: 0;
   border-radius: var(--radius-lg, 20px);
-  background: var(--surface, #e9eef7);
+  background: var(--surface, #f0f2f9);
   box-shadow: var(--shadow-raised-sm);
 }
 

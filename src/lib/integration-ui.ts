@@ -40,9 +40,9 @@ const experiences: Record<string, IntegrationExperience> = {
   },
   int_slack: {
     filter: "Feedback",
-    summary: "Capture high-signal feedback from selected Slack channels.",
-    importedData: ["Messages", "Threads", "Reactions", "Channel references"],
-    requestedPermissions: ["Read selected channels", "Read message history", "Read basic profiles"],
+    summary: "Automatically turn #closespan-feedback conversations into grouped Product Problems.",
+    importedData: ["Messages", "Threads", "Reactions", "Attachment metadata", "Channel references"],
+    requestedPermissions: ["Create #closespan-feedback", "Read its message history", "Post problem threads and approval links"],
   },
   int_app_store: {
     filter: "Feedback",

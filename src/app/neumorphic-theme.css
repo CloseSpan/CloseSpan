@@ -9,11 +9,12 @@
 :root {
   color-scheme: light;
 
-  --bg: #e9eef7;
-  --surface: #e9eef7;
-  --surface-hover: #edf2fa;
-  --surface-pressed: #e4eaf4;
-  --surface-muted: #e3e9f3;
+  /* Near-white lavender canvas from the CloseSpan white-and-purple palette. */
+  --bg: #f0f2f9;
+  --surface: #f0f2f9;
+  --surface-hover: #f5f6fb;
+  --surface-pressed: #e8ecf5;
+  --surface-muted: #e6ebf5;
 
   --text: #3f4b63;
   --text-strong: #263249;
@@ -27,8 +28,9 @@
   --accent-fill: #5146e5;
   --accent-fill-hover: #463bd1;
   --accent-fill-active: #3f35c3;
-  --accent-soft: rgba(81, 70, 229, 0.1);
-  --accent-line: rgba(81, 70, 229, 0.28);
+  --accent-soft: rgba(81, 70, 229, 0.11);
+  /* Accent is communicated with color and pressed depth, never a hard border. */
+  --accent-line: transparent;
 
   --success: #0b674d;
   --success-soft: rgba(22, 130, 98, 0.1);
@@ -53,27 +55,27 @@
   --control-border: #7a879f;
 
   --shadow-raised:
-    -7px -7px 14px rgba(255, 255, 255, 0.82),
-    7px 7px 14px rgba(154, 169, 194, 0.38);
+    -7px -7px 14px rgba(255, 255, 255, 0.92),
+    7px 7px 14px rgba(174, 185, 207, 0.34);
   --shadow-raised-sm:
-    -4px -4px 9px rgba(255, 255, 255, 0.76),
-    4px 4px 9px rgba(154, 169, 194, 0.28);
+    -4px -4px 9px rgba(255, 255, 255, 0.88),
+    4px 4px 9px rgba(174, 185, 207, 0.25);
   --shadow-hover:
-    -8px -8px 16px rgba(255, 255, 255, 0.86),
-    8px 8px 16px rgba(154, 169, 194, 0.4);
+    -8px -8px 16px rgba(255, 255, 255, 0.96),
+    8px 8px 16px rgba(168, 179, 202, 0.37);
   --shadow-inset:
-    inset 5px 5px 10px rgba(154, 169, 194, 0.34),
-    inset -5px -5px 10px rgba(255, 255, 255, 0.82);
+    inset 5px 5px 10px rgba(174, 185, 207, 0.31),
+    inset -5px -5px 10px rgba(255, 255, 255, 0.92);
   --shadow-inset-sm:
-    inset 3px 3px 7px rgba(154, 169, 194, 0.3),
-    inset -3px -3px 7px rgba(255, 255, 255, 0.76);
-  --shadow-focus: 0 0 0 3px rgba(81, 70, 229, 0.3);
+    inset 3px 3px 7px rgba(174, 185, 207, 0.27),
+    inset -3px -3px 7px rgba(255, 255, 255, 0.88);
+  --shadow-focus: 0 7px 18px rgba(81, 70, 229, 0.22);
   --shadow-overlay:
-    -12px -12px 24px rgba(255, 255, 255, 0.72),
-    12px 12px 28px rgba(122, 136, 160, 0.42);
+    -12px -12px 24px rgba(255, 255, 255, 0.86),
+    12px 12px 28px rgba(160, 172, 196, 0.38);
   --shadow-dialog:
-    -5px -5px 14px rgba(255, 255, 255, 0.38),
-    10px 12px 24px rgba(122, 136, 160, 0.3);
+    -5px -5px 14px rgba(255, 255, 255, 0.58),
+    10px 12px 24px rgba(160, 172, 196, 0.28);
   --shadow-accent-raised:
     -4px -4px 9px rgba(255, 255, 255, 0.68),
     5px 5px 11px rgba(89, 84, 164, 0.34);
@@ -86,42 +88,42 @@
   --shadow-accent-cta-raised:
     inset 1px 1px 0 rgba(255, 255, 255, 0.22),
     inset -1px -1px 0 rgba(38, 29, 145, 0.28),
-    -5px -5px 12px rgba(255, 255, 255, 0.72),
-    7px 7px 14px rgba(126, 139, 165, 0.36);
+    -5px -5px 12px rgba(255, 255, 255, 0.86),
+    7px 7px 14px rgba(158, 169, 194, 0.33);
   --shadow-accent-cta-hover:
     inset 1px 1px 0 rgba(255, 255, 255, 0.26),
     inset -1px -1px 0 rgba(38, 29, 145, 0.32),
-    -6px -6px 14px rgba(255, 255, 255, 0.78),
-    8px 8px 16px rgba(117, 130, 158, 0.42);
+    -6px -6px 14px rgba(255, 255, 255, 0.92),
+    8px 8px 16px rgba(150, 162, 188, 0.38);
   --shadow-accent-cta-inset:
     inset 5px 5px 10px rgba(37, 28, 137, 0.5),
     inset -4px -4px 9px rgba(142, 135, 255, 0.34);
   --shadow-color-raised:
     inset 1px 1px 0 rgba(255, 255, 255, 0.2),
     inset -1px -1px 0 rgba(31, 41, 62, 0.26),
-    -5px -5px 12px rgba(255, 255, 255, 0.7),
-    7px 7px 14px rgba(126, 139, 165, 0.36);
+    -5px -5px 12px rgba(255, 255, 255, 0.84),
+    7px 7px 14px rgba(158, 169, 194, 0.33);
   --shadow-color-hover:
     inset 1px 1px 0 rgba(255, 255, 255, 0.24),
     inset -1px -1px 0 rgba(31, 41, 62, 0.3),
-    -6px -6px 14px rgba(255, 255, 255, 0.76),
-    8px 8px 16px rgba(117, 130, 158, 0.42);
+    -6px -6px 14px rgba(255, 255, 255, 0.9),
+    8px 8px 16px rgba(150, 162, 188, 0.38);
   --shadow-color-inset:
     inset 5px 5px 10px rgba(23, 31, 49, 0.4),
     inset -4px -4px 9px rgba(255, 255, 255, 0.18);
   --shadow-progress-track:
-    inset 2px 2px 4px rgba(137, 151, 176, 0.38),
-    inset -2px -2px 4px rgba(255, 255, 255, 0.74);
+    inset 2px 2px 4px rgba(166, 178, 201, 0.34),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.88);
   --shadow-progress-fill:
     inset 1px 1px 2px rgba(255, 255, 255, 0.24),
     inset -1px -1px 2px rgba(34, 27, 124, 0.38),
     2px 2px 4px rgba(70, 60, 171, 0.28);
   --shadow-sidebar:
-    8px 0 18px rgba(154, 169, 194, 0.28),
-    -4px 0 12px rgba(255, 255, 255, 0.7);
+    8px 0 18px rgba(174, 185, 207, 0.25),
+    -4px 0 12px rgba(255, 255, 255, 0.84);
   --shadow-topbar:
-    0 6px 14px rgba(154, 169, 194, 0.22),
-    0 -4px 10px rgba(255, 255, 255, 0.76);
+    0 6px 14px rgba(174, 185, 207, 0.2),
+    0 -4px 10px rgba(255, 255, 255, 0.88);
   --separator-shadow: rgba(91, 107, 137, 0.48);
   --overlay-backdrop: rgba(63, 75, 99, 0.24);
   --chart-grid: rgba(107, 120, 145, 0.11);
@@ -171,6 +173,7 @@
   --duration-fast: 120ms;
   --duration-normal: 180ms;
   --duration-slow: 280ms;
+  --duration-state: 280ms;
   --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   /* Compatibility aliases while legacy structural CSS is retired. */
@@ -260,7 +263,7 @@
   --shadow-inset-sm:
     inset 3px 3px 7px rgba(3, 7, 14, 0.58),
     inset -3px -3px 7px rgba(49, 60, 81, 0.36);
-  --shadow-focus: 0 0 0 3px rgba(154, 147, 255, 0.34);
+  --shadow-focus: 0 7px 18px rgba(126, 116, 255, 0.24);
   --shadow-overlay:
     -12px -12px 24px rgba(49, 60, 81, 0.42),
     12px 12px 28px rgba(2, 5, 11, 0.76);
@@ -401,22 +404,25 @@ textarea {
 button,
 a,
 summary,
+[role="button"],
 input,
 select,
 textarea {
   transition:
-    color var(--duration-fast) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard),
-    box-shadow var(--duration-normal) var(--ease-standard),
-    transform var(--duration-fast) var(--ease-standard),
-    opacity var(--duration-fast) var(--ease-standard);
+    color 220ms var(--ease-standard),
+    background-color var(--duration-state) var(--ease-standard),
+    border-color var(--duration-state) var(--ease-standard),
+    box-shadow 320ms var(--ease-standard),
+    transform 240ms var(--ease-standard),
+    opacity 220ms var(--ease-standard),
+    filter var(--duration-state) var(--ease-standard);
 }
 
 :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  box-shadow: var(--shadow-focus);
+  outline: 0;
+  box-shadow:
+    var(--shadow-focus),
+    0 0 0 3px color-mix(in srgb, var(--accent) 44%, transparent);
 }
 
 :where(button, input, select, textarea):disabled,
@@ -500,6 +506,217 @@ textarea {
 }
 
 .card-body { padding: var(--space-6); }
+
+/* Retention is a compact settings control, not a floating toolbar menu. Keep
+ * its open state in document flow so the card grows and the following section
+ * is never overlapped or clipped by the card's rounded overflow boundary. */
+.app-shell .settings-data-card .card-body {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.app-shell .settings-data-card .toggle-row {
+  margin: 0;
+  padding-bottom: var(--space-5);
+}
+
+.app-shell .settings-data-card .field {
+  gap: var(--space-3);
+}
+
+.app-shell .settings-retention-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-shell .settings-retention-select .custom-select-trigger {
+  min-height: 48px;
+}
+
+.app-shell .settings-retention-select .custom-select-menu {
+  position: static;
+  width: 100%;
+  max-height: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-raised-sm);
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+
+.app-shell .settings-retention-select .custom-select-inline-region {
+  width: calc(100% + (var(--space-3) * 2));
+  max-height: 0;
+  margin-inline: calc(var(--space-3) * -1);
+  padding: 0 var(--space-3);
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+  transition:
+    max-height 280ms var(--ease-standard),
+    padding-top 280ms var(--ease-standard),
+    padding-bottom 280ms var(--ease-standard),
+    opacity var(--duration-normal) var(--ease-standard),
+    transform 280ms var(--ease-standard);
+}
+
+.app-shell .settings-retention-select .custom-select-inline-region[data-open="true"] {
+  max-height: 260px;
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.app-shell .custom-retention-region {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  transition:
+    grid-template-rows 280ms var(--ease-standard),
+    margin-top 280ms var(--ease-standard),
+    opacity var(--duration-normal) var(--ease-standard),
+    transform 280ms var(--ease-standard);
+}
+
+.app-shell .custom-retention-region[data-open="true"] {
+  grid-template-rows: 1fr;
+  margin-top: var(--space-3);
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.app-shell .custom-retention-region-inner {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 var(--space-2);
+}
+
+.app-shell .custom-retention-region[data-open="true"] .custom-retention-region-inner {
+  overflow: visible;
+}
+
+.app-shell .custom-retention-field {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  padding: var(--space-4);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .custom-retention-field > span {
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.app-shell .custom-retention-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(132px, 0.34fr);
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .custom-retention-number {
+  min-width: 0;
+  display: block;
+}
+
+.app-shell .custom-retention-field input {
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding-inline: var(--space-4);
+  border: 0 !important;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-strong);
+  box-shadow: none;
+  appearance: textfield;
+}
+
+.app-shell .custom-retention-field input:focus-visible {
+  outline: 0 !important;
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .custom-retention-field input::-webkit-inner-spin-button,
+.app-shell .custom-retention-field input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.app-shell .custom-retention-unit-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-shell .custom-retention-unit-select .custom-select-trigger {
+  min-height: 48px;
+  border-radius: var(--radius-md);
+}
+
+.app-shell .custom-retention-unit-select .custom-select-menu {
+  right: 0;
+  left: auto;
+  width: max(100%, 172px);
+}
+
+.app-shell .custom-retention-field small {
+  min-height: 1.35em;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+
+.app-shell .custom-retention-error {
+  color: var(--danger);
+  font-weight: var(--weight-semibold);
+}
+
+@media (max-width: 560px) {
+  .app-shell .custom-retention-control {
+    grid-template-columns: minmax(0, 1fr) 128px;
+  }
+
+  .app-shell .custom-retention-field {
+    padding: var(--space-3);
+  }
+}
+
+.problem-lifecycle-card {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+.problem-lifecycle-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.problem-lifecycle-body .btn {
+  align-self: stretch;
+  margin-top: auto;
+}
 .subtle { color: var(--text-muted); }
 .summary, .quote, .list { color: var(--text); }
 
@@ -638,6 +855,17 @@ textarea {
   width: 100%;
 }
 
+/* Route transitions and the main content target receive programmatic focus so
+ * screen readers announce navigation. They are structural regions, not
+ * controls, and must not draw a page-sized accent outline. */
+.content:focus,
+.content:focus-visible,
+.workspace-route-stage:focus,
+.workspace-route-stage:focus-visible {
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
 .workspace-route-error {
   max-width: 620px;
   margin-inline: auto;
@@ -718,7 +946,7 @@ textarea {
   .integration-suggestion-row-action,
   .integration-copilot-replies button
 ):hover:not(:disabled) {
-  border-color: var(--accent-line);
+  border-color: transparent;
   background: var(--surface-hover);
   color: var(--text-strong);
   box-shadow: var(--shadow-hover);
@@ -728,10 +956,11 @@ textarea {
 /* The structural stylesheet still contains high-specificity light-only hover
  * fills for shell controls. Match that specificity here so every secondary
  * action continues to use the active theme surface. */
-.app-shell :is(
+:is(.app-shell, .shell-immersive) :is(
   .btn:not(.primary):not(.danger):not(.success),
   .icon-btn,
   .icon-button,
+  .guided-demo-trigger,
   .organization-switcher-trigger,
   .organization-rename-trigger,
   .organization-rename-mobile
@@ -773,7 +1002,7 @@ textarea {
   .integration-copilot-composer button
 ) {
   min-height: var(--control-height);
-  border: 1px solid rgba(63, 53, 195, 0.5);
+  border: 0;
   border-radius: var(--radius-md);
   background: var(--accent-fill);
   color: var(--text-on-accent);
@@ -811,7 +1040,7 @@ textarea {
 
 .btn.danger,
 .integration-disconnect-confirmation .danger {
-  border-color: rgba(169, 47, 64, 0.24);
+  border: 0;
   background: var(--danger-soft);
   color: var(--danger);
 }
@@ -823,7 +1052,7 @@ textarea {
 .app-shell .delphi-send,
 .app-shell .integration-copilot-primary-action,
 .app-shell .integration-copilot-composer button {
-  border-color: rgba(63, 53, 195, 0.5);
+  border: 0;
   background: var(--accent-fill);
   background-image: none;
   color: var(--text-on-accent);
@@ -990,7 +1219,9 @@ textarea {
   outline: 0 !important;
   background: var(--surface-pressed);
   color: var(--accent);
-  box-shadow: var(--shadow-inset-sm);
+  box-shadow:
+    var(--shadow-inset-sm),
+    0 0 0 3px color-mix(in srgb, var(--accent) 44%, transparent);
 }
 
 .custom-select-trigger svg {
@@ -1035,6 +1266,7 @@ textarea {
   right: 0;
   width: max(100%, 190px);
   max-height: min(320px, 60vh);
+  max-width: calc(100vw - 24px);
   overflow-y: auto;
   display: grid;
   gap: var(--space-1);
@@ -1045,6 +1277,47 @@ textarea {
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-overlay);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px) scale(0.985);
+  transform-origin: top right;
+  transition:
+    opacity var(--duration-normal) var(--ease-standard),
+    transform var(--duration-normal) var(--ease-standard),
+    visibility 0s linear var(--duration-normal);
+  will-change: opacity, transform;
+}
+
+.custom-select-menu[data-placement="top"] {
+  top: auto;
+  bottom: calc(100% + var(--space-2));
+  transform: translateY(8px) scale(0.985);
+  transform-origin: bottom right;
+}
+
+.custom-select-menu[data-alignment="start"] {
+  right: auto;
+  left: 0;
+  transform-origin: top left;
+}
+
+.custom-select-menu[data-placement="top"][data-alignment="start"] {
+  transform-origin: bottom left;
+}
+
+.custom-select-menu[data-open="true"] {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition-delay: 0s;
+}
+
+/* Settings selectors may extend beyond their cards. Their menus remain
+   collision-aware and should not be clipped by a decorative card radius. */
+.settings-layout .card:has(.custom-select) {
+  overflow: visible;
 }
 
 .custom-select-option {
@@ -1080,7 +1353,19 @@ textarea {
   outline: 0 !important;
   background: var(--surface-hover);
   color: var(--text-strong);
-  box-shadow: var(--shadow-raised-sm);
+  box-shadow:
+    var(--shadow-raised-sm),
+    0 0 0 3px color-mix(in srgb, var(--accent) 44%, transparent);
+}
+
+.guided-demo-notice[data-tone="success"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.guided-demo-notice[data-tone="error"] {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .custom-select-option[aria-selected="true"] {
@@ -1223,26 +1508,90 @@ input[type="radio"] {
 
 .toggle-row input[type="checkbox"] {
   appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: block;
+  flex: 0 0 48px;
+  isolation: isolate;
   width: 48px;
   height: 28px;
-  padding: 3px;
-  border: 1px solid var(--border-subtle);
+  min-width: 48px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-pill);
-  background:
-    radial-gradient(circle at 14px 50%, var(--text-muted) 0 9px, transparent 10px),
-    var(--surface-pressed);
+  background: var(--surface-pressed);
+  background-image: none;
   box-shadow: var(--shadow-inset-sm);
   transition:
-    background-position var(--duration-normal) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-normal) var(--ease-standard),
     box-shadow var(--duration-normal) var(--ease-standard);
 }
 
+.toggle-row input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+  transform: translateX(0);
+  transition:
+    transform var(--duration-slow) var(--ease-standard),
+    background-color var(--duration-normal) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard);
+}
+
+.toggle-row input[type="checkbox"]:hover:not(:disabled) {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset);
+}
+
+.toggle-row input[type="checkbox"]:hover:not(:disabled)::before {
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-hover);
+}
+
 .toggle-row input[type="checkbox"]:checked {
-  border-color: var(--accent-line);
-  background:
-    radial-gradient(circle at 34px 50%, var(--toggle-thumb) 0 9px, transparent 10px),
-    var(--accent-fill);
+  background: var(--accent-fill);
+  background-image: none;
+  box-shadow: var(--shadow-accent-inset);
+}
+
+.toggle-row input[type="checkbox"]:checked::before {
+  background: var(--toggle-thumb);
+  transform: translateX(20px);
+}
+
+.toggle-row input[type="checkbox"]:checked:hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+  box-shadow: var(--shadow-accent-inset);
+}
+
+.toggle-row input[type="checkbox"]:active:not(:disabled)::before {
+  transform: translateX(1px) scale(0.92);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.toggle-row input[type="checkbox"]:checked:active:not(:disabled)::before {
+  transform: translateX(19px) scale(0.92);
+}
+
+.toggle-row input[type="checkbox"]:focus-visible {
+  outline: 0;
+  box-shadow: var(--shadow-inset-sm), var(--shadow-focus);
+}
+
+.toggle-row input[type="checkbox"]:checked:focus-visible {
+  box-shadow: var(--shadow-accent-inset), var(--shadow-focus);
+}
+
+.toggle-row input[type="checkbox"]:disabled::before {
+  box-shadow: var(--shadow-inset-sm);
 }
 
 /* Tabs, segmented controls, and filter rails */
@@ -1407,7 +1756,7 @@ input[type="radio"] {
 
 .badge.brand,
 .integration-suggestion-live-badge {
-  border-color: rgba(81, 70, 229, 0.18);
+  border-color: transparent;
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -1553,6 +1902,13 @@ table tbody tr:hover {
   background: var(--table-row-hover);
 }
 
+/* The legacy shell selector is more specific than the generic table rule
+ * above. Repeat the token at the shell scope so dark rows never flash white. */
+.app-shell .table-wrap tbody tr:hover,
+.app-shell table tbody tr:hover {
+  background: var(--table-row-hover);
+}
+
 :where(.rank-row, .queue-item, .integration-suggestion-row, .pipedream-account-row) {
   border-color: var(--border-subtle);
   color: var(--text);
@@ -1573,6 +1929,15 @@ table tbody tr:hover {
   color: var(--text-strong);
   box-shadow: var(--shadow-inset-sm);
   font-family: var(--font-mono);
+}
+
+.code-block,
+pre.code-block {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  white-space: pre;
+  word-break: normal;
 }
 
 /* Menus, drawers, and dialogs */
@@ -1720,7 +2085,7 @@ table tbody tr:hover {
 
 .app-shell .organization-create-action,
 .app-shell .organization-switcher.compact .organization-switcher-trigger,
-.app-shell .user-menu summary,
+.app-shell .user-menu-trigger,
 .app-shell .user-menu-panel button,
 .app-shell .chart-source select,
 .app-shell .row-link {
@@ -1762,6 +2127,15 @@ table tbody tr:hover {
   min-height: var(--control-height);
 }
 
+/* Suggestion actions use light and shadow for their edge, matching the other
+ * raised neumorphic controls. The legacy structural layer gives these pills a
+ * visible outline that reads like a conventional bordered button. */
+.app-shell .integration-suggestion-row-action {
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
 .app-shell .integration-copilot-composer button {
   min-width: var(--control-height);
   width: var(--control-height);
@@ -1785,16 +2159,180 @@ table tbody tr:hover {
 
 .app-shell .organization-rename-trigger,
 .app-shell .organization-rename-mobile,
-.app-shell .user-menu summary {
+.app-shell .user-menu-trigger {
   min-width: var(--control-height);
   width: var(--control-height);
   height: var(--control-height);
 }
 
-.app-shell .user-menu summary {
+.app-shell .organization-rename-trigger {
+  min-width: 32px;
+  min-height: 32px;
+  width: 32px;
+  height: 32px;
+  top: 0;
+  bottom: 0;
+  margin-block: auto;
+  border: 0;
+  border-radius: var(--radius-sm);
+  transform: none;
+}
+
+.app-shell .organization-rename-trigger::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+
+.app-shell .organization-rename-trigger:hover:not(:disabled),
+.app-shell .organization-rename-trigger:active:not(:disabled) {
+  transform: none;
+}
+
+.app-shell .user-menu-trigger {
   display: grid;
   place-items: center;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-raised-sm);
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.app-shell .user-menu-trigger:hover {
+  color: var(--accent);
+  box-shadow: var(--shadow-raised);
+  transform: translateY(-1px);
+}
+
+.app-shell .user-menu-trigger[aria-expanded="true"],
+.app-shell .user-menu-trigger:active {
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+  transform: none;
+}
+
+.user-menu-panel {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.975);
+  pointer-events: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-standard),
+    transform var(--duration-normal) var(--ease-standard);
+  will-change: opacity, transform;
+}
+
+.user-menu-panel[data-state="open"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.user-menu-panel[data-state="closing"] {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.982);
+  pointer-events: none;
+}
+
+/* The remaining native disclosure menus share the same restrained entrance.
+ * CustomSelect and the account menu own both directions through controlled
+ * state; these disclosure menus still receive a consistent, non-flashing open. */
+@keyframes dropdown-surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.organization-switcher details[open] > .organization-switcher-menu,
+.mobile-menu[open] > .mobile-menu-panel {
+  transform-origin: top right;
+  animation: dropdown-surface-enter var(--duration-normal) var(--ease-standard)
+    both;
+}
+
+.sidebar .organization-switcher details[open] > .organization-switcher-menu {
+  transform-origin: bottom left;
+}
+
+/* Progressively smooth native disclosures without replacing their built-in
+ * keyboard and open-state behavior. The generic opacity transition also
+ * covers CSS-module and navigation disclosures; intrinsic size interpolation
+ * is limited to in-flow panels so absolutely positioned menus are never
+ * clipped by a zero-height content wrapper. */
+@supports selector(details::details-content) and
+  (transition-behavior: allow-discrete) {
+  details::details-content {
+    opacity: 0;
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      content-visibility var(--duration-fast);
+    transition-behavior: allow-discrete;
+  }
+
+  details[open]::details-content {
+    opacity: 1;
+  }
+}
+
+@supports selector(details::details-content) and
+  (transition-behavior: allow-discrete) and
+  (interpolate-size: allow-keywords) {
+  details:where(
+    .faq-list details,
+    .ai-evidence,
+    .integration-copilot-working,
+    .integration-suggestion-section,
+    .callout,
+    .app-shell .card-body > details
+  ) {
+    interpolate-size: allow-keywords;
+  }
+
+  details:where(
+    .faq-list details,
+    .ai-evidence,
+    .integration-copilot-working,
+    .integration-suggestion-section,
+    .callout,
+    .app-shell .card-body > details
+  )::details-content {
+    block-size: 0;
+    overflow: clip;
+    transition:
+      block-size var(--duration-normal) var(--ease-standard),
+      opacity var(--duration-fast) var(--ease-standard),
+      content-visibility var(--duration-normal);
+    transition-behavior: allow-discrete;
+  }
+
+  details:where(
+    .faq-list details,
+    .ai-evidence,
+    .integration-copilot-working,
+    .integration-suggestion-section,
+    .callout,
+    .app-shell .card-body > details
+  )[open]::details-content {
+    block-size: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @supports selector(details::details-content) {
+    details::details-content {
+      transition: none !important;
+    }
+  }
 }
 
 .app-shell .row-link {
@@ -1870,8 +2408,8 @@ table tbody tr:hover {
   color: var(--text);
 }
 
-.app-shell .organization-option:hover:not(:disabled),
-.app-shell .organization-option:focus-visible {
+:is(.app-shell, .shell-immersive) .organization-option:hover:not(:disabled),
+:is(.app-shell, .shell-immersive) .organization-option:focus-visible {
   border-color: var(--border-subtle);
   background: var(--surface-hover);
   color: var(--text-strong);
@@ -1903,17 +2441,248 @@ table tbody tr:hover {
   box-shadow: var(--shadow-inset-sm);
 }
 
+/* Conversation copy is a delivered message, not another recessed input. */
+.app-shell .integration-suggestions-agent .integration-copilot-thread {
+  max-height: 360px;
+  min-height: 0;
+  align-content: start;
+  gap: var(--space-4);
+  padding: clamp(20px, 2.4vw, 30px) clamp(20px, 3vw, 44px) var(--space-3);
+  overflow-x: visible;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-turn.assistant {
+  width: min(100%, 1040px);
+  max-width: 100%;
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-turn.welcome {
+  width: 100%;
+  max-width: none;
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-message.assistant {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-strong);
+  box-shadow: none;
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-message.welcome {
+  width: min(100%, 1120px);
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-message.assistant p {
+  max-width: 1120px;
+  font-size: clamp(1rem, 1.15vw, 1.125rem);
+  line-height: 1.65;
+  letter-spacing: -0.01em;
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-controls {
+  gap: var(--space-4);
+  padding: var(--space-3) clamp(20px, 3vw, 44px) clamp(22px, 2.5vw, 32px);
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-replies {
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  overflow: visible;
+  margin: 0;
+  padding: 0 var(--space-1) var(--space-2);
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-replies button {
+  min-height: 44px;
+  padding-inline: var(--space-5);
+  border: 0 !important;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+  transform-origin: center bottom;
+}
+
+.problem-table-head {
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.problem-table-head > div:first-child {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.problem-table-head p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.problem-view-tabs {
+  position: relative;
+  width: min(100%, 310px);
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: 0 0 auto;
+  gap: 0;
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.problem-view-switch-thumb {
+  position: absolute;
+  top: var(--space-1);
+  bottom: var(--space-1);
+  left: var(--space-1);
+  width: calc((100% - (var(--space-1) * 2)) / 2);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+  transform: translateX(0);
+  transition:
+    transform 320ms var(--ease-standard),
+    background-color var(--duration-state) var(--ease-standard),
+    box-shadow 320ms var(--ease-standard);
+  pointer-events: none;
+}
+
+.problem-view-tabs[data-view="classification"] .problem-view-switch-thumb {
+  transform: translateX(100%);
+}
+
+.problem-view-tabs button {
+  position: relative;
+  z-index: 1;
+  min-height: var(--control-height);
+  padding-inline: var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.problem-view-tabs button:hover:not(.active) {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--surface-hover) 48%, transparent);
+  box-shadow: none;
+  transform: none;
+}
+
+.problem-view-tabs button.active {
+  background: transparent;
+  color: var(--accent);
+  box-shadow: none;
+}
+
+.problem-view-tabs button:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.problem-table th:first-child,
+.problem-table td:first-child {
+  width: clamp(240px, 32vw, 520px);
+  min-width: 240px;
+}
+
+.problem-table .row-link {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  color: var(--text-strong);
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.problem-table .fit-text {
+  display: block;
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.problem-taxonomy {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset-sm);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .app-shell .integration-suggestions-agent .integration-copilot-thread {
+    min-height: 0;
+    padding: var(--space-4) var(--space-3) var(--space-2);
+  }
+
+  .app-shell .integration-suggestions-agent .integration-copilot-controls {
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-3) var(--space-4);
+  }
+
+  .app-shell .integration-suggestions-agent .integration-copilot-replies {
+    gap: var(--space-3);
+  }
+
+  .problem-table-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .problem-view-tabs {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .problem-view-switch-thumb,
+  .problem-view-tabs button { transition: none; }
+}
+
 .integration-copilot-message.user {
   background: var(--surface-pressed);
   color: var(--text-strong);
   box-shadow: var(--shadow-inset-sm);
 }
 
-.integration-copilot-working[open],
-.integration-suggestion-section[open] > summary {
+.integration-copilot-working[open] {
   border-radius: var(--radius-md);
   background: var(--surface-pressed);
   box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .integration-suggestion-section[open] > summary {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .integration-suggestion-empty {
+  min-height: 44px;
+  margin: 0 0 10px 27px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .integration-copilot-connector.connected .integration-copilot-primary-action {
@@ -1989,6 +2758,98 @@ table tbody tr:hover {
   box-shadow: var(--shadow-inset-sm);
 }
 
+.delphi-company-confirmation {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.delphi-company-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.delphi-company-identity > div:last-child {
+  min-width: 0;
+}
+
+.delphi-company-logo {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  flex: 0 0 56px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.delphi-company-logo img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.delphi-company-identity h2 {
+  margin: var(--space-1) 0 0;
+  color: var(--text-strong);
+  font-size: var(--text-xl);
+}
+
+.delphi-company-identity a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.delphi-company-confirmation > p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.delphi-company-workspace-note {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  color: var(--text-muted) !important;
+  box-shadow: var(--shadow-inset-sm);
+  font-size: var(--text-sm);
+}
+
+.delphi-company-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.delphi-company-actions .btn {
+  border: 0;
+}
+
+@media (max-width: 560px) {
+  .delphi-company-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .delphi-company-actions .btn {
+    width: 100%;
+  }
+}
+
 .delphi-phase,
 .setup-step-badge,
 .delphi-source-priority,
@@ -2059,6 +2920,56 @@ table tbody tr:hover {
 }
 
 .error-page .btn { margin-top: var(--space-5); }
+
+/* Compact activity copy replaces spinner-only feedback. The label remains
+ * readable while a restrained sheen and advancing chevron communicate work. */
+.animated-status-text {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.animated-status-text-label {
+  color: currentColor;
+  background: linear-gradient(
+    100deg,
+    currentColor 0%,
+    currentColor 38%,
+    color-mix(in srgb, currentColor 48%, transparent) 50%,
+    currentColor 62%,
+    currentColor 100%
+  );
+  background-size: 240% 100%;
+  background-position: 100% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: activity-text-sheen 1.8s var(--ease-standard) infinite;
+}
+
+.animated-status-text-chevron {
+  flex: none;
+  animation: activity-chevron 1.15s var(--ease-standard) infinite;
+}
+
+@keyframes activity-text-sheen {
+  to { background-position: -140% 50%; }
+}
+
+@keyframes activity-chevron {
+  0%, 100% { opacity: .45; transform: translateX(0); }
+  50% { opacity: 1; transform: translateX(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-status-text-label,
+  .animated-status-text-chevron {
+    animation: none;
+  }
+}
 
 /* Login and waitlist */
 
@@ -2360,8 +3271,7 @@ table tbody tr:hover {
 }
 
 .landing .hero-actions .btn.primary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
+  outline: 0;
   box-shadow:
     var(--shadow-accent-cta-raised),
     var(--shadow-focus);
@@ -2445,8 +3355,7 @@ table tbody tr:hover {
 }
 
 .landing .section-resource-link .text-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline: 0;
   box-shadow:
     var(--shadow-raised-sm),
     var(--shadow-focus);
@@ -2742,7 +3651,8 @@ table tbody tr:hover {
 }
 
 .feature-request-group > header,
-.feature-request-review-queue {
+.feature-request-review-queue,
+.feature-request-submission-queue {
   border-color: var(--border-subtle);
   background: var(--surface-pressed);
   color: var(--text);
@@ -2771,6 +3681,8 @@ table tbody tr:hover {
 .feature-requests-page .feature-request-group > header h2,
 .feature-requests-page .feature-request-review-queue h2,
 .feature-requests-page .feature-request-review-queue h3,
+.feature-requests-page .feature-request-submission-queue h2,
+.feature-requests-page .feature-request-submission-queue h3,
 .feature-requests-page .feature-request-dialog h2,
 .feature-requests-page .feature-request-dialog label {
   color: var(--text-strong);
@@ -2780,6 +3692,7 @@ table tbody tr:hover {
 .feature-requests-page .feature-request-row p,
 .feature-requests-page .feature-request-group > header p,
 .feature-requests-page .feature-request-review-queue p,
+.feature-requests-page .feature-request-submission-queue p,
 .feature-requests-page .feature-request-vote-note {
   color: var(--text-muted);
 }
@@ -2806,11 +3719,72 @@ table tbody tr:hover {
 }
 
 .feature-request-row,
-.feature-request-review-queue article {
+.feature-request-review-queue article,
+.feature-request-submission-queue article {
   border-color: var(--border-subtle);
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-raised-sm);
+}
+
+.feature-request-submission-queue {
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+}
+
+.feature-request-submission-queue > header,
+.feature-request-submission-queue article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.feature-request-submission-queue > header {
+  padding: var(--space-5);
+}
+
+.feature-request-submission-queue > header div > span {
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.feature-request-submission-queue > header h2,
+.feature-request-submission-queue article :is(h3, p) {
+  margin: 0;
+}
+
+.feature-request-submission-queue > header > span,
+.feature-request-submission-queue article > span {
+  flex: 0 0 auto;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-pill);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-weight: 800;
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-request-submission-queue > div {
+  display: grid;
+  gap: var(--space-3);
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+.feature-request-submission-queue article {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+}
+
+.feature-request-submission-queue article > div {
+  min-width: 0;
+}
+
+.feature-request-submission-queue article :is(h3, p) {
+  overflow-wrap: anywhere;
 }
 
 .feature-request-votes > button,
@@ -3115,7 +4089,7 @@ table tbody tr:hover {
 }
 
 .app-shell .badge.brand {
-  border-color: rgba(81, 70, 229, 0.18);
+  border-color: transparent;
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -3605,6 +4579,8 @@ table tbody tr:hover {
 
 .app-shell input::placeholder,
 .app-shell textarea::placeholder,
+.delphi-onboarding input::placeholder,
+.delphi-onboarding textarea::placeholder,
 .organization-create-form input::placeholder,
 .organization-create-form textarea::placeholder,
 .feature-request-dialog input::placeholder,
@@ -3620,8 +4596,10 @@ table tbody tr:hover {
 .landing :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
 .feature-requests-page :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
 .login-page :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 3px;
+  outline: 0;
+  box-shadow:
+    var(--shadow-focus),
+    0 0 0 3px color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
 /* Final legacy-authority overrides
@@ -3687,7 +4665,7 @@ table tbody tr:hover {
 .app-shell .segmented button[aria-pressed="true"],
 .app-shell .integration-filterbar button.active,
 .app-shell .integration-filterbar button[aria-pressed="true"] {
-  border-color: var(--accent);
+  border-color: transparent;
   background: var(--surface-pressed);
   color: var(--accent);
   box-shadow: var(--shadow-inset-sm);
@@ -3708,13 +4686,25 @@ table tbody tr:hover {
 }
 
 .app-shell .integration-suggestion-live-badge {
-  border-color: rgba(81, 70, 229, 0.2);
+  border-color: transparent;
   background: var(--accent-soft);
   color: var(--accent);
 }
 
 .app-shell :is(.integration-filterbar, .integration-copilot-replies) button {
   border-color: var(--border-subtle);
+}
+
+/* Match the legacy integration selectors so their fixed light hover fill
+ * cannot outrank the active theme in dark mode. */
+.app-shell .integration-copilot-replies button:hover:not(:disabled),
+.app-shell .integration-suggestion-row:hover .integration-suggestion-row-action,
+.app-shell .integration-filterbar button:hover:not(.active) {
+  border-color: transparent;
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
 }
 
 .app-shell .chart-tooltip small {
@@ -3767,11 +4757,30 @@ table tbody tr:hover {
   border-color: var(--control-border);
 }
 
+.app-shell .stage .stage-dot {
+  border: 0;
+  background: var(--surface);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-raised-sm);
+  transition:
+    background var(--duration-state) var(--ease-standard),
+    color var(--duration-state) var(--ease-standard),
+    box-shadow var(--duration-state) var(--ease-standard),
+    transform var(--duration-state) var(--ease-standard);
+}
+
+.app-shell .stage.done .stage-dot {
+  background: var(--surface-pressed);
+  color: var(--success);
+  box-shadow: var(--shadow-inset-sm);
+}
+
 .app-shell .stage.current .stage-dot {
-  border-color: var(--accent);
+  border: 0;
   background: var(--accent-fill);
   color: var(--text-on-accent);
-  box-shadow: var(--shadow-inset-sm);
+  box-shadow: var(--shadow-accent-raised);
+  transform: translateY(-1px);
 }
 
 .app-shell .queue-item {
@@ -3795,7 +4804,8 @@ table tbody tr:hover {
 
 .app-shell .queue-item.selected {
   background: var(--surface-pressed);
-  box-shadow: var(--shadow-inset-sm), inset 3px 0 var(--accent);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
 }
 
 .app-shell .queue-item.disabled {
@@ -3843,13 +4853,13 @@ table tbody tr:hover {
 }
 
 .app-shell .provider-option:hover {
-  border-color: var(--accent-line);
+  border-color: transparent;
   background: var(--surface-hover);
   box-shadow: var(--shadow-hover);
 }
 
 .app-shell .provider-option.selected {
-  border-color: var(--accent);
+  border-color: transparent;
   background: var(--surface-pressed);
   box-shadow: var(--shadow-inset-sm);
 }
@@ -3884,7 +4894,7 @@ table tbody tr:hover {
 }
 
 .app-shell .feedback-journey li.current > span {
-  border-color: var(--accent);
+  border-color: transparent;
   background: var(--surface-pressed);
   color: var(--accent);
   box-shadow: var(--shadow-inset-sm);
@@ -3912,7 +4922,9 @@ table tbody tr:hover {
   box-shadow: var(--shadow-raised-sm);
 }
 
-.app-shell :is(.integration, .delphi-source):hover .integration-provider-icon {
+:is(.app-shell, .shell-immersive)
+  :is(.integration, .delphi-source):hover
+  .integration-provider-icon {
   box-shadow: var(--shadow-hover);
 }
 
@@ -4001,9 +5013,17 @@ table tbody tr:hover {
  * borders without touching focus outlines, native checkbox/radio affordances,
  * chart geometry, or relationship lines. Forced-colors restores explicit
  * boundaries below because shadows are unavailable in that mode. */
-:where(.app-shell, .landing, .feature-requests-page, .login-page, .delphi-onboarding)
+:where(
+  .app-shell,
+  .shell-immersive,
+  .landing,
+  .feature-requests-page,
+  .login-page,
+  .delphi-onboarding
+)
   :where(
     button,
+    summary,
     input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
     textarea,
     select,
@@ -4112,7 +5132,7 @@ table tbody tr:hover {
   border: 0 !important;
 }
 
-:where(
+:is(
   .organization-switcher-menu,
   .user-menu-panel,
   .guided-demo-panel,
@@ -4148,12 +5168,12 @@ table tbody tr:hover {
 .integration-drawer-head,
 .guided-demo-head,
 .feature-request-dialog > header {
-  box-shadow: inset 0 -5px 10px -10px rgba(91, 107, 137, 0.48);
+  box-shadow: inset 0 -5px 10px -10px var(--separator-shadow);
 }
 
 .feedback-drawer-footer,
 .guided-demo-footer {
-  box-shadow: inset 0 5px 10px -10px rgba(91, 107, 137, 0.48);
+  box-shadow: inset 0 5px 10px -10px var(--separator-shadow);
 }
 
 :where(.app-shell, .landing, .feature-requests-page, .login-page)
@@ -4163,7 +5183,7 @@ table tbody tr:hover {
 
 /* Inputs remain visibly editable through an inset well and an accent focus
  * ring. Semantic errors use color and a ring rather than a red outline box. */
-:where(.app-shell, .landing, .feature-requests-page, .login-page)
+:where(.app-shell, .shell-immersive, .landing, .feature-requests-page, .login-page)
   :where(
     input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
     textarea,
@@ -4178,7 +5198,7 @@ table tbody tr:hover {
   box-shadow: var(--shadow-inset);
 }
 
-:where(.app-shell, .landing, .feature-requests-page, .login-page)
+:where(.app-shell, .shell-immersive, .landing, .feature-requests-page, .login-page)
   :where(input, textarea, select)[aria-invalid="true"] {
   background: color-mix(in srgb, var(--danger-soft) 72%, var(--surface-pressed));
   box-shadow: var(--shadow-inset-sm), 0 0 0 3px rgba(169, 47, 64, 0.22);
@@ -4193,7 +5213,7 @@ table tbody tr:hover {
 }
 
 /* Selected and pressed controls rely only on inset depth and accent color. */
-:where(.app-shell, .landing, .feature-requests-page)
+:where(.app-shell, .shell-immersive, .landing, .feature-requests-page)
   :where(
     .nav a.active,
     .settings-nav a.active,
@@ -4709,8 +5729,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 }
 
 .app-shell .prioritization-view-switch button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0;
   box-shadow: var(--shadow-focus);
 }
 
@@ -4801,8 +5820,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
     .guided-demo-footer button.primary,
     .trust-card-actions button:last-child
   ):focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
+  outline: 0;
   box-shadow: var(--shadow-accent-cta-raised), var(--shadow-focus);
 }
 
@@ -4906,7 +5924,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 /* Responsive density and scroll affordances */
 
 @media (max-width: 1050px) {
-  .content { padding-inline: var(--space-5); }
+  .app-shell .content { padding-inline: var(--space-5); }
 }
 
 @media (min-width: 721px) and (max-width: 1050px) {
@@ -4958,7 +5976,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
     --space-8: 28px;
   }
 
-  .content,
+  .app-shell .content,
   .immersive-content { padding-inline: var(--space-4); }
 
   .cols-2 { grid-template-columns: 1fr; }
@@ -4966,8 +5984,69 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   .topbar,
   .immersive-topbar { padding-inline: var(--space-4); }
 
-  .card-head,
-  .card-body { padding: var(--space-4); }
+  .app-shell .card-head,
+  .app-shell .card-body { padding: var(--space-4); }
+
+  .app-shell .search-action {
+    width: var(--control-height);
+    min-width: var(--control-height);
+    padding-inline: 0;
+  }
+
+  .app-shell .board {
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--space-2) var(--space-7);
+    overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      #000 0,
+      #000 calc(100% - 32px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      #000 0,
+      #000 calc(100% - 32px),
+      transparent 100%
+    );
+  }
+
+  .app-shell .board-col {
+    scroll-snap-align: start;
+  }
+
+  .app-shell .table-wrap {
+    position: relative;
+    isolation: isolate;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-shell .table-wrap > table {
+    min-width: 720px;
+  }
+
+  .app-shell .table-wrap :is(th, td):first-child {
+    position: sticky;
+    z-index: 2;
+    inset-inline-start: 0;
+    background: var(--surface);
+    box-shadow: 8px 0 12px -12px var(--text-muted);
+  }
+
+  .app-shell .table-wrap th:first-child {
+    z-index: 3;
+    background: var(--surface-pressed);
+  }
+
+  .app-shell .table-wrap tbody tr:hover td:first-child {
+    background: var(--table-row-hover);
+  }
 
   .setup-hub-compact-head {
     align-items: flex-start;
@@ -5020,13 +6099,100 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 }
 
 @media (max-width: 480px) {
-  .content,
+  .app-shell .content,
   .immersive-content { padding-inline: var(--space-3); }
 
   .page-head { gap: var(--space-4); }
 
-  .card-head,
-  .card-body { padding: var(--space-4); }
+  .app-shell .card-head,
+  .app-shell .card-body { padding: var(--space-4); }
+
+  .shell-immersive .immersive-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .shell-immersive .immersive-brand {
+    min-width: 0;
+  }
+
+  .shell-immersive .closespan-3d-logo--sm {
+    width: min(132px, 42vw);
+  }
+
+  .shell-immersive .immersive-top-actions {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    gap: var(--space-2);
+  }
+
+  .shell-immersive .immersive-top-actions > .btn {
+    min-height: var(--control-height);
+    padding-inline: var(--space-3);
+    white-space: nowrap;
+  }
+
+  .shell-immersive .organization-switcher.compact {
+    width: auto;
+  }
+
+  .shell-immersive .organization-switcher.compact .organization-switcher-control,
+  .shell-immersive .organization-switcher.compact details,
+  .shell-immersive .user-menu {
+    position: static;
+  }
+
+  .shell-immersive
+    .organization-switcher.compact
+    .organization-switcher-control.rename-enabled {
+    display: grid;
+    grid-template-columns: repeat(2, var(--control-height));
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .shell-immersive
+    .organization-switcher.compact
+    .organization-switcher-control.rename-enabled
+    .organization-switcher-trigger,
+  .shell-immersive .organization-switcher.compact .organization-switcher-trigger {
+    width: var(--control-height);
+    min-width: var(--control-height);
+    min-height: var(--control-height);
+    grid-template-columns: 30px;
+  }
+
+  .shell-immersive .organization-switcher.compact .organization-rename-trigger {
+    position: static;
+    width: var(--control-height);
+    min-width: var(--control-height);
+    height: var(--control-height);
+    min-height: var(--control-height);
+    margin: 0;
+    transform: none;
+  }
+
+  .shell-immersive .user-menu-trigger {
+    width: var(--control-height);
+    min-width: var(--control-height);
+    height: var(--control-height);
+    min-height: var(--control-height);
+  }
+
+  .shell-immersive .organization-switcher.compact .organization-switcher-menu,
+  .shell-immersive .user-menu-panel {
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    right: 0;
+    left: 0;
+    width: auto;
+    max-height: calc(100dvh - 132px);
+  }
 
   .integration-filterbar,
   .integration-copilot-replies,
@@ -5056,6 +6222,13 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
     --border-subtle: rgba(63, 75, 99, 0.34);
     --accent-line: rgba(81, 70, 229, 0.58);
   }
+
+  :root[data-theme="dark"] {
+    --text: #e1e7f2;
+    --text-muted: #bdc8da;
+    --border-subtle: rgba(217, 226, 242, 0.3);
+    --accent-line: rgba(174, 168, 255, 0.72);
+  }
 }
 
 /* Shared alignment contract
@@ -5077,7 +6250,11 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 }
 
 .landing .faq-list {
-  grid-auto-rows: 1fr;
+  grid-auto-rows: auto;
+}
+
+.landing .faq-list details {
+  height: auto;
 }
 
 .landing .faq-list summary {
@@ -5210,6 +6387,181 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   }
 }
 
+/* Feature request list
+ *
+ * The status rail is intentionally pressed into the page while individual
+ * requests sit one level above it. This keeps the roadmap scannable without
+ * turning every piece of metadata into a separate floating panel. */
+.feature-requests-page .feature-request-groups {
+  gap: var(--space-8);
+}
+
+.feature-requests-page .feature-request-group {
+  gap: var(--space-4);
+}
+
+.feature-requests-page .feature-request-group > header {
+  min-height: 68px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-status-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.feature-requests-page .feature-request-group > header h2 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+}
+
+.feature-requests-page .feature-request-group > header p {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.feature-requests-page .feature-request-count {
+  min-width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset-sm);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}
+
+.feature-requests-page .feature-request-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.feature-requests-page .feature-request-row {
+  min-height: 104px;
+  gap: var(--space-6);
+  padding: var(--space-5);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+  transition:
+    transform var(--duration-normal) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard),
+    background-color var(--duration-normal) var(--ease-standard);
+}
+
+.feature-requests-page .feature-request-row h3 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+}
+
+.feature-requests-page .feature-request-row p {
+  max-width: 66ch;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.feature-requests-page .feature-requests-intro p {
+  width: 100%;
+  max-width: none;
+}
+
+.feature-requests-page .feature-request-votes {
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-votes > button {
+  width: 52px;
+  min-width: 52px;
+  min-height: var(--control-height);
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+  font-size: var(--text-sm);
+}
+
+.feature-requests-page .feature-request-votes > button.voted,
+.feature-requests-page .feature-request-votes > button[aria-pressed="true"] {
+  border: 0;
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.feature-requests-page .feature-request-vote-note {
+  width: 100%;
+  max-width: none;
+  margin-top: calc(var(--space-2) * -1);
+  padding-inline: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-body);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .feature-requests-page .feature-request-row:hover {
+    background: var(--surface-hover);
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-1px);
+  }
+}
+
+@media (max-width: 720px) {
+  .feature-requests-page .feature-request-groups {
+    gap: var(--space-7);
+  }
+
+  .feature-requests-page .feature-request-group > header {
+    min-height: 64px;
+    padding: var(--space-3);
+  }
+
+  .feature-requests-page .feature-request-status-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .feature-requests-page .feature-request-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    padding: var(--space-4);
+  }
+
+  .feature-requests-page .feature-request-votes {
+    width: max-content;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 480px) {
+  .feature-requests-page .feature-request-group > header p {
+    display: none;
+  }
+
+  .feature-requests-page .feature-request-row p {
+    -webkit-line-clamp: 3;
+  }
+}
+
 @media (forced-colors: active) {
   * { box-shadow: none !important; }
 
@@ -5232,5 +6584,367 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 
   .stage.current .stage-dot {
     border: 2px solid Highlight !important;
+  }
+}
+
+/* Compound credential fields are one control. The nested input must not pick
+ * up the global inset-input surface a second time beside its leading icon. */
+.app-shell .secret-input {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset);
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard),
+    background-color var(--duration-normal) var(--ease-standard);
+}
+
+.app-shell .secret-input > svg {
+  width: 20px;
+  height: 20px;
+  color: currentColor;
+  pointer-events: none;
+}
+
+.app-shell .secret-input > input,
+.app-shell .secret-input > input:hover,
+.app-shell .secret-input > input:focus,
+.app-shell .secret-input > input:focus-visible {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height);
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0;
+  outline: 0 !important;
+  background: transparent !important;
+  color: var(--text-strong);
+  box-shadow: none !important;
+}
+
+.app-shell .secret-input:hover:not(:focus-within) {
+  color: var(--text);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .secret-input:focus-within {
+  color: var(--accent);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset), var(--shadow-focus);
+}
+
+@media (forced-colors: active) {
+  .app-shell .secret-input {
+    border: 1px solid CanvasText !important;
+    box-shadow: none;
+  }
+
+  .app-shell .secret-input:focus-within {
+    outline: 3px solid Highlight !important;
+    outline-offset: 3px;
+  }
+}
+
+/* Message-app rhythm translated into the CloseSpan neumorphic system. */
+.app-shell .integration-suggestions-agent .integration-copilot-turn.assistant,
+.app-shell .integration-suggestions-agent .integration-copilot-turn.welcome {
+  width: min(82%, 820px);
+  max-width: min(82%, 820px);
+  justify-items: start;
+}
+
+.app-shell .integration-copilot-turn.user {
+  width: min(76%, 720px);
+  max-width: min(76%, 720px);
+}
+
+.app-shell .integration-copilot-turn.busy-turn {
+  width: max-content;
+  max-width: min(82%, 820px);
+}
+
+.app-shell .integration-copilot-sender {
+  margin-left: 50px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: .01em;
+}
+
+.app-shell .integration-copilot-bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-shell .integration-copilot-turn.user .integration-copilot-bubble-row {
+  justify-content: flex-end;
+}
+
+.app-shell .integration-copilot-avatar {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-message.assistant,
+.app-shell .integration-suggestions-agent .integration-copilot-message.welcome {
+  position: relative;
+  width: auto;
+  max-width: 100%;
+  padding: 12px 16px;
+  border-radius: 20px 20px 20px 7px;
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-message.assistant::after {
+  position: absolute;
+  bottom: 2px;
+  left: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: -2px 2px 5px rgba(174, 185, 207, .28);
+  content: "";
+  z-index: 0;
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-message.assistant p,
+.app-shell .integration-suggestions-agent .integration-copilot-message.welcome p {
+  position: relative;
+  z-index: 1;
+  max-width: 62ch;
+  font-size: 14px;
+  line-height: 1.52;
+  letter-spacing: 0;
+}
+
+.app-shell .integration-suggestions-agent .integration-copilot-message.integration-copilot-busy {
+  width: max-content;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px 14px;
+  color: var(--text-muted);
+}
+
+.app-shell .integration-copilot-busy svg {
+  color: var(--accent);
+}
+
+.app-shell .integration-copilot-message.user {
+  position: relative;
+  width: auto;
+  padding: 10px 16px;
+  border-radius: 20px 20px 7px 20px;
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+}
+
+.app-shell .integration-copilot-message.user::after {
+  position: absolute;
+  right: -4px;
+  bottom: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent-fill);
+  box-shadow: 2px 2px 5px color-mix(in srgb, var(--accent-fill) 30%, transparent);
+  content: "";
+  z-index: 0;
+}
+
+.app-shell .integration-copilot-message.user p {
+  position: relative;
+  z-index: 1;
+}
+
+.app-shell .integration-copilot-turn time {
+  padding-inline: 50px 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.app-shell .integration-copilot-turn.user time {
+  padding-inline: 6px;
+}
+
+/* The composer is one recessed control, so keyboard focus belongs on its
+ * outer pill rather than drawing a second rectangle around the input. */
+.app-shell .integration-copilot-composer {
+  min-height: 56px;
+  gap: var(--space-2);
+  padding: 6px 6px 6px 20px;
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 999px;
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .integration-copilot-composer:hover:not(:focus-within) {
+  background: var(--surface-pressed);
+}
+
+.app-shell .integration-copilot-composer:focus-within {
+  border: 0 !important;
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm), var(--shadow-focus);
+}
+
+.app-shell .integration-copilot-composer > input,
+.app-shell .integration-copilot-composer > input:hover,
+.app-shell .integration-copilot-composer > input:focus,
+.app-shell .integration-copilot-composer > input:focus-visible {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0;
+  outline: 0 !important;
+  background: transparent !important;
+  color: var(--text-strong);
+  box-shadow: none !important;
+}
+
+.app-shell .integration-copilot-composer > input::placeholder {
+  color: color-mix(in srgb, var(--text-muted) 84%, transparent);
+}
+
+.app-shell .integration-copilot-composer > button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+  transition:
+    background-color 280ms var(--ease-standard),
+    color 220ms var(--ease-standard),
+    box-shadow 320ms var(--ease-standard),
+    transform 240ms var(--ease-standard),
+    opacity 220ms var(--ease-standard);
+}
+
+.app-shell .integration-copilot-composer > button[data-ready="true"] {
+  animation: integration-send-ready 340ms var(--ease-emphasized, cubic-bezier(.2,.8,.2,1)) both;
+}
+
+.app-shell .integration-copilot-composer > button svg {
+  transition: transform 280ms var(--ease-standard);
+}
+
+.app-shell .integration-copilot-composer > button[data-ready="true"] svg {
+  animation: integration-send-arrow-ready 340ms var(--ease-emphasized, cubic-bezier(.2,.8,.2,1)) both;
+}
+
+@keyframes integration-send-ready {
+  0% {
+    background-color: color-mix(in srgb, var(--text-muted) 34%, var(--surface));
+    color: var(--surface);
+    box-shadow: none;
+    transform: scale(.92);
+  }
+  68% {
+    background-color: var(--accent-fill);
+    color: var(--text-on-accent);
+    box-shadow: var(--shadow-accent-hover);
+    transform: scale(1.045);
+  }
+  100% {
+    background-color: var(--accent-fill);
+    color: var(--text-on-accent);
+    box-shadow: var(--shadow-accent-raised);
+    transform: scale(1);
+  }
+}
+
+@keyframes integration-send-arrow-ready {
+  0% { transform: translateY(3px); }
+  68% { transform: translateY(-1px); }
+  100% { transform: translateY(0); }
+}
+
+.app-shell .integration-copilot-composer > button:hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+  box-shadow: var(--shadow-accent-hover);
+  transform: translateY(-1px);
+}
+
+.app-shell .integration-copilot-composer > button:active:not(:disabled) {
+  background: var(--accent-fill-active);
+  box-shadow: var(--shadow-accent-inset);
+  transform: scale(.94);
+}
+
+.app-shell .integration-copilot-composer > button:disabled {
+  background: color-mix(in srgb, var(--text-muted) 34%, var(--surface));
+  color: var(--surface);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .integration-copilot-composer > button,
+  .app-shell .integration-copilot-composer > button svg {
+    animation: none !important;
+    transition: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell .integration-suggestions-agent .integration-copilot-turn.assistant,
+  .app-shell .integration-suggestions-agent .integration-copilot-turn.welcome,
+  .app-shell .integration-copilot-turn.user {
+    width: 94%;
+    max-width: 94%;
+  }
+
+  .app-shell .integration-copilot-avatar {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+  }
+
+  .app-shell .integration-copilot-sender,
+  .app-shell .integration-copilot-turn time {
+    margin-left: 46px;
+    padding-left: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .app-shell .integration-copilot-composer {
+    border: 1px solid CanvasText !important;
+  }
+
+  .app-shell .integration-copilot-composer:focus-within {
+    outline: 3px solid Highlight !important;
+    outline-offset: 3px;
   }
 }

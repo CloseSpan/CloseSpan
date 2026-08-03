@@ -54,6 +54,30 @@ export async function POST(request: NextRequest) {
     });
     const accounts = (await listPipedreamConnections(context.orgId))
       .filter((item) => item.integrationId === integrationId);
+    let slackIntake = null;
+    let slackSetupWarning: string | null = null;
+    if (integrationId === "int_slack") {
+      const connectedAccount = accounts.find((item) => item.state === "Connected");
+      if (connectedAccount) {
+        try {
+          const { ensureSlackIntakeChannel } = await import("@/lib/slack-intake");
+          slackIntake = await ensureSlackIntakeChannel({
+            orgId: context.orgId,
+            accountId: connectedAccount.accountId,
+            actorId: context.actorId,
+            actorName: context.actorName,
+            traceId: `${context.traceId}:slack-intake`,
+          });
+        } catch (error) {
+          console.error("[slack:intake-provision]", {
+            orgId: context.orgId,
+            errorType: error instanceof Error ? error.name : "UnknownError",
+          });
+          slackSetupWarning =
+            "Slack is connected, but #closespan-feedback could not be prepared yet. CloseSpan will retry automatically.";
+        }
+      }
+    }
     return NextResponse.json({
       integrationId,
       connectionState: accounts.some((item) => item.state === "Connected")
@@ -62,6 +86,9 @@ export async function POST(request: NextRequest) {
           ? "Needs reconnect"
           : "Disconnected",
       accounts,
+      ...(integrationId === "int_slack"
+        ? { slackIntake, slackSetupWarning }
+        : {}),
     }, { headers: noStoreHeaders });
   } catch (error) {
     if (error instanceof HttpError) return errorResponse(error);

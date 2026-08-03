@@ -8,6 +8,8 @@ upload.env.me
 *.tsbuildinfo
 .DS_Store
 .vercel
+.ski/
+.tenki/
 backups/
 
 definable-tangible-sizable_-_CLI_Quickstart-oauth-credentials.txt

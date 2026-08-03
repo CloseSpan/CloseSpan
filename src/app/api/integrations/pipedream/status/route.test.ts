@@ -11,6 +11,10 @@ const repository = vi.hoisted(() => ({
   saveAccount: vi.fn(),
 }));
 
+const slack = vi.hoisted(() => ({
+  ensureIntake: vi.fn(),
+}));
+
 vi.mock("@/lib/pipedream", () => ({
   getPipedreamClient: () => ({
     accounts: { list: pipedream.listAccounts },
@@ -22,6 +26,10 @@ vi.mock("@/lib/pipedream-repository", () => ({
   listPipedreamConnections: repository.listConnections,
   reconcilePipedreamAccounts: repository.reconcileAccounts,
   savePipedreamAccount: repository.saveAccount,
+}));
+
+vi.mock("@/lib/slack-intake", () => ({
+  ensureSlackIntakeChannel: slack.ensureIntake,
 }));
 
 import { POST } from "./route";
@@ -40,6 +48,7 @@ function statusRequest(
     idempotencyKey?: string | null;
     organizationHeader?: string;
     role?: string;
+    integrationId?: "int_zendesk" | "int_slack";
   } = {},
 ) {
   const headers: Record<string, string> = {
@@ -60,7 +69,9 @@ function statusRequest(
     {
       method: "POST",
       headers,
-      body: JSON.stringify({ integrationId: "int_zendesk" }),
+      body: JSON.stringify({
+        integrationId: options.integrationId ?? "int_zendesk",
+      }),
     },
   );
 }
@@ -88,6 +99,16 @@ describe("Pipedream connection status route security", () => {
         state: "Connected",
       },
     ]);
+    slack.ensureIntake.mockReset().mockResolvedValue({
+      state: "Connected",
+      accountId: "apn_alpha_slack",
+      teamId: "T_ALPHA",
+      teamName: "Alpha",
+      channelId: "C_FEEDBACK",
+      channelName: "closespan-feedback",
+      lastPolledAt: null,
+      lastError: null,
+    });
   });
 
   it("refreshes and persists accounts only for the authenticated organization", async () => {
@@ -172,6 +193,48 @@ describe("Pipedream connection status route security", () => {
     expect(await response.json()).toMatchObject({
       connectionState: "Disconnected",
       accounts: [],
+    });
+  });
+
+  it("automatically provisions the Slack intake channel after connection", async () => {
+    pipedream.listAccounts.mockResolvedValue(
+      accountPage([
+        {
+          id: "apn_alpha_slack",
+          app: { nameSlug: "slack" },
+          name: "Alpha Slack",
+          healthy: true,
+          authorizedScopes: ["channels:read", "channels:write"],
+        },
+      ]),
+    );
+    repository.listConnections.mockResolvedValue([
+      {
+        integrationId: "int_slack",
+        accountId: "apn_alpha_slack",
+        state: "Connected",
+      },
+    ]);
+
+    const response = await POST(
+      statusRequest({ integrationId: "int_slack" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(slack.ensureIntake).toHaveBeenCalledWith({
+      orgId: "org_alpha",
+      accountId: "apn_alpha_slack",
+      actorId: "status_route_admin",
+      actorName: "Avery Chen",
+      traceId: expect.stringContaining(":slack-intake"),
+    });
+    expect(await response.json()).toMatchObject({
+      connectionState: "Connected",
+      slackIntake: {
+        channelName: "closespan-feedback",
+        state: "Connected",
+      },
+      slackSetupWarning: null,
     });
   });
 

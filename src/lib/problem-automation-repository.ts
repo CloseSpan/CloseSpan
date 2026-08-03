@@ -11,6 +11,11 @@ import {
 } from "./problem-automation-memory";
 import { primaryProblem } from "./seed";
 import { workspacePersistenceMode } from "./workspace-persistence";
+import {
+  createNextAutomatedPromptDraft,
+  type AutomatedPromptDraftResult,
+} from "./automated-prompt-draft-repository";
+import { deliverPromptReviewEmails, type PromptReviewEmailDeliveryResult } from "./prompt-review-email";
 
 export interface StageEvidence {
   hasFeedback: boolean;
@@ -34,6 +39,8 @@ export interface AutomationTickResult {
   fromStage: Stage | null;
   toStage: Stage | null;
   reason: string;
+  promptDraft?: AutomatedPromptDraftResult;
+  emailDelivery?: PromptReviewEmailDeliveryResult;
 }
 
 export function assessAutomatedStage(
@@ -361,9 +368,13 @@ async function runPostgresTick(orgId: string): Promise<AutomationTickResult> {
 export async function runProblemAutomationTick(
   orgId: string,
 ): Promise<AutomationTickResult> {
-  return workspacePersistenceMode(orgId) === "memory"
+  const promptDraft = await createNextAutomatedPromptDraft(orgId);
+  const stageResult = workspacePersistenceMode(orgId) === "memory"
     ? runMemoryTick(orgId)
     : runPostgresTick(orgId);
+  const completedStage = await stageResult;
+  const emailDelivery = await deliverPromptReviewEmails(orgId);
+  return { ...completedStage, promptDraft, emailDelivery };
 }
 
 export async function runProblemAutomationForAllOrganizations(): Promise<
@@ -376,7 +387,7 @@ export async function runProblemAutomationForAllOrganizations(): Promise<
   for (const organization of organizations.rows) {
     results.push({
       orgId: organization.id,
-      result: await runPostgresTick(organization.id),
+      result: await runProblemAutomationTick(organization.id),
     });
   }
   return results;

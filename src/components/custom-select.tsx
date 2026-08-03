@@ -4,6 +4,7 @@ import { Check, ChevronDown } from "lucide-react";
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -14,6 +15,7 @@ type CustomSelectProps = {
   ariaLabel: string;
   className?: string;
   disabled?: boolean;
+  inlineMenu?: boolean;
   leadingIcon?: ReactNode;
   name?: string;
   onValueChange: (value: string) => void;
@@ -25,6 +27,7 @@ export function CustomSelect({
   ariaLabel,
   className = "",
   disabled = false,
+  inlineMenu = false,
   leadingIcon,
   name,
   onValueChange,
@@ -41,8 +44,14 @@ export function CustomSelect({
   const selectedOption = normalizedOptions[selectedIndex];
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(selectedIndex);
+  const [menuPlacement, setMenuPlacement] = useState<"top" | "bottom">(
+    "bottom",
+  );
+  const [menuAlignment, setMenuAlignment] = useState<"start" | "end">("end");
+  const [menuMaxHeight, setMenuMaxHeight] = useState(320);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const listboxId = useId();
 
@@ -56,6 +65,59 @@ export function CustomSelect({
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || inlineMenu) return;
+
+    let frame = 0;
+    const positionMenu = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const trigger = triggerRef.current;
+        const menuElement = menuRef.current;
+        if (!trigger || !menuElement) return;
+
+        const viewportPadding = 12;
+        const menuGap = 8;
+        const triggerRect = trigger.getBoundingClientRect();
+        const spaceBelow = Math.max(
+          0,
+          window.innerHeight - triggerRect.bottom - menuGap - viewportPadding,
+        );
+        const spaceAbove = Math.max(
+          0,
+          triggerRect.top - menuGap - viewportPadding,
+        );
+        const desiredHeight = Math.min(
+          menuElement.scrollHeight,
+          320,
+          window.innerHeight * 0.6,
+        );
+        const nextPlacement =
+          spaceBelow < desiredHeight && spaceAbove > spaceBelow
+            ? "top"
+            : "bottom";
+        const availableHeight =
+          nextPlacement === "top" ? spaceAbove : spaceBelow;
+        const estimatedWidth = Math.max(triggerRect.width, 190);
+
+        setMenuPlacement(nextPlacement);
+        setMenuAlignment(
+          triggerRect.right - estimatedWidth < viewportPadding ? "start" : "end",
+        );
+        setMenuMaxHeight(Math.max(96, Math.min(320, availableHeight)));
+      });
+    };
+
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+    };
+  }, [inlineMenu, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -96,6 +158,9 @@ export function CustomSelect({
     } else if (event.key === "End") {
       event.preventDefault();
       openAt(options.length - 1);
+    } else if (event.key === "Escape" && open) {
+      event.preventDefault();
+      setOpen(false);
     }
   }
 
@@ -123,6 +188,46 @@ export function CustomSelect({
     }
   }
 
+  const menu = (
+    <div
+      ref={menuRef}
+      id={listboxId}
+      className="custom-select-menu"
+      role="listbox"
+      aria-label={ariaLabel}
+      aria-hidden={!open}
+      data-open={open ? "true" : "false"}
+      data-placement={menuPlacement}
+      data-alignment={menuAlignment}
+      style={inlineMenu ? undefined : { maxHeight: `${menuMaxHeight}px` }}
+    >
+      {normalizedOptions.map((option, index) => {
+        const selected = option.value === value;
+        const highlighted = index === highlightedIndex;
+        return (
+          <button
+            ref={(element) => {
+              optionRefs.current[index] = element;
+            }}
+            key={option.value}
+            type="button"
+            role="option"
+            className="custom-select-option"
+            aria-selected={selected}
+            data-highlighted={highlighted ? "true" : undefined}
+            tabIndex={open && highlighted ? 0 : -1}
+            onClick={() => selectOption(option.value)}
+            onFocus={() => setHighlightedIndex(index)}
+            onKeyDown={handleOptionKeyDown}
+          >
+            <Check aria-hidden="true" size={15} />
+            <span>{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div ref={rootRef} className={`custom-select ${className}`.trim()}>
       {name ? <input type="hidden" name={name} value={value} /> : null}
@@ -145,39 +250,17 @@ export function CustomSelect({
         <ChevronDown aria-hidden="true" size={16} />
       </button>
 
-      {open ? (
+      {inlineMenu ? (
         <div
-          id={listboxId}
-          className="custom-select-menu"
-          role="listbox"
-          aria-label={ariaLabel}
+          className="custom-select-inline-region"
+          data-open={open ? "true" : "false"}
+          aria-hidden={!open}
         >
-          {normalizedOptions.map((option, index) => {
-            const selected = option.value === value;
-            const highlighted = index === highlightedIndex;
-            return (
-              <button
-                ref={(element) => {
-                  optionRefs.current[index] = element;
-                }}
-                key={option.value}
-                type="button"
-                role="option"
-                className="custom-select-option"
-                aria-selected={selected}
-                data-highlighted={highlighted ? "true" : undefined}
-                tabIndex={highlighted ? 0 : -1}
-                onClick={() => selectOption(option.value)}
-                onFocus={() => setHighlightedIndex(index)}
-                onKeyDown={handleOptionKeyDown}
-              >
-                <Check aria-hidden="true" size={15} />
-                <span>{option.label}</span>
-              </button>
-            );
-          })}
+          {menu}
         </div>
-      ) : null}
+      ) : (
+        menu
+      )}
     </div>
   );
 }

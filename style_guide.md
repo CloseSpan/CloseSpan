@@ -30,7 +30,7 @@ CloseSpan has two complementary logo systems. Choose by context rather than subs
 
 ### 2.1 One surface family
 
-The canvas and components use the same soft blue-gray surface family. Hierarchy comes from light, shadow, spacing, scale, and typography, not a stack of unrelated background colors.
+The light canvas and components use the same near-white lavender surface family. Purple is the dominant interactive accent. Hierarchy comes from light, shadow, spacing, scale, and typography, not a stack of unrelated background colors.
 
 ### 2.2 Depth communicates state
 
@@ -81,11 +81,11 @@ Always use CSS variables. Do not copy raw color or shadow values into a componen
 
 ```css
 :root {
-  --bg: #e9eef7;
-  --surface: #e9eef7;
-  --surface-hover: #edf2fa;
-  --surface-pressed: #e4eaf4;
-  --surface-muted: #e3e9f3;
+  --bg: #f0f2f9;
+  --surface: #f0f2f9;
+  --surface-hover: #f5f6fb;
+  --surface-pressed: #e8ecf5;
+  --surface-muted: #e6ebf5;
 
   --text: #3f4b63;
   --text-strong: #263249;
@@ -95,8 +95,8 @@ Always use CSS variables. Do not copy raw color or shadow values into a componen
   --accent: #5146e5;
   --accent-hover: #463bd1;
   --accent-active: #3f35c3;
-  --accent-soft: rgba(81, 70, 229, 0.1);
-  --accent-line: rgba(81, 70, 229, 0.28);
+  --accent-soft: rgba(81, 70, 229, 0.11);
+  --accent-line: transparent;
 }
 ```
 
@@ -140,12 +140,12 @@ Status cannot rely on color alone. Pair it with an icon, label, or both.
 
 ```css
 --shadow-raised:
-  -7px -7px 14px rgba(255, 255, 255, 0.82),
-   7px  7px 14px rgba(154, 169, 194, 0.38);
+  -7px -7px 14px rgba(255, 255, 255, 0.92),
+   7px  7px 14px rgba(174, 185, 207, 0.34);
 
 --shadow-inset:
-  inset 5px 5px 10px rgba(154, 169, 194, 0.34),
-  inset -5px -5px 10px rgba(255, 255, 255, 0.82);
+  inset 5px 5px 10px rgba(174, 185, 207, 0.31),
+  inset -5px -5px 10px rgba(255, 255, 255, 0.92);
 ```
 
 Available roles include:
@@ -593,7 +593,7 @@ Do not add `border: 1px solid white`, raw white shadows, or a hard-coded dark th
 ### Visual consistency
 
 - [ ] Uses shared tokens instead of isolated values
-- [ ] Matches the soft blue-gray surface family
+- [ ] Matches the near-white lavender surface family and purple accent system
 - [ ] Uses raised, hover, and inset depth correctly
 - [ ] Contains no unnecessary border, glass, glow, or heavy gradient
 - [ ] Uses purple only for purposeful emphasis

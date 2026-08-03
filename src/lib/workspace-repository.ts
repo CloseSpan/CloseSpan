@@ -7,6 +7,8 @@ import { getAiPublicConfiguration, type AiPublicConfiguration } from "./ai-confi
 import { integrationCatalog } from "./integration-catalog";
 import { getIntegrationExperience } from "./integration-ui";
 import { workspacePersistenceMode } from "./workspace-persistence";
+import { defaultPromptDraftPolicy, type PromptDraftPolicy } from "./prompt-draft-policy";
+import { getMemoryWorkspacePolicy } from "./workspace-settings-repository";
 
 export interface IntegrationView { id: string; name: string; category: string; state: string; lastSync: string | null; dataScope: string; permissions: string[] }
 export interface InvestigationQueueItem { id: string; problemId: string; title: string; status: string }
@@ -16,6 +18,7 @@ export interface SettingsView {
   monthlyModelBudget: number; usedModelCost: number; hardStop: boolean; planName: string; planPrice: string;
   ai: AiPublicConfiguration & { promptVersion:string; lastRunStatus:string | null; lastRunAt:string | null };
   members: Array<{ id: string; name: string; email: string; role: string; team: string }>;
+  promptDraftPolicy: PromptDraftPolicy;
 }
 export interface WorkspaceData {
   orgId: string; feedback: FeedbackItem[]; primaryProblem: ProductProblem | null; recommendation: Recommendation | null;
@@ -50,6 +53,7 @@ export function createDefaultWorkspaceSettings(
     planPrice: "Managed externally",
     ai,
     members,
+    promptDraftPolicy: structuredClone(defaultPromptDraftPolicy),
   };
 }
 
@@ -80,10 +84,11 @@ const memoryIntegrations = integrationCatalog.map((entry) => {
 async function memoryData(orgId: string): Promise<WorkspaceData> {
   const analytics = overviewAnalytics;
   const ai = await getAiPublicConfiguration(orgId);
+  const savedPolicy = getMemoryWorkspacePolicy(orgId);
   return { orgId, feedback: seedFeedback, primaryProblem: seedProblem, recommendation: seedRecommendation, analytics, integrations: memoryIntegrations,
     investigationQueue: [{id:"inv_sso",problemId:"prob_sso",title:"SAML role mapping",status:"Running"},{id:"inv_filters",problemId:"prob_filters",title:"Saved filter regression",status:"Queued"},{id:"inv_invites",problemId:"prob_invites",title:"Invite confirmation",status:"Needs context"}],
     customers: [...new Map(seedFeedback.map((item,index) => [item.customer,{id:item.id,name:item.customer,tier:item.accountTier,arr:item.arr,customerSince:2021+index,signals:1,openProblems:item.problemId?1:0,churnRisk:index<2?"Elevated":"Low"}])).values()],
-    settings: { autonomyLevel:"Execute with approval",piiRedaction:true,retentionDays:365,priorityWeights:Object.fromEntries(seedProblem.impactFactors.map((factor) => [factor.key,factor.weight])),monthlyModelBudget:500,usedModelCost:128,hardStop:true,planName:"Sandbox",planPrice:"$0",ai:{...ai,promptVersion:"v1",lastRunStatus:null,lastRunAt:null},members:[{id:"user_avery",name:"Avery Chen",email:"avery@example.com",role:"Admin",team:"Product"}] } };
+    settings: { autonomyLevel:savedPolicy?.autonomyLevel ?? "Execute with approval",piiRedaction:savedPolicy?.piiRedaction ?? true,retentionDays:savedPolicy?.retentionDays ?? 365,priorityWeights:savedPolicy?.priorityWeights ?? Object.fromEntries(seedProblem.impactFactors.map((factor) => [factor.key,factor.weight])),monthlyModelBudget:500,usedModelCost:128,hardStop:true,planName:"Sandbox",planPrice:"$0",ai:{...ai,promptVersion:"v1",lastRunStatus:null,lastRunAt:null},members:[{id:"user_avery",name:"Avery Chen",email:"avery@example.com",role:"Admin",team:"Product"}],promptDraftPolicy:savedPolicy?.promptDraftPolicy ?? structuredClone(defaultPromptDraftPolicy) } };
 }
 
 interface PrimaryProblemRow {
@@ -207,7 +212,7 @@ export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
     pool.query<{ id:string; name:string; tier:string; arr:number; customer_since:number; churn_risk:string; signals:number; open_problems:number }>(`SELECT a.id,a.name,a.tier,a.arr,a.customer_since,a.churn_risk,count(DISTINCT f.id)::int signals,count(DISTINCT i.problem_id)::int open_problems
       FROM accounts a LEFT JOIN feedback_items f ON f.org_id=a.org_id AND f.customer_name=a.name LEFT JOIN problem_account_impacts i ON i.org_id=a.org_id AND i.account_id=a.id
       WHERE a.org_id=$1 GROUP BY a.id,a.org_id ORDER BY a.arr DESC`,[orgId]),
-    pool.query<{ autonomy_level:string; pii_redaction:boolean; retention_days:number; priority_weights:Record<string,number>; monthly_model_budget:number; used_model_cost:number; hard_stop:boolean; plan_name:string; plan_price:string }>("SELECT * FROM workspace_settings WHERE org_id=$1",[orgId]),
+    pool.query<{ autonomy_level:string; pii_redaction:boolean; retention_days:number; priority_weights:Record<string,number>; monthly_model_budget:number; used_model_cost:number; hard_stop:boolean; plan_name:string; plan_price:string; prompt_draft_mode:PromptDraftPolicy["mode"]; prompt_draft_bug_reports:boolean; prompt_draft_feature_requests:boolean; prompt_draft_min_evidence:number; prompt_draft_min_confidence:number; prompt_draft_notify_in_app:boolean; prompt_draft_notify_email:boolean; prompt_draft_reviewer_id:string | null }>("SELECT * FROM workspace_settings WHERE org_id=$1",[orgId]),
     pool.query<{ id:string; display_name:string; email:string; role:string; team:string }>("SELECT id,display_name,email,role,team FROM workspace_members WHERE org_id=$1 ORDER BY display_name",[orgId]),
     pool.query<{ version:number }>("SELECT version FROM prompt_versions WHERE org_id=$1 AND name='feedback-intelligence' AND active=true",[orgId]),
     pool.query<{ status:string; started_at:Date }>("SELECT status,started_at FROM model_runs WHERE org_id=$1 ORDER BY started_at DESC LIMIT 1",[orgId]),
@@ -237,6 +242,16 @@ export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
         hardStop:settingsRow.hard_stop,
         planName:settingsRow.plan_name,
         planPrice:settingsRow.plan_price,
+        promptDraftPolicy: {
+          mode: settingsRow.prompt_draft_mode,
+          bugReports: settingsRow.prompt_draft_bug_reports,
+          featureRequests: settingsRow.prompt_draft_feature_requests,
+          minimumEvidence: settingsRow.prompt_draft_min_evidence,
+          minimumConfidence: settingsRow.prompt_draft_min_confidence,
+          inAppNotifications: settingsRow.prompt_draft_notify_in_app,
+          emailNotifications: settingsRow.prompt_draft_notify_email,
+          reviewerId: settingsRow.prompt_draft_reviewer_id,
+        },
         ai:aiSettings,
         members,
       }

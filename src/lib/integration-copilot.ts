@@ -78,6 +78,8 @@ function capabilityLine(integrationId: string): string {
     return `${provider} supports a manual feedback pull after secure authentication.`;
   if (capability.feedbackImport === "webhook")
     return `${provider} can begin receiving signed feedback events as soon as the endpoint is configured.`;
+  if (capability.feedbackImport === "automatic")
+    return `${provider} automatically monitors #closespan-feedback and turns new conversations into customer signals.`;
   return `${provider} account authentication is available; feedback import for this source is not active yet.`;
 }
 

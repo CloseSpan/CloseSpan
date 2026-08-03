@@ -1,13 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowUp,
+  Building2,
   Check,
   Copy,
+  ExternalLink,
   LoaderCircle,
   PlugZap,
   Sparkles,
@@ -41,14 +44,20 @@ const PHASES: Array<{ id: OnboardingPhase; label: string }> = [
 ];
 
 const STARTER_CHIPS = [
-  "B2B analytics SaaS for enterprise teams",
-  "Consumer iOS + Android fitness app",
-  "Developer API platform at https://example.com",
-  "Marketplace connecting buyers and sellers",
+  "We don't have a website yet",
 ];
 
 const FRIENDLY_ERROR =
   "Something went wrong. Please try again in a moment.";
+
+function companyHost(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
 
 function isSafeUserMessage(message: string): boolean {
   return (
@@ -120,6 +129,13 @@ async function workspaceSetupFetch(
 }
 
 async function continueOnboardingFetch(orgId: string) {
+  return onboardingActionFetch(orgId, "continue");
+}
+
+async function onboardingActionFetch(
+  orgId: string,
+  action: "continue" | "confirm_company" | "restart_company",
+) {
   const response = await fetch("/api/onboarding", {
     method: "PATCH",
     headers: {
@@ -128,9 +144,11 @@ async function continueOnboardingFetch(orgId: string) {
       "idempotency-key": crypto.randomUUID(),
       "x-request-id": crypto.randomUUID(),
     },
-    body: JSON.stringify({ action: "continue" }),
+    body: JSON.stringify({ action }),
   });
-  if (!response.ok) throw new Error("continue_unavailable");
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error("onboarding_action_unavailable");
+  return payload;
 }
 
 function phaseIndex(phase: OnboardingPhase): number {
@@ -176,6 +194,7 @@ export function OnboardingAgentPanel({
   const [syncRefreshKeys, setSyncRefreshKeys] = useState<
     Record<string, number>
   >({});
+  const [workspaceName, setWorkspaceName] = useState(organizationName);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,8 +204,12 @@ export function OnboardingAgentPanel({
         const next = payload as OnboardingState & {
           suggestedActions?: OnboardingAction[];
           suggestedReplies?: string[];
+          organizationName?: string;
         };
         setState(next);
+        if (typeof next.organizationName === "string") {
+          setWorkspaceName(next.organizationName);
+        }
         setActions(next.suggestedActions ?? []);
         if (next.suggestedReplies?.length) {
           setSuggestedReplies(next.suggestedReplies);
@@ -228,9 +251,13 @@ export function OnboardingAgentPanel({
   }, [state?.messages.length, busy]);
 
   const hasProductBrief = Boolean(
-    state?.productProfile.productName?.trim() ||
-      state?.productProfile.productUrl?.trim() ||
-      state?.productProfile.productDescription?.trim(),
+    state?.productProfile.companyProfileConfirmed &&
+      state.productProfile.productName?.trim(),
+  );
+  const hasCompanyCandidate = Boolean(
+    state?.productProfile.companyProfileReadyForConfirmation &&
+      state.productProfile.productName?.trim() &&
+      !state.productProfile.companyProfileConfirmed,
   );
   const activePhase: OnboardingPhase = deriveOnboardingPhase({
     persistedPhase: state?.phase ?? null,
@@ -291,6 +318,53 @@ export function OnboardingAgentPanel({
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     await sendMessage(draft);
+  }
+
+  async function confirmCompanyProfile() {
+    if (busy) return;
+    setBusy("confirm_company");
+    setError(null);
+    try {
+      const payload = (await onboardingActionFetch(
+        orgId,
+        "confirm_company",
+      )) as OnboardingState & {
+        suggestedActions?: OnboardingAction[];
+        suggestedReplies?: string[];
+        organizationName?: string;
+      };
+      setState(payload);
+      setActions(payload.suggestedActions ?? []);
+      setSuggestedReplies(payload.suggestedReplies ?? []);
+      if (payload.organizationName) setWorkspaceName(payload.organizationName);
+      router.refresh();
+    } catch {
+      setError(FRIENDLY_ERROR);
+    } finally {
+      setBusy(null);
+      inputRef.current?.focus();
+    }
+  }
+
+  async function restartCompanyProfile() {
+    if (busy) return;
+    setBusy("restart_company");
+    setError(null);
+    try {
+      const payload = (await onboardingActionFetch(
+        orgId,
+        "restart_company",
+      )) as OnboardingState;
+      setState(payload);
+      setActions([]);
+      setSuggestedReplies([]);
+      setDraft("");
+    } catch {
+      setError(FRIENDLY_ERROR);
+    } finally {
+      setBusy(null);
+      inputRef.current?.focus();
+    }
   }
 
   async function runAction(action: OnboardingAction) {
@@ -382,12 +456,12 @@ export function OnboardingAgentPanel({
           <div className="delphi-avatar" aria-hidden="true">
             <Sparkles size={22} />
           </div>
-          <p className="delphi-kicker">{organizationName} · Operations</p>
+          <p className="delphi-kicker">{workspaceName} · Operations</p>
           <h1>Your Operations Manager is ready</h1>
           <p className="delphi-sub">
-            Hi {firstName}. Tell me about the product only. I&apos;ll identify
-            feedback apps like Zendesk, Slack, App Store, and Play Store, then
-            connect them for intake.
+            Hi {firstName}. Start with your company website. I&apos;ll confirm its
+            identity, name your first workspace, and then connect feedback apps
+            like Zendesk, Slack, App Store, and Play Store here in chat.
           </p>
         </header>
 
@@ -475,7 +549,76 @@ export function OnboardingAgentPanel({
               : ""}
         </p>
 
+        {state && hasCompanyCandidate && (
+          <section
+            className="delphi-company-confirmation"
+            aria-labelledby="company-confirmation-title"
+          >
+            <div className="delphi-company-identity">
+              <div className="delphi-company-logo" aria-hidden="true">
+                {state.productProfile.companyLogo ? (
+                  <Image
+                    src={state.productProfile.companyLogo}
+                    alt=""
+                    width={48}
+                    height={48}
+                    unoptimized
+                  />
+                ) : (
+                  <Building2 size={22} />
+                )}
+              </div>
+              <div>
+                <span className="delphi-bubble-label">Confirm company</span>
+                <h2 id="company-confirmation-title">
+                  {state.productProfile.productName}
+                </h2>
+                {state.productProfile.productUrl && (
+                  <a
+                    href={state.productProfile.productUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {companyHost(state.productProfile.productUrl) ?? state.productProfile.productUrl}
+                    <ExternalLink size={12} aria-hidden="true" />
+                  </a>
+                )}
+              </div>
+            </div>
+            {state.productProfile.productDescription && (
+              <p>{state.productProfile.productDescription}</p>
+            )}
+            <p className="delphi-company-workspace-note">
+              Your first workspace will be named {state.productProfile.productName}.
+            </p>
+            <div className="delphi-company-actions">
+              <button
+                className="btn"
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => void restartCompanyProfile()}
+              >
+                Use another URL
+              </button>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => void confirmCompanyProfile()}
+              >
+                {busy === "confirm_company" ? (
+                  <LoaderCircle className="spin" size={14} aria-hidden="true" />
+                ) : (
+                  <Check size={14} aria-hidden="true" />
+                )}
+                {busy === "confirm_company" ? "Confirming..." : "Confirm company"}
+              </button>
+            </div>
+          </section>
+        )}
+
         {state &&
+          state.productProfile.companyProfileConfirmed &&
           (state.productProfile.productName ||
             state.productProfile.productUrl ||
             state.productProfile.productDescription) && (
@@ -843,7 +986,7 @@ export function OnboardingAgentPanel({
             type="text"
             value={draft}
             aria-label="Describe your product"
-            placeholder="Describe your product: name, what it does, URL..."
+            placeholder={hasCompanyCandidate ? "Or send a different company URL..." : "Enter your company website URL..."}
             onChange={(event) => setDraft(event.target.value)}
             disabled={busy === "chat"}
           />
