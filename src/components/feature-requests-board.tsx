@@ -102,7 +102,7 @@ export function FeatureRequestsBoard({
     new Set(),
   );
   const [submitting, setSubmitting] = useState(false);
-  const [typingSoundEnabled, setTypingSoundEnabled] = useState(true);
+  const [typingSoundEnabled, setTypingSoundEnabled] = useState(false);
   const [voteTurnstileToken, setVoteTurnstileToken] = useState<string | null>(
     null,
   );
@@ -159,9 +159,9 @@ export function FeatureRequestsBoard({
       const storedPreference = window.sessionStorage.getItem(
         TYPING_SOUND_PREFERENCE_KEY,
       );
-      if (storedPreference === "off") {
+      if (storedPreference === "on") {
         preferenceFrame = window.requestAnimationFrame(() => {
-          setTypingSoundEnabled(false);
+          setTypingSoundEnabled(true);
         });
       }
     } catch {
@@ -657,12 +657,24 @@ export function FeatureRequestsBoard({
     <>
       <main className="feature-requests-main" id="requests-content">
         <div className="feature-requests-intro">
-          <span>Shape what comes next</span>
-          <h1>Feature requests</h1>
-          <p>
-            Explore the CloseSpan roadmap, suggest an improvement, and support
-            the requests that would help your team most.
-          </p>
+          <div className="feature-requests-intro-copy">
+            <FitText as="h1" maxLines={1} minFontSize={30} maxFontSize={56}>
+              Feature requests
+            </FitText>
+            <p>
+              Explore the CloseSpan roadmap, suggest an improvement, and support
+              the requests that would help your team most.
+            </p>
+          </div>
+          {hasAnyRequests && (
+            <button
+              className="feature-request-new"
+              type="button"
+              onClick={openRequestDialog}
+            >
+              <Plus aria-hidden="true" size={17} /> New request
+            </button>
+          )}
         </div>
 
         {notice && (
@@ -811,7 +823,9 @@ export function FeatureRequestsBoard({
             <span aria-hidden="true">
               <ListTodo size={24} />
             </span>
-            <h2>Start the roadmap conversation</h2>
+            <FitText as="h2" minFontSize={18} maxFontSize={24} maxLines={2}>
+              Start the roadmap conversation
+            </FitText>
             <p>
               There are no public requests yet. Share the first improvement
               you would like CloseSpan to consider.
@@ -837,10 +851,18 @@ export function FeatureRequestsBoard({
                     <Icon aria-hidden="true" size={15} />
                   </span>
                   <div>
-                    <h2 id={`feature-request-${group.status}`}>
+                    <FitText
+                      as="h2"
+                      id={`feature-request-${group.status}`}
+                      minFontSize={13}
+                      maxFontSize={16}
+                      maxLines={1}
+                    >
                       {group.label}
-                    </h2>
-                    <p>{group.description}</p>
+                    </FitText>
+                    <FitText as="p" minFontSize={10} maxFontSize={12} maxLines={1}>
+                      {group.description}
+                    </FitText>
                   </div>
                   <span className="feature-request-count">
                     {group.requests.length}
@@ -925,23 +947,19 @@ export function FeatureRequestsBoard({
         ) : null}
 
         {visibleGroups.length > 0 && (
-          <p className="feature-request-vote-note">
+          <FitText
+            as="p"
+            className="feature-request-vote-note"
+            minFontSize={11}
+            maxFontSize={13}
+            maxLines={3}
+          >
             One upvote or downvote per request, per network address. You can
             change your choice. CloseSpan stores only a one-way security
             fingerprint; your raw IP address is not stored.
-          </p>
+          </FitText>
         )}
       </main>
-
-      {hasAnyRequests && (
-        <button
-          className="feature-request-new"
-          type="button"
-          onClick={openRequestDialog}
-        >
-          <Plus aria-hidden="true" size={17} /> New request
-        </button>
-      )}
 
       {dialogOpen && (
         <div

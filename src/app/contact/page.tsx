@@ -38,7 +38,11 @@ export default function ContactPage() {
             "A useful pilot begins with one recurring customer problem, one or two evidence sources, the people who review product decisions, and a measurable outcome. Include your current workflow, the tools involved, and the part that consumes the most manual effort.",
           ],
           details: [
-            { term: "Email", description: PUBLIC_EMAILS.hello },
+            {
+              term: "Email",
+              description: PUBLIC_EMAILS.hello,
+              href: `mailto:${PUBLIC_EMAILS.hello}`,
+            },
             { term: "Suggested subject", description: "CloseSpan design-partner pilot" },
             { term: "Helpful context", description: "Team size, feedback sources, workflow owner, and a representative problem" },
           ],
@@ -49,7 +53,11 @@ export default function ContactPage() {
             "If you need a connector that is not listed, describe the system, authentication method, records you need imported, and whether CloseSpan would read data or perform an approved write. Connector authorization and data synchronization are separate capabilities, so please identify both needs.",
           ],
           details: [
-            { term: "Support email", description: PUBLIC_EMAILS.support },
+            {
+              term: "Support email",
+              description: PUBLIC_EMAILS.support,
+              href: `mailto:${PUBLIC_EMAILS.support}`,
+            },
           ],
         },
         {
@@ -59,13 +67,25 @@ export default function ContactPage() {
             "CloseSpan does not currently publish a guaranteed response or remediation time. Reports are reviewed directly and handled according to severity and available evidence.",
           ],
           details: [
-            { term: "Security reports", description: PUBLIC_EMAILS.security },
-            { term: "Privacy requests", description: PUBLIC_EMAILS.privacy },
+            {
+              term: "Security reports",
+              description: PUBLIC_EMAILS.security,
+              href: `mailto:${PUBLIC_EMAILS.security}`,
+            },
+            {
+              term: "Privacy requests",
+              description: PUBLIC_EMAILS.privacy,
+              href: `mailto:${PUBLIC_EMAILS.privacy}`,
+            },
           ],
         },
       ]}
       facts={[
-        { label: "Contact", value: PUBLIC_EMAILS.hello },
+        {
+          label: "Contact",
+          value: PUBLIC_EMAILS.hello,
+          href: `mailto:${PUBLIC_EMAILS.hello}`,
+        },
         { label: "Best for", value: "Pilots, connectors, trust, and product questions" },
         { label: "Do not send", value: "Passwords, tokens, or private customer data" },
       ]}

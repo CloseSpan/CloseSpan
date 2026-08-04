@@ -2,7 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { OverviewAnalytics } from "@/lib/overview-analytics";
 import { CustomSelect } from "./custom-select";
 
@@ -17,6 +17,7 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
   const [activeWeek, setActiveWeek] = useState<number | null>(null);
   const [pinnedWeek, setPinnedWeek] = useState<number | null>(null);
   const reduceMotion = useReducedMotion();
+  const chartHelpId = useId();
   const values = series[source] ?? series["All sources"] ?? [];
   const weeks = analytics.feedbackWeeks;
   const total = values.reduce((sum, value) => sum + value, 0);
@@ -45,7 +46,12 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
     </div>
     <div className="card-body">
       <div className="chart-summary" aria-live="polite"><strong>{total}</strong> signals from {source.toLowerCase()}</div>
-      <div className={`chart${total === 0 ? " chart-is-empty" : ""}`} aria-label={`Weekly feedback volume for ${source}: ${values.map((value, index) => `${weeks[index]?.label ?? `week ${index + 1}`}, ${value} signals`).join("; ")}`}>
+      <div
+        className={`chart${total === 0 ? " chart-is-empty" : ""}`}
+        role="group"
+        aria-label={`Weekly feedback volume for ${source}`}
+        aria-describedby={chartHelpId}
+      >
         {total === 0 ? <div className="chart-empty-state" role="status">
           <strong>No feedback in this period</strong>
           <span>Run an import to bring customer signals into CloseSpan.</span>
@@ -81,7 +87,24 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
           </div>;
         })}
       </div>
-      <p className="chart-help">{total > 0 ? "Hover or focus a bar for details. Select a bar to keep it highlighted." : "Imported feedback will appear here using its original received date."}</p>
+      <table className="sr-only">
+        <caption>Weekly feedback volume for {source}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Week</th>
+            <th scope="col">Signals</th>
+          </tr>
+        </thead>
+        <tbody>
+          {values.map((value, index) => (
+            <tr key={`accessible-${source}-${weeks[index]?.startDate ?? index}`}>
+              <th scope="row">{weeks[index]?.label ?? `Week ${index + 1}`}</th>
+              <td>{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="chart-help" id={chartHelpId}>{total > 0 ? "Hover or focus a bar for details. Select a bar to keep it highlighted." : "Imported feedback will appear here using its original received date."}</p>
     </div>
   </section>;
 }

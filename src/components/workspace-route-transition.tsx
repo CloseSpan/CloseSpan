@@ -2,11 +2,8 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-import {
-  workspaceRouteDirection,
-  type WorkspaceRouteDirection,
-} from "@/lib/workspace-navigation";
+import { useEffect, useRef } from "react";
+import { workspaceSection } from "@/lib/workspace-navigation";
 
 export function WorkspaceRouteTransition({
   children,
@@ -15,50 +12,44 @@ export function WorkspaceRouteTransition({
 }) {
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
-  const [routeState, setRouteState] = useState<{
-    pathname: string;
-    direction: WorkspaceRouteDirection;
-  }>({ pathname, direction: "none" });
+  const mountedRef = useRef(false);
 
-  if (routeState.pathname !== pathname) {
-    setRouteState({
-      pathname,
-      direction: workspaceRouteDirection(routeState.pathname, pathname),
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("main-content")?.focus({ preventScroll: true });
     });
-  }
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname]);
 
-  const direction =
-    routeState.pathname === pathname ? routeState.direction : "none";
-
-  const offset =
-    direction === "forward" ? 18 : direction === "backward" ? -18 : 0;
+  const enterOffset = reduceMotion ? 0 : 8;
 
   return (
-    <AnimatePresence initial={false} mode="wait" custom={offset}>
-      <motion.div
-        key={pathname}
-        className="workspace-route-stage"
-        data-route-direction={direction}
-        custom={offset}
-        initial={
-          reduceMotion || direction === "none"
-            ? { opacity: 1, y: 0 }
-            : { opacity: 0.78, y: offset }
-        }
-        animate={{ opacity: 1, y: 0 }}
-        exit={
-          reduceMotion || direction === "none"
-            ? { opacity: 1, y: 0 }
-            : { opacity: 0.78, y: -offset }
-        }
-        transition={
-          reduceMotion
-            ? { duration: 0 }
-            : { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }
-        }
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    <>
+      <span className="sr-only" role="status" aria-live="polite">
+        {workspaceSection(pathname)} loaded
+      </span>
+      <AnimatePresence initial={false} mode="sync">
+        <motion.div
+          key={pathname}
+          className="workspace-route-stage"
+          data-route-direction="none"
+          initial={reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0.86, y: enterOffset }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0.9, y: -4 }}
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : { duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }
+          }
+        >
+          {children}
+        </motion.div>
+      </AnimatePresence>
+    </>
   );
 }

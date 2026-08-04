@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { WorkspaceDemoGuide } from "@/lib/demo-guide-repository";
 import { resolveDemoGuideStepIndex } from "@/lib/demo-guide-navigation";
 import { FitText } from "./fit-text";
@@ -32,6 +32,11 @@ export function GuidedDemo({
     message: string;
     tone: "success" | "error";
   } | null>(null);
+  const panelId = useId();
+  const panelTitleId = useId();
+  const panelRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const storageKey = useMemo(() => `closespan-demo-guide:${orgId}`, [orgId]);
   const step = guide.steps[stepIndex] ?? guide.steps[0];
 
@@ -51,6 +56,31 @@ export function GuidedDemo({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [guide.steps, pathname, storageKey]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const trigger = triggerRef.current;
+    const focusFrame = window.requestAnimationFrame(() => {
+      closeButtonRef.current?.focus({ preventScroll: true });
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleKeyDown);
+      if (trigger?.isConnected) {
+        window.requestAnimationFrame(() => {
+          trigger.focus({ preventScroll: true });
+        });
+      }
+    };
+  }, [open]);
 
   function selectStep(index: number, navigate = true) {
     const bounded = Math.max(0, Math.min(guide.steps.length - 1, index));
@@ -98,18 +128,30 @@ export function GuidedDemo({
   return (
     <>
       {open && (
-        <aside className="guided-demo-panel" aria-label="Guided product demo">
+        <aside
+          ref={panelRef}
+          id={panelId}
+          className="guided-demo-panel"
+          role="dialog"
+          aria-labelledby={panelTitleId}
+        >
           <header className="guided-demo-head">
             <span className="guided-demo-icon" aria-hidden="true">
               <Sparkles size={16} />
             </span>
             <div>
               <small>Presentation mode</small>
-              <FitText as="strong" minFontSize={11} maxLines={1}>
+              <FitText
+                as="strong"
+                id={panelTitleId}
+                minFontSize={12}
+                maxLines={1}
+              >
                 {guide.title}
               </FitText>
             </div>
             <button
+              ref={closeButtonRef}
               type="button"
               aria-label="Close guided demo"
               onClick={() => setOpen(false)}
@@ -197,9 +239,12 @@ export function GuidedDemo({
         </aside>
       )}
       <button
+        ref={triggerRef}
         className="guided-demo-trigger"
         type="button"
         aria-expanded={open}
+        aria-controls={panelId}
+        aria-haspopup="dialog"
         onClick={() => setOpen((current) => !current)}
       >
         <MapPinned size={16} aria-hidden="true" />

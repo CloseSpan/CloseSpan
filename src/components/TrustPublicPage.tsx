@@ -8,7 +8,11 @@ export interface TrustPageSection {
   heading: string;
   paragraphs?: readonly string[];
   bullets?: readonly string[];
-  details?: ReadonlyArray<{ term: string; description: string }>;
+  details?: ReadonlyArray<{
+    term: string;
+    description: string;
+    href?: string;
+  }>;
 }
 
 interface TrustPublicPageProps {
@@ -20,7 +24,7 @@ interface TrustPublicPageProps {
   parentCrumb?: { label: string; href: string };
   status?: string;
   sections: readonly TrustPageSection[];
-  facts: ReadonlyArray<{ label: string; value: string }>;
+  facts: ReadonlyArray<{ label: string; value: string; href?: string }>;
   notice?: { title: string; body: string };
   relatedTitle?: string;
   relatedDescription?: string;
@@ -133,7 +137,13 @@ export function TrustPublicPage({
                     {section.details.map((detail) => (
                       <div className={styles.detail} key={detail.term}>
                         <dt>{detail.term}</dt>
-                        <dd>{detail.description}</dd>
+                        <dd>
+                          {detail.href ? (
+                            <a href={detail.href}>{detail.description}</a>
+                          ) : (
+                            detail.description
+                          )}
+                        </dd>
                       </div>
                     ))}
                   </dl>
@@ -149,7 +159,13 @@ export function TrustPublicPage({
                 {facts.map((fact) => (
                   <div className={styles.fact} key={fact.label}>
                     <dt>{fact.label}</dt>
-                    <dd>{fact.value}</dd>
+                    <dd>
+                      {fact.href ? (
+                        <a href={fact.href}>{fact.value}</a>
+                      ) : (
+                        fact.value
+                      )}
+                    </dd>
                   </div>
                 ))}
               </dl>

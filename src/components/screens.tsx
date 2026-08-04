@@ -426,8 +426,10 @@ export function FeedbackScreen({
       window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleDrawerKeyDown);
-      if (!drawer.isConnected && previouslyFocused?.isConnected) {
-        previouslyFocused.focus({ preventScroll: true });
+      if (previouslyFocused?.isConnected) {
+        window.requestAnimationFrame(() => {
+          previouslyFocused.focus({ preventScroll: true });
+        });
       }
     };
   }, [feedbackDrawerOpen]);
@@ -613,9 +615,13 @@ export function FeedbackScreen({
           title="Unified feedback inbox"
           description="Review normalized customer signals across every connected source."
           action={
-            <button type="button" className="btn primary" disabled={pullingFeedback} onClick={() => void pullFeedback()}>
-              <RefreshCw className={pullingFeedback ? "spin" : ""} size={14} />
-              {pullingFeedback ? "Pulling feedback..." : "Pull feedback now"}
+            <button type="button" className="btn primary feedback-pull-button" data-pulling={pullingFeedback ? "true" : "false"} aria-label={pullingFeedback ? "Pulling feedback" : "Pull feedback now"} disabled={pullingFeedback} onClick={() => void pullFeedback()}>
+              <span className="feedback-pull-button-state feedback-pull-button-idle" aria-hidden={pullingFeedback}>
+                <RefreshCw size={14} /> Pull feedback now
+              </span>
+              <span className="feedback-pull-button-state feedback-pull-button-progress" aria-hidden={!pullingFeedback}>
+                <RefreshCw className="spin" size={14} /> Pulling feedback…
+              </span>
             </button>
           }
         />
@@ -635,9 +641,13 @@ export function FeedbackScreen({
         title="Unified feedback inbox"
         description="Review normalized customer signals across every connected source."
         action={<div className="page-title-actions">
-          <button type="button" className="btn" disabled={pullingFeedback} onClick={() => void pullFeedback()}>
-            <RefreshCw className={pullingFeedback ? "spin" : ""} size={14} />
-            {pullingFeedback ? "Pulling..." : "Pull feedback"}
+          <button type="button" className="btn feedback-pull-button" data-pulling={pullingFeedback ? "true" : "false"} aria-label={pullingFeedback ? "Pulling feedback" : "Pull feedback"} disabled={pullingFeedback} onClick={() => void pullFeedback()}>
+            <span className="feedback-pull-button-state feedback-pull-button-idle" aria-hidden={pullingFeedback}>
+              <RefreshCw size={14} /> Pull feedback
+            </span>
+            <span className="feedback-pull-button-state feedback-pull-button-progress" aria-hidden={!pullingFeedback}>
+              <RefreshCw className="spin" size={14} /> Pulling…
+            </span>
           </button>
           <button type="button" className="btn primary" disabled={!selected.length || busy} onClick={() => void classify()}>
             <Sparkles size={14} /> {busy ? "Analyzing…" : `Analyze with ${providerLabel} ${selected.length || ""}`}
@@ -739,6 +749,7 @@ export function FeedbackScreen({
       )}
       <section className="card table-wrap">
         <table>
+          <caption className="sr-only">Customer feedback signals</caption>
           <thead>
             <tr>
               <th>
@@ -1285,6 +1296,11 @@ function ProblemTable({
   return (
     <div className="table-wrap problem-table-wrap">
       <table className="problem-table">
+        <caption className="sr-only">
+          {isClassification
+            ? "Product problem classification"
+            : "Product problem prioritization metrics"}
+        </caption>
         <thead>
           <tr>
             <th>Product problem</th>
@@ -1497,92 +1513,20 @@ export function ProblemsScreen({
 export function PrioritizationScreen({
   analytics,
   focusProblem,
-  orgId,
 }: {
   analytics: OverviewAnalytics;
   focusProblem: ProductProblem | null;
-  orgId: string;
 }) {
   const [view, setView] = useState<"board" | "ranked">("board");
   const [typeFilter, setTypeFilter] = useState<"All" | FeedbackType>("All");
-  const [displayRows, setDisplayRows] = useState(analytics.problems);
-  const [automationStatus, setAutomationStatus] = useState(
-    "Assessing the next eligible ticket…",
-  );
   const impact = focusProblem
     ? calculateImpact(focusProblem.impactFactors)
     : null;
-  const allRows = displayRows;
+  const allRows = analytics.problems;
   const rows =
     typeFilter === "All"
       ? allRows
       : allRows.filter((problem) => problem.type === typeFilter);
-
-  useEffect(() => {
-    let active = true;
-    let requestRunning = false;
-    async function tick() {
-      if (requestRunning) return;
-      requestRunning = true;
-      try {
-        const response = await fetch("/api/workflow/automation/tick", {
-          method: "POST",
-          headers: {
-            "x-org-id": orgId,
-            "idempotency-key": crypto.randomUUID(),
-            "x-request-id": crypto.randomUUID(),
-          },
-        });
-        const payload = (await response.json()) as {
-          result?: {
-            moved: boolean;
-            problemId: string | null;
-            fromStage: string | null;
-            toStage: string | null;
-            reason: string;
-          };
-          error?: string;
-        };
-        if (!response.ok || !payload.result)
-          throw new Error(payload.error ?? "Automation check failed");
-        if (!active) return;
-        setAutomationStatus(
-          payload.result.moved
-            ? `${payload.result.problemId} moved from ${payload.result.fromStage} to ${payload.result.toStage}.`
-            : payload.result.reason,
-        );
-        if (
-          payload.result.moved &&
-          payload.result.problemId &&
-          payload.result.toStage
-        ) {
-          setDisplayRows((current) =>
-            current.map((problem) =>
-              problem.id === payload.result?.problemId
-                ? { ...problem, stage: payload.result.toStage ?? problem.stage }
-                : problem,
-            ),
-          );
-        }
-      } catch (error) {
-        if (active)
-          setAutomationStatus(
-            error instanceof Error
-              ? error.message
-              : "Automation check failed",
-          );
-      } finally {
-        requestRunning = false;
-      }
-    }
-    const initialTick = window.setTimeout(() => void tick(), 1_000);
-    const interval = window.setInterval(tick, 10_000);
-    return () => {
-      active = false;
-      window.clearTimeout(initialTick);
-      window.clearInterval(interval);
-    };
-  }, [orgId]);
 
   return (
     <>
@@ -1643,15 +1587,18 @@ export function PrioritizationScreen({
         />
       ) : (
         <>
-      <div className="callout automation-status" role="status">
+      <div className="callout automation-status">
         <div className="callout-title">
-          <RefreshCw size={14} /> Automated stage coordinator
+          <Activity size={14} /> Automated stage coordinator
         </div>
         <p className="subtle">
           One evidence-qualified ticket moves one stage at a time. Approval is
           the only human waiting queue and may contain multiple tickets.
         </p>
-        <small>{automationStatus}</small>
+        <small>
+          Scheduled checks run independently. Opening this view never changes
+          a ticket or sends a notification.
+        </small>
       </div>
       {rows.length === 0 ? (
         <section className="card section-gap">
@@ -1906,10 +1853,6 @@ export function ApprovalsScreen({
     kind: "success" | "error";
     text: string;
   }>();
-  const [editing, setEditing] = useState(false);
-  const [proposal, setProposal] = useState(
-    investigation?.proposedAction ?? "",
-  );
   if (!state || !problem || !investigation) {
     return (
       <>
@@ -2002,17 +1945,7 @@ export function ApprovalsScreen({
             </span>
           </div>
           <div className="card-body">
-            <p>{proposal}</p>
-            {editing && (
-              <label className="field section-gap-sm">
-                Proposed action
-                <textarea
-                  rows={5}
-                  value={proposal}
-                  onChange={(event) => setProposal(event.target.value)}
-                />
-              </label>
-            )}
+            <p>{investigation.proposedAction}</p>
             <div className="approval-facts">
               <Fact
                 icon={<Sparkles />}
@@ -2054,13 +1987,6 @@ export function ApprovalsScreen({
                   onClick={() => decide("reject")}
                 >
                   Reject
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => setEditing((value) => !value)}
-                >
-                  {editing ? "Save draft" : "Edit proposal"}
                 </button>
                 <button
                   type="button"
@@ -2450,8 +2376,10 @@ export function IntegrationsScreen({
       window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleDrawerKeyDown);
       document.body.style.overflow = previousOverflow;
-      if (!drawer.isConnected && previouslyFocused?.isConnected) {
-        previouslyFocused.focus({ preventScroll: true });
+      if (previouslyFocused?.isConnected) {
+        window.requestAnimationFrame(() => {
+          previouslyFocused.focus({ preventScroll: true });
+        });
       }
     };
   }, [integrationDrawerOpen]);
@@ -2789,7 +2717,10 @@ export function FollowUpScreen({
 }) {
   const [state, setState] = useState(initialState);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
   if (!state || !problem) {
     return (
       <>
@@ -2812,13 +2743,18 @@ export function FollowUpScreen({
     state.notifications !== "Not drafted";
   async function approveDrafts() {
     setBusy(true);
+    setNotice(null);
     try {
       setState(await workflowMutation("/api/workflow/notify", activeProblem.orgId));
-      setNotice(
-        "Customer drafts approved in the audited workflow; no external message was sent.",
-      );
+      setNotice({
+        kind: "success",
+        text: "Customer drafts approved in the audited workflow; no external message was sent.",
+      });
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Action failed");
+      setNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Action failed",
+      });
     } finally {
       setBusy(false);
     }
@@ -2897,8 +2833,11 @@ export function FollowUpScreen({
                 : "Approve all drafts"}
             </button>
             {notice && (
-              <p className="toast success" role="status">
-                {notice}
+              <p
+                className={`toast ${notice.kind}`}
+                role={notice.kind === "error" ? "alert" : "status"}
+              >
+                {notice.text}
               </p>
             )}
           </div>
@@ -2925,6 +2864,7 @@ export function CustomersScreen({ customers }: { customers: CustomerView[] }) {
       ) : (
       <section className="card table-wrap">
         <table>
+          <caption className="sr-only">Customer accounts</caption>
           <thead>
             <tr>
               <th>Account</th>

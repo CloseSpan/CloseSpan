@@ -81,6 +81,14 @@ export function SettingsScreen({
   const retentionValid =
     retention !== CUSTOM_RETENTION_OPTION ||
     isValidCustomRetention(customRetention);
+  const saveDisabledReason =
+    userRole !== "Admin"
+      ? "Only workspace admins can change policy."
+      : total !== 100
+        ? "Prioritization weights must total 100%."
+        : !retentionValid
+          ? "Enter a valid feedback-retention period."
+          : undefined;
   const labels: Record<string, string> = {
     frequency: "Frequency",
     severity: "Severity",
@@ -137,14 +145,22 @@ export function SettingsScreen({
         title="Settings & governance"
         description="Define permissions, data controls, model policies, and spending boundaries."
         action={
-          <button
-            type="button"
-            className="btn primary"
-            disabled={total !== 100 || !retentionValid || saving || userRole !== "Admin"}
-            onClick={savePolicy}
-          >
-            {saving ? "Saving…" : "Save policy"}
-          </button>
+          <div className="settings-save-action">
+            <button
+              type="button"
+              className="btn primary"
+              disabled={Boolean(saveDisabledReason) || saving}
+              aria-describedby={saveDisabledReason ? "settings-save-reason" : undefined}
+              onClick={savePolicy}
+            >
+              {saving ? "Saving…" : "Save policy"}
+            </button>
+            {saveDisabledReason && (
+              <span className="subtle" id="settings-save-reason">
+                {saveDisabledReason}
+              </span>
+            )}
+          </div>
         }
       />
       {saved && (

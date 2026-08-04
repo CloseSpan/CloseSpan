@@ -14,9 +14,11 @@ export function PromptReviewNotifications({
 }) {
   const [notifications, setNotifications] = useState(initialNotifications);
   const [busyId, setBusyId] = useState<string>();
+  const [error, setError] = useState<string | null>(null);
 
   async function markRead(id: string): Promise<void> {
     setBusyId(id);
+    setError(null);
     try {
       const response = await fetch(`/api/notifications/${id}/read`, {
         method: "POST",
@@ -26,7 +28,27 @@ export function PromptReviewNotifications({
           "x-request-id": crypto.randomUUID(),
         },
       });
-      if (response.ok) setNotifications((current) => current.map((item) => item.id === id ? { ...item, status: "Read", readAt: new Date().toISOString() } : item));
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(
+          payload.error ?? "This notification could not be marked as read.",
+        );
+      }
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === id
+            ? { ...item, status: "Read", readAt: new Date().toISOString() }
+            : item,
+        ),
+      );
+    } catch (markReadError) {
+      setError(
+        markReadError instanceof Error
+          ? markReadError.message
+          : "This notification could not be marked as read.",
+      );
     } finally {
       setBusyId(undefined);
     }
@@ -37,6 +59,11 @@ export function PromptReviewNotifications({
 
   return (
     <div className="detail-stack">
+      {error && (
+        <p className="toast error" role="alert">
+          {error}
+        </p>
+      )}
       {notifications.map((notification) => (
         <article className={`card notification-card ${notification.status === "Unread" ? "notification-unread" : ""}`} key={notification.id}>
           <div className="card-body split">
@@ -50,7 +77,7 @@ export function PromptReviewNotifications({
             <div className="top-actions">
               <Link className="btn primary" href={`/problems/${notification.problemId}#engineering-ticket`}>Review</Link>
               {notification.status === "Unread" && (
-                <button className="btn" type="button" disabled={busyId === notification.id} onClick={() => markRead(notification.id)}>
+                <button className="btn" type="button" disabled={busyId === notification.id} onClick={() => void markRead(notification.id)}>
                   <Check size={14} /> {busyId === notification.id ? "Saving…" : "Mark read"}
                 </button>
               )}

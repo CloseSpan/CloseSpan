@@ -77,7 +77,6 @@ export function FitText({
         );
         const weight = computed.fontWeight || "400";
         const fontStyle = computed.fontStyle || "normal";
-        const fontStretch = computed.fontStretch || "normal";
         const family = computed.fontFamily || "Inter, Arial, sans-serif";
         const measuredText = transformedText(children, computed.textTransform);
         const letterSpacing =
@@ -94,7 +93,10 @@ export function FitText({
         let best = low;
         while (low <= high) {
           const candidate = Math.floor((low + high) / 2);
-          const font = `${fontStyle} ${weight} ${fontStretch} ${candidate}px ${family}`;
+          // Canvas/Pretext font parsing is stricter than CSS. In particular,
+          // computed stretch values such as `100%` can invalidate the whole
+          // shorthand and silently measure with a fallback face.
+          const font = `${fontStyle} ${weight} ${candidate}px ${family}`;
           const fits = maxLines === 1
             ? measureNaturalWidth(
                 prepareWithSegments(measuredText, font, { letterSpacing }),
@@ -109,6 +111,23 @@ export function FitText({
             low = candidate + 1;
           } else {
             high = candidate - 1;
+          }
+        }
+
+        // Font loading and browser shaping can differ slightly from the canvas
+        // metrics Pretext receives. Preserve the Pretext result, then apply one
+        // rendered-width correction so a declared single line never creates
+        // horizontal overflow at a narrow breakpoint.
+        if (maxLines === 1) {
+          const previousInlineSize = node.style.fontSize;
+          node.style.fontSize = `${best}px`;
+          const renderedWidth = node.scrollWidth;
+          node.style.fontSize = previousInlineSize;
+          if (renderedWidth > width + 0.5) {
+            best = Math.max(
+              minFontSize,
+              Math.floor(best * (width / renderedWidth)),
+            );
           }
         }
         setFontSize((current) => (current === best ? current : best));
@@ -131,6 +150,7 @@ export function FitText({
 
   const mergedStyle: CSSProperties = {
     ...style,
+    ...(maxLines === 1 ? { whiteSpace: "nowrap" } : null),
     ...(fontSize ? { fontSize: `${fontSize}px` } : null),
   };
 
@@ -140,6 +160,7 @@ export function FitText({
       ref={ref}
       className={["fit-text", className].filter(Boolean).join(" ")}
       data-fit-lines={maxLines}
+      data-fit-ready={fontSize === null ? "false" : "true"}
       style={mergedStyle}
     >
       {children}
