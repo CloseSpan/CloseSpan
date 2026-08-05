@@ -6,6 +6,7 @@ import {
 } from "@/lib/engineering-workflow-repository";
 import {
   executeTenkiCodingJob,
+  assertTenkiExecutionProfileBinding,
   tenkiAgentJobSchema,
   type TenkiAgentJob,
 } from "@/lib/tenki-coding-executor";
@@ -38,7 +39,23 @@ function sameList(actual: string[], expected: string[]): boolean {
   return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
 }
 
+function sameGeneratedTests(
+  actual: TenkiAgentJob["generatedTests"],
+  expected: NonNullable<TenkiAgentJob["generatedTests"]>,
+): boolean {
+  const received = actual ?? [];
+  return received.length === expected.length && received.every((test, index) => {
+    const approved = expected[index];
+    return approved !== undefined
+      && test.path === approved.path
+      && test.content === approved.content
+      && test.contentHash === approved.contentHash
+      && test.command === approved.command;
+  });
+}
+
 function assertCurrentApproval(job: TenkiAgentJob, context: Awaited<ReturnType<typeof getAgentRunExecutionContext>>): void {
+  assertTenkiExecutionProfileBinding(job);
   const ticket = context.promptSnapshot.ticket;
   const generatedTests = context.generatedTests ?? [];
   const requiredCommands = [...new Set([...ticket.requiredCommands, ...generatedTests.map((test) => test.command)])];
@@ -50,9 +67,12 @@ function assertCurrentApproval(job: TenkiAgentJob, context: Awaited<ReturnType<t
     || job.promptHash !== context.promptHash
     || job.promptContent !== context.promptContent
     || job.promptArtifactPath !== context.promptArtifactPath
+    || job.executionProfileId !== context.executionProfileId
+    || job.executionProfileHash !== context.executionProfileHash
+    || JSON.stringify(job.executionProfileSnapshot) !== JSON.stringify(context.executionProfileSnapshot)
     || !sameList(job.requiredCommands, requiredCommands)
     || !sameList(job.permittedPaths, ticket.permittedPaths)
-    || JSON.stringify(job.generatedTests ?? []) !== JSON.stringify(generatedTests)
+    || !sameGeneratedTests(job.generatedTests, generatedTests)
     || !sameList(job.capabilities, context.allowedCapabilities)
     || Date.parse(job.expiresAt) !== Date.parse(context.expiresAt)
   ) throw new Error("Queued executor payload no longer matches the approval-bound run");

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   founderInquiryEmailUrl,
+  isCloseSpanPlatformAdmin,
   isPrivateBetaAccessEnforced,
   isPrivateBetaOwner,
   PRIVATE_BETA_OWNER_EMAIL,
@@ -21,6 +22,21 @@ describe("private beta workspace access policy", () => {
     expect(isPrivateBetaAccessEnforced()).toBe(true);
     if (previousMode === undefined) delete process.env.APP_MODE;
     else process.env.APP_MODE = previousMode;
+  });
+
+  it("requires both the platform identity and an administrator role", () => {
+    expect(isCloseSpanPlatformAdmin({
+      email: PRIVATE_BETA_OWNER_EMAIL,
+      role: "Admin",
+    })).toBe(true);
+    expect(isCloseSpanPlatformAdmin({
+      email: PRIVATE_BETA_OWNER_EMAIL,
+      role: "Member",
+    })).toBe(false);
+    expect(isCloseSpanPlatformAdmin({
+      email: "another.person@gmail.com",
+      role: "Admin",
+    })).toBe(false);
   });
 
   it("builds a prefilled founder inquiry for a waitlisted user", () => {

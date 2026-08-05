@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { hashExecutionProfileConfig } from "@/lib/execution-profile";
 
 const workflow = vi.hoisted(() => ({
   claim: vi.fn(),
@@ -23,8 +24,30 @@ import { POST } from "./route";
 const secret = "tenki-executor-test-secret";
 const runId = "11111111-1111-4111-8111-111111111111";
 const callbackUrl = `https://www.closespan.com/api/internal/agent-runs/${runId}`;
+const profileConfig = {
+  schemaVersion: 1 as const,
+  language: "typescript",
+  framework: "nextjs",
+  packageManager: "npm",
+  runtimeVersion: "22",
+  workingDirectory: ".",
+  installCommands: ["npm ci"],
+  buildCommands: ["npm run build"],
+  testCommands: ["npm test"],
+  typecheckCommands: [],
+  permittedPaths: ["src/**", "tests/**"],
+  tenkiImage: null,
+  tenkiSnapshotId: null,
+  cpuCores: 2,
+  memoryMb: 4096,
+  allowInbound: false,
+  allowOutbound: false,
+  maxDurationMs: 240_000,
+  idleTimeoutMinutes: 2,
+};
+const profileHash = hashExecutionProfileConfig(profileConfig);
 const job = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   orgId: "org-1",
   runId,
   repository: "owner/repo",
@@ -40,6 +63,17 @@ const job = {
   callbackUrl,
   expiresAt: "2099-07-30T08:00:00.000Z",
   capabilities: ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"],
+  executionProfileId: "33333333-3333-4333-8333-333333333333",
+  executionProfileHash: profileHash,
+  executionProfileSnapshot: {
+    profileId: "33333333-3333-4333-8333-333333333333",
+    version: 1,
+    source: "confirmed",
+    repository: "owner/repo",
+    workspaceRoot: ".",
+    contentHash: profileHash,
+    config: profileConfig,
+  },
 };
 const context = {
   orgId: job.orgId,
@@ -51,6 +85,9 @@ const context = {
   promptArtifactPath: job.promptArtifactPath,
   expiresAt: job.expiresAt,
   allowedCapabilities: job.capabilities,
+  executionProfileId: job.executionProfileId,
+  executionProfileHash: job.executionProfileHash,
+  executionProfileSnapshot: job.executionProfileSnapshot,
   promptSnapshot: { ticket: { requiredCommands: job.requiredCommands, permittedPaths: job.permittedPaths } },
 };
 
@@ -92,6 +129,22 @@ describe("Tenki executor internal boundary", () => {
     expect(workflow.context).not.toHaveBeenCalled();
   });
 
+  it("rejects a signed job when its execution profile drifted after approval", async () => {
+    const payload = { ...job, executionProfileHash: "f".repeat(64) };
+    const body = JSON.stringify(payload);
+    const response = await POST(new NextRequest("http://localhost/api/internal/tenki-executor", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-closespan-signature": createHmac("sha256", secret).update(body).digest("hex"),
+      },
+      body,
+    }));
+    expect(response.status).toBe(409);
+    expect(workflow.claim).not.toHaveBeenCalled();
+    expect(executor.run).not.toHaveBeenCalled();
+  });
+
   it("acknowledges duplicate queue delivery without starting another session", async () => {
     workflow.claim.mockResolvedValue("terminal");
     const response = await POST(request());
@@ -104,5 +157,35 @@ describe("Tenki executor internal boundary", () => {
     const response = await POST(request());
     expect(response.status).toBe(503);
     expect(executor.run).not.toHaveBeenCalled();
+  });
+
+  it("accepts approval-bound generated tests regardless of JSON object key order", async () => {
+    const generatedTest = {
+      path: "tests/export.pdd.test.ts",
+      content: "test('approved contract', () => {})",
+      contentHash: "c".repeat(64),
+      command: "npm test",
+    };
+    const payload = { ...job, generatedTests: [generatedTest] };
+    workflow.context.mockResolvedValue({
+      ...context,
+      generatedTests: [{
+        path: generatedTest.path,
+        command: generatedTest.command,
+        content: generatedTest.content,
+        contentHash: generatedTest.contentHash,
+      }],
+    });
+    const body = JSON.stringify(payload);
+    const response = await POST(new NextRequest("http://localhost/api/internal/tenki-executor", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-closespan-signature": createHmac("sha256", secret).update(body).digest("hex"),
+      },
+      body,
+    }));
+    expect(response.status).toBe(200);
+    expect(executor.run).toHaveBeenCalledOnce();
   });
 });

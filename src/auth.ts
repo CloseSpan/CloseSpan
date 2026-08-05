@@ -1,6 +1,9 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { recordWorkspaceAccessAttempt } from "@/lib/access-waitlist-repository";
+import {
+  isWorkspaceAccessApproved,
+  recordWorkspaceAccessAttempt,
+} from "@/lib/access-waitlist-repository";
 import { normalizeEmail } from "@/lib/auth-user";
 import { PUBLIC_DISCOVERY_PATHS } from "@/lib/site";
 import {
@@ -69,6 +72,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       if (!email) return false;
       if (!isPrivateBetaAccessEnforced()) return true;
       if (isPrivateBetaOwner(email)) return true;
+      if (await isWorkspaceAccessApproved(email)) return true;
 
       return Response.redirect(new URL("/waitlist", request.nextUrl));
     },

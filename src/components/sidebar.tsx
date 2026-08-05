@@ -8,6 +8,7 @@ import {
   GitPullRequest,
   Inbox,
   ListChecks,
+  ListPlus,
   Network,
   Settings,
   Users,
@@ -45,9 +46,9 @@ function NavigationPendingIndicator() {
   ) : null;
 }
 
-function NavigationLinks() {
+function NavigationLinks({ showWaitlistAdmin }: { showWaitlistAdmin: boolean }) {
   const pathname = usePathname();
-  return WORKSPACE_NAVIGATION.map(({ id, label, href }) => {
+  return <>{WORKSPACE_NAVIGATION.map(({ id, label, href }) => {
     const Icon = navigationIcons[id];
     const active = pathname === href || pathname.startsWith(`${href}/`);
     return (
@@ -64,7 +65,21 @@ function NavigationLinks() {
         <NavigationPendingIndicator />
       </Link>
     );
-  });
+  })}
+    {showWaitlistAdmin && (
+      <Link
+        href="/admin/waitlist"
+        className={pathname === "/admin/waitlist" ? "active" : ""}
+        aria-current={pathname === "/admin/waitlist" ? "page" : undefined}
+        aria-label="Waitlist users"
+        data-nav-label="Waitlist users"
+      >
+        <ListPlus aria-hidden="true" />
+        <span>Waitlist users</span>
+        <NavigationPendingIndicator />
+      </Link>
+    )}
+  </>;
 }
 
 export function Sidebar({
@@ -72,11 +87,13 @@ export function Sidebar({
   activeOrganizationId,
   demoMode,
   canRenameWorkspace,
+  showWaitlistAdmin,
 }: {
   organizations: OrganizationSwitcherItem[];
   activeOrganizationId: string;
   demoMode: boolean;
   canRenameWorkspace: boolean;
+  showWaitlistAdmin: boolean;
 }) {
   return (
     <aside className="sidebar">
@@ -84,7 +101,7 @@ export function Sidebar({
         <CloseSpan3DLogo size="sm" />
       </Link>
       <nav className="nav" aria-label="Primary navigation">
-        <NavigationLinks />
+        <NavigationLinks showWaitlistAdmin={showWaitlistAdmin} />
       </nav>
       <div className="sidebar-footer">
         {demoMode && (
@@ -107,10 +124,12 @@ export function MobileNavigation({
   organizations,
   activeOrganizationId,
   canRenameWorkspace,
+  showWaitlistAdmin,
 }: {
   organizations: OrganizationSwitcherItem[];
   activeOrganizationId: string;
   canRenameWorkspace: boolean;
+  showWaitlistAdmin: boolean;
 }) {
   const pathname = usePathname();
   const menuRef = useRef<HTMLDetailsElement>(null);
@@ -134,7 +153,7 @@ export function MobileNavigation({
       <summary>Menu</summary>
       <div className="mobile-menu-panel">
         <nav aria-label="Mobile navigation">
-          <NavigationLinks />
+          <NavigationLinks showWaitlistAdmin={showWaitlistAdmin} />
         </nav>
         <OrganizationSwitcher
           organizations={organizations}

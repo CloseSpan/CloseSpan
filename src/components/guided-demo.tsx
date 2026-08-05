@@ -159,8 +159,15 @@ export function GuidedDemo({
               <X size={16} />
             </button>
           </header>
-          <div className="guided-demo-progress" aria-label={`Step ${stepIndex + 1} of ${guide.steps.length}`}>
-            <span style={{ width: `${progress}%` }} />
+          <div
+            className="guided-demo-progress"
+            role="progressbar"
+            aria-label="Guided demo progress"
+            aria-valuemin={1}
+            aria-valuemax={guide.steps.length}
+            aria-valuenow={stepIndex + 1}
+          >
+            <span style={{ transform: `scaleX(${progress / 100})` }} />
           </div>
           <div className="guided-demo-body">
             <div className="guided-demo-step-label">

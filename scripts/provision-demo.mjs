@@ -402,6 +402,13 @@ try {
       "INSERT INTO organizations(id,name,created_at,updated_at) VALUES($1,$2,$3,now())",
       [orgId, orgName, organizationCreatedAt],
     );
+    await client.query(
+      `UPDATE billing_customers
+          SET metering_enabled=false,status='Pending',attempts=0,
+              next_attempt_at=now(),last_error=NULL,updated_at=now()
+        WHERE org_id=$1`,
+      [orgId],
+    );
 
     const memberId = `user_${createHash("sha256").update(ownerEmail).digest("hex").slice(0, 20)}`;
     const displayName = ownerEmail === "shanmukhsain@gmail.com" ? "Shanmukh Sain" : ownerEmail.split("@")[0];

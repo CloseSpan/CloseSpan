@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentRunExecutionContext } from "./engineering-workflow-repository";
 import { executeTenkiCodingJob, type TenkiAgentJob } from "./tenki-coding-executor";
 import { verifyAgentRunWithTenki } from "./tenki-agent-verification";
+import { hashExecutionProfileConfig } from "./execution-profile";
 
 const live = process.env.RUN_TENKI_STAGING === "true";
 const describeLive = live ? describe : describe.skip;
@@ -73,8 +74,40 @@ describeLive("Tenki approval-bound staging canary", () => {
   });
 
   it("codes in one isolated session and verifies in a second fresh session", async () => {
+    const profileConfig = {
+      schemaVersion: 1 as const,
+      language: "javascript",
+      framework: null,
+      packageManager: "npm",
+      runtimeVersion: "22",
+      workingDirectory: ".",
+      installCommands: [],
+      buildCommands: [],
+      testCommands: ["npm test"],
+      typecheckCommands: [],
+      permittedPaths: ["src/**", "test/**"],
+      tenkiImage: null,
+      tenkiSnapshotId: null,
+      cpuCores: 2,
+      memoryMb: 4096,
+      allowInbound: false,
+      allowOutbound: false,
+      maxDurationMs: 240_000,
+      idleTimeoutMinutes: 2,
+    };
+    const executionProfileHash = hashExecutionProfileConfig(profileConfig);
+    const executionProfileId = "33333333-3333-4333-8333-333333333333";
+    const executionProfileSnapshot = {
+      profileId: executionProfileId,
+      version: 1,
+      source: "confirmed" as const,
+      repository: "samshanmukh/closespan-agent-staging",
+      workspaceRoot: ".",
+      contentHash: executionProfileHash,
+      config: profileConfig,
+    };
     const job: TenkiAgentJob = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       orgId: "closespan-staging",
       runId,
       repository: "samshanmukh/closespan-agent-staging",
@@ -90,6 +123,9 @@ describeLive("Tenki approval-bound staging canary", () => {
       callbackUrl: `https://www.closespan.com/api/internal/agent-runs/${runId}`,
       expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
       capabilities: ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"],
+      executionProfileId,
+      executionProfileHash,
+      executionProfileSnapshot,
     };
     let implementationSessionId = "";
     const report = await executeTenkiCodingJob(job, {
@@ -156,6 +192,9 @@ describeLive("Tenki approval-bound staging canary", () => {
       },
       expiresAt: job.expiresAt,
       allowedCapabilities: job.capabilities,
+      executionProfileId,
+      executionProfileHash,
+      executionProfileSnapshot,
     };
     const verified = await verifyAgentRunWithTenki(context, report, {
       repositoryArchive: async () => archive,

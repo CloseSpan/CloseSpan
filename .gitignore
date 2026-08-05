@@ -6,6 +6,8 @@ coverage
 upload.env.me
 *.log
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 .DS_Store
 .vercel
 .ski/

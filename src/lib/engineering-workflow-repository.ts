@@ -35,6 +35,22 @@ import {
   type PddGeneratedTest,
   type PddVerificationView,
 } from "./pdd-verification";
+import {
+  BILLING_EVENT_NAMES,
+  enqueueBillingUsageEvent,
+} from "./billing-outbox";
+import {
+  assertExecutionProfileNarrowing,
+  hashExecutionProfileConfig,
+  sanitizeExecutionProfileConfig,
+  type ExecutionProfileSnapshot,
+} from "./execution-profile";
+import {
+  resolveExecutionProfileForTicket,
+} from "./execution-profile-repository";
+import {
+  getActiveConfirmedProblemRepositoryMatch,
+} from "./problem-repository-match-repository";
 
 export interface ImplementationPromptView {
   id: string;
@@ -152,6 +168,9 @@ export interface PddVerificationExecutionContext {
   permittedPaths: string[];
   requiredCommands: string[];
   suspectedFiles: string[];
+  executionProfileId: string;
+  executionProfileHash: string;
+  executionProfileSnapshot: ExecutionProfileSnapshot;
 }
 
 export interface AgentRunExecutionContext {
@@ -172,6 +191,9 @@ export interface AgentRunExecutionContext {
   expiresAt: string;
   allowedCapabilities: string[];
   generatedTests?: PddGeneratedTest[];
+  executionProfileId: string;
+  executionProfileHash: string;
+  executionProfileSnapshot: ExecutionProfileSnapshot;
 }
 
 export class EngineeringWorkflowError extends Error {
@@ -210,6 +232,64 @@ interface SpecificationRow {
   repository: string;
   base_branch: string;
   base_sha: string;
+}
+
+interface ExecutionProfileBindingRow {
+  execution_profile_id: string | null;
+  execution_profile_hash: string | null;
+  execution_profile_snapshot: unknown;
+}
+
+function validatedExecutionProfileBinding(
+  row: ExecutionProfileBindingRow,
+  label: string,
+): ExecutionProfileSnapshot {
+  if (
+    !row.execution_profile_id
+    || !row.execution_profile_hash
+    || !row.execution_profile_snapshot
+    || typeof row.execution_profile_snapshot !== "object"
+    || Array.isArray(row.execution_profile_snapshot)
+  ) {
+    throw new EngineeringWorkflowError(`${label} is missing its immutable execution profile`, 409);
+  }
+  const value = row.execution_profile_snapshot as Partial<ExecutionProfileSnapshot>;
+  let config;
+  try {
+    config = sanitizeExecutionProfileConfig(value.config);
+  } catch {
+    throw new EngineeringWorkflowError(`${label} execution profile configuration is invalid`, 409);
+  }
+  if (
+    value.profileId !== row.execution_profile_id
+    || value.contentHash !== row.execution_profile_hash
+    || hashExecutionProfileConfig(config) !== row.execution_profile_hash
+    || !Number.isInteger(value.version)
+    || value.version! <= 0
+    || !["confirmed", "override", "safe_generic"].includes(value.source ?? "")
+    || typeof value.repository !== "string"
+    || typeof value.workspaceRoot !== "string"
+  ) {
+    throw new EngineeringWorkflowError(`${label} execution profile failed its immutable hash check`, 409);
+  }
+  return {
+    profileId: row.execution_profile_id,
+    contentHash: row.execution_profile_hash,
+    version: value.version!,
+    source: value.source,
+    repository: value.repository,
+    workspaceRoot: value.workspaceRoot,
+    config,
+  } as ExecutionProfileSnapshot;
+}
+
+function sameExecutionProfileBinding(
+  left: ExecutionProfileSnapshot,
+  right: ExecutionProfileSnapshot,
+): boolean {
+  return left.profileId === right.profileId
+    && left.contentHash === right.contentHash
+    && JSON.stringify(left) === JSON.stringify(right);
 }
 
 function branchName(problemId: string, runId: string, title: string): string {
@@ -868,6 +948,23 @@ export async function testUserStoryAgainstPrompt(
       409,
     );
   }
+  const confirmedRepositoryMatch = workspacePersistenceMode(orgId) === "postgres"
+    ? await getActiveConfirmedProblemRepositoryMatch(orgId, problemId)
+    : null;
+  if (workspacePersistenceMode(orgId) === "postgres") {
+    if (!confirmedRepositoryMatch) {
+      throw new EngineeringWorkflowError(
+        "Confirm this ticket's repository and an active execution profile before PDD testing.",
+        409,
+      );
+    }
+    if (workflow.specification.repository !== confirmedRepositoryMatch.repository) {
+      throw new EngineeringWorkflowError(
+        "The confirmed repository does not match the engineering ticket. Review the ticket repository context before PDD testing.",
+        409,
+      );
+    }
+  }
   if (!workflow.prompt || workflow.prompt.status === "Superseded") {
     if (!workflow.readiness.ready) {
       throw new EngineeringWorkflowError(
@@ -924,6 +1021,52 @@ export async function testUserStoryAgainstPrompt(
     };
     workflow = await requestImplementationApproval(orgId, prompt.id, actor);
   } else {
+    const ticketBindingResult = await databasePool().query<ExecutionProfileBindingRow>(
+      `SELECT execution_profile_id,execution_profile_hash,execution_profile_snapshot
+         FROM engineering_ticket_specifications
+        WHERE org_id=$1 AND problem_id=$2`,
+      [orgId, problemId],
+    );
+    const ticketBinding = ticketBindingResult.rows[0];
+    const ticketOverride = ticketBinding?.execution_profile_id
+      ? validatedExecutionProfileBinding(ticketBinding, "Engineering ticket")
+      : null;
+    if (
+      ticketOverride &&
+      (
+        ticketOverride.repository !== confirmedRepositoryMatch?.repository ||
+        ticketOverride.workspaceRoot !== confirmedRepositoryMatch.workspaceRoot
+      )
+    ) {
+      throw new EngineeringWorkflowError(
+        "The ticket's explicit execution profile override does not match the confirmed repository root.",
+        409,
+      );
+    }
+    const resolvedProfile = await resolveExecutionProfileForTicket({
+      orgId,
+      repository: prompt.repository,
+      workspaceRoot: ticketOverride?.workspaceRoot
+        ?? confirmedRepositoryMatch?.workspaceRoot
+        ?? ".",
+      ticketOverrideProfileId: ticketOverride?.profileId,
+    });
+    if (
+      !ticketOverride &&
+      (
+        resolvedProfile.snapshot.profileId !== confirmedRepositoryMatch?.profileId ||
+        resolvedProfile.snapshot.contentHash !== confirmedRepositoryMatch.profileHash
+      )
+    ) {
+      throw new EngineeringWorkflowError(
+        "The active execution profile changed after repository review. Confirm the current profile before PDD testing.",
+        409,
+      );
+    }
+    assertExecutionProfileNarrowing(resolvedProfile.snapshot, {
+      permittedPaths: workflow.specification!.permittedPaths,
+      requiredCommands: workflow.specification!.requiredCommands,
+    });
     await transaction(async (client) => {
       await client.query(
         `UPDATE pdd_prompt_verifications SET status='Superseded',completed_at=coalesce(completed_at,now())
@@ -933,10 +1076,13 @@ export async function testUserStoryAgainstPrompt(
       await client.query(
         `INSERT INTO pdd_prompt_verifications(
           id,org_id,problem_id,prompt_revision_id,prompt_hash,user_story,story_hash,status,
-          pdd_version,budget_usd,created_by
-        ) VALUES($1,$2,$3,$4,$5,$6,$7,'Queued',$8,$9,$10)`,
+          pdd_version,budget_usd,created_by,execution_profile_id,execution_profile_hash,
+          execution_profile_snapshot
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,'Queued',$8,$9,$10,$11,$12,$13)`,
         [verificationId, orgId, problemId, prompt.id, prompt.contentHash, story,
-          sha256(story.replace(/\s+/g, " ").trim()), PDD_CLI_VERSION, budgetUsd, actor.actorId],
+          sha256(story.replace(/\s+/g, " ").trim()), PDD_CLI_VERSION, budgetUsd, actor.actorId,
+          resolvedProfile.snapshot.profileId, resolvedProfile.snapshot.contentHash,
+          JSON.stringify(resolvedProfile.snapshot)],
       );
       await audit(client, orgId, actor, `Queued PDD ${PDD_CLI_VERSION} acceptance-test generation for prompt ${prompt.contentHash}`, "PddPromptVerification", verificationId);
     });
@@ -979,10 +1125,13 @@ export async function getPddVerificationExecutionContext(
     prompt_revision_id: string; prompt_hash: string; user_story: string;
     pdd_version: string; budget_usd: string; status: PddVerificationView["status"];
     structured_snapshot: ImplementationPromptSnapshot;
+    execution_profile_id: string | null; execution_profile_hash: string | null;
+    execution_profile_snapshot: unknown;
     }>(`SELECT verification.problem_id,prompt.repository,allowlist.installation_id::text,
              prompt.base_branch,prompt.base_sha,verification.prompt_revision_id,verification.prompt_hash,
              verification.user_story,verification.pdd_version,verification.budget_usd,
-             verification.status,prompt.structured_snapshot
+             verification.status,prompt.structured_snapshot,verification.execution_profile_id,
+             verification.execution_profile_hash,verification.execution_profile_snapshot
         FROM pdd_prompt_verifications verification
         JOIN implementation_prompts prompt ON prompt.org_id=verification.org_id
           AND prompt.id=verification.prompt_revision_id
@@ -993,6 +1142,11 @@ export async function getPddVerificationExecutionContext(
   if (!row) throw new EngineeringWorkflowError("PDD verification or repository authorization was not found", 404);
   if (!["Queued", "Generating tests"].includes(row.status))
     throw new EngineeringWorkflowError("PDD verification is no longer executable", 409);
+  const executionProfileSnapshot = validatedExecutionProfileBinding(row, "PDD verification");
+  assertExecutionProfileNarrowing(executionProfileSnapshot, {
+    permittedPaths: row.structured_snapshot.ticket.permittedPaths,
+    requiredCommands: row.structured_snapshot.ticket.requiredCommands,
+  });
   return {
     orgId, problemId: row.problem_id, verificationId,
     repository: row.repository, installationId: row.installation_id,
@@ -1003,6 +1157,9 @@ export async function getPddVerificationExecutionContext(
     permittedPaths: row.structured_snapshot.ticket.permittedPaths,
     requiredCommands: row.structured_snapshot.ticket.requiredCommands,
     suspectedFiles: row.structured_snapshot.evidence.suspectedFiles,
+    executionProfileId: executionProfileSnapshot.profileId,
+    executionProfileHash: executionProfileSnapshot.contentHash,
+    executionProfileSnapshot,
   };
 }
 
@@ -1059,8 +1216,12 @@ export async function completePddVerification(
       problem_id: string; prompt_revision_id: string; prompt_hash: string;
       status: PddVerificationView["status"]; structured_snapshot: ImplementationPromptSnapshot;
       pdd_version: string; budget_usd: string;
+      execution_profile_id: string | null; execution_profile_hash: string | null;
+      execution_profile_snapshot: unknown;
     }>(`SELECT verification.problem_id,verification.prompt_revision_id,verification.prompt_hash,
-               verification.status,verification.pdd_version,verification.budget_usd,prompt.structured_snapshot
+               verification.status,verification.pdd_version,verification.budget_usd,prompt.structured_snapshot,
+               verification.execution_profile_id,verification.execution_profile_hash,
+               verification.execution_profile_snapshot
           FROM pdd_prompt_verifications verification
           JOIN implementation_prompts prompt ON prompt.org_id=verification.org_id
             AND prompt.id=verification.prompt_revision_id
@@ -1075,6 +1236,11 @@ export async function completePddVerification(
       throw new EngineeringWorkflowError("PDD callback version does not match the pinned runner version", 409);
     if (parsed.costUsd !== null && parsed.costUsd > Number(row.budget_usd))
       throw new EngineeringWorkflowError("PDD callback exceeded the verification budget", 409);
+    const executionProfileSnapshot = validatedExecutionProfileBinding(row, "PDD verification");
+    assertExecutionProfileNarrowing(executionProfileSnapshot, {
+      permittedPaths: row.structured_snapshot.ticket.permittedPaths,
+      requiredCommands: row.structured_snapshot.ticket.requiredCommands,
+    });
     const verified = validateGeneratedTests(parsed, row.structured_snapshot);
     problemId = row.problem_id;
     promptId = row.prompt_revision_id;
@@ -1087,6 +1253,19 @@ export async function completePddVerification(
         verified.costUsd, verified.summary, JSON.stringify(verified.generatedTests), verified.failureMessage],
     );
     await audit(client, orgId, actor, `${verified.status}: ${verified.summary}`, "PddPromptVerification", verificationId);
+    await enqueueBillingUsageEvent(client, {
+      orgId,
+      eventId: `user_story_test.completed:${orgId}:${verificationId}`,
+      eventName: BILLING_EVENT_NAMES.userStoryTestCompleted,
+      source: "closespan.pdd",
+      properties: {
+        verification_id: verificationId,
+        status: verified.status,
+        generated_tests: verified.generatedTests.length,
+        cost_usd: verified.costUsd ?? 0,
+        model: verified.model,
+      },
+    });
   });
   if (shouldRequestApproval) return requestImplementationApproval(orgId, promptId, actor);
   return postgresWorkflow(orgId, problemId);
@@ -1118,14 +1297,17 @@ export async function requestImplementationApproval(
     const row = prompt.rows[0];
     if (!row) throw new EngineeringWorkflowError("Implementation prompt was not found", 404);
     if (row.status !== "Ready") throw new EngineeringWorkflowError("Only the latest ready prompt can be submitted", 409);
-    const verification = await client.query(
-      `SELECT 1 FROM pdd_prompt_verifications
+    const verification = await client.query<ExecutionProfileBindingRow & { id: string }>(
+      `SELECT id,execution_profile_id,execution_profile_hash,execution_profile_snapshot
+         FROM pdd_prompt_verifications
         WHERE org_id=$1 AND prompt_revision_id=$2 AND prompt_hash=$3 AND status='Ready for approval'
         ORDER BY completed_at DESC LIMIT 1 FOR UPDATE`,
       [orgId, promptId, row.content_hash],
     );
-    if (!verification.rowCount)
+    const verificationRow = verification.rows[0];
+    if (!verificationRow)
       throw new EngineeringWorkflowError("Generate and review a PDD acceptance contract before requesting approval", 409);
+    const executionProfileSnapshot = validatedExecutionProfileBinding(verificationRow, "PDD verification");
     problemId = row.problem_id;
     const approvalId = `apr_prompt_${randomUUID().replaceAll("-", "")}`;
     const capabilities = ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"];
@@ -1133,15 +1315,17 @@ export async function requestImplementationApproval(
       `INSERT INTO approval_requests(
         id,org_id,problem_id,recommendation_id,action,reason,confidence,systems,data_shared,
         reversible,risk,status,action_type,prompt_revision_id,prompt_hash,repository,base_branch,
-        base_sha,allowed_capabilities,expires_at
-      ) VALUES($1,$2,$3,$4,$5,$6,1,$7,$8,true,'Medium','Pending','agent_run',$9,$10,$11,$12,$13,$14,now()+interval '30 minutes')`,
+        base_sha,allowed_capabilities,expires_at,execution_profile_id,execution_profile_hash,
+        execution_profile_snapshot
+      ) VALUES($1,$2,$3,$4,$5,$6,1,$7,$8,true,'Medium','Pending','agent_run',$9,$10,$11,$12,$13,$14,now()+interval '30 minutes',$15,$16,$17)`,
       [approvalId, orgId, row.problem_id, promptId,
         `Run one coding agent and open a draft PR in ${row.repository}`,
         "The approval is bound to an immutable prompt, base commit, repository, expiry, and single execution.",
         JSON.stringify(["Tenki Sandbox", "GitHub"]),
         JSON.stringify(["Approved prompt", "Redacted evidence", "Repository snapshot"]),
         promptId, row.content_hash, row.repository, row.base_branch, row.base_sha,
-        JSON.stringify(capabilities)],
+        JSON.stringify(capabilities), executionProfileSnapshot.profileId,
+        executionProfileSnapshot.contentHash, JSON.stringify(executionProfileSnapshot)],
     );
     await client.query("UPDATE implementation_prompts SET status='Awaiting approval' WHERE org_id=$1 AND id=$2", [orgId, promptId]);
     await client.query("UPDATE engineering_ticket_specifications SET implementation_state='Awaiting approval',updated_at=now() WHERE org_id=$1 AND problem_id=$2", [orgId, row.problem_id]);
@@ -1183,7 +1367,10 @@ export async function approveImplementationRun(
       id: string; problem_id: string; status: EngineeringApprovalView["status"];
       expires_at: Date; prompt_revision_id: string; prompt_hash: string;
       repository: string; base_branch: string; base_sha: string;
-    }>(`SELECT id,problem_id,status,expires_at,prompt_revision_id,prompt_hash,repository,base_branch,base_sha
+      execution_profile_id: string | null; execution_profile_hash: string | null;
+      execution_profile_snapshot: unknown;
+    }>(`SELECT id,problem_id,status,expires_at,prompt_revision_id,prompt_hash,repository,base_branch,base_sha,
+                execution_profile_id,execution_profile_hash,execution_profile_snapshot
           FROM approval_requests
          WHERE org_id=$1 AND id=$2 AND action_type='agent_run' FOR UPDATE`, [orgId, approvalId]);
     const row = approval.rows[0];
@@ -1197,6 +1384,7 @@ export async function approveImplementationRun(
       expired = true;
       return;
     }
+    const approvalProfile = validatedExecutionProfileBinding(row, "Approval request");
     const prompt = await client.query<{ content_hash: string; status: string }>(
       "SELECT content_hash,status FROM implementation_prompts WHERE org_id=$1 AND id=$2 FOR UPDATE",
       [orgId, row.prompt_revision_id],
@@ -1209,24 +1397,32 @@ export async function approveImplementationRun(
       [orgId, row.repository],
     );
     if (!repository.rowCount) throw new EngineeringWorkflowError("The target repository is not allowlisted for agent execution", 409);
-    const verification = await client.query<{ id: string }>(
-      `SELECT id FROM pdd_prompt_verifications
+    const verification = await client.query<{ id: string } & ExecutionProfileBindingRow>(
+      `SELECT id,execution_profile_id,execution_profile_hash,execution_profile_snapshot
+         FROM pdd_prompt_verifications
         WHERE org_id=$1 AND prompt_revision_id=$2 AND prompt_hash=$3 AND status='Ready for approval'
         ORDER BY completed_at DESC LIMIT 1 FOR UPDATE`,
       [orgId, row.prompt_revision_id, row.prompt_hash],
     );
-    if (!verification.rows[0]) throw new EngineeringWorkflowError("The PDD acceptance contract is no longer ready", 409);
+    const verificationRow = verification.rows[0];
+    if (!verificationRow) throw new EngineeringWorkflowError("The PDD acceptance contract is no longer ready", 409);
+    const verificationProfile = validatedExecutionProfileBinding(verificationRow, "PDD verification");
+    if (!sameExecutionProfileBinding(approvalProfile, verificationProfile)) {
+      throw new EngineeringWorkflowError("The approval no longer matches the PDD execution profile", 409);
+    }
     const title = await client.query<{ title: string }>("SELECT title FROM product_problems WHERE org_id=$1 AND id=$2", [orgId, row.problem_id]);
     const runId = randomUUID();
     await client.query("UPDATE approval_requests SET status='Approved',consumed_at=now(),updated_at=now() WHERE org_id=$1 AND id=$2", [orgId, approvalId]);
     await client.query("UPDATE implementation_prompts SET status='Approved' WHERE org_id=$1 AND id=$2", [orgId, row.prompt_revision_id]);
     await client.query(
       `INSERT INTO agent_runs(id,org_id,problem_id,prompt_revision_id,approval_id,status,repository,
-        base_branch,base_sha,branch_name,prompt_hash,pdd_verification_id)
-       VALUES($1,$2,$3,$4,$5,'Queued',$6,$7,$8,$9,$10,$11)`,
+        base_branch,base_sha,branch_name,prompt_hash,pdd_verification_id,execution_profile_id,
+        execution_profile_hash,execution_profile_snapshot)
+       VALUES($1,$2,$3,$4,$5,'Queued',$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [runId, orgId, row.problem_id, row.prompt_revision_id, approvalId, row.repository,
         row.base_branch, row.base_sha, branchName(row.problem_id, runId, title.rows[0]?.title ?? "ticket"), row.prompt_hash,
-        verification.rows[0].id],
+        verificationRow.id, approvalProfile.profileId, approvalProfile.contentHash,
+        JSON.stringify(approvalProfile)],
     );
     await client.query("UPDATE engineering_ticket_specifications SET implementation_state='Running',updated_at=now() WHERE org_id=$1 AND problem_id=$2", [orgId, row.problem_id]);
     await audit(client, orgId, actor, `Approved and queued one coding run ${runId} for prompt ${row.prompt_hash}`, "AgentRun", runId);
@@ -1281,10 +1477,25 @@ export async function getAgentRunExecutionContext(
     prompt_hash: string; rendered_content: string; artifact_path: string;
     structured_snapshot: ImplementationPromptSnapshot; expires_at: Date; allowed_capabilities: string[];
     generated_tests: PddGeneratedTest[];
+    run_execution_profile_id: string | null; run_execution_profile_hash: string | null;
+    run_execution_profile_snapshot: unknown;
+    approval_execution_profile_id: string | null; approval_execution_profile_hash: string | null;
+    approval_execution_profile_snapshot: unknown;
+    verification_execution_profile_id: string | null; verification_execution_profile_hash: string | null;
+    verification_execution_profile_snapshot: unknown;
   }>(`SELECT run.problem_id,run.approval_id,run.repository,allowlist.installation_id::text,
              run.base_branch,run.base_sha,run.branch_name,run.prompt_revision_id,run.prompt_hash,
              prompt.rendered_content,prompt.artifact_path,prompt.structured_snapshot,
-             approval.expires_at,approval.allowed_capabilities,verification.generated_tests
+             approval.expires_at,approval.allowed_capabilities,verification.generated_tests,
+             run.execution_profile_id AS run_execution_profile_id,
+             run.execution_profile_hash AS run_execution_profile_hash,
+             run.execution_profile_snapshot AS run_execution_profile_snapshot,
+             approval.execution_profile_id AS approval_execution_profile_id,
+             approval.execution_profile_hash AS approval_execution_profile_hash,
+             approval.execution_profile_snapshot AS approval_execution_profile_snapshot,
+             verification.execution_profile_id AS verification_execution_profile_id,
+             verification.execution_profile_hash AS verification_execution_profile_hash,
+             verification.execution_profile_snapshot AS verification_execution_profile_snapshot
         FROM agent_runs run
         JOIN implementation_prompts prompt ON prompt.org_id=run.org_id AND prompt.id=run.prompt_revision_id
         JOIN approval_requests approval ON approval.org_id=run.org_id AND approval.id=run.approval_id
@@ -1295,6 +1506,31 @@ export async function getAgentRunExecutionContext(
        WHERE run.org_id=$1 AND run.id=$2`, [orgId, runId]);
   const row = result.rows[0];
   if (!row) throw new EngineeringWorkflowError("Agent run or repository authorization was not found", 404);
+  const executionProfileSnapshot = validatedExecutionProfileBinding({
+    execution_profile_id: row.run_execution_profile_id,
+    execution_profile_hash: row.run_execution_profile_hash,
+    execution_profile_snapshot: row.run_execution_profile_snapshot,
+  }, "Agent run");
+  const approvalProfile = validatedExecutionProfileBinding({
+    execution_profile_id: row.approval_execution_profile_id,
+    execution_profile_hash: row.approval_execution_profile_hash,
+    execution_profile_snapshot: row.approval_execution_profile_snapshot,
+  }, "Approval request");
+  const verificationProfile = validatedExecutionProfileBinding({
+    execution_profile_id: row.verification_execution_profile_id,
+    execution_profile_hash: row.verification_execution_profile_hash,
+    execution_profile_snapshot: row.verification_execution_profile_snapshot,
+  }, "PDD verification");
+  if (
+    !sameExecutionProfileBinding(executionProfileSnapshot, approvalProfile)
+    || !sameExecutionProfileBinding(executionProfileSnapshot, verificationProfile)
+  ) {
+    throw new EngineeringWorkflowError("Agent run execution profile no longer matches its approval chain", 409);
+  }
+  assertExecutionProfileNarrowing(executionProfileSnapshot, {
+    permittedPaths: row.structured_snapshot.ticket.permittedPaths,
+    requiredCommands: row.structured_snapshot.ticket.requiredCommands,
+  });
   return {
     orgId, problemId: row.problem_id, runId, approvalId: row.approval_id,
     repository: row.repository, installationId: row.installation_id,
@@ -1304,6 +1540,9 @@ export async function getAgentRunExecutionContext(
     promptSnapshot: row.structured_snapshot,
     expiresAt: row.expires_at.toISOString(), allowedCapabilities: row.allowed_capabilities,
     generatedTests: row.generated_tests,
+    executionProfileId: executionProfileSnapshot.profileId,
+    executionProfileHash: executionProfileSnapshot.contentHash,
+    executionProfileSnapshot,
   };
 }
 
@@ -1367,8 +1606,11 @@ export async function completeAgentRun(
         ? "Failed"
         : "Tests passed";
   await transaction(async (client) => {
-    const locked = await client.query<{ status: AgentRunView["status"] }>(
-      "SELECT status FROM agent_runs WHERE org_id=$1 AND id=$2 FOR UPDATE",
+    const locked = await client.query<{
+      status: AgentRunView["status"];
+      started_at: Date | null;
+    }>(
+      "SELECT status,started_at FROM agent_runs WHERE org_id=$1 AND id=$2 FOR UPDATE",
       [context.orgId, context.runId],
     );
     if (!locked.rows[0] || !["Queued", "Running", "Tests passed"].includes(locked.rows[0].status))
@@ -1404,6 +1646,24 @@ export async function completeAgentRun(
        VALUES($1,$2,'agent_executor','CloseSpan agent executor',$3,'AgentRun',$4,$5)`,
       [randomUUID(), context.orgId, `Agent run ${context.runId} completed as ${finalStatus}`, context.runId, `agent_run_${context.runId}_${randomUUID()}`],
     );
+    if (["Draft PR opened", "Failed", "No changes"].includes(finalStatus)) {
+      const startedAt = locked.rows[0]?.started_at;
+      await enqueueBillingUsageEvent(client, {
+        orgId: context.orgId,
+        eventId: `agent_run.completed:${context.orgId}:${context.runId}`,
+        eventName: BILLING_EVENT_NAMES.agentRunCompleted,
+        source: "closespan.tenki",
+        properties: {
+          run_id: context.runId,
+          status: finalStatus,
+          changed_files: report.changedFiles.length,
+          tests: report.tests.length,
+          duration_seconds: startedAt
+            ? Math.max(0, Math.round((Date.now() - startedAt.valueOf()) / 1_000))
+            : 0,
+        },
+      });
+    }
   });
   return postgresWorkflow(context.orgId, context.problemId);
 }
@@ -1414,9 +1674,10 @@ export async function failAgentRun(
   message: string,
 ): Promise<void> {
   await transaction(async (client) => {
-    const result = await client.query(
+    const result = await client.query<{ started_at: Date | null }>(
       `UPDATE agent_runs SET status='Failed',failure_code=$3,failure_message=$4,completed_at=now()
-        WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running','Tests passed')`,
+        WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running','Tests passed')
+        RETURNING started_at`,
       [context.orgId, context.runId, code.slice(0, 120), message.slice(0, 2_000)],
     );
     if (!result.rowCount) return;
@@ -1429,6 +1690,21 @@ export async function failAgentRun(
        VALUES($1,$2,'agent_executor','CloseSpan agent executor',$3,'AgentRun',$4,$5)`,
       [randomUUID(), context.orgId, `Agent run failed: ${code.slice(0, 120)}`, context.runId, `agent_run_failed_${context.runId}_${randomUUID()}`],
     );
+    const startedAt = result.rows[0]?.started_at;
+    await enqueueBillingUsageEvent(client, {
+      orgId: context.orgId,
+      eventId: `agent_run.completed:${context.orgId}:${context.runId}`,
+      eventName: BILLING_EVENT_NAMES.agentRunCompleted,
+      source: "closespan.tenki",
+      properties: {
+        run_id: context.runId,
+        status: "Failed",
+        failure_code: code.slice(0, 120),
+        duration_seconds: startedAt
+          ? Math.max(0, Math.round((Date.now() - startedAt.valueOf()) / 1_000))
+          : 0,
+      },
+    });
   });
 }
 

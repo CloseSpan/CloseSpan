@@ -5000,9 +5000,9 @@ pre.code-block {
 }
 
 .app-shell .google-mark {
-  border: 1px solid var(--border-subtle);
-  background: var(--surface);
-  box-shadow: var(--shadow-raised-sm);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .app-shell .connector-input-guidance code {
@@ -6628,10 +6628,30 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 }
 
 .feature-requests-page .feature-request-row p {
-  max-width: 66ch;
+  width: 100%;
+  max-width: none;
   margin-top: var(--space-2);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
+}
+
+.feature-requests-page .feature-requests-main > .turnstile-challenge {
+  width: min(100%, 480px);
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings-read-only {
+  margin-bottom: var(--space-5);
+}
+
+.app-shell .provider-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
 }
 
 /* Pretext supplies the fitted size; this shared readiness treatment makes the

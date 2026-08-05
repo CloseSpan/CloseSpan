@@ -4,6 +4,10 @@ This Worker accepts HMAC-signed, single-run jobs from CloseSpan, stores them in 
 
 ## Configure
 
+The permanent Worker is named `closespan-agent-tenki-proxy`. Do not deploy this source over
+the legacy `closespan-agent-executor` Sandbox Worker because that service owns existing
+Durable Object and container migrations.
+
 ```bash
 npm install
 npm run types

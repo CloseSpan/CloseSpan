@@ -8,6 +8,7 @@ import type {
   UserStoryPromptTestView,
 } from "@/lib/engineering-workflow-repository";
 import { userStoryInputIssue } from "@/lib/user-story-prompt-test";
+import { RepositoryMatchReview } from "./repository-match-review";
 
 async function request<T>(
   path: string,
@@ -46,6 +47,7 @@ export function EngineeringTicketPanel({
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [pddProfileReady, setPddProfileReady] = useState(false);
 
   useEffect(() => {
     if (!workflow.verification || !["Queued", "Generating tests"].includes(workflow.verification.status)) return;
@@ -149,6 +151,11 @@ export function EngineeringTicketPanel({
       </div>
 
       <div className="card-body detail-stack">
+        <RepositoryMatchReview
+          orgId={orgId}
+          problemId={problemId}
+          onPddProfileReady={setPddProfileReady}
+        />
         {workflow.prompt?.status === "Draft" && (
           <div className="callout" role="status">
             <div className="callout-title">Agent-created draft ready for review</div>
@@ -191,11 +198,15 @@ export function EngineeringTicketPanel({
           <button
             type="button"
             className="btn primary"
-            disabled={busy}
+            disabled={busy || !pddProfileReady}
             onClick={testAgainstPrompt}
           >
             <CheckCircle2 size={14} />
-            {busy ? "Queuing…" : "Generate acceptance test"}
+            {busy
+              ? "Queuing…"
+              : pddProfileReady
+                ? "Generate acceptance test"
+                : "Review repository first"}
           </button>
         </div>
 

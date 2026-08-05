@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { launchPricingNote } from "@/lib/plans";
 import type { SettingsView } from "@/lib/workspace-repository";
+import type { BillingShadowStatus } from "@/lib/billing-outbox";
 import { AiProviderSettings } from "./ai-provider-settings";
 import {
   CUSTOM_RETENTION_OPTION,
@@ -15,10 +17,12 @@ import {
 import { CustomSelect } from "./custom-select";
 import { PageTitle } from "./screens";
 import { TenkiSandboxCheck } from "./tenki-sandbox-check";
+import { ExecutionProfileSettings } from "./execution-profile-settings";
 
 const settingsSections = [
   ["agent", "Agent autonomy"],
   ["prompt-drafts", "Prompt drafting"],
+  ["execution", "Execution profiles"],
   ["model", "AI provider"],
   ["priority", "Prioritization"],
   ["data", "Data & privacy"],
@@ -36,19 +40,26 @@ function sectionFromHash(hash: string): SettingsSectionId {
     : "agent";
 }
 
+function billingTimestamp(value: string): string {
+  return new Date(value).toUTCString();
+}
+
 export function SettingsScreen({
   settings,
   orgId,
   userRole,
   tenkiConfigured,
   promptEmailConfigured,
+  billingStatus,
 }: {
   settings: SettingsView;
   orgId: string;
   userRole: string;
   tenkiConfigured: boolean;
   promptEmailConfigured: boolean;
+  billingStatus: BillingShadowStatus;
 }) {
+  const router = useRouter();
   const [weights, setWeights] = useState<Record<string, number>>(
     settings.priorityWeights,
   );
@@ -62,6 +73,8 @@ export function SettingsScreen({
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
+  const [billingRetrying, setBillingRetrying] = useState(false);
+  const [billingRetryError, setBillingRetryError] = useState<string>();
   const [promptDraftPolicy, setPromptDraftPolicy] = useState(
     settings.promptDraftPolicy,
   );
@@ -81,8 +94,9 @@ export function SettingsScreen({
   const retentionValid =
     retention !== CUSTOM_RETENTION_OPTION ||
     isValidCustomRetention(customRetention);
+  const isAdmin = userRole === "Admin";
   const saveDisabledReason =
-    userRole !== "Admin"
+    !isAdmin
       ? "Only workspace admins can change policy."
       : total !== 100
         ? "Prioritization weights must total 100%."
@@ -109,6 +123,7 @@ export function SettingsScreen({
   }
 
   async function savePolicy(): Promise<void> {
+    if (!isAdmin) return;
     setSaving(true);
     setSaved(false);
     setSaveError(undefined);
@@ -136,6 +151,34 @@ export function SettingsScreen({
       setSaveError(error instanceof Error ? error.message : "Workspace policy could not be saved.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function retryBillingDelivery(): Promise<void> {
+    if (!isAdmin) return;
+    setBillingRetrying(true);
+    setBillingRetryError(undefined);
+    try {
+      const response = await fetch("/api/settings/billing/retry", {
+        method: "POST",
+        headers: {
+          "x-org-id": orgId,
+          "idempotency-key": `billing_${crypto.randomUUID().replaceAll("-", "")}`,
+          "x-request-id": crypto.randomUUID(),
+        },
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok)
+        throw new Error(payload.error ?? "Billing delivery could not be requeued.");
+      router.refresh();
+    } catch (error) {
+      setBillingRetryError(
+        error instanceof Error
+          ? error.message
+          : "Billing delivery could not be requeued.",
+      );
+    } finally {
+      setBillingRetrying(false);
     }
   }
 
@@ -169,6 +212,15 @@ export function SettingsScreen({
         </p>
       )}
       {saveError && <p className="toast error" role="alert">{saveError}</p>}
+      {!isAdmin && (
+        <div className="callout settings-read-only" role="status">
+          <div className="callout-title">Read-only settings</div>
+          <p className="subtle">
+            You can review workspace policy, but only an admin can change it or
+            update provider credentials.
+          </p>
+        </div>
+      )}
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
           {settingsSections.map(([id, label]) => (
@@ -204,6 +256,7 @@ export function SettingsScreen({
                     "Execute with approval",
                     "Limited autonomy",
                   ]}
+                  disabled={!isAdmin}
                   onValueChange={(value) => {
                     setAutonomy(value);
                     setSaved(false);
@@ -244,6 +297,7 @@ export function SettingsScreen({
                     { label: "Manual", value: "manual" },
                     { label: "Automatic draft", value: "automatic" },
                   ]}
+                  disabled={!isAdmin}
                   onValueChange={(mode) => {
                     setPromptDraftPolicy((value) => ({ ...value, mode: mode as "manual" | "automatic" }));
                     setSaved(false);
@@ -256,27 +310,27 @@ export function SettingsScreen({
               </div>
               <label className="toggle-row section-gap-sm">
                 <div><strong>Bug and incident reports</strong><p className="subtle">Draft a suggested fix after the evidence threshold is met.</p></div>
-                <input type="checkbox" checked={promptDraftPolicy.bugReports} disabled={promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, bugReports: event.target.checked })); setSaved(false); }} />
+                <input type="checkbox" checked={promptDraftPolicy.bugReports} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, bugReports: event.target.checked })); setSaved(false); }} />
               </label>
               <label className="toggle-row">
                 <div><strong>Feature requests</strong><p className="subtle">Draft a product-change prompt from a grouped request.</p></div>
-                <input type="checkbox" checked={promptDraftPolicy.featureRequests} disabled={promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, featureRequests: event.target.checked })); setSaved(false); }} />
+                <input type="checkbox" checked={promptDraftPolicy.featureRequests} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, featureRequests: event.target.checked })); setSaved(false); }} />
               </label>
               <label className="weight-row">
                 <span>Minimum reports</span>
-                <input type="range" min="1" max="20" value={promptDraftPolicy.minimumEvidence} disabled={promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, minimumEvidence: Number(event.target.value) })); setSaved(false); }} />
+                <input type="range" min="1" max="20" value={promptDraftPolicy.minimumEvidence} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, minimumEvidence: Number(event.target.value) })); setSaved(false); }} />
                 <strong>{promptDraftPolicy.minimumEvidence}</strong>
               </label>
               <label className="weight-row">
                 <span>Confidence</span>
-                <input type="range" min="50" max="100" step="5" value={Math.round(promptDraftPolicy.minimumConfidence * 100)} disabled={promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, minimumConfidence: Number(event.target.value) / 100 })); setSaved(false); }} />
+                <input type="range" min="50" max="100" step="5" value={Math.round(promptDraftPolicy.minimumConfidence * 100)} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, minimumConfidence: Number(event.target.value) / 100 })); setSaved(false); }} />
                 <strong>{Math.round(promptDraftPolicy.minimumConfidence * 100)}%</strong>
               </label>
               <div className="field section-gap-sm">
                 <span>Assigned reviewer</span>
                 <CustomSelect
                   ariaLabel="Prompt draft reviewer"
-                  disabled={promptDraftPolicy.mode !== "automatic"}
+                  disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"}
                   value={promptDraftPolicy.reviewerId ?? ""}
                   options={[
                     { label: "Unassigned", value: "" },
@@ -287,11 +341,11 @@ export function SettingsScreen({
               </div>
               <label className="toggle-row section-gap-sm">
                 <div><strong>In-app notification</strong><p className="subtle">Add the prompt to the reviewer&apos;s CloseSpan notification inbox.</p></div>
-                <input type="checkbox" checked={promptDraftPolicy.inAppNotifications} disabled={promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, inAppNotifications: event.target.checked })); setSaved(false); }} />
+                <input type="checkbox" checked={promptDraftPolicy.inAppNotifications} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, inAppNotifications: event.target.checked })); setSaved(false); }} />
               </label>
               <label className="toggle-row">
                 <div><strong>Email alert</strong><p className="subtle">Email the assigned reviewer when the prompt draft is ready.</p></div>
-                <input type="checkbox" checked={promptDraftPolicy.emailNotifications} disabled={promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, emailNotifications: event.target.checked })); setSaved(false); }} />
+                <input type="checkbox" checked={promptDraftPolicy.emailNotifications} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, emailNotifications: event.target.checked })); setSaved(false); }} />
               </label>
               {promptDraftPolicy.emailNotifications && !promptEmailConfigured && (
                 <div className="callout warning" role="status">
@@ -301,7 +355,19 @@ export function SettingsScreen({
               )}
             </div>
           </section>
-          <AiProviderSettings initial={settings.ai} orgId={orgId} />
+          <section className="card" id="execution">
+            <div className="card-head">
+              <div>
+                <h2>Repository execution profiles</h2>
+                <p className="subtle">Detect, review, and version the exact environment used by PDD and both Tenki VMs.</p>
+              </div>
+              <span className="badge brand">Approval-bound</span>
+            </div>
+            <div className="card-body">
+              <ExecutionProfileSettings orgId={orgId} isAdmin={isAdmin} />
+            </div>
+          </section>
+          <AiProviderSettings initial={settings.ai} orgId={orgId} isAdmin={isAdmin} />
           <section className="card" id="priority">
             <div className="card-head">
               <h2>Prioritization weights</h2>
@@ -318,6 +384,7 @@ export function SettingsScreen({
                     min="0"
                     max="40"
                     value={weight}
+                    disabled={!isAdmin}
                     onChange={(event) => {
                       setWeights((value) => ({
                         ...value,
@@ -346,6 +413,7 @@ export function SettingsScreen({
                 <input
                   type="checkbox"
                   checked={pii}
+                  disabled={!isAdmin}
                   onChange={(event) => {
                     setPii(event.target.checked);
                     setSaved(false);
@@ -360,6 +428,7 @@ export function SettingsScreen({
                   inlineMenu
                   value={retention}
                   options={["90 days", "365 days", CUSTOM_RETENTION_OPTION]}
+                  disabled={!isAdmin}
                   onValueChange={(value) => {
                     setRetention(value);
                     setSaved(false);
@@ -368,6 +437,7 @@ export function SettingsScreen({
                 <CustomRetentionInput
                   open={retention === CUSTOM_RETENTION_OPTION}
                   value={customRetention}
+                  disabled={!isAdmin}
                   onValueChange={(value) => {
                     setCustomRetention(value);
                     setSaved(false);
@@ -404,10 +474,13 @@ export function SettingsScreen({
               <div>
                 <h2>Plan & billing</h2>
                 <p className="subtle">
-                  Transparent sandbox boundary and early-access packaging
+                  Usage evidence, delivery health, and early-access packaging
                 </p>
               </div>
-              <span className="badge brand">{settings.planName}</span>
+              <div className="top-actions">
+                <span className="badge">{billingStatus.mode}</span>
+                <span className="badge brand">{settings.planName}</span>
+              </div>
             </div>
             <div className="card-body">
               <div className="split plan-summary">
@@ -415,13 +488,61 @@ export function SettingsScreen({
                   <div className="metric-label">Current price</div>
                   <strong>{settings.planPrice}</strong>
                   <p className="subtle">
-                    Seeded workspace · no live customer data · no external
-                    writes
+                    {billingStatus.meteringEnabled
+                      ? "Production workspace · shadow usage only · no automatic charges"
+                      : "Simulated workspace · excluded from billing metering"}
                   </p>
                 </div>
                 <Link className="btn" href="/#pricing">
                   View early-access pricing
                 </Link>
+              </div>
+              <div className="callout section-gap-sm">
+                <div className="callout-title">
+                  Shadow metering does not charge customers
+                </div>
+                <p className="subtle">
+                  {!billingStatus.meteringEnabled
+                    ? "This workspace does not create or deliver billing events. "
+                    : billingStatus.configured
+                    ? `${billingStatus.provider} delivery is active. `
+                    : "The durable CloseSpan usage ledger is active; provider delivery is not configured. "}
+                  {billingStatus.acceptedEvents} events accepted by the provider · {billingStatus.pendingEvents} queued · {billingStatus.failedEvents} failed.
+                  {billingStatus.lastAcceptedAt
+                    ? ` Last accepted ${billingTimestamp(billingStatus.lastAcceptedAt)}.`
+                    : " No usage event has been accepted yet."}
+                </p>
+                {billingStatus.meteringEnabled ? (
+                  <p className="subtle section-gap-xs">
+                    Customer sync: {billingStatus.customerStatus}.
+                    {billingStatus.customerLastError
+                      ? ` Last error: ${billingStatus.customerLastError}.`
+                      : ""}
+                  </p>
+                ) : null}
+                {billingStatus.configurationIssue ? (
+                  <p className="subtle section-gap-xs">
+                    {billingStatus.configurationIssue}. This does not interrupt
+                    feedback ingestion or agent workflows.
+                  </p>
+                ) : null}
+                {isAdmin &&
+                (billingStatus.customerStatus === "Failed" ||
+                  billingStatus.failedEvents > 0) ? (
+                  <button
+                    className="btn section-gap-xs"
+                    type="button"
+                    disabled={billingRetrying}
+                    onClick={() => void retryBillingDelivery()}
+                  >
+                    {billingRetrying ? "Requeuing…" : "Retry failed delivery"}
+                  </button>
+                ) : null}
+                {billingRetryError ? (
+                  <p className="toast error section-gap-xs" role="alert">
+                    {billingRetryError}
+                  </p>
+                ) : null}
               </div>
               <div className="callout section-gap-sm">
                 <div className="callout-title">No automatic upgrades</div>

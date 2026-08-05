@@ -115,23 +115,35 @@ export function TurnstileWidget({
   }
 
   return (
-    <div className="turnstile-challenge">
-      <Script
-        id="cloudflare-turnstile"
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
-        strategy="afterInteractive"
-        onReady={() => setApiReady(true)}
-        onError={() => {
-          setStatus("error");
-          onTokenChangeRef.current(null);
-        }}
-      />
-      <div ref={containerRef} />
-      {status === "error" && (
-        <p className="turnstile-unavailable" role="alert">
-          Security verification could not finish. Refresh and try again.
-        </p>
-      )}
+    <>
+      <div className="turnstile-challenge" hidden={status === "ready"}>
+        <Script
+          id="cloudflare-turnstile"
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+          strategy="afterInteractive"
+          onReady={() => setApiReady(true)}
+          onError={() => {
+            setStatus("error");
+            onTokenChangeRef.current(null);
+          }}
+        />
+        <div ref={containerRef} />
+        {status === "loading" && (
+          <p className="turnstile-status" aria-hidden="true">
+            <span>Checking browser security</span>
+            <span className="turnstile-status-dots">
+              <span />
+              <span />
+              <span />
+            </span>
+          </p>
+        )}
+        {status === "error" && (
+          <p className="turnstile-unavailable" role="alert">
+            Security verification could not finish. Refresh and try again.
+          </p>
+        )}
+      </div>
       <span className="sr-only" role="status" aria-live="polite">
         {status === "ready"
           ? "Security check complete."
@@ -139,6 +151,6 @@ export function TurnstileWidget({
             ? "Security check could not finish. Refresh and try again."
             : "Checking browser security."}
       </span>
-    </div>
+    </>
   );
 }

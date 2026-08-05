@@ -20,8 +20,47 @@ const generatedTestSchema = z.object({
   command: z.string().min(1).max(500),
 }).strict();
 
-const jobSchema = z.object({
+const executionProfileConfigSchema = z.object({
   schemaVersion: z.literal(1),
+  language: z.string().min(1).max(80),
+  framework: z.string().min(1).max(120).nullable(),
+  packageManager: z.string().min(1).max(80),
+  runtimeVersion: z.string().min(1).max(120).nullable(),
+  workingDirectory: z.string().min(1).max(500),
+  installCommands: z.array(z.string().min(1).max(1_000)).max(30),
+  buildCommands: z.array(z.string().min(1).max(1_000)).max(30),
+  testCommands: z.array(z.string().min(1).max(1_000)).max(30),
+  typecheckCommands: z.array(z.string().min(1).max(1_000)).max(30),
+  permittedPaths: z.array(z.string().min(1).max(500)).max(100),
+  tenkiImage: z.string().min(1).max(500).nullable(),
+  tenkiSnapshotId: z.string().min(1).max(500).nullable(),
+  cpuCores: z.number().int().min(1).max(32),
+  memoryMb: z.number().int().min(512).max(131_072),
+  allowInbound: z.boolean(),
+  allowOutbound: z.boolean(),
+  maxDurationMs: z.number().int().min(60_000).max(86_400_000),
+  idleTimeoutMinutes: z.number().int().min(1).max(1_440),
+}).strict().superRefine((value, context) => {
+  if (value.tenkiImage && value.tenkiSnapshotId) {
+    context.addIssue({
+      code: "custom",
+      path: ["tenkiSnapshotId"],
+      message: "Configure either a Tenki image or snapshot, not both",
+    });
+  }
+});
+
+const executionProfileSnapshotSchema = z.object({
+  profileId: z.string().uuid(),
+  version: z.number().int().positive(),
+  source: z.enum(["detected", "confirmed", "override", "safe_generic"]),
+  repository: z.string().max(300),
+  workspaceRoot: z.string().min(1).max(500),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  config: executionProfileConfigSchema,
+}).strict();
+
+const commonJobFields = {
   orgId: z.string().min(1).max(200),
   runId: z.string().uuid(),
   repository: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
@@ -38,9 +77,34 @@ const jobSchema = z.object({
   callbackUrl: z.string().url().max(2_000),
   expiresAt: z.string().datetime(),
   capabilities: z.array(z.enum(["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"])).min(1).max(4),
+};
+
+const legacyJobSchema = z.object({
+  schemaVersion: z.literal(1),
+  ...commonJobFields,
 }).strict();
 
+const profiledJobSchema = z.object({
+  schemaVersion: z.literal(2),
+  ...commonJobFields,
+  executionProfileId: z.string().uuid(),
+  executionProfileHash: z.string().regex(/^[a-f0-9]{64}$/),
+  executionProfileSnapshot: executionProfileSnapshotSchema,
+}).strict();
+
+const jobSchema = z.discriminatedUnion("schemaVersion", [
+  legacyJobSchema,
+  profiledJobSchema,
+]);
+
 type AgentJob = z.infer<typeof jobSchema>;
+
+function profileBindingMatches(job: AgentJob): boolean {
+  return job.schemaVersion === 1 || (
+    job.executionProfileSnapshot.profileId === job.executionProfileId
+    && job.executionProfileSnapshot.contentHash === job.executionProfileHash
+  );
+}
 
 function bytesToHex(bytes: ArrayBuffer): string {
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -118,6 +182,7 @@ async function healthResponse(env: Env): Promise<Response> {
 async function queueJob(env: Env, message: Message<unknown>): Promise<void> {
   try {
     const job = jobSchema.parse(message.body);
+    if (!profileBindingMatches(job)) throw new Error("Execution profile binding does not match the signed job");
     await proxyJob(env, job);
     message.ack();
   } catch (error) {
@@ -149,6 +214,7 @@ export default {
     } catch {
       return Response.json({ error: "Invalid job" }, { status: 400 });
     }
+    if (!profileBindingMatches(job)) return Response.json({ error: "Invalid execution profile binding" }, { status: 400 });
     if (Date.parse(job.expiresAt) <= Date.now()) return Response.json({ error: "Approval expired" }, { status: 409 });
     await env.AGENT_RUNS.send(job);
     return Response.json({ accepted: true, runId: job.runId }, { status: 202 });

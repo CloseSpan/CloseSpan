@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { verifyGithubInstallation } from "@/lib/github-app-auth";
 import {
   connectGithubInstallation,
@@ -9,6 +9,7 @@ import {
   verifyGithubInstallStateToken,
 } from "@/lib/github-installation-state";
 import { authorizeAdminRead, HttpError } from "@/lib/request-security";
+import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
 
 function workspaceRedirect(
   request: NextRequest,
@@ -42,6 +43,38 @@ function callbackErrorCode(error: unknown): string {
   return "connection_failed";
 }
 
+async function detectInstallationRepositories(input: {
+  orgId: string;
+  traceId: string;
+  installationId: string;
+  repositories: Array<{ repository: string; defaultBranch: string }>;
+}): Promise<void> {
+  let failed = 0;
+  // Keep GitHub metadata traffic bounded. A durable queue can replace this
+  // background pass later without changing detector or persistence contracts.
+  for (let index = 0; index < input.repositories.length; index += 2) {
+    const outcomes = await Promise.allSettled(
+      input.repositories.slice(index, index + 2).map((repository) =>
+        detectAndSaveGithubRepositoryProfiles({
+          orgId: input.orgId,
+          installationId: input.installationId,
+          repository: repository.repository,
+          defaultBranch: repository.defaultBranch,
+          actor: {
+            actorId: "system:github-installation-detector",
+            actorName: "Repository profile detector",
+            traceId: input.traceId,
+          },
+        })
+      ),
+    );
+    failed += outcomes.filter((outcome) => outcome.status === "rejected").length;
+  }
+  if (failed) {
+    console.warn(`Execution profile detection needs retry for ${failed} GitHub repositories`);
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const context = await authorizeAdminRead(request);
@@ -56,6 +89,14 @@ export async function GET(request: NextRequest) {
       context,
       installation,
     );
+    after(async () => {
+      await detectInstallationRepositories({
+        orgId: context.orgId,
+        traceId: context.traceId,
+        installationId: installation.installationId,
+        repositories: installation.repositories,
+      });
+    });
     return workspaceRedirect(request, {
       github: "connected",
       repositories: String(result.repositoryCount),

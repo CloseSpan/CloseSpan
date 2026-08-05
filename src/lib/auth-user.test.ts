@@ -6,6 +6,7 @@ const authState = vi.hoisted(() => ({
   },
   activeOrganizationId: null as string | null,
   memberships: vi.fn(),
+  accessApproved: vi.fn(),
 }));
 
 vi.mock("@/auth", () => ({
@@ -35,6 +36,9 @@ vi.mock("./organization-repository", async (importOriginal) => {
     listOrganizationMemberships: authState.memberships,
   };
 });
+vi.mock("./access-waitlist-repository", () => ({
+  isWorkspaceAccessApproved: authState.accessApproved,
+}));
 
 import {
   resolveWorkspaceAccess,
@@ -140,6 +144,7 @@ describe("production private beta access", () => {
     authState.session = null;
     authState.activeOrganizationId = null;
     authState.memberships.mockReset();
+    authState.accessApproved.mockReset().mockResolvedValue(false);
   });
 
   it("denies a non-owner even when a legacy membership exists", async () => {
@@ -182,6 +187,17 @@ describe("production private beta access", () => {
           { id: "org_acme", name: "Acme", role: "Admin" },
         ],
       },
+    });
+  });
+
+  it("grants an approved waitlist user access to their provisioned organization", async () => {
+    authState.session = { user: { email: "sam@example.com", name: "Sam" } };
+    authState.accessApproved.mockResolvedValue(true);
+    authState.memberships.mockResolvedValue(memberships.slice(0, 1));
+
+    await expect(resolveWorkspaceAccess()).resolves.toMatchObject({
+      status: "granted",
+      user: { email: "sam@example.com", orgId: "org_acme", role: "Admin" },
     });
   });
 

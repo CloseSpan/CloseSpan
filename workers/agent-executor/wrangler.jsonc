@@ -1,8 +1,16 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "closespan-agent-executor",
+  "name": "closespan-agent-tenki-proxy",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-26",
+  "workers_dev": true,
+  "secrets": {
+    "required": [
+      "TENKI_EXECUTOR_URL",
+      "AGENT_EXECUTOR_SHARED_SECRET",
+      "STATUS_PROBE_SECRET"
+    ]
+  },
   "queues": {
     "producers": [
       { "binding": "AGENT_RUNS", "queue": "closespan-agent-runs" }
@@ -12,7 +20,9 @@
         "queue": "closespan-agent-runs",
         "max_batch_size": 1,
         "max_batch_timeout": 1,
-        "max_retries": 3
+        "max_retries": 3,
+        "max_concurrency": 1,
+        "dead_letter_queue": "closespan-agent-runs-dlq"
       }
     ]
   },

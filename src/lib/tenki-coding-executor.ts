@@ -20,10 +20,18 @@ import {
 } from "@tenkicloud/sandbox";
 import { z } from "zod/v3";
 import { agentImplementationReportSchema, type AgentImplementationReport } from "./agent-run-verification";
+import {
+  assertExecutionProfileNarrowing,
+  assertExecutionProfileScopeBoundary,
+  hashExecutionProfileConfig,
+  sanitizeExecutionProfileConfig,
+  type ExecutionProfileConfig,
+  type ExecutionProfileSnapshot,
+} from "./execution-profile";
 
 const MAX_ARCHIVE_BYTES = 50_000_000;
 const MAX_CHANGED_BYTES = 5_000_000;
-const WORKSPACE = "/home/tenki/repo";
+const REPOSITORY_ROOT = "/home/tenki/repo";
 const ARCHIVE_PATH = "/home/tenki/closespan-repository.tar.gz";
 const CREATE_TIMEOUT_MS = 60_000;
 // Keep the entire execution, report callback, and sandbox cleanup inside
@@ -32,6 +40,7 @@ const RUN_DURATION_MS = 4 * 60_000;
 const AGENT_DURATION_MS = 3 * 60_000;
 const COMMAND_TIMEOUT_MS = 300_000;
 const OUTPUT_LIMIT = 20_000;
+const MAX_SHELL_OUTPUT_LIMIT = 30_000;
 
 const criterionSchema = z.object({
   id: z.string().regex(/^AC-[1-9][0-9]*$/),
@@ -51,8 +60,47 @@ const generatedTestSchema = z.object({
   command: z.string().min(1).max(500),
 }).strict();
 
-export const tenkiAgentJobSchema = z.object({
+const executionProfileConfigSchema = z.object({
   schemaVersion: z.literal(1),
+  language: z.string().min(1).max(80),
+  framework: z.string().min(1).max(120).nullable(),
+  packageManager: z.string().min(1).max(80),
+  runtimeVersion: z.string().min(1).max(120).nullable(),
+  workingDirectory: z.string().min(1).max(500),
+  installCommands: z.array(z.string().min(1).max(1_000)).max(30),
+  buildCommands: z.array(z.string().min(1).max(1_000)).max(30),
+  testCommands: z.array(z.string().min(1).max(1_000)).max(30),
+  typecheckCommands: z.array(z.string().min(1).max(1_000)).max(30),
+  permittedPaths: z.array(z.string().min(1).max(500)).max(100),
+  tenkiImage: z.string().min(1).max(500).nullable(),
+  tenkiSnapshotId: z.string().min(1).max(500).nullable(),
+  cpuCores: z.number().int().min(1).max(32),
+  memoryMb: z.number().int().min(512).max(131_072),
+  allowInbound: z.boolean(),
+  allowOutbound: z.boolean(),
+  maxDurationMs: z.number().int().min(60_000).max(86_400_000),
+  idleTimeoutMinutes: z.number().int().min(1).max(1_440),
+}).strict().superRefine((value, context) => {
+  if (value.tenkiImage && value.tenkiSnapshotId) {
+    context.addIssue({
+      code: "custom",
+      path: ["tenkiSnapshotId"],
+      message: "Configure either a Tenki image or snapshot, not both",
+    });
+  }
+});
+
+const executionProfileSnapshotSchema = z.object({
+  profileId: z.string().uuid(),
+  version: z.number().int().positive(),
+  source: z.enum(["detected", "confirmed", "override", "safe_generic"]),
+  repository: z.string().max(300),
+  workspaceRoot: z.string().min(1).max(500),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  config: executionProfileConfigSchema,
+}).strict();
+
+const commonJobFields = {
   orgId: z.string().min(1).max(200),
   runId: z.string().uuid(),
   repository: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
@@ -69,9 +117,73 @@ export const tenkiAgentJobSchema = z.object({
   callbackUrl: z.string().url().max(2_000),
   expiresAt: z.string().datetime(),
   capabilities: z.array(z.enum(["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"])).min(1).max(4),
+};
+
+const legacyTenkiAgentJobSchema = z.object({
+  schemaVersion: z.literal(1),
+  ...commonJobFields,
 }).strict();
 
+const profiledTenkiAgentJobSchema = z.object({
+  schemaVersion: z.literal(2),
+  ...commonJobFields,
+  executionProfileId: z.string().uuid(),
+  executionProfileHash: z.string().regex(/^[a-f0-9]{64}$/),
+  executionProfileSnapshot: executionProfileSnapshotSchema,
+}).strict();
+
+export const tenkiAgentJobSchema = z.discriminatedUnion("schemaVersion", [
+  legacyTenkiAgentJobSchema,
+  profiledTenkiAgentJobSchema,
+]);
+
 export type TenkiAgentJob = z.infer<typeof tenkiAgentJobSchema>;
+
+function executionProfileForJob(job: TenkiAgentJob): ExecutionProfileConfig | null {
+  if (job.schemaVersion !== 2) return null;
+  const snapshot = job.executionProfileSnapshot as ExecutionProfileSnapshot;
+  if (snapshot.source === "detected") {
+    throw new Error("An unconfirmed detected execution profile cannot run code");
+  }
+  const config = sanitizeExecutionProfileConfig(snapshot.config);
+  if (
+    (snapshot.source === "safe_generic" && snapshot.repository !== "")
+    || (snapshot.source !== "safe_generic" && snapshot.repository !== job.repository)
+  ) {
+    throw new Error("Execution profile belongs to another repository");
+  }
+  assertExecutionProfileScopeBoundary(
+    { repository: snapshot.repository, workspaceRoot: snapshot.workspaceRoot },
+    config,
+  );
+  assertExecutionProfileNarrowing(config, {
+    permittedPaths: job.permittedPaths,
+    requiredCommands: job.requiredCommands,
+  });
+  const contentHash = hashExecutionProfileConfig(config);
+  if (
+    snapshot.profileId !== job.executionProfileId
+    || snapshot.contentHash !== job.executionProfileHash
+    || contentHash !== job.executionProfileHash
+  ) {
+    throw new Error("Execution profile binding does not match its immutable content hash");
+  }
+  return config;
+}
+
+export function assertTenkiExecutionProfileBinding(
+  job: TenkiAgentJob,
+): asserts job is Extract<TenkiAgentJob, { schemaVersion: 2 }> {
+  if (job.schemaVersion !== 2) {
+    throw new Error("New executor jobs require an immutable execution profile binding");
+  }
+  executionProfileForJob(job);
+}
+
+function workingDirectory(job: TenkiAgentJob): string {
+  const configured = executionProfileForJob(job)?.workingDirectory ?? ".";
+  return configured === "." ? REPOSITORY_ROOT : `${REPOSITORY_ROOT}/${configured}`;
+}
 
 const agentOutputSchema = z.object({
   summary: z.string().min(1).max(5_000),
@@ -213,6 +325,9 @@ export class RestrictedShell implements Shell {
 
   async run(action: ShellAction): Promise<ShellResult> {
     if (action.commands.length > 6) throw new Error("Too many commands in one shell action");
+    const outputLimit = action.maxOutputLength ?? OUTPUT_LIMIT;
+    if (!Number.isInteger(outputLimit) || outputLimit < 0 || outputLimit > MAX_SHELL_OUTPUT_LIMIT)
+      throw new Error(`Shell output limit must be between 0 and ${MAX_SHELL_OUTPUT_LIMIT}`);
     for (const command of action.commands) {
       if (!tenkiExecutorAllowsInspectionCommand(command) && !this.job.requiredCommands.includes(command.trim()))
         throw new Error(`Command is outside the approved shell capability: ${command}`);
@@ -222,12 +337,12 @@ export class RestrictedShell implements Shell {
       try {
         const result = await this.session.exec("bash", {
           args: ["-c", command],
-          cwd: WORKSPACE,
+          cwd: workingDirectory(this.job),
           timeoutMs: Math.min(action.timeoutMs ?? 120_000, COMMAND_TIMEOUT_MS),
           env: { CI: "true" },
         });
-        const stdout = decode(result.stdout).slice(-OUTPUT_LIMIT);
-        const stderr = decode(result.stderr).slice(-OUTPUT_LIMIT);
+        const stdout = outputLimit === 0 ? "" : decode(result.stdout).slice(-outputLimit);
+        const stderr = outputLimit === 0 ? "" : decode(result.stderr).slice(-outputLimit);
         this.results.push({ command, stdout, stderr, exitCode: result.exitCode });
         output.push({
           command,
@@ -242,12 +357,12 @@ export class RestrictedShell implements Shell {
         output.push({ command, stdout: "", stderr, outcome: { type: "exit", exitCode: 1 } });
       }
     }
-    return { output, maxOutputLength: OUTPUT_LIMIT, providerData: { provider: "Tenki Sandbox", working_directory: WORKSPACE } };
+    return { output, maxOutputLength: outputLimit, providerData: { provider: "Tenki Sandbox", working_directory: workingDirectory(this.job) } };
   }
 
   async changedPaths(): Promise<string[]> {
-    await requireCommand(this.session, "git", { args: ["add", "-N", "--", "."], cwd: WORKSPACE, timeoutMs: 30_000 }, "Unable to enumerate agent changes");
-    const result = await requireCommand(this.session, "git", { args: ["diff", "--name-only", "--no-renames", "HEAD"], cwd: WORKSPACE, timeoutMs: 30_000 }, "Unable to inspect agent changes");
+    await requireCommand(this.session, "git", { args: ["add", "-N", "--", "."], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Unable to enumerate agent changes");
+    const result = await requireCommand(this.session, "git", { args: ["diff", "--name-only", "--no-renames", "HEAD"], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Unable to inspect agent changes");
     return decode(result.stdout).split("\n").map((path) => path.trim()).filter(Boolean);
   }
 }
@@ -256,13 +371,20 @@ export class RestrictedEditor implements Editor {
   constructor(private readonly session: Session, private readonly job: TenkiAgentJob) {}
 
   private resolve(path: string): string {
-    const relative = path.startsWith(`${WORKSPACE}/`) ? path.slice(WORKSPACE.length + 1) : path;
-    if (!tenkiExecutorAllowsPath(this.job, relative)) throw new Error(`File operation is outside the approved paths: ${relative}`);
-    return `${WORKSPACE}/${relative.replace(/^\.\//, "")}`;
+    const supplied = path.startsWith(`${REPOSITORY_ROOT}/`) ? path.slice(REPOSITORY_ROOT.length + 1) : path;
+    const relative = supplied.replace(/^\.\//, "");
+    const profileDirectory = executionProfileForJob(this.job)?.workingDirectory ?? ".";
+    const repositoryPath = tenkiExecutorAllowsPath(this.job, relative)
+      ? relative
+      : profileDirectory !== "." && tenkiExecutorAllowsPath(this.job, `${profileDirectory}/${relative}`)
+        ? `${profileDirectory}/${relative}`
+        : null;
+    if (!repositoryPath) throw new Error(`File operation is outside the approved paths: ${relative}`);
+    return `${REPOSITORY_ROOT}/${repositoryPath}`;
   }
 
   private async prepareParent(target: string): Promise<void> {
-    const directory = target.slice(0, target.lastIndexOf("/")) || WORKSPACE;
+    const directory = target.slice(0, target.lastIndexOf("/")) || REPOSITORY_ROOT;
     const result = await this.session.exec("mkdir", { args: ["-p", "--", directory], timeoutMs: 10_000 });
     if (!succeeded(result)) throw new Error(`Could not prepare ${directory}`);
   }
@@ -335,8 +457,8 @@ async function sha256(content: string): Promise<string> {
 }
 
 async function collectChangedFiles(session: Session, job: TenkiAgentJob, reasons: Map<string, string>) {
-  await requireCommand(session, "git", { args: ["add", "-N", "--", "."], cwd: WORKSPACE, timeoutMs: 30_000 }, "Unable to enumerate newly created files");
-  const diff = await requireCommand(session, "git", { args: ["diff", "--name-status", "--no-renames", "-z", "HEAD"], cwd: WORKSPACE, timeoutMs: 30_000 }, "Unable to inspect the final diff");
+  await requireCommand(session, "git", { args: ["add", "-N", "--", "."], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Unable to enumerate newly created files");
+  const diff = await requireCommand(session, "git", { args: ["diff", "--name-status", "--no-renames", "-z", "HEAD"], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Unable to inspect the final diff");
   const fields = decode(diff.stdout).split("\0").filter(Boolean);
   const files: AgentImplementationReport["changedFiles"] = [];
   let total = 0;
@@ -347,7 +469,7 @@ async function collectChangedFiles(session: Session, job: TenkiAgentJob, reasons
     if (!tenkiExecutorAllowsPublishedPath(job, path)) throw new Error(`Final diff includes prohibited path ${path}`);
     let contentBase64: string | null = null;
     if (status !== "D") {
-      const target = `${WORKSPACE}/${path}`;
+      const target = `${REPOSITORY_ROOT}/${path}`;
       const info = await session.stat(target);
       if (info.isDir || info.isSymlink) throw new Error(`Only regular, non-symlink files may be published: ${path}`);
       const file = await session.readFile(target);
@@ -382,7 +504,8 @@ async function defaultRunAgent(input: {
   });
   const instructions = [
     "Implement exactly one approved CloseSpan ticket in the isolated Tenki microVM.",
-    `The repository root is ${WORKSPACE}. Read the approved prompt at ${input.job.promptArtifactPath} and obey repository instructions.`,
+    `The repository root is ${REPOSITORY_ROOT}; run commands from ${workingDirectory(input.job)}. Read the approved prompt at ${input.job.promptArtifactPath} and obey repository instructions.`,
+    "When editing, use repository-relative paths even when commands run from a nested workspace directory.",
     "Do not change the approved prompt, workflow files, deployments, production systems, or files outside the permitted paths.",
     input.ai.provider === "OpenAI"
       ? "Use apply_patch for all code changes. Shell access is limited to inspection and explicitly approved validation commands."
@@ -463,19 +586,32 @@ async function defaultRunAgent(input: {
   return agentOutputSchema.parse(result.finalOutput);
 }
 
-function createOptions(job: TenkiAgentJob) {
-  const image = process.env.TENKI_SANDBOX_IMAGE?.trim();
-  const snapshotId = process.env.TENKI_SANDBOX_SNAPSHOT_ID?.trim();
+export function tenkiSandboxCreateOptions(job: TenkiAgentJob) {
+  const profile = executionProfileForJob(job);
+  // Environment-level image selection is retained only for already-queued v1
+  // jobs. Every new v2 job is fully defined by its immutable profile snapshot.
+  const image = profile?.tenkiImage ?? (job.schemaVersion === 1 ? process.env.TENKI_SANDBOX_IMAGE?.trim() : undefined);
+  const snapshotId = profile?.tenkiSnapshotId ?? (job.schemaVersion === 1 ? process.env.TENKI_SANDBOX_SNAPSHOT_ID?.trim() : undefined);
   if (image && snapshotId) throw new Error("Configure either TENKI_SANDBOX_IMAGE or TENKI_SANDBOX_SNAPSHOT_ID, not both");
+  const maxDurationMs = Math.min(profile?.maxDurationMs ?? RUN_DURATION_MS, RUN_DURATION_MS);
   return {
     name: `closespan-run-${job.runId.slice(0, 8)}`,
-    cpuCores: 2,
-    memoryMb: 4096,
-    allowInbound: false,
-    allowOutbound: false,
-    maxDurationMs: RUN_DURATION_MS,
-    idleTimeoutMinutes: 2,
-    metadata: { purpose: "closespan-coding-agent", runId: job.runId, orgId: job.orgId, promptHash: job.promptHash },
+    cpuCores: profile?.cpuCores ?? 2,
+    memoryMb: profile?.memoryMb ?? 4096,
+    allowInbound: profile?.allowInbound ?? false,
+    allowOutbound: profile?.allowOutbound ?? false,
+    maxDurationMs,
+    idleTimeoutMinutes: profile?.idleTimeoutMinutes ?? 2,
+    metadata: {
+      purpose: "closespan-coding-agent",
+      runId: job.runId,
+      orgId: job.orgId,
+      promptHash: job.promptHash,
+      ...(job.schemaVersion === 2 ? {
+        executionProfileId: job.executionProfileId,
+        executionProfileHash: job.executionProfileHash,
+      } : {}),
+    },
     timeoutMs: CREATE_TIMEOUT_MS,
     ...(image ? { image } : {}),
     ...(snapshotId ? { snapshotId } : {}),
@@ -488,6 +624,7 @@ export async function executeTenkiCodingJob(
   dependencies: ExecutorDependencies = {},
 ): Promise<AgentImplementationReport> {
   const job = tenkiAgentJobSchema.parse(input);
+  if (job.schemaVersion === 2) assertTenkiExecutionProfileBinding(job);
   if (Date.parse(job.expiresAt) <= Date.now()) throw new Error("Approval expired before execution began");
   if (!job.capabilities.includes("repository:read") || !job.capabilities.includes("repository:write") || !job.capabilities.includes("tests:execute"))
     throw new Error("Approval does not include the required executor capabilities");
@@ -495,7 +632,8 @@ export async function executeTenkiCodingJob(
   const ai = resolveExecutorAiConfiguration(dependencies);
   if (!apiKey) throw new Error("TENKI_API_KEY is required for coding execution");
 
-  const deadline = Date.now() + RUN_DURATION_MS;
+  const options = tenkiSandboxCreateOptions(job);
+  const deadline = Date.now() + options.maxDurationMs;
   const client = (dependencies.createClient ?? ((key) => new TenkiSandbox({
     authToken: key,
     timeoutMs: CREATE_TIMEOUT_MS,
@@ -504,28 +642,32 @@ export async function executeTenkiCodingJob(
   let session: Session | undefined;
   let cleanupError: unknown;
   try {
-    session = await client.createAndWait(createOptions(job));
-    if (session.outboundEnabled || session.inboundEnabled)
-      throw new Error("Tenki session networking is enabled; refusing to execute repository code");
+    session = await client.createAndWait(options);
+    if (
+      session.outboundEnabled !== options.allowOutbound
+      || session.inboundEnabled !== options.allowInbound
+    ) {
+      throw new Error("Tenki session networking does not match the immutable execution profile");
+    }
     await events.started(session.id);
-    await requireCommand(session, "mkdir", { args: ["-p", "--", WORKSPACE], timeoutMs: 10_000 }, "Could not prepare the Tenki workspace");
+    await requireCommand(session, "mkdir", { args: ["-p", "--", REPOSITORY_ROOT], timeoutMs: 10_000 }, "Could not prepare the Tenki workspace");
     await session.writeFileStream(ARCHIVE_PATH, await boundedArchive(job.repositoryArchiveUrl));
-    await requireCommand(session, "tar", { args: ["-xzf", ARCHIVE_PATH, "-C", WORKSPACE, "--strip-components=1"], timeoutMs: 60_000 }, "Repository extraction failed");
+    await requireCommand(session, "tar", { args: ["-xzf", ARCHIVE_PATH, "-C", REPOSITORY_ROOT, "--strip-components=1"], timeoutMs: 60_000 }, "Repository extraction failed");
     await session.remove(ARCHIVE_PATH);
-    await requireCommand(session, "mkdir", { args: ["-p", "--", `${WORKSPACE}/.prompt/tickets`], timeoutMs: 10_000 }, "Could not prepare the approved prompt directory");
-    await session.writeFile(`${WORKSPACE}/${job.promptArtifactPath}`, job.promptContent);
-    await requireCommand(session, "git", { args: ["init", "-q"], cwd: WORKSPACE, timeoutMs: 30_000 }, "Could not initialize the isolated repository");
-    await requireCommand(session, "git", { args: ["config", "user.name", "CloseSpan"], cwd: WORKSPACE, timeoutMs: 10_000 }, "Could not configure the isolated repository");
-    await requireCommand(session, "git", { args: ["config", "user.email", "agent@closespan.com"], cwd: WORKSPACE, timeoutMs: 10_000 }, "Could not configure the isolated repository");
-    await requireCommand(session, "git", { args: ["add", "-A"], cwd: WORKSPACE, timeoutMs: 30_000 }, "Could not capture the approved base snapshot");
-    await requireCommand(session, "git", { args: ["commit", "-q", "-m", "approved-base"], cwd: WORKSPACE, timeoutMs: 30_000 }, "Could not capture the approved base snapshot");
+    await requireCommand(session, "mkdir", { args: ["-p", "--", `${REPOSITORY_ROOT}/.prompt/tickets`, workingDirectory(job)], timeoutMs: 10_000 }, "Could not prepare the approved workspace");
+    await session.writeFile(`${REPOSITORY_ROOT}/${job.promptArtifactPath}`, job.promptContent);
+    await requireCommand(session, "git", { args: ["init", "-q"], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Could not initialize the isolated repository");
+    await requireCommand(session, "git", { args: ["config", "user.name", "CloseSpan"], cwd: REPOSITORY_ROOT, timeoutMs: 10_000 }, "Could not configure the isolated repository");
+    await requireCommand(session, "git", { args: ["config", "user.email", "agent@closespan.com"], cwd: REPOSITORY_ROOT, timeoutMs: 10_000 }, "Could not configure the isolated repository");
+    await requireCommand(session, "git", { args: ["add", "-A"], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Could not capture the approved base snapshot");
+    await requireCommand(session, "git", { args: ["commit", "-q", "-m", "approved-base"], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Could not capture the approved base snapshot");
 
     for (const generatedTest of job.generatedTests ?? []) {
       if (await sha256(generatedTest.content) !== generatedTest.contentHash)
         throw new Error(`PDD test content hash does not match for ${generatedTest.path}`);
       if (!tenkiExecutorAllowsPublishedPath(job, generatedTest.path))
         throw new Error(`PDD test path is outside the approved ticket: ${generatedTest.path}`);
-      const target = `${WORKSPACE}/${generatedTest.path}`;
+      const target = `${REPOSITORY_ROOT}/${generatedTest.path}`;
       const directory = target.slice(0, target.lastIndexOf("/"));
       await requireCommand(session, "mkdir", { args: ["-p", "--", directory], timeoutMs: 10_000 }, "Could not prepare the PDD test directory");
       await session.writeFile(target, generatedTest.content);
@@ -543,11 +685,11 @@ export async function executeTenkiCodingJob(
       ai,
     });
 
-    const prompt = decode(await session.readFile(`${WORKSPACE}/${job.promptArtifactPath}`));
+    const prompt = decode(await session.readFile(`${REPOSITORY_ROOT}/${job.promptArtifactPath}`));
     const promptArtifactHash = await sha256(prompt);
     if (promptArtifactHash !== job.promptHash) throw new Error("Approved prompt artifact changed during execution");
     for (const generatedTest of job.generatedTests ?? []) {
-      const content = decode(await session.readFile(`${WORKSPACE}/${generatedTest.path}`));
+      const content = decode(await session.readFile(`${REPOSITORY_ROOT}/${generatedTest.path}`));
       if (await sha256(content) !== generatedTest.contentHash)
         throw new Error(`The immutable PDD acceptance test changed during execution: ${generatedTest.path}`);
     }
@@ -558,7 +700,7 @@ export async function executeTenkiCodingJob(
       if (remaining <= 0) throw new Error("Agent run exceeded the approval duration");
       const result = await session.exec("bash", {
         args: ["-c", command],
-        cwd: WORKSPACE,
+        cwd: workingDirectory(job),
         timeoutMs: Math.min(COMMAND_TIMEOUT_MS, remaining),
         env: { CI: "true" },
       });

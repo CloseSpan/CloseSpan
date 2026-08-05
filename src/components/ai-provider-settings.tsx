@@ -42,9 +42,11 @@ const providers: Array<{
 export function AiProviderSettings({
   initial,
   orgId,
+  isAdmin,
 }: {
   initial: AiSettings;
   orgId: string;
+  isAdmin: boolean;
 }) {
   const [current, setCurrent] = useState(initial);
   const [provider, setProvider] = useState<ProviderId>(initial.provider);
@@ -70,6 +72,7 @@ export function AiProviderSettings({
   }
 
   async function save() {
+    if (!isAdmin) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -114,6 +117,7 @@ export function AiProviderSettings({
   }
 
   async function removeCredential() {
+    if (!isAdmin) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -165,7 +169,16 @@ export function AiProviderSettings({
         </span>
       </div>
       <div className="card-body">
-        <fieldset className="provider-picker">
+        {!isAdmin && (
+          <div className="callout section-gap-sm">
+            <div className="callout-title">Admin-managed credentials</div>
+            <p className="subtle">
+              Provider configuration is visible for transparency. Ask a
+              workspace admin to change the model or stored key.
+            </p>
+          </div>
+        )}
+        <fieldset className="provider-picker" disabled={!isAdmin}>
           <legend>Provider</legend>
           {providers.map((item) => (
             <button
@@ -190,6 +203,7 @@ export function AiProviderSettings({
             Model ID
             <input
               value={model}
+              disabled={!isAdmin}
               onChange={(event) => setModel(event.target.value)}
               autoComplete="off"
               spellCheck="false"
@@ -209,6 +223,7 @@ export function AiProviderSettings({
               <input
                 type="password"
                 value={apiKey}
+                disabled={!isAdmin}
                 onChange={(event) => setApiKey(event.target.value)}
                 autoComplete="new-password"
                 placeholder={
@@ -261,6 +276,7 @@ export function AiProviderSettings({
             className="btn primary"
             disabled={
               busy ||
+              !isAdmin ||
               !model.trim() ||
               !current.vaultConfigured ||
               (!apiKey && !canKeepStoredKey)
@@ -273,7 +289,7 @@ export function AiProviderSettings({
             <button
               type="button"
               className="btn danger"
-              disabled={busy}
+              disabled={busy || !isAdmin}
               onClick={removeCredential}
             >
               <Trash2 size={14} /> Remove stored key

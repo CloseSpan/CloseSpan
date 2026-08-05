@@ -107,6 +107,7 @@ export function workspaceRouteDirection(
 
 export function workspaceSection(pathname: string): string {
   const normalized = pathnameOnly(pathname);
+  if (normalized === "/admin/waitlist") return "Waitlist users";
   if (normalized === "/agent-runs" || normalized.startsWith("/agent-runs/")) {
     return "Agent run results";
   }

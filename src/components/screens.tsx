@@ -2741,7 +2741,18 @@ export function FollowUpScreen({
   const available =
     ["Verified", "Closed"].includes(state.problemStage) &&
     state.notifications !== "Not drafted";
+  const affected = Array.from(
+    feedbackItems
+      .filter((item) => item.problemId === problem.id)
+      .reduce((recipients, item) => {
+        const customerKey = item.customer.trim().toLocaleLowerCase() || item.id;
+        if (!recipients.has(customerKey)) recipients.set(customerKey, item);
+        return recipients;
+      }, new Map<string, FeedbackItem>())
+      .values(),
+  );
   async function approveDrafts() {
+    if (affected.length === 0) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -2759,9 +2770,6 @@ export function FollowUpScreen({
       setBusy(false);
     }
   }
-  const affected = feedbackItems.filter(
-    (item) => item.problemId === problem.id,
-  );
   return (
     <>
       <PageTitle
@@ -2797,35 +2805,46 @@ export function FollowUpScreen({
             <span className="badge brand">{affected.length} drafts</span>
           </div>
           <div className="card-body">
-            {affected.map((customer) => (
-              <article className="follow-card" key={customer.id}>
-                <div className="split">
-                  <div>
-                    <strong>{customer.customer}</strong>
-                    <p className="subtle">
-                      Original conversation · {customer.source}
-                    </p>
-                  </div>
-                  <span
-                    className={`badge ${state.notifications === "Approved" ? "success" : ""}`}
-                  >
-                    {state.notifications === "Approved" ? "Approved" : "Draft"}
-                  </span>
-                </div>
-                <p>
-                  Hi {customer.customer}, we’ve resolved{" "}
-                  {problem.title.toLowerCase()}. The verified fix is now
-                  available.
+            {affected.length === 0 ? (
+              <div className="callout" role="status">
+                <div className="callout-title">No recipients found</div>
+                <p className="subtle">
+                  This resolution has no distinct customer recipients yet.
+                  Draft approval will become available after linked feedback is
+                  imported.
                 </p>
-                <small>
-                  No sensitive data included · simulated delivery only
-                </small>
-              </article>
-            ))}
+              </div>
+            ) : (
+              affected.map((customer) => (
+                <article className="follow-card" key={customer.id}>
+                  <div className="split">
+                    <div>
+                      <strong>{customer.customer}</strong>
+                      <p className="subtle">
+                        Original conversation · {customer.source}
+                      </p>
+                    </div>
+                    <span
+                      className={`badge ${state.notifications === "Approved" ? "success" : ""}`}
+                    >
+                      {state.notifications === "Approved" ? "Approved" : "Draft"}
+                    </span>
+                  </div>
+                  <p>
+                    Hi {customer.customer}, we’ve resolved{" "}
+                    {problem.title.toLowerCase()}. The verified fix is now
+                    available.
+                  </p>
+                  <small>
+                    No sensitive data included · simulated delivery only
+                  </small>
+                </article>
+              ))
+            )}
             <button
               type="button"
               className="btn primary"
-              disabled={busy || state.notifications === "Approved"}
+              disabled={busy || affected.length === 0 || state.notifications === "Approved"}
               onClick={approveDrafts}
             >
               {state.notifications === "Approved"

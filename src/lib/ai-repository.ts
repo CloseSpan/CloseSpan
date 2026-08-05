@@ -4,6 +4,10 @@ import type { RequestContext } from "./request-security";
 import type { AiProvider } from "./ai-config";
 import type { AiAnalysisResult, AiFeedbackInput, AiProblemCandidate } from "./ai-provider";
 import {
+  BILLING_EVENT_NAMES,
+  enqueueBillingUsageEvent,
+} from "./billing-outbox";
+import {
   requirePostgresWorkspace,
   workspacePersistenceMode,
 } from "./workspace-persistence";
@@ -183,6 +187,20 @@ export async function completeModelRun(input: {
        VALUES($1,$2,$3,$4,$5,'ModelRun',$6,$7) ON CONFLICT (org_id,trace_id,action) DO NOTHING`,
       [randomUUID(),input.orgId,input.context.actorId,input.context.actorName,`${input.result.providerLabel} proposed analysis for ${input.result.analyses.length} feedback item${input.result.analyses.length === 1 ? "" : "s"}`,input.runId,input.context.traceId],
     );
+    await enqueueBillingUsageEvent(client, {
+      orgId: input.orgId,
+      eventId: `ai.tokens:${input.orgId}:${input.runId}`,
+      eventName: BILLING_EVENT_NAMES.aiTokens,
+      source: "closespan.ai",
+      properties: {
+        input_tokens: input.result.inputTokens,
+        output_tokens: input.result.outputTokens,
+        total_tokens: input.result.inputTokens + input.result.outputTokens,
+        analyses: input.result.analyses.length,
+        provider: input.result.provider,
+        model: input.result.model,
+      },
+    });
   });
   return { runId:input.runId, provider:input.result.provider, providerLabel:input.result.providerLabel, model:input.result.model, replayed:false, analyses:input.result.analyses };
 }

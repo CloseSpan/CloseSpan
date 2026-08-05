@@ -12,6 +12,28 @@ import { primaryProblem } from "./seed";
 import { listPromptReviewNotifications } from "./prompt-review-notification-repository";
 
 describe("automatic engineering prompt drafts", () => {
+  it("prioritizes confirmed matches and excludes rejected suspected repositories", async () => {
+    const source = await readFile(
+      path.join(process.cwd(), "src/lib/automated-prompt-draft-repository.ts"),
+      "utf8",
+    );
+    const ordering = source.slice(source.indexOf("ORDER BY\n            (match.status='Confirmed')"));
+    expect(ordering.indexOf("(match.status='Confirmed') DESC")).toBeLessThan(
+      ordering.indexOf("(allowed.repository=problem.suspected_repository) DESC"),
+    );
+    expect(source).toContain("rejected.status='Rejected'");
+  });
+
+  it("refreshes repository matches independently of automatic prompt drafting", async () => {
+    const source = await readFile(
+      path.join(process.cwd(), "src/lib/automated-prompt-draft-repository.ts"),
+      "utf8",
+    );
+    expect(source.indexOf("await refreshPendingProblemRepositoryMatches(orgId)")).toBeLessThan(
+      source.indexOf('if (policy.mode !== "automatic")'),
+    );
+  });
+
   it("builds a test-ready bug specification when repository context is available", () => {
     const draft = buildAutomatedEngineeringDraft({
       kind: "Bug",
@@ -46,6 +68,38 @@ describe("automatic engineering prompt drafts", () => {
       evidenceCount: 5,
     });
     expect(ticketReadiness(draft).ready).toBe(false);
+  });
+
+  it("uses the reviewed repository profile for monorepo paths and commands", () => {
+    const draft = buildAutomatedEngineeringDraft({
+      kind: "Bug",
+      title: "Web export truncation",
+      statement: "Large exports omit selected rows.",
+      summary: "Reporting cannot complete reliably.",
+      proposedAction: "Finalize the complete object before reporting success.",
+      recommendedTests: ["A large export contains every selected row."],
+      suspectedFiles: ["apps/web/src/export.ts"],
+      repository: "acme/platform",
+      baseBranch: "main",
+      baseSha: "a".repeat(40),
+      evidenceCount: 4,
+      executionProfileConfig: {
+        language: "typescript",
+        packageManager: "pnpm",
+        workingDirectory: "apps/web",
+        permittedPaths: ["apps/web/**"],
+        testCommands: ["pnpm test"],
+        typecheckCommands: ["pnpm run typecheck"],
+      },
+    });
+    expect(draft.permittedPaths).toEqual([
+      "apps/web/src/export.ts",
+      "apps/web/tests/**",
+    ]);
+    expect(draft.requiredCommands).toEqual([
+      "pnpm test",
+      "pnpm run typecheck",
+    ]);
   });
 
   it("installs durable policy, reviewer, draft, and notification storage", async () => {

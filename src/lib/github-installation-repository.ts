@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { databasePool, transaction } from "./db";
-import type { VerifiedGithubInstallation } from "./github-app-auth";
+import {
+  verifyGithubInstallation,
+  type VerifiedGithubInstallation,
+} from "./github-app-auth";
 import { HttpError } from "./request-security";
 import { requirePostgresWorkspace, workspacePersistenceMode } from "./workspace-persistence";
 
-interface GithubActor {
+export interface GithubActor {
   actorId: string;
   actorName: string;
   traceId: string;
@@ -22,24 +25,30 @@ export interface GithubAppInstallationRecord {
   lastSyncedAt: string;
 }
 
+export interface GithubInstallationSyncOptions {
+  preserveWorkspaceRepositoryBindings?: boolean;
+  workspaceRepositories?: readonly string[];
+}
+
 export async function syncGithubInstallationRecords(
   client: PoolClient,
   orgId: string,
   installation: VerifiedGithubInstallation,
+  options: GithubInstallationSyncOptions = {},
 ): Promise<void> {
   await client.query(
     `INSERT INTO github_app_installations(
        id,org_id,installation_id,account_id,account_login,account_type,
-       repository_selection,settings_url,permissions,active,last_synced_at
-     ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,true,now())
-     ON CONFLICT(installation_id) DO UPDATE SET
+       repository_selection,settings_url,permissions,active,workspace_connected,last_synced_at
+     ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,true,true,now())
+     ON CONFLICT(org_id,installation_id) DO UPDATE SET
        account_id=excluded.account_id,
        account_login=excluded.account_login,
        account_type=excluded.account_type,
        repository_selection=excluded.repository_selection,
        settings_url=excluded.settings_url,
        permissions=excluded.permissions,
-       active=true,last_synced_at=now(),updated_at=now()`,
+       active=true,workspace_connected=true,last_synced_at=now(),updated_at=now()`,
     [
       randomUUID(),
       orgId,
@@ -54,6 +63,33 @@ export async function syncGithubInstallationRecords(
   );
 
   const repositoryNames = installation.repositories.map((item) => item.repository);
+  if (options.preserveWorkspaceRepositoryBindings && options.workspaceRepositories) {
+    throw new Error("Choose either preserved or explicit workspace repository bindings");
+  }
+  let repositoriesToBind = installation.repositories;
+  if (options.workspaceRepositories) {
+    const selectedNames = new Set(options.workspaceRepositories);
+    repositoriesToBind = installation.repositories.filter((repository) =>
+      selectedNames.has(repository.repository)
+    );
+    await client.query(
+      `UPDATE github_repository_allowlists
+          SET workspace_selected=false,active=false,updated_at=now()
+        WHERE org_id=$1 AND installation_id=$2
+          AND NOT (repository=ANY($3::text[]))`,
+      [orgId, installation.installationId, [...selectedNames]],
+    );
+  } else if (options.preserveWorkspaceRepositoryBindings) {
+    const selected = await client.query<{ repository: string }>(
+      `SELECT repository FROM github_repository_allowlists
+        WHERE org_id=$1 AND installation_id=$2 AND workspace_selected=true`,
+      [orgId, installation.installationId],
+    );
+    const selectedNames = new Set(selected.rows.map((row) => row.repository));
+    repositoriesToBind = installation.repositories.filter((repository) =>
+      selectedNames.has(repository.repository)
+    );
+  }
   await client.query(
     `UPDATE github_repository_allowlists
         SET active=false,updated_at=now()
@@ -61,15 +97,15 @@ export async function syncGithubInstallationRecords(
         AND NOT (repository=ANY($3::text[]))`,
     [orgId, installation.installationId, repositoryNames],
   );
-  for (const repository of installation.repositories) {
+  for (const repository of repositoriesToBind) {
     await client.query(
       `INSERT INTO github_repository_allowlists(
-         id,org_id,installation_id,repository,default_branch,active
-       ) VALUES($1,$2,$3,$4,$5,true)
+         id,org_id,installation_id,repository,default_branch,active,workspace_selected
+       ) VALUES($1,$2,$3,$4,$5,true,true)
        ON CONFLICT(org_id,repository) DO UPDATE SET
          installation_id=excluded.installation_id,
          default_branch=excluded.default_branch,
-         active=true,updated_at=now()`,
+         active=true,workspace_selected=true,updated_at=now()`,
       [
         randomUUID(),
         orgId,
@@ -87,7 +123,7 @@ export async function syncGithubInstallationRecords(
             permissions='["metadata:read","contents:write","pull_requests:write:draft"]'::jsonb,
             error_message=NULL
       WHERE org_id=$1 AND id='int_github'`,
-    [orgId, `${installation.repositories.length} explicitly authorized GitHub repositories`],
+    [orgId, `${repositoriesToBind.length} explicitly authorized GitHub repositories`],
   );
 }
 
@@ -126,14 +162,6 @@ export async function connectGithubInstallation(
     if (attempt.rowCount !== 1)
       throw new HttpError(410, "GitHub installation request expired or was already used");
 
-    const existing = await client.query<{ org_id: string }>(
-      `SELECT org_id FROM github_app_installations
-        WHERE installation_id=$1 FOR UPDATE`,
-      [installation.installationId],
-    );
-    if (existing.rows[0] && existing.rows[0].org_id !== orgId)
-      throw new HttpError(409, "This GitHub installation is connected to another workspace");
-
     await syncGithubInstallationRecords(client, orgId, installation);
     await client.query(
       `INSERT INTO audit_events(
@@ -150,6 +178,70 @@ export async function connectGithubInstallation(
     );
   });
   return { repositoryCount: installation.repositories.length };
+}
+
+export async function setGithubWorkspaceRepositoryBindings(
+  orgId: string,
+  installationId: string,
+  repositories: readonly string[],
+  actor: GithubActor,
+  dependencies: {
+    verifyInstallation?: typeof verifyGithubInstallation;
+  } = {},
+): Promise<{ repositoryCount: number }> {
+  requirePostgresWorkspace(orgId, "GitHub repository access");
+  if (repositories.length > 500) throw new HttpError(400, "Select no more than 500 repositories");
+  const requested = [...new Set(repositories.map((repository) => repository.trim()))].sort();
+  if (requested.some((repository) => !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository))) {
+    throw new HttpError(400, "Every GitHub repository must use the owner/name format");
+  }
+  const connected = await databasePool().query(
+    `SELECT 1 FROM github_app_installations
+      WHERE org_id=$1 AND installation_id=$2
+        AND workspace_connected=true AND active=true`,
+    [orgId, installationId],
+  );
+  if (connected.rowCount !== 1) {
+    throw new HttpError(404, "GitHub installation is not connected to this workspace");
+  }
+  const installation = await (dependencies.verifyInstallation ?? verifyGithubInstallation)(installationId);
+  if (installation.installationId !== installationId) {
+    throw new Error("Verified GitHub installation ID does not match the requested binding");
+  }
+  const accessible = new Set(installation.repositories.map((repository) => repository.repository));
+  if (requested.some((repository) => !accessible.has(repository))) {
+    throw new HttpError(409, "A selected repository is not accessible to this GitHub installation");
+  }
+
+  await transaction(async (client) => {
+    const binding = await client.query(
+      `SELECT 1 FROM github_app_installations
+        WHERE org_id=$1 AND installation_id=$2
+          AND workspace_connected=true AND active=true
+        FOR UPDATE`,
+      [orgId, installationId],
+    );
+    if (binding.rowCount !== 1) {
+      throw new HttpError(404, "GitHub installation is not connected to this workspace");
+    }
+    await syncGithubInstallationRecords(client, orgId, installation, {
+      workspaceRepositories: requested,
+    });
+    await client.query(
+      `INSERT INTO audit_events(
+         id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+       ) VALUES($1,$2,$3,$4,$5,'Integration','int_github',$6)`,
+      [
+        randomUUID(),
+        orgId,
+        actor.actorId,
+        actor.actorName,
+        `Selected ${requested.length} GitHub repositories for this workspace`,
+        `${actor.traceId}_${randomUUID()}`,
+      ],
+    );
+  });
+  return { repositoryCount: requested.length };
 }
 
 export async function listGithubAppInstallations(
@@ -192,8 +284,8 @@ export async function disconnectGithubInstallations(
   await transaction(async (client) => {
     await client.query(
       `UPDATE github_app_installations
-          SET active=false,updated_at=now()
-        WHERE org_id=$1 AND active=true`,
+          SET active=false,workspace_connected=false,updated_at=now()
+        WHERE org_id=$1 AND workspace_connected=true`,
       [orgId],
     );
     await client.query(

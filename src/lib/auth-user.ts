@@ -15,6 +15,7 @@ import {
   isPrivateBetaOwner,
 } from "./workspace-access-policy";
 import { isMemoryDemoOrganization } from "./workspace-persistence";
+import { isWorkspaceAccessApproved } from "./access-waitlist-repository";
 
 export const ACTIVE_ORGANIZATION_COOKIE = "closespan_active_org";
 export const LEGACY_ACTIVE_ORGANIZATION_COOKIE = "feelow_active_org";
@@ -210,7 +211,17 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
     return { status: "unavailable", email };
   }
 
-  if (!isPrivateBetaOwner(email)) return { status: "denied", email };
+  if (!isPrivateBetaOwner(email)) {
+    try {
+      if (!(await isWorkspaceAccessApproved(email)))
+        return { status: "denied", email };
+    } catch (error) {
+      console.error("Unable to verify approved workspace access", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      });
+      return { status: "unavailable", email };
+    }
+  }
 
   try {
     const activeOrganizationId = await activeOrganizationIdFromCookie();

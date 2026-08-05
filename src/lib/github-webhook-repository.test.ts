@@ -114,7 +114,51 @@ describe("GitHub webhook persistence", () => {
     });
     expect(result.outcome).toBe("installation_synchronized");
     expect(github.verify).toHaveBeenCalledWith("150109806");
-    expect(installation.sync).toHaveBeenCalledWith(database.client, "org-1", verified);
+    expect(installation.sync).toHaveBeenCalledWith(database.client, "org-1", verified, {
+      preserveWorkspaceRepositoryBindings: true,
+    });
+  });
+
+  it("synchronizes one GitHub installation across every explicitly bound workspace", async () => {
+    database.pool.query.mockImplementation(async (query: unknown) =>
+      sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
+        ? { rows: [], rowCount: 0 }
+        : sql(query).includes("FROM github_app_installations")
+          ? { rows: [{ org_id: "org-1" }, { org_id: "org-2" }], rowCount: 2 }
+          : { rows: [], rowCount: 0 },
+    );
+    const verified = {
+      installationId: "150109806",
+      accountId: "42",
+      accountLogin: "acme",
+      accountType: "Organization",
+      repositorySelection: "selected",
+      settingsUrl: "https://github.com/settings/installations/150109806",
+      permissions: { contents: "write", pull_requests: "write" },
+      repositories: [{ repository: "acme/api", defaultBranch: "main", private: true }],
+    };
+    github.verify.mockResolvedValue(verified);
+    const result = await processGithubWebhook({
+      deliveryId,
+      event: "installation_repositories",
+      rawBody: '{"action":"added","installation":{"id":150109806}}',
+      payload: { action: "added", installation: { id: 150109806 } },
+    });
+    expect(result.outcome).toBe("installation_synchronized_for_2_workspaces");
+    expect(github.verify).toHaveBeenCalledTimes(1);
+    expect(installation.sync).toHaveBeenNthCalledWith(1, database.client, "org-1", verified, {
+      preserveWorkspaceRepositoryBindings: true,
+    });
+    expect(installation.sync).toHaveBeenNthCalledWith(2, database.client, "org-2", verified, {
+      preserveWorkspaceRepositoryBindings: true,
+    });
+    expect(database.client.query.mock.calls.filter(([query]) =>
+      sql(query).includes("INSERT INTO github_webhook_delivery_workspaces"),
+    )).toHaveLength(2);
+    const deliveryInsert = database.client.query.mock.calls.find(([query]) =>
+      sql(query).includes("INSERT INTO github_webhook_deliveries"),
+    );
+    expect(deliveryInsert?.[1]?.[4]).toBeNull();
   });
 
   it("audits only pull requests created by a tracked CloseSpan run", async () => {

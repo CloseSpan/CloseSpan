@@ -13,6 +13,7 @@ import { UserMenu } from "./user-menu";
 import { WorkspaceBreadcrumb } from "./workspace-breadcrumb";
 import { WorkspaceRouteTransition } from "./workspace-route-transition";
 import { unreadPromptReviewNotificationCount } from "@/lib/prompt-review-notification-repository";
+import { isCloseSpanPlatformAdmin } from "@/lib/workspace-access-policy";
 
 function initials(name: string): string {
   return (
@@ -62,6 +63,7 @@ export async function AppShell({
   const demoGuide = await getWorkspaceDemoGuide(user.orgId);
   const durableWorkspace = workspacePersistenceMode(user.orgId) === "postgres";
   const canRenameWorkspace = durableWorkspace && user.role === "Admin";
+  const showWaitlistAdmin = isCloseSpanPlatformAdmin(user);
   const unreadNotifications = await unreadPromptReviewNotificationCount(user.orgId, user.id);
   if (immersive) {
     return (
@@ -113,6 +115,7 @@ export async function AppShell({
         activeOrganizationId={user.orgId}
         demoMode={!durableWorkspace || Boolean(demoGuide)}
         canRenameWorkspace={canRenameWorkspace}
+        showWaitlistAdmin={showWaitlistAdmin}
       />
       <main className="main">
         <header className="topbar">
@@ -120,6 +123,7 @@ export async function AppShell({
             organizations={user.organizations}
             activeOrganizationId={user.orgId}
             canRenameWorkspace={canRenameWorkspace}
+            showWaitlistAdmin={showWaitlistAdmin}
           />
           <WorkspaceBreadcrumb />
           <div className="top-actions">

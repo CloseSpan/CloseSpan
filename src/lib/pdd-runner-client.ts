@@ -28,7 +28,7 @@ export async function dispatchPddVerification(
   }
   const archiveUrl = await createRepositoryArchiveUrl(context);
   const body = JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     orgId: context.orgId,
     verificationId: context.verificationId,
     repository: context.repository,
@@ -37,6 +37,9 @@ export async function dispatchPddVerification(
     promptHash: context.promptHash,
     pddPrompt: context.pddPrompt,
     pddVersion: context.pddVersion,
+    executionProfileId: context.executionProfileId,
+    executionProfileHash: context.executionProfileHash,
+    executionProfileSnapshot: context.executionProfileSnapshot,
     budgetUsd: context.budgetUsd,
     repositoryArchiveUrl: archiveUrl,
     permittedPaths: context.permittedPaths,

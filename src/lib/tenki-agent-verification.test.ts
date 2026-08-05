@@ -5,6 +5,7 @@ import type { AgentRunExecutionContext } from "./engineering-workflow-repository
 import {
   verifyAgentRunWithTenki,
 } from "./tenki-agent-verification";
+import { hashExecutionProfileConfig } from "./execution-profile";
 
 function execution(
   command: string,
@@ -24,6 +25,29 @@ function execution(
   };
 }
 
+const profileConfig = {
+  schemaVersion: 1 as const,
+  language: "typescript",
+  framework: "nextjs",
+  packageManager: "npm",
+  runtimeVersion: "22",
+  workingDirectory: "packages/app",
+  installCommands: ["npm ci"],
+  buildCommands: ["npm run build"],
+  testCommands: ["npm test"],
+  typecheckCommands: ["npm run typecheck"],
+  permittedPaths: ["packages/app/**"],
+  tenkiImage: null,
+  tenkiSnapshotId: "snapshot-profile-1",
+  cpuCores: 4,
+  memoryMb: 8192,
+  allowInbound: false,
+  allowOutbound: false,
+  maxDurationMs: 120_000,
+  idleTimeoutMinutes: 4,
+};
+const profileHash = hashExecutionProfileConfig(profileConfig);
+
 const context: AgentRunExecutionContext = {
   orgId: "org-1",
   problemId: "problem-1",
@@ -40,6 +64,17 @@ const context: AgentRunExecutionContext = {
   promptArtifactPath: ".prompt/tickets/problem-1.prompt.md",
   expiresAt: "2026-07-30T00:00:00.000Z",
   allowedCapabilities: ["repository:read", "tests:execute"],
+  executionProfileId: "33333333-3333-4333-8333-333333333333",
+  executionProfileHash: profileHash,
+  executionProfileSnapshot: {
+    profileId: "33333333-3333-4333-8333-333333333333",
+    version: 1,
+    source: "confirmed",
+    repository: "owner/repository",
+    workspaceRoot: "packages/app",
+    contentHash: profileHash,
+    config: profileConfig,
+  },
   promptSnapshot: {
     schemaVersion: 1,
     ticket: {
@@ -64,7 +99,7 @@ const context: AgentRunExecutionContext = {
       requiredTestLevels: ["integration"],
       releaseVerification: "Verify after release.",
       nonGoals: [],
-      permittedPaths: ["src/**", "tests/**"],
+      permittedPaths: ["packages/app/src/**", "packages/app/tests/**"],
       requiredCommands: ["npm test", "npm run typecheck"],
       repository: "owner/repository",
       baseBranch: "main",
@@ -80,7 +115,7 @@ const context: AgentRunExecutionContext = {
       team: "Data",
       assumptions: [],
       missingInformation: [],
-      suspectedFiles: ["src/export.ts"],
+      suspectedFiles: ["packages/app/src/export.ts"],
       redactedEvidence: [],
     },
   },
@@ -95,11 +130,11 @@ const report: AgentImplementationReport = {
   status: "Tests passed",
   summary: "Implemented the export fix.",
   changedFiles: [{
-    path: "src/export.ts",
+    path: "packages/app/src/export.ts",
     contentBase64: Buffer.from("export const fixed = true;\n").toString("base64"),
     reason: "Fix the export.",
   }],
-  testFiles: ["tests/export.test.ts"],
+  testFiles: ["packages/app/tests/export.test.ts"],
   tests: [
     { command: "npm test", status: "passed", output: "agent output" },
     { command: "npm run typecheck", status: "passed", output: "agent output" },
@@ -175,17 +210,22 @@ describe("Tenki independent agent verification", () => {
     });
 
     expect(client.createAndWait).toHaveBeenCalledWith(expect.objectContaining({
+      cpuCores: 4,
+      memoryMb: 8192,
       allowInbound: false,
       allowOutbound: false,
+      maxDurationMs: 120_000,
+      idleTimeoutMinutes: 4,
+      snapshotId: "snapshot-profile-1",
       metadata: expect.objectContaining({ runId: context.runId }),
     }));
     expect(session.writeFile).toHaveBeenCalledWith(
-      "/home/tenki/repo/src/export.ts",
+      "/home/tenki/repo/packages/app/src/export.ts",
       new TextEncoder().encode("export const fixed = true;\n"),
     );
     expect(session.exec).toHaveBeenCalledWith("bash", expect.objectContaining({
       args: ["-c", "npm test"],
-      cwd: "/home/tenki/repo",
+      cwd: "/home/tenki/repo/packages/app",
     }));
     expect(verified.status).toBe("Tests passed");
     expect(verified.tests.every((test) => test.status === "passed")).toBe(true);
@@ -235,6 +275,51 @@ describe("Tenki independent agent verification", () => {
       createClient: () => client,
       repositoryArchive: vi.fn().mockResolvedValue(new Uint8Array([1])),
     })).rejects.toMatchObject({ code: "cleanup_failed" });
+  });
+
+  it("fails closed when the persisted execution profile snapshot drifts", async () => {
+    const { client } = setup();
+    await expect(verifyAgentRunWithTenki({
+      ...context,
+      executionProfileHash: "f".repeat(64),
+    }, report, {
+      apiKey: "tk_test",
+      createClient: () => client,
+      repositoryArchive: vi.fn().mockResolvedValue(new Uint8Array([1])),
+    })).rejects.toMatchObject({ code: "sandbox_failed" });
+    expect(client.createAndWait).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before creating a VM for an unconfirmed detected profile", async () => {
+    const { client } = setup();
+    await expect(verifyAgentRunWithTenki({
+      ...context,
+      executionProfileSnapshot: {
+        ...context.executionProfileSnapshot,
+        source: "detected",
+      },
+    }, report, {
+      apiKey: "tk_test",
+      createClient: () => client,
+      repositoryArchive: vi.fn().mockResolvedValue(new Uint8Array([1])),
+    })).rejects.toMatchObject({ code: "sandbox_failed" });
+    expect(client.createAndWait).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before creating a VM for a cross-repository profile", async () => {
+    const { client } = setup();
+    await expect(verifyAgentRunWithTenki({
+      ...context,
+      executionProfileSnapshot: {
+        ...context.executionProfileSnapshot,
+        repository: "owner/another-repository",
+      },
+    }, report, {
+      apiKey: "tk_test",
+      createClient: () => client,
+      repositoryArchive: vi.fn().mockResolvedValue(new Uint8Array([1])),
+    })).rejects.toMatchObject({ code: "sandbox_failed" });
+    expect(client.createAndWait).not.toHaveBeenCalled();
   });
 
   it("fails closed if Tenki returns a network-enabled verification session", async () => {

@@ -2,9 +2,11 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { runProblemAutomationForAllOrganizations } from "@/lib/problem-automation-repository";
 import { runSlackAutomationForAllOrganizations } from "@/lib/slack-intake";
+import { deliverBillingShadow } from "@/lib/billing-outbox";
 import { noStoreHeaders } from "@/lib/request-security";
 
 export const maxDuration = 300;
+const BILLING_DELIVERY_BUDGET_MS = 20_000;
 
 function authorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -31,7 +33,31 @@ export async function GET(request: NextRequest) {
   try {
     const slack = await runSlackAutomationForAllOrganizations();
     const results = await runProblemAutomationForAllOrganizations();
-    return NextResponse.json({ slack, results }, { headers: noStoreHeaders });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const billing = await Promise.race([
+      deliverBillingShadow({
+        customerLimit: 2,
+        eventLimit: 10,
+        maxDurationMs: 15_000,
+      }).catch((error: unknown) => {
+        console.error("[billing:shadow-delivery]", {
+          message: error instanceof Error ? error.message : "Billing delivery failed",
+        });
+        return { error: "Shadow billing delivery failed" };
+      }),
+      new Promise<{ deferred: true }>((resolve) => {
+        timer = setTimeout(
+          () => resolve({ deferred: true }),
+          BILLING_DELIVERY_BUDGET_MS,
+        );
+      }),
+    ]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+    return NextResponse.json(
+      { billing, slack, results },
+      { headers: noStoreHeaders },
+    );
   } catch {
     return NextResponse.json(
       { error: "Workflow automation failed" },

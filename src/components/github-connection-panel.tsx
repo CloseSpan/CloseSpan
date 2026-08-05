@@ -33,8 +33,12 @@ export function GithubConnectionPanel({
   const router = useRouter();
   const [installations, setInstallations] = useState(initialInstallations);
   const [repositories, setRepositories] = useState(initialRepositories);
+  const [selectedRepositories, setSelectedRepositories] = useState(
+    () => new Set(initialRepositories.filter((repository) => repository.workspaceSelected).map((repository) => repository.repository)),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const activeInstallations = installations.filter((installation) => installation.active);
   const activeRepositories = repositories.filter((repository) => repository.active);
 
@@ -60,6 +64,44 @@ export function GithubConnectionPanel({
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Disconnect failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveRepositorySelection(installationId: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setSelectionNotice(null);
+    try {
+      const selection = repositories
+        .filter((repository) => repository.installationId === installationId && selectedRepositories.has(repository.repository))
+        .map((repository) => repository.repository);
+      const response = await fetch("/api/integrations/github/repositories", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-org-id": orgId,
+          "idempotency-key": crypto.randomUUID(),
+          "x-request-id": crypto.randomUUID(),
+        },
+        body: JSON.stringify({ installationId, repositories: selection }),
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        error?: unknown;
+        repositories?: GithubRepositoryAuthorization[];
+        repositoryCount?: number;
+      };
+      if (!response.ok || !payload.repositories) {
+        throw new Error(typeof payload.error === "string" ? payload.error : "Repository access could not be saved");
+      }
+      setRepositories(payload.repositories);
+      setSelectedRepositories(new Set(payload.repositories.filter((repository) => repository.workspaceSelected).map((repository) => repository.repository)));
+      setSelectionNotice(`${payload.repositoryCount ?? selection.length} repositories are authorized for this workspace.`);
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Repository access could not be saved");
     } finally {
       setBusy(false);
     }
@@ -117,10 +159,55 @@ export function GithubConnectionPanel({
             ))}
           </div>
           {canManage && (
-            <button className="btn github-disconnect-button" type="button" disabled={busy} onClick={disconnect}>
-              <Unplug aria-hidden="true" size={15} />
-              {busy ? "Disconnecting..." : "Disconnect from this workspace"}
-            </button>
+            <>
+              <details className="github-repository-selector">
+                <summary>Choose repositories for this workspace</summary>
+                <div className="github-repository-selector-body">
+                  <p className="subtle">A GitHub installation can serve multiple CloseSpan workspaces. Only repositories selected here can be profiled or used by this workspace.</p>
+                  {activeInstallations.map((installation) => {
+                    const installationRepositories = repositories.filter((repository) => repository.installationId === installation.installationId);
+                    return (
+                      <div className="github-repository-selection-group" key={installation.id}>
+                        <strong>{installation.accountLogin}</strong>
+                        {installationRepositories.map((repository) => {
+                          const inaccessible = repository.workspaceSelected && !repository.active;
+                          return (
+                            <label className="toggle-row" key={repository.id}>
+                              <div>
+                                <strong>{repository.repository}</strong>
+                                <p className="subtle">{inaccessible ? "No longer accessible in GitHub" : `Default branch ${repository.defaultBranch}`}</p>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={selectedRepositories.has(repository.repository)}
+                                disabled={busy || inaccessible}
+                                onChange={(event) => {
+                                  setSelectedRepositories((current) => {
+                                    const next = new Set(current);
+                                    if (event.target.checked) next.add(repository.repository);
+                                    else next.delete(repository.repository);
+                                    return next;
+                                  });
+                                  setSelectionNotice(null);
+                                }}
+                              />
+                            </label>
+                          );
+                        })}
+                        <button className="btn primary" type="button" disabled={busy} onClick={() => saveRepositorySelection(installation.installationId)}>
+                          {busy ? "Saving…" : "Save workspace access"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {selectionNotice && <p className="toast success" role="status">{selectionNotice}</p>}
+                </div>
+              </details>
+              <button className="btn github-disconnect-button" type="button" disabled={busy} onClick={disconnect}>
+                <Unplug aria-hidden="true" size={15} />
+                {busy ? "Working..." : "Disconnect from this workspace"}
+              </button>
+            </>
           )}
         </>
       )}

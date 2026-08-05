@@ -18,6 +18,13 @@ deploy the pinned runner through `npm run pdd:deploy:tenki`, and use a model
 gateway with a hard spend policy when a strict pre-spend ceiling is required.
 PDD Cloud is not used.
 
+Repository access and Tenki execution are workspace-scoped. CloseSpan detects
+repository manifests without cloning or executing customer code, keeps every
+detected runtime profile inactive until an administrator confirms it, and then
+binds the exact profile ID, version, hash, and snapshot through PDD, approval,
+implementation, and independent verification. See the
+[execution-profile architecture and rollout guide](docs/execution-profiles.md).
+
 The initial go-to-market wedge is **feedback-to-fix operations for mid-market B2B SaaS**: detect repeated customer-reported defects, quantify account and revenue impact, prepare engineering evidence, govern external actions, verify the release, and close the affected customer conversations. See the [product-market-fit and pricing plan](docs/product-market-fit.md).
 
 ## Run locally
@@ -41,7 +48,7 @@ application in Google Cloud and add this local authorized redirect URI:
 http://localhost:3000/api/auth/callback/google
 ```
 
-Copy `.env.example` to `.env.local`, then configure:
+Copy `.env.example` to `.env`, then configure:
 
 ```bash
 AUTH_SECRET=<random 32-byte secret>
@@ -145,7 +152,7 @@ script and challenge frames in addition to existing first-party sources.
 
 ### Configure an AI provider
 
-The seeded demo runs without an AI credential. To enable secure bring-your-own-key settings, initialize the server credential vault once in `.env.local` with a random 32-byte key, restart, then open **Settings → AI provider**:
+The seeded demo runs without an AI credential. To enable secure bring-your-own-key settings, initialize the server credential vault once in `.env` with a random 32-byte key, restart, then open **Settings → AI provider**:
 
 ```bash
 AI_CREDENTIAL_ENCRYPTION_KEY=<32 random bytes encoded as base64>
@@ -153,13 +160,13 @@ AI_CREDENTIAL_ENCRYPTION_KEY=<32 random bytes encoded as base64>
 
 The settings UI supports xAI Grok, OpenAI, Anthropic Claude, and OpenRouter. Provider keys are encrypted with AES-256-GCM, bound to both the organization and provider, masked in the UI, and never returned to the browser. Environment-managed provider keys remain available as a deployment fallback.
 
-Never commit `.env.local`. AI runs use strict structured output, no tools, PII preprocessing, prompt-injection boundaries, tenant-scoped model-run records, token counts, and an audit event. Interactive inbox analysis remains a proposal for human review. The Slack intake automation may accept only high-confidence, non-noise classifications and clusters; ambiguous Slack signals remain in the feedback inbox for review.
+Never commit `.env`. AI runs use strict structured output, no tools, PII preprocessing, prompt-injection boundaries, tenant-scoped model-run records, token counts, and an audit event. Interactive inbox analysis remains a proposal for human review. The Slack intake automation may accept only high-confidence, non-noise classifications and clusters; ambiguous Slack signals remain in the feedback inbox for review.
 
 ### Configure Pipedream Connect
 
 CloseSpan uses [Pipedream Connect](https://pipedream.com/docs/connect) for multi-tenant provider authorization. Each CloseSpan workspace is mapped to a Pipedream external user, while Pipedream stores provider credentials. The browser only receives a short-lived hosted Connect link.
 
-Create a Pipedream Connect project and configure these server-only values in `.env.local` and the deployment environment:
+Create a Pipedream Connect project and configure these server-only values in `.env` and the deployment environment:
 
 ```bash
 PIPEDREAM_PROJECT_ID=<project id>
@@ -258,7 +265,7 @@ integration test with:
 
 ```bash
 RUN_POSTGRES_INTEGRATION_TESTS=true \
-node --env-file-if-exists=.env.local \
+node --env-file-if-exists=.env \
 ./node_modules/vitest/vitest.mjs run \
 src/lib/pipedream-repository.reconciliation.test.ts
 ```
@@ -293,7 +300,7 @@ The application also includes real routes and interactive seeded experiences for
 - Customer/account impact view
 - Autonomy, scoring, and data-governance settings
 
-All workspace business data is persisted in PostgreSQL: feedback, problems, account impact, weekly and comparison-period analytics, investigations, approvals, integrations, Pipedream account metadata, members, governance settings, prompt versions, model runs, proposed AI analyses, lifecycle state, idempotency keys, follow-up status, and audit events. Every application route server-renders tenant-scoped database view models. Transactions lock the tenant row so related workflow changes commit atomically. Unit tests select the isolated memory adapter explicitly; the local application uses PostgreSQL through `.env.local`.
+All workspace business data is persisted in PostgreSQL: feedback, problems, account impact, weekly and comparison-period analytics, investigations, approvals, integrations, Pipedream account metadata, members, governance settings, prompt versions, model runs, proposed AI analyses, lifecycle state, idempotency keys, follow-up status, and audit events. Every application route server-renders tenant-scoped database view models. Transactions lock the tenant row so related workflow changes commit atomically. Unit tests select the isolated memory adapter explicitly; the local application uses PostgreSQL through `.env`.
 
 ## Repository structure
 

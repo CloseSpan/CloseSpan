@@ -104,8 +104,14 @@ try {
     ["PDD_CLOUD_RUN", "false"],
     ...providerKeys,
   ]);
-  const launch = await session.exec("setsid", {
-    args: ["-f", "/home/tenki/pdd-runner-venv/bin/python", "/home/tenki/pdd-runner.py"],
+  // Redirect every inherited stream before detaching. Without this, the
+  // long-lived HTTP server keeps the exec RPC's stdout/stderr pipes open and
+  // deployment never advances to the health check or preview-route creation.
+  const launch = await session.exec("sh", {
+    args: [
+      "-lc",
+      "nohup /home/tenki/pdd-runner-venv/bin/python /home/tenki/pdd-runner.py </dev/null >/home/tenki/pdd-runner.log 2>&1 &",
+    ],
     timeoutMs: 15_000,
     env: runtimeEnvironment,
   });
@@ -146,3 +152,8 @@ try {
   if (!succeeded && session) await session.closeIfOpen().catch(() => undefined);
   client.close();
 }
+
+// The Tenki transport may retain keep-alive handles after close(). At this
+// point every durable write and user-facing line has completed, so terminate
+// the one-shot deploy process explicitly instead of leaving CI hanging.
+process.exit(0);

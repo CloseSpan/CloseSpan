@@ -3,6 +3,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const security = vi.hoisted(() => ({ adminRead: vi.fn() }));
 const github = vi.hoisted(() => ({ verify: vi.fn() }));
 const repository = vi.hoisted(() => ({ requireAttempt: vi.fn(), connect: vi.fn() }));
+const detector = vi.hoisted(() => ({ detect: vi.fn() }));
+const background = vi.hoisted(() => ({ tasks: [] as Promise<unknown>[] }));
+
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: (work: () => unknown) => {
+      background.tasks.push(Promise.resolve(work()));
+    },
+  };
+});
 
 vi.mock("@/lib/request-security", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/request-security")>();
@@ -12,6 +24,9 @@ vi.mock("@/lib/github-app-auth", () => ({ verifyGithubInstallation: github.verif
 vi.mock("@/lib/github-installation-repository", () => ({
   requireGithubInstallAttempt: repository.requireAttempt,
   connectGithubInstallation: repository.connect,
+}));
+vi.mock("@/lib/repository-profile-detection", () => ({
+  detectAndSaveGithubRepositoryProfiles: detector.detect,
 }));
 
 import { NextRequest } from "next/server";
@@ -54,6 +69,8 @@ describe("GitHub installation callback", () => {
     github.verify.mockReset().mockResolvedValue(verified);
     repository.requireAttempt.mockReset().mockResolvedValue(undefined);
     repository.connect.mockReset().mockResolvedValue({ repositoryCount: 1 });
+    detector.detect.mockReset().mockResolvedValue({ profiles: [] });
+    background.tasks.length = 0;
   });
 
   it("verifies and persists the installation before redirecting to the workspace", async () => {
@@ -65,6 +82,12 @@ describe("GitHub installation callback", () => {
     expect(location.searchParams.get("repositories")).toBe("1");
     expect(repository.requireAttempt).toHaveBeenCalledWith(attemptId, "org-1", "admin-1");
     expect(repository.connect).toHaveBeenCalledWith(attemptId, "org-1", context, verified);
+    expect(detector.detect).toHaveBeenCalledWith(expect.objectContaining({
+      orgId: "org-1",
+      installationId: "150109806",
+      repository: "acme/api",
+      defaultBranch: "main",
+    }));
   });
 
   it("fails closed when the signed installation cookie is absent", async () => {
@@ -73,5 +96,32 @@ describe("GitHub installation callback", () => {
     expect(location.searchParams.get("github")).toBe("error");
     expect(location.searchParams.get("reason")).toBe("invalid_callback");
     expect(github.verify).not.toHaveBeenCalled();
+  });
+
+  it("limits automatic metadata detection to two repositories at a time", async () => {
+    github.verify.mockResolvedValue({
+      ...verified,
+      repositories: [
+        { repository: "acme/api", defaultBranch: "main", private: true },
+        { repository: "acme/web", defaultBranch: "main", private: true },
+        { repository: "acme/worker", defaultBranch: "main", private: true },
+      ],
+    });
+    repository.connect.mockResolvedValue({ repositoryCount: 3 });
+    let active = 0;
+    let maximum = 0;
+    detector.detect.mockImplementation(async () => {
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return { profiles: [] };
+    });
+
+    const response = await GET(request());
+    expect(response.status).toBe(303);
+    await Promise.all(background.tasks);
+    expect(detector.detect).toHaveBeenCalledTimes(3);
+    expect(maximum).toBe(2);
   });
 });

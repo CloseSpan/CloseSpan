@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+backups/
+.codex-*
+node_modules/
+.next/
+coverage/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.DS_Store

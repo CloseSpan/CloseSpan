@@ -63,10 +63,12 @@ export function initialRetentionSelection(retentionDays: number): {
 export function CustomRetentionInput({
   open,
   value,
+  disabled = false,
   onValueChange,
 }: {
   open: boolean;
   value: string;
+  disabled?: boolean;
   onValueChange: (value: string) => void;
 }) {
   const hasValue = value.trim().length > 0;
@@ -111,11 +113,12 @@ export function CustomRetentionInput({
                 min="1"
                 step="1"
                 value={quantity}
+                disabled={disabled}
                 placeholder="Enter a number"
                 aria-describedby={descriptionId}
                 aria-invalid={invalid || undefined}
                 required={open}
-                tabIndex={open ? 0 : -1}
+                tabIndex={open && !disabled ? 0 : -1}
                 onChange={(event) => updateQuantity(event.target.value)}
                 onKeyDown={(event) => {
                   if (["e", "E", "+", "-", ".", ","].includes(event.key)) {
@@ -127,7 +130,7 @@ export function CustomRetentionInput({
             <CustomSelect
               ariaLabel="Retention unit"
               className="custom-retention-unit-select"
-              disabled={!open}
+              disabled={!open || disabled}
               options={retentionUnitOptions}
               value={unit}
               onValueChange={updateUnit}

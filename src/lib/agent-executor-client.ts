@@ -27,7 +27,7 @@ export async function dispatchAgentRun(context: AgentRunExecutionContext): Promi
   const generatedTests = context.generatedTests ?? [];
   const pddCommands = generatedTests.map((test) => test.command);
   const body = JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     orgId: context.orgId,
     runId: context.runId,
     repository: context.repository,
@@ -35,6 +35,9 @@ export async function dispatchAgentRun(context: AgentRunExecutionContext): Promi
     promptHash: context.promptHash,
     promptContent: context.promptContent,
     promptArtifactPath: context.promptArtifactPath,
+    executionProfileId: context.executionProfileId,
+    executionProfileHash: context.executionProfileHash,
+    executionProfileSnapshot: context.executionProfileSnapshot,
     repositoryArchiveUrl: archiveUrl,
     requiredCommands: [...new Set([...context.promptSnapshot.ticket.requiredCommands, ...pddCommands])],
     permittedPaths: context.promptSnapshot.ticket.permittedPaths,

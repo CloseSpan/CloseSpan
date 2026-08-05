@@ -10,6 +10,11 @@ import {
 import { primaryProblem, recommendation } from "./seed";
 import { workspacePersistenceMode } from "./workspace-persistence";
 import { readPromptDraftPolicy } from "./workspace-settings-repository";
+import { refreshPendingProblemRepositoryMatches } from "./problem-repository-match-repository";
+import {
+  assertExecutionProfileNarrowing,
+  sanitizeExecutionProfileConfig,
+} from "./execution-profile";
 
 interface DraftCandidateRow {
   id: string;
@@ -34,6 +39,7 @@ interface DraftCandidateRow {
   repository: string | null;
   default_branch: string | null;
   installation_id: string | null;
+  execution_profile_config: unknown;
 }
 
 export interface AutomatedPromptDraftResult {
@@ -66,6 +72,7 @@ export function buildAutomatedEngineeringDraft(input: {
   baseBranch: string;
   baseSha: string;
   evidenceCount: number;
+  executionProfileConfig?: unknown;
 }): EngineeringTicketSpecification {
   const expected = concise(input.proposedAction, `Deliver the reviewed outcome for ${input.title}.`);
   const outcome = concise(input.summary, `Customers can use ${input.title} without the reported limitation.`);
@@ -89,7 +96,32 @@ export function buildAutomatedEngineeringDraft(input: {
     testLevel: "integration" as const,
     criterionIds: [criterion.id],
   }));
-  const paths = [...new Set([...input.suspectedFiles.filter(Boolean), "tests/**"])];
+  let paths = [...new Set([...input.suspectedFiles.filter(Boolean), "tests/**"])]
+    .slice(0, 100);
+  let requiredCommands = ["npm test", "npm run typecheck"];
+  if (input.executionProfileConfig) {
+    const config = sanitizeExecutionProfileConfig(input.executionProfileConfig);
+    const generatedTestPath = config.workingDirectory === "."
+      ? "tests/**"
+      : `${config.workingDirectory}/tests/**`;
+    paths = [...new Set([...input.suspectedFiles.filter(Boolean), generatedTestPath])]
+      .filter((path) => {
+        try {
+          assertExecutionProfileNarrowing(config, {
+            permittedPaths: [path],
+            requiredCommands: [],
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      })
+      .slice(0, 100);
+    requiredCommands = [
+      ...config.testCommands,
+      ...config.typecheckCommands,
+    ].slice(0, 30);
+  }
   return {
     implementationState: "Draft specification",
     userStory: `As a product user, I want ${storyGoal}, so that ${outcome.replace(/[.]$/, "").toLowerCase()}.`,
@@ -114,7 +146,7 @@ export function buildAutomatedEngineeringDraft(input: {
     releaseVerification: `After deployment, verify ${input.title} with production-safe synthetic data and confirm the expected telemetry.`,
     nonGoals: ["Automatic merge or deployment.", "Changes outside the reviewed problem and permitted paths."],
     permittedPaths: paths,
-    requiredCommands: ["npm test", "npm run typecheck"],
+    requiredCommands,
     repository: input.repository,
     baseBranch: input.baseBranch || "main",
     baseSha: input.baseSha,
@@ -161,7 +193,8 @@ async function nextPostgresCandidate(orgId: string, policy: PromptDraftPolicy): 
             investigation.hypothesis,investigation.confidence AS investigation_confidence,
             investigation.assumptions,investigation.missing_information,
             investigation.proposed_action,investigation.recommended_tests,
-            repository.repository,repository.default_branch,repository.installation_id::text
+            repository.repository,repository.default_branch,repository.installation_id::text,
+            repository.execution_profile_config
        FROM product_problems problem
        JOIN feedback_cluster_memberships membership
          ON membership.org_id=problem.org_id AND membership.problem_id=problem.id
@@ -175,14 +208,70 @@ async function nextPostgresCandidate(orgId: string, policy: PromptDraftPolicy): 
           ORDER BY candidate.updated_at DESC,candidate.id LIMIT 1
        ) investigation ON true
        LEFT JOIN LATERAL (
-         SELECT allowed.repository,allowed.default_branch,allowed.installation_id
+         SELECT allowed.repository,allowed.default_branch,allowed.installation_id,
+                bound_profile.config AS execution_profile_config
            FROM github_repository_allowlists allowed
+           LEFT JOIN problem_repository_matches match
+             ON match.org_id=problem.org_id
+            AND match.problem_id=problem.id
+            AND match.repository=allowed.repository
+            AND match.status IN ('Confirmed','Suggested')
+           LEFT JOIN LATERAL (
+             SELECT profile.config
+               FROM execution_profile_versions profile
+              WHERE profile.org_id=problem.org_id
+                AND profile.id=COALESCE(
+                  match.profile_id,
+                  (
+                    SELECT COALESCE(assignment.active_profile_id,assignment.detected_profile_id)
+                      FROM execution_profile_assignments assignment
+                     WHERE assignment.org_id=problem.org_id
+                       AND assignment.repository=allowed.repository
+                     ORDER BY
+                       (assignment.active_profile_id IS NOT NULL) DESC,
+                       (assignment.workspace_root='.') DESC,
+                       length(assignment.workspace_root) DESC
+                     LIMIT 1
+                  )
+                )
+              LIMIT 1
+           ) bound_profile ON true
           WHERE allowed.org_id=problem.org_id AND allowed.active=true
-            AND (allowed.repository=problem.suspected_repository OR problem.suspected_repository='')
-          ORDER BY (allowed.repository=problem.suspected_repository) DESC,allowed.updated_at DESC
+            AND (
+              match.status='Confirmed'
+              OR (
+                NOT EXISTS (
+                  SELECT 1 FROM problem_repository_matches rejected
+                   WHERE rejected.org_id=problem.org_id
+                     AND rejected.problem_id=problem.id
+                     AND rejected.repository=allowed.repository
+                     AND rejected.status='Rejected'
+                )
+                AND (
+                  allowed.repository=problem.suspected_repository
+                  OR (match.status='Suggested' AND match.confidence >= 0.68)
+                  OR (
+                    lower(trim(problem.suspected_repository)) = ANY(
+                      ARRAY['','not yet identified','not identified','unknown','tbd','n/a','none']::text[]
+                    )
+                    AND 1=(
+                      SELECT count(*) FROM github_repository_allowlists only_allowed
+                       WHERE only_allowed.org_id=problem.org_id
+                         AND only_allowed.active=true
+                    )
+                  )
+                )
+              )
+            )
+          ORDER BY
+            (match.status='Confirmed') DESC,
+            (allowed.repository=problem.suspected_repository) DESC,
+            match.confidence DESC NULLS LAST,
+            allowed.updated_at DESC
           LIMIT 1
        ) repository ON true
       WHERE problem.org_id=$1 AND problem.stage <> 'Closed'
+        AND repository.repository IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM engineering_ticket_specifications specification
            WHERE specification.org_id=problem.org_id AND specification.problem_id=problem.id
@@ -195,6 +284,7 @@ async function nextPostgresCandidate(orgId: string, policy: PromptDraftPolicy): 
                investigation.assumptions,investigation.missing_information,
                investigation.proposed_action,investigation.recommended_tests,
                repository.repository,repository.default_branch,repository.installation_id
+               ,repository.execution_profile_config
       HAVING count(membership.feedback_id) >= $2
          AND least(problem.confidence,investigation.confidence) >= $3
          AND (
@@ -220,6 +310,14 @@ async function createForCandidate(orgId: string, policy: PromptDraftPolicy, row:
   });
   if (!assessment.eligible || kind === "Other")
     return { created: false, problemId: row.id, promptId: null, reason: assessment.reason };
+  if (!row.repository || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(row.repository)) {
+    return {
+      created: false,
+      problemId: row.id,
+      promptId: null,
+      reason: "Repository selection requires product-manager review before a prompt can be drafted.",
+    };
+  }
   const baseSha = await resolveBaseSha(row);
   const redactedEvidence = workspacePersistenceMode(orgId) === "memory"
     ? []
@@ -231,7 +329,7 @@ async function createForCandidate(orgId: string, policy: PromptDraftPolicy, row:
         ORDER BY feedback.created_at,feedback.id LIMIT 20`,
       [orgId, row.id],
     )).rows.map((item) => ({ source: item.source, observedAt: item.observed_at, quote: item.quote }));
-  const repository = row.repository ?? row.suspected_repository;
+  const repository = row.repository;
   const result = await createAutomatedPromptDraft(
     orgId,
     row.id,
@@ -248,6 +346,7 @@ async function createForCandidate(orgId: string, policy: PromptDraftPolicy, row:
         baseBranch: row.default_branch ?? "main",
         baseSha,
         evidenceCount: row.evidence_count,
+        executionProfileConfig: row.execution_profile_config,
       }),
       evidence: promptEvidence(row, redactedEvidence),
       reason: assessment.reason,
@@ -267,6 +366,12 @@ async function createForCandidate(orgId: string, policy: PromptDraftPolicy, row:
 
 export async function createNextAutomatedPromptDraft(orgId: string): Promise<AutomatedPromptDraftResult> {
   const policy = await readPromptDraftPolicy(orgId);
+  // Repository routing is independent from prompt-drafting autonomy. Keep the
+  // PM review queue current even when a workspace deliberately uses manual
+  // prompt creation.
+  if (workspacePersistenceMode(orgId) === "postgres") {
+    await refreshPendingProblemRepositoryMatches(orgId);
+  }
   if (policy.mode !== "automatic")
     return { created: false, problemId: null, promptId: null, reason: "Automatic prompt drafting is disabled." };
   if (workspacePersistenceMode(orgId) === "memory") {
@@ -293,6 +398,7 @@ export async function createNextAutomatedPromptDraft(orgId: string): Promise<Aut
       repository: primaryProblem.suspectedRepository,
       default_branch: "main",
       installation_id: null,
+      execution_profile_config: undefined,
     };
     return createForCandidate(orgId, policy, row);
   }

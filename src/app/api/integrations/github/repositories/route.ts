@@ -1,6 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
+import { setGithubWorkspaceRepositoryBindings } from "@/lib/github-installation-repository";
 import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
-import { authorizeRead, errorResponse, HttpError, noStoreHeaders } from "@/lib/request-security";
+import {
+  authorizeAdminMutation,
+  authorizeRead,
+  errorResponse,
+  HttpError,
+  noStoreHeaders,
+} from "@/lib/request-security";
+import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,10 +19,60 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    await authorizeRead(request);
-    throw new HttpError(
-      405,
-      "Repository access is synchronized from the CloseSpan GitHub App. Change repository access in GitHub and return to CloseSpan.",
+    const context = await authorizeAdminMutation(request);
+    const body = await request.json().catch(() => null) as {
+      installationId?: unknown;
+      repositories?: unknown;
+    } | null;
+    if (
+      !body ||
+      typeof body.installationId !== "string" ||
+      !Array.isArray(body.repositories) ||
+      body.repositories.some((repository) => typeof repository !== "string")
+    ) {
+      throw new HttpError(400, "A GitHub installation and repository list are required");
+    }
+    const result = await setGithubWorkspaceRepositoryBindings(
+      context.orgId,
+      body.installationId,
+      body.repositories as string[],
+      context,
+    );
+    const repositories = await listGithubRepositoryAuthorizations(context.orgId);
+    const selected = repositories.filter(
+      (repository) =>
+        repository.installationId === body.installationId &&
+        repository.workspaceSelected &&
+        repository.active,
+    );
+    after(async () => {
+      let failed = 0;
+      for (let index = 0; index < selected.length; index += 2) {
+        const outcomes = await Promise.allSettled(
+          selected.slice(index, index + 2).map((repository) =>
+            detectAndSaveGithubRepositoryProfiles({
+              orgId: context.orgId,
+              installationId: repository.installationId,
+              repository: repository.repository,
+              defaultBranch: repository.defaultBranch,
+              actor: {
+                actorId: "system:workspace-repository-detector",
+                actorName: "Repository profile detector",
+                traceId: context.traceId,
+              },
+            }),
+          ),
+        );
+        failed += outcomes.filter((outcome) => outcome.status === "rejected").length;
+      }
+      if (failed) console.warn(`Execution profile detection needs retry for ${failed} selected repositories`);
+    });
+    return NextResponse.json(
+      {
+        ...result,
+        repositories,
+      },
+      { headers: noStoreHeaders },
     );
   } catch (error) { return errorResponse(error); }
 }

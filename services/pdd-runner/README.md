@@ -15,6 +15,12 @@ model, and measured cost through an HMAC-signed callback. CloseSpan validates
 the paths, command, hashes, prompt identity, and budget again before exposing an
 approval.
 
+Every accepted job uses signed payload schema v2. The runner verifies the
+immutable execution-profile ID, canonical configuration hash, repository/root
+scope, resource and network policy, and confirms that ticket paths and commands
+are narrower than the bound profile. Legacy or inactive detected profiles fail
+closed before any archive is downloaded.
+
 PDD's manual `test` command reports cost but does not currently expose a
 pre-spend hard budget flag. For a strict dollar ceiling, route the runner's model
 traffic through a provider gateway that enforces a per-request/project budget.
@@ -28,7 +34,7 @@ PDD generation consumes the workspace's Tenki credits. Implementation and
 independent-verification sessions remain separate and network-disabled.
 
 Configure `TENKI_API_KEY`, `PDD_RUNNER_SHARED_SECRET`, the CloseSpan callback
-origin, and a supported model key in `.env.local`, then run:
+origin, and a supported model key in `.env`, then run:
 
 ```bash
 npm run pdd:deploy:tenki

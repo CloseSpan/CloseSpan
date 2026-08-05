@@ -20,6 +20,7 @@ import tempfile
 import threading
 import urllib.parse
 import urllib.request
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -32,9 +33,184 @@ SHARED_SECRET = os.environ.get("PDD_RUNNER_SHARED_SECRET", "").encode()
 PDD_MODEL = os.environ.get("PDD_MODEL", "").strip()
 CALLBACK_ORIGIN = os.environ.get("CLOSESPAN_CALLBACK_ORIGIN", "").strip().rstrip("/")
 
+PROFILE_CONFIG_KEYS = {
+    "schemaVersion", "language", "framework", "packageManager", "runtimeVersion",
+    "workingDirectory", "installCommands", "buildCommands", "testCommands",
+    "typecheckCommands", "permittedPaths", "tenkiImage", "tenkiSnapshotId",
+    "cpuCores", "memoryMb", "allowInbound", "allowOutbound", "maxDurationMs",
+    "idleTimeoutMinutes",
+}
+PROFILE_SNAPSHOT_KEYS = {
+    "profileId", "version", "source", "repository", "workspaceRoot",
+    "contentHash", "config",
+}
+PROFILE_SOURCES = {"confirmed", "override", "safe_generic"}
+
 
 def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def canonical_json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def safe_relative_path(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value or len(value) > 500:
+        raise ValueError(f"{label} must be a repository-relative path")
+    normalized = value.strip().replace("\\", "/")
+    if not normalized or normalized.startswith("/") or "\x00" in normalized:
+        raise ValueError(f"{label} must be a repository-relative path")
+    if len(normalized) >= 3 and normalized[0].isalpha() and normalized[1:3] == ":/":
+        raise ValueError(f"{label} must be a repository-relative path")
+    segments = [segment for segment in normalized.split("/") if segment]
+    if ".." in segments:
+        raise ValueError(f"{label} cannot traverse outside the repository")
+    compact = "/".join(segment for index, segment in enumerate(segments) if not (index == 0 and segment == "."))
+    return compact or "."
+
+
+def string_list(value: object, label: str, limit: int) -> list[str]:
+    if not isinstance(value, list) or len(value) > limit:
+        raise ValueError(f"{label} is invalid")
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip() or len(item) > 1_000:
+            raise ValueError(f"{label} is invalid")
+        normalized = item.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if any(ord(character) < 32 and character not in "\n\t" for character in normalized):
+            raise ValueError(f"{label} contains a prohibited control character")
+        result.append(normalized)
+    return result
+
+
+def path_pattern_is_narrower(ticket_pattern: str, allowed_pattern: str) -> bool:
+    if ticket_pattern == allowed_pattern or allowed_pattern == "**/*":
+        return True
+    if "*" not in ticket_pattern and fnmatch.fnmatchcase(ticket_pattern, allowed_pattern):
+        return True
+    if allowed_pattern.endswith("/**"):
+        allowed_prefix = allowed_pattern[:-3].rstrip("/")
+        ticket_prefix = ticket_pattern.split("*", 1)[0].rstrip("/")
+        return ticket_prefix == allowed_prefix or ticket_prefix.startswith(f"{allowed_prefix}/")
+    return False
+
+
+def validate_execution_profile(job: dict) -> dict:
+    profile_id = job.get("executionProfileId")
+    profile_hash = job.get("executionProfileHash")
+    snapshot = job.get("executionProfileSnapshot")
+    if not isinstance(profile_id, str) or not isinstance(profile_hash, str):
+        raise ValueError("PDD job is missing its execution profile binding")
+    try:
+        uuid.UUID(profile_id)
+    except (ValueError, AttributeError):
+        raise ValueError("PDD execution profile ID is invalid") from None
+    if len(profile_hash) != 64 or any(character not in "0123456789abcdef" for character in profile_hash):
+        raise ValueError("PDD execution profile hash is invalid")
+    if not isinstance(snapshot, dict) or set(snapshot) != PROFILE_SNAPSHOT_KEYS:
+        raise ValueError("PDD execution profile snapshot is invalid")
+    if snapshot.get("profileId") != profile_id or snapshot.get("contentHash") != profile_hash:
+        raise ValueError("PDD execution profile binding does not match its snapshot")
+    if type(snapshot.get("version")) is not int or snapshot["version"] <= 0:
+        raise ValueError("PDD execution profile version is invalid")
+    if snapshot.get("source") not in PROFILE_SOURCES:
+        raise ValueError("An inactive detected profile cannot run PDD")
+
+    repository = snapshot.get("repository")
+    if not isinstance(repository, str) or (
+        repository and len(repository.split("/")) != 2
+    ):
+        raise ValueError("PDD execution profile repository is invalid")
+    if repository and repository != job.get("repository"):
+        raise ValueError("PDD execution profile belongs to another repository")
+    workspace_root = safe_relative_path(snapshot.get("workspaceRoot"), "Workspace root")
+    if not repository and workspace_root != ".":
+        raise ValueError("A workspace execution profile must use the repository root")
+
+    config = snapshot.get("config")
+    if not isinstance(config, dict) or set(config) != PROFILE_CONFIG_KEYS:
+        raise ValueError("PDD execution profile configuration is invalid")
+    if config.get("schemaVersion") != 1:
+        raise ValueError("PDD execution profile configuration version is invalid")
+    for label in ("language", "packageManager"):
+        value = config.get(label)
+        if not isinstance(value, str) or not value.strip() or len(value) > 80:
+            raise ValueError(f"PDD execution profile {label} is invalid")
+    for label in ("framework", "runtimeVersion", "tenkiImage", "tenkiSnapshotId"):
+        value = config.get(label)
+        if value is not None and (not isinstance(value, str) or not value.strip() or len(value) > 500):
+            raise ValueError(f"PDD execution profile {label} is invalid")
+    if config.get("tenkiImage") and config.get("tenkiSnapshotId"):
+        raise ValueError("PDD execution profile cannot use an image and snapshot together")
+    working_directory = safe_relative_path(config.get("workingDirectory"), "Working directory")
+    if not repository and working_directory != ".":
+        raise ValueError("A workspace execution profile must run from the repository root")
+    if workspace_root != "." and not (
+        working_directory == workspace_root or working_directory.startswith(f"{workspace_root}/")
+    ):
+        raise ValueError("PDD execution profile working directory is outside its monorepo root")
+
+    commands: list[str] = []
+    for key in ("installCommands", "buildCommands", "testCommands", "typecheckCommands"):
+        commands.extend(string_list(config.get(key), key, 30))
+    profile_paths = [safe_relative_path(path, "Profile permitted path") for path in string_list(config.get("permittedPaths"), "permittedPaths", 100)]
+    for path in profile_paths:
+        if workspace_root != "." and not path_pattern_is_narrower(path, f"{workspace_root}/**"):
+            raise ValueError("PDD execution profile path is outside its monorepo root")
+
+    for key, minimum, maximum in (
+        ("cpuCores", 1, 32),
+        ("memoryMb", 512, 131_072),
+        ("maxDurationMs", 60_000, 86_400_000),
+        ("idleTimeoutMinutes", 1, 1_440),
+    ):
+        value = config.get(key)
+        if type(value) is not int or value < minimum or value > maximum:
+            raise ValueError(f"PDD execution profile {key} is invalid")
+    if type(config.get("allowInbound")) is not bool or type(config.get("allowOutbound")) is not bool:
+        raise ValueError("PDD execution profile network policy is invalid")
+
+    computed_hash = digest(canonical_json(config))
+    if computed_hash != profile_hash:
+        raise ValueError("PDD execution profile configuration hash does not match")
+
+    ticket_paths = [safe_relative_path(path, "Ticket permitted path") for path in string_list(job.get("permittedPaths"), "permittedPaths", 100)]
+    for path in ticket_paths:
+        if not any(path_pattern_is_narrower(path, allowed) for allowed in profile_paths):
+            raise ValueError("PDD ticket path is broader than its execution profile")
+    required_commands = string_list(job.get("requiredCommands"), "requiredCommands", 30)
+    if any(command not in commands for command in required_commands):
+        raise ValueError("PDD ticket command is not allowed by its execution profile")
+    return snapshot
+
+
+def validate_job(job: object) -> dict:
+    if not isinstance(job, dict):
+        raise ValueError("Invalid PDD job")
+    required = {
+        "orgId", "verificationId", "repository", "baseSha", "promptId",
+        "promptHash", "pddPrompt", "pddVersion", "executionProfileId",
+        "executionProfileHash", "executionProfileSnapshot", "budgetUsd",
+        "repositoryArchiveUrl", "permittedPaths", "requiredCommands",
+        "suspectedFiles", "callbackUrl",
+    }
+    if job.get("schemaVersion") != 2 or not required.issubset(job):
+        raise ValueError("Invalid PDD job")
+    if not isinstance(job["repository"], str) or len(job["repository"].split("/")) != 2:
+        raise ValueError("Invalid PDD repository")
+    if not isinstance(job["baseSha"], str) or len(job["baseSha"]) != 40 or any(
+        character not in "0123456789abcdef" for character in job["baseSha"]
+    ):
+        raise ValueError("Invalid PDD base SHA")
+    if not isinstance(job["promptHash"], str) or len(job["promptHash"]) != 64:
+        raise ValueError("Invalid PDD prompt hash")
+    if not isinstance(job["budgetUsd"], (int, float)) or isinstance(job["budgetUsd"], bool) or not 0 <= float(job["budgetUsd"]) <= 100:
+        raise ValueError("Invalid PDD budget")
+    safe_archive_url(job["repositoryArchiveUrl"])
+    safe_callback_url(job["callbackUrl"])
+    validate_execution_profile(job)
+    return job
 
 
 def safe_archive_url(value: str) -> str:
@@ -255,11 +431,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(401)
             return
         try:
-            job = json.loads(body)
-            required = {"orgId", "verificationId", "promptHash", "pddPrompt", "pddVersion", "budgetUsd", "repositoryArchiveUrl", "permittedPaths", "requiredCommands", "callbackUrl"}
-            if job.get("schemaVersion") != 1 or not required.issubset(job):
-                raise ValueError("Invalid PDD job")
-            safe_callback_url(job["callbackUrl"])
+            job = validate_job(json.loads(body))
         except (ValueError, json.JSONDecodeError):
             self.send_error(400)
             return

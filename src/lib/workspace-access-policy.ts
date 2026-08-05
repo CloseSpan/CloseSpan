@@ -17,6 +17,13 @@ export function isPrivateBetaOwner(email: string): boolean {
   );
 }
 
+export function isCloseSpanPlatformAdmin(user: {
+  email: string;
+  role: string;
+}): boolean {
+  return user.role === "Admin" && isPrivateBetaOwner(user.email);
+}
+
 export function founderInquiryEmailUrl(email: string): string {
   const normalizedEmail = normalizeMembershipEmail(email);
   const subject = `CloseSpan product inquiry from ${normalizedEmail}`;

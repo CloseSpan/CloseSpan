@@ -7,6 +7,13 @@ import {
 import type { AgentImplementationReport } from "./agent-run-verification";
 import type { AgentRunExecutionContext } from "./engineering-workflow-repository";
 import { createRepositoryArchiveUrl } from "./github-agent-publisher";
+import {
+  assertExecutionProfileNarrowing,
+  assertExecutionProfileScopeBoundary,
+  hashExecutionProfileConfig,
+  sanitizeExecutionProfileConfig,
+  type ExecutionProfileConfig,
+} from "./execution-profile";
 
 const ARCHIVE_LIMIT_BYTES = 80_000_000;
 const CREATE_TIMEOUT_MS = 60_000;
@@ -16,6 +23,69 @@ const SESSION_DURATION_MS = 3 * 60_000;
 const OUTPUT_LIMIT = 20_000;
 const WORKSPACE = "/home/tenki/repo";
 const ARCHIVE_PATH = "/home/tenki/closespan-repository.tar.gz";
+
+function verificationProfile(context: AgentRunExecutionContext): ExecutionProfileConfig | null {
+  if (!context.executionProfileSnapshot) return null;
+  const snapshot = context.executionProfileSnapshot;
+  if (snapshot.source === "detected") {
+    throw new TenkiIndependentVerificationError(
+      "sandbox_failed",
+      "An unconfirmed detected execution profile cannot run independent verification.",
+    );
+  }
+  const config = sanitizeExecutionProfileConfig(snapshot.config);
+  if (
+    (snapshot.source === "safe_generic" && snapshot.repository !== "")
+    || (
+      snapshot.source !== "safe_generic"
+      && snapshot.repository !== context.repository
+    )
+  ) {
+    throw new TenkiIndependentVerificationError(
+      "sandbox_failed",
+      "The immutable execution profile belongs to another repository.",
+    );
+  }
+  try {
+    assertExecutionProfileScopeBoundary(
+      { repository: snapshot.repository, workspaceRoot: snapshot.workspaceRoot },
+      config,
+    );
+    assertExecutionProfileNarrowing(config, {
+      permittedPaths: context.promptSnapshot.ticket.permittedPaths,
+      requiredCommands: [
+        ...new Set([
+          ...context.promptSnapshot.ticket.requiredCommands,
+          ...(context.generatedTests ?? []).map((test) => test.command),
+        ]),
+      ],
+    });
+  } catch (error) {
+    throw new TenkiIndependentVerificationError(
+      "sandbox_failed",
+      error instanceof Error
+        ? `The immutable execution profile is outside the approved ticket boundary: ${error.message}`
+        : "The immutable execution profile is outside the approved ticket boundary.",
+    );
+  }
+  if (
+    snapshot.profileId !== context.executionProfileId
+    || snapshot.contentHash !== context.executionProfileHash
+    || hashExecutionProfileConfig(config) !== context.executionProfileHash
+  ) {
+    throw new TenkiIndependentVerificationError(
+      "sandbox_failed",
+      "The immutable execution profile binding changed before independent verification.",
+    );
+  }
+  return config;
+}
+
+function verificationWorkingDirectory(profile: ExecutionProfileConfig | null): string {
+  return !profile || profile.workingDirectory === "."
+    ? WORKSPACE
+    : `${WORKSPACE}/${profile.workingDirectory}`;
+}
 
 type VerificationSession = Pick<
   Session,
@@ -212,6 +282,8 @@ export async function verifyAgentRunWithTenki(
 
   const now = dependencies.now ?? Date.now;
   const startedAt = now();
+  const profile = verificationProfile(context);
+  const sessionDurationMs = Math.min(profile?.maxDurationMs ?? SESSION_DURATION_MS, SESSION_DURATION_MS);
   let archive: Uint8Array;
   try {
     archive = await (dependencies.repositoryArchive ?? defaultRepositoryArchive)(context);
@@ -241,8 +313,10 @@ export async function verifyAgentRunWithTenki(
   let cleanupError: unknown;
 
   try {
-    const image = process.env.TENKI_SANDBOX_IMAGE?.trim();
-    const snapshotId = process.env.TENKI_SANDBOX_SNAPSHOT_ID?.trim();
+    // Environment-level selection is a compatibility path for legacy runs
+    // without a persisted profile; new runs use only the immutable snapshot.
+    const image = profile?.tenkiImage ?? (!context.executionProfileSnapshot ? process.env.TENKI_SANDBOX_IMAGE?.trim() : undefined);
+    const snapshotId = profile?.tenkiSnapshotId ?? (!context.executionProfileSnapshot ? process.env.TENKI_SANDBOX_SNAPSHOT_ID?.trim() : undefined);
     if (image && snapshotId) {
       throw new TenkiIndependentVerificationError(
         "sandbox_failed",
@@ -251,31 +325,38 @@ export async function verifyAgentRunWithTenki(
     }
     session = await client.createAndWait({
       name: `closespan-verify-${context.runId.slice(0, 8)}`,
-      cpuCores: 2,
-      memoryMb: 4096,
-      allowInbound: false,
-      allowOutbound: false,
-      maxDurationMs: SESSION_DURATION_MS,
-      idleTimeoutMinutes: 2,
+      cpuCores: profile?.cpuCores ?? 2,
+      memoryMb: profile?.memoryMb ?? 4096,
+      allowInbound: profile?.allowInbound ?? false,
+      allowOutbound: profile?.allowOutbound ?? false,
+      maxDurationMs: sessionDurationMs,
+      idleTimeoutMinutes: profile?.idleTimeoutMinutes ?? 2,
       metadata: {
         purpose: "closespan-independent-verification",
         runId: context.runId,
         promptHash: context.promptHash,
+        ...(context.executionProfileId ? {
+          executionProfileId: context.executionProfileId,
+          executionProfileHash: context.executionProfileHash,
+        } : {}),
       },
       timeoutMs: CREATE_TIMEOUT_MS,
       ...(image ? { image } : {}),
       ...(snapshotId ? { snapshotId } : {}),
     });
-    if (session.inboundEnabled || session.outboundEnabled) {
+    if (
+      session.inboundEnabled !== (profile?.allowInbound ?? false)
+      || session.outboundEnabled !== (profile?.allowOutbound ?? false)
+    ) {
       throw new TenkiIndependentVerificationError(
         "sandbox_failed",
-        "Tenki verification networking is enabled; CloseSpan refused to execute repository code.",
+        "Tenki verification networking does not match the immutable execution profile.",
       );
     }
     await requireSuccess(
       session,
       "mkdir",
-      { args: ["-p", "--", WORKSPACE], timeoutMs: 10_000 },
+      { args: ["-p", "--", WORKSPACE, verificationWorkingDirectory(profile)], timeoutMs: 10_000 },
       "Tenki could not prepare the verification workspace.",
     );
     await session.writeFile(ARCHIVE_PATH, archive);
@@ -340,8 +421,8 @@ export async function verifyAgentRunWithTenki(
       }
       const result = await session.exec("bash", {
         args: ["-c", command],
-        cwd: WORKSPACE,
-        timeoutMs: COMMAND_TIMEOUT_MS,
+        cwd: verificationWorkingDirectory(profile),
+        timeoutMs: Math.min(COMMAND_TIMEOUT_MS, sessionDurationMs),
         env: { CI: "true" },
       });
       passed = succeeded(result);

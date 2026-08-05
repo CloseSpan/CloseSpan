@@ -65,6 +65,16 @@ async function ensureGithubWebhookSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS github_webhook_deliveries_installation_time_idx
         ON github_webhook_deliveries(installation_id,received_at DESC)
         WHERE installation_id IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS github_webhook_delivery_workspaces (
+        delivery_id uuid NOT NULL
+          REFERENCES github_webhook_deliveries(delivery_id) ON DELETE CASCADE,
+        org_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        outcome text NOT NULL,
+        processed_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (delivery_id,org_id)
+      );
+      CREATE INDEX IF NOT EXISTS github_webhook_delivery_workspaces_org_time_idx
+        ON github_webhook_delivery_workspaces(org_id,processed_at DESC);
     `)
     .then(() => undefined)
     .catch((error: unknown) => {
@@ -86,13 +96,15 @@ function installationId(payload: GithubWebhookPayload): string | null {
   return String(value);
 }
 
-async function installationOrganization(id: string | null): Promise<string | null> {
-  if (!id) return null;
+async function installationOrganizations(id: string | null): Promise<string[]> {
+  if (!id) return [];
   const result = await databasePool().query<{ org_id: string }>(
-    "SELECT org_id FROM github_app_installations WHERE installation_id=$1",
+    `SELECT org_id FROM github_app_installations
+      WHERE installation_id=$1 AND workspace_connected=true
+      ORDER BY org_id`,
     [id],
   );
-  return result.rows[0]?.org_id ?? null;
+  return [...new Set(result.rows.map((row) => row.org_id))];
 }
 
 async function deactivateInstallation(
@@ -151,13 +163,15 @@ async function synchronizeInstallation(
   verified: VerifiedGithubInstallation,
   deliveryId: string,
 ): Promise<string> {
-  const binding = await client.query<{ org_id: string }>(
-    `SELECT org_id FROM github_app_installations
-      WHERE installation_id=$1 FOR UPDATE`,
-    [verified.installationId],
+  const binding = await client.query(
+    `SELECT 1 FROM github_app_installations
+      WHERE org_id=$1 AND installation_id=$2 FOR UPDATE`,
+    [orgId, verified.installationId],
   );
-  if (binding.rows[0]?.org_id !== orgId) return "ignored_unbound_installation";
-  await syncGithubInstallationRecords(client, orgId, verified);
+  if (!binding.rowCount) return "ignored_unbound_installation";
+  await syncGithubInstallationRecords(client, orgId, verified, {
+    preserveWorkspaceRepositoryBindings: true,
+  });
   await client.query(
     `INSERT INTO audit_events(
        id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
@@ -217,6 +231,46 @@ async function auditPullRequest(
   return merged ? "tracked_pull_request_merged" : `tracked_pull_request_${action}`;
 }
 
+function summarizeWorkspaceOutcomes(outcomes: string[]): string {
+  if (outcomes.length === 0) return "ignored_unbound_installation";
+  if (outcomes.length === 1) return outcomes[0];
+  if (outcomes.every((outcome) => outcome === outcomes[0]))
+    return `${outcomes[0]}_for_${outcomes.length}_workspaces`;
+  return `processed_${outcomes.length}_workspaces`;
+}
+
+async function recordWorkspaceOutcome(
+  client: PoolClient,
+  deliveryId: string,
+  orgId: string,
+  outcome: string,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO github_webhook_delivery_workspaces(delivery_id,org_id,outcome)
+     VALUES($1,$2,$3)
+     ON CONFLICT(delivery_id,org_id) DO UPDATE SET
+       outcome=excluded.outcome,processed_at=now()`,
+    [deliveryId, orgId, outcome],
+  );
+}
+
+async function processWorkspaceEvent(
+  client: PoolClient,
+  orgId: string,
+  id: string,
+  action: string | null,
+  input: GithubWebhookInput,
+  verified: VerifiedGithubInstallation | null,
+): Promise<string> {
+  if (input.event === "installation" && (action === "deleted" || action === "suspend"))
+    return deactivateInstallation(client, orgId, id, action, input.deliveryId);
+  if (verified)
+    return synchronizeInstallation(client, orgId, verified, input.deliveryId);
+  if (input.event === "pull_request")
+    return auditPullRequest(client, orgId, id, action, input.payload, input.deliveryId);
+  return "ignored_unhandled_event";
+}
+
 export async function processGithubWebhook(
   input: GithubWebhookInput,
 ): Promise<GithubWebhookResult> {
@@ -230,11 +284,11 @@ export async function processGithubWebhook(
 
   const action = stringAction(input.payload);
   const id = installationId(input.payload);
-  const orgId = await installationOrganization(id);
+  const orgIds = await installationOrganizations(id);
 
   let verified: VerifiedGithubInstallation | null = null;
   const shouldSynchronize = Boolean(
-    orgId && id && (
+    orgIds.length && id && (
       input.event === "installation_repositories" ||
       (input.event === "installation" && action && synchronizationActions.has(action))
     ),
@@ -253,7 +307,7 @@ export async function processGithubWebhook(
         input.event,
         action,
         id,
-        orgId,
+        orgIds.length === 1 ? orgIds[0] : null,
         createHash("sha256").update(input.rawBody, "utf8").digest("hex"),
       ],
     );
@@ -263,13 +317,23 @@ export async function processGithubWebhook(
     let outcome = "ignored_unhandled_event";
     if (input.event === "ping") outcome = "ping_acknowledged";
     else if (!id) outcome = "ignored_missing_installation";
-    else if (!orgId) outcome = "ignored_unbound_installation";
-    else if (input.event === "installation" && (action === "deleted" || action === "suspend"))
-      outcome = await deactivateInstallation(client, orgId, id, action, input.deliveryId);
-    else if (verified)
-      outcome = await synchronizeInstallation(client, orgId, verified, input.deliveryId);
-    else if (input.event === "pull_request")
-      outcome = await auditPullRequest(client, orgId, id, action, input.payload, input.deliveryId);
+    else if (!orgIds.length) outcome = "ignored_unbound_installation";
+    else {
+      const workspaceOutcomes: string[] = [];
+      for (const orgId of orgIds) {
+        const workspaceOutcome = await processWorkspaceEvent(
+          client,
+          orgId,
+          id,
+          action,
+          input,
+          verified,
+        );
+        await recordWorkspaceOutcome(client, input.deliveryId, orgId, workspaceOutcome);
+        workspaceOutcomes.push(workspaceOutcome);
+      }
+      outcome = summarizeWorkspaceOutcomes(workspaceOutcomes);
+    }
 
     await client.query(
       `UPDATE github_webhook_deliveries

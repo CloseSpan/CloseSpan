@@ -12,6 +12,7 @@ vi.mock("./db", () => ({
 
 import {
   ensureWorkspaceAccessWaitlistEntry,
+  listWorkspaceAccessWaitlist,
   recordWorkspaceAccessAttempt,
 } from "./access-waitlist-repository";
 
@@ -77,5 +78,38 @@ describe("workspace access waitlist repository", () => {
     await expect(
       ensureWorkspaceAccessWaitlistEntry("declined@example.com"),
     ).resolves.toBe(false);
+  });
+
+  it("lists waitlist users with normalized application field names", async () => {
+    database.pool.query.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{
+        email: "prospect@example.com",
+        display_name: "Prospect",
+        status: "Pending",
+        login_attempt_count: 3,
+        first_attempted_at: new Date("2026-08-01T10:00:00Z"),
+        last_attempted_at: new Date("2026-08-05T10:00:00Z"),
+      }],
+    });
+
+    await expect(listWorkspaceAccessWaitlist()).resolves.toEqual([{
+      email: "prospect@example.com",
+      displayName: "Prospect",
+      status: "Pending",
+      loginAttemptCount: 3,
+      firstAttemptedAt: new Date("2026-08-01T10:00:00Z"),
+      lastAttemptedAt: new Date("2026-08-05T10:00:00Z"),
+    }]);
+    expect(database.pool.query).toHaveBeenLastCalledWith(
+      expect.stringContaining("ORDER BY last_attempted_at DESC,email ASC"),
+    );
+  });
+
+  it("returns no waitlist users without durable persistence", async () => {
+    database.mode = "memory";
+
+    await expect(listWorkspaceAccessWaitlist()).resolves.toEqual([]);
+    expect(database.pool.query).not.toHaveBeenCalled();
   });
 });
