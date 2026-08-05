@@ -145,6 +145,48 @@ describe("Tenki executor internal boundary", () => {
     expect(executor.run).not.toHaveBeenCalled();
   });
 
+  it("accepts an approval-bound execution profile snapshot regardless of JSON object key order", async () => {
+    const reorderedConfig = {
+      idleTimeoutMinutes: profileConfig.idleTimeoutMinutes,
+      maxDurationMs: profileConfig.maxDurationMs,
+      allowOutbound: profileConfig.allowOutbound,
+      allowInbound: profileConfig.allowInbound,
+      memoryMb: profileConfig.memoryMb,
+      cpuCores: profileConfig.cpuCores,
+      tenkiSnapshotId: profileConfig.tenkiSnapshotId,
+      tenkiImage: profileConfig.tenkiImage,
+      permittedPaths: profileConfig.permittedPaths,
+      typecheckCommands: profileConfig.typecheckCommands,
+      testCommands: profileConfig.testCommands,
+      buildCommands: profileConfig.buildCommands,
+      installCommands: profileConfig.installCommands,
+      workingDirectory: profileConfig.workingDirectory,
+      runtimeVersion: profileConfig.runtimeVersion,
+      packageManager: profileConfig.packageManager,
+      framework: profileConfig.framework,
+      language: profileConfig.language,
+      schemaVersion: profileConfig.schemaVersion,
+    };
+    workflow.context.mockResolvedValue({
+      ...context,
+      executionProfileSnapshot: {
+        config: reorderedConfig,
+        contentHash: job.executionProfileSnapshot.contentHash,
+        workspaceRoot: job.executionProfileSnapshot.workspaceRoot,
+        repository: job.executionProfileSnapshot.repository,
+        source: job.executionProfileSnapshot.source,
+        version: job.executionProfileSnapshot.version,
+        profileId: job.executionProfileSnapshot.profileId,
+      },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(workflow.claim).toHaveBeenCalledWith(job.orgId, job.runId);
+    expect(executor.run).toHaveBeenCalledOnce();
+  });
+
   it("acknowledges duplicate queue delivery without starting another session", async () => {
     workflow.claim.mockResolvedValue("terminal");
     const response = await POST(request());

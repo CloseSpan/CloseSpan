@@ -8,6 +8,7 @@ export default defineConfig([
   globalIgnores([
     ".next/**",
     ".agents/**",
+    ".tenki/**",
     "coverage/**",
     "next-env.d.ts",
     "workers/status-page/**",

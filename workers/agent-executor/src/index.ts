@@ -153,7 +153,20 @@ async function proxyJob(env: Env, job: AgentJob): Promise<void> {
     body,
     signal: AbortSignal.timeout(13 * 60_000),
   });
-  if (!response.ok) throw new Error(`Tenki executor rejected the queued run with HTTP ${response.status}`);
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const payload = await response.json() as { error?: unknown };
+      if (typeof payload.error === "string") {
+        detail = payload.error.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 500);
+      }
+    } catch {
+      // Preserve the status-only fallback for non-JSON upstream responses.
+    }
+    throw new Error(
+      `Tenki executor rejected the queued run with HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
+    );
+  }
 }
 
 async function healthResponse(env: Env): Promise<Response> {

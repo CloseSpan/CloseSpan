@@ -54,6 +54,18 @@ function sameGeneratedTests(
   });
 }
 
+function sameExecutionProfileSnapshot(
+  actual: Extract<TenkiAgentJob, { schemaVersion: 2 }>["executionProfileSnapshot"],
+  expected: Extract<TenkiAgentJob, { schemaVersion: 2 }>["executionProfileSnapshot"],
+): boolean {
+  return actual.profileId === expected.profileId
+    && actual.version === expected.version
+    && actual.source === expected.source
+    && actual.repository === expected.repository
+    && actual.workspaceRoot === expected.workspaceRoot
+    && actual.contentHash === expected.contentHash;
+}
+
 function assertCurrentApproval(job: TenkiAgentJob, context: Awaited<ReturnType<typeof getAgentRunExecutionContext>>): void {
   assertTenkiExecutionProfileBinding(job);
   const ticket = context.promptSnapshot.ticket;
@@ -69,7 +81,7 @@ function assertCurrentApproval(job: TenkiAgentJob, context: Awaited<ReturnType<t
     || job.promptArtifactPath !== context.promptArtifactPath
     || job.executionProfileId !== context.executionProfileId
     || job.executionProfileHash !== context.executionProfileHash
-    || JSON.stringify(job.executionProfileSnapshot) !== JSON.stringify(context.executionProfileSnapshot)
+    || !sameExecutionProfileSnapshot(job.executionProfileSnapshot, context.executionProfileSnapshot)
     || !sameList(job.requiredCommands, requiredCommands)
     || !sameList(job.permittedPaths, ticket.permittedPaths)
     || !sameGeneratedTests(job.generatedTests, generatedTests)

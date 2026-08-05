@@ -196,7 +196,9 @@ async function lockProfileScope(
   orgId: string,
   scope: ExecutionProfileScope,
 ): Promise<void> {
-  const lockKey = `${orgId}\0${scope.repository}\0${scope.workspaceRoot}`;
+  // PostgreSQL text parameters cannot contain NUL bytes. A serialized tuple
+  // keeps each scope boundary unambiguous without introducing an invalid byte.
+  const lockKey = JSON.stringify([orgId, scope.repository, scope.workspaceRoot]);
   await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [lockKey]);
 }
 
