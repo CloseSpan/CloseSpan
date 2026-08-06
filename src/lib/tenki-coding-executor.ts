@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import {
   Agent,
+  MaxTurnsExceededError,
   OpenAIProvider,
   Runner,
   applyDiff,
@@ -53,7 +54,10 @@ const CREATE_TIMEOUT_MS = 60_000;
 // Keep the entire execution, report callback, and sandbox cleanup inside
 // Vercel Hobby's five-minute function ceiling.
 const RUN_DURATION_MS = 4 * 60_000;
-const AGENT_DURATION_MS = 3 * 60_000;
+// Reserve half of the VM lease for rebuilding, immutable PDD replay,
+// independent verification, publication, callbacks, and cleanup.
+const AGENT_DURATION_MS = 2 * 60_000;
+const AGENT_MAX_TURNS = 24;
 const COMMAND_TIMEOUT_MS = 300_000;
 const OUTPUT_LIMIT = 20_000;
 const MAX_SHELL_OUTPUT_LIMIT = 30_000;
@@ -189,6 +193,43 @@ const agentOutputSchema = z.object({
 }).strict();
 
 type AgentOutput = z.infer<typeof agentOutputSchema>;
+
+export function boundedAgentProgressOutput(
+  job: TenkiAgentJob,
+  changedPaths: readonly string[],
+  provider: ExecutorAiConfiguration["provider"],
+  model: string,
+  toolCalls: number,
+): AgentOutput | null {
+  const implementationPaths = [...new Set(changedPaths)]
+    .filter((path) => tenkiExecutorAllowsPath(job, path));
+  if (implementationPaths.length === 0) return null;
+  return agentOutputSchema.parse({
+    summary: `The ${provider} coding agent (${model}) changed ${implementationPaths.length} approved implementation path(s) before its bounded tool loop ended; CloseSpan continued only to sealed validation.`,
+    files: implementationPaths.map((path) => ({
+      path,
+      reason: "Changed by the coding agent before the bounded model loop ended.",
+    })),
+    criteria: job.acceptanceCriteria.map((criterion) => ({
+      criterionId: criterion.id,
+      status: "Passed" as const,
+      evidence: "Provisional agent progress; CloseSpan accepts this criterion only if every bound validation command passes afterward.",
+      scenarioIds: job.testScenarios
+        .filter((scenario) => scenario.criterionIds.includes(criterion.id))
+        .map((scenario) => scenario.id),
+    })),
+    testFiles: implementationPaths.filter(
+      (path) => /(^|\/)(?:test|tests|__tests__)(\/|$)|\.(?:test|spec)\.[^.]+$/.test(path),
+    ),
+    remainingRisks: [
+      `The coding-model loop reached its bounded limit after ${toolCalls} tool call(s); all approved commands and independent verification remain mandatory.`,
+    ],
+    assumptions: [],
+    manualVerification: job.testScenarios
+      .filter((scenario) => scenario.testLevel === "manual")
+      .map((scenario) => `Complete ${scenario.id} after release.`),
+  });
+}
 
 export interface TenkiCodingExecutorEvents {
   started(sessionId: string): Promise<void>;
@@ -581,6 +622,29 @@ async function defaultRunAgent(input: {
     traceIncludeSensitiveData: false,
     workflowName: "CloseSpan approval-bound implementation",
   });
+  let toolCalls = 0;
+  runner.on("agent_tool_start", () => {
+    toolCalls += 1;
+  });
+  const recoverBoundedProgress = async (error: unknown): Promise<AgentOutput> => {
+    const bounded = input.signal.aborted
+      || error instanceof MaxTurnsExceededError
+      || (error instanceof Error && error.message === "Request was aborted.");
+    if (!bounded) throw error;
+    const changedPaths = await input.shell.changedPaths();
+    const recovered = boundedAgentProgressOutput(
+      input.job,
+      changedPaths,
+      input.ai.provider,
+      input.ai.model,
+      toolCalls,
+    );
+    if (recovered) return recovered;
+    throw new Error(
+      `Coding agent exhausted its bounded tool loop after ${toolCalls} tool call(s) without changing an approved implementation path`,
+      { cause: error },
+    );
+  };
   const instructions = [
     "Implement exactly one approved CloseSpan ticket in the isolated Tenki microVM.",
     `The repository root is ${REPOSITORY_ROOT}; run commands from ${workingDirectory(input.job)}. Read the approved prompt at ${input.job.promptArtifactPath} and obey repository instructions.`,
@@ -726,12 +790,17 @@ async function defaultRunAgent(input: {
       resetToolChoice: true,
     });
     let changedPaths: string[] = [];
-    for (let attempt = 0; attempt < 4 && changedPaths.length === 0; attempt += 1) {
-      const feedback = attempt === 0
-        ? input.job.promptContent
-        : `${input.job.promptContent}\n\nExecutor feedback: no repository files have changed yet. Continue now by using the approved write tool to implement the ticket and its automated test.`;
-      await runner.run(implementationAgent, feedback, { maxTurns: 40, signal: input.signal });
-      changedPaths = await input.shell.changedPaths();
+    try {
+      for (let attempt = 0; attempt < 4 && changedPaths.length === 0; attempt += 1) {
+        const feedback = attempt === 0
+          ? input.job.promptContent
+          : `${input.job.promptContent}\n\nExecutor feedback: no repository files have changed yet. Continue now by using the approved write tool to implement the ticket and its automated test.`;
+        await runner.run(implementationAgent, feedback, { maxTurns: AGENT_MAX_TURNS, signal: input.signal });
+        changedPaths = (await input.shell.changedPaths())
+          .filter((path) => tenkiExecutorAllowsPath(input.job, path));
+      }
+    } catch (error) {
+      return recoverBoundedProgress(error);
     }
     return {
       summary: changedPaths.length
@@ -764,9 +833,16 @@ async function defaultRunAgent(input: {
     modelSettings: executorImplementationModelSettings(input.ai.provider),
     resetToolChoice: true,
   });
-  const result = await runner.run(agent, input.job.promptContent, { maxTurns: 80, signal: input.signal });
-  if (!result.finalOutput) throw new Error("Coding agent did not return an implementation report");
-  return agentOutputSchema.parse(result.finalOutput);
+  try {
+    const result = await runner.run(agent, input.job.promptContent, {
+      maxTurns: AGENT_MAX_TURNS,
+      signal: input.signal,
+    });
+    if (!result.finalOutput) throw new Error("Coding agent did not return an implementation report");
+    return agentOutputSchema.parse(result.finalOutput);
+  } catch (error) {
+    return recoverBoundedProgress(error);
+  }
 }
 
 export function tenkiSandboxCreateOptions(job: TenkiAgentJob) {

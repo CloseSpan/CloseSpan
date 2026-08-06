@@ -5,6 +5,7 @@ import {
   RestrictedEditor,
   assertRuntimeSecretPublicationSafe,
   assertTenkiExecutionProfileBinding,
+  boundedAgentProgressOutput,
   executorImplementationModelSettings,
   resolveExecutorAiConfiguration,
   runtimeToolsForAgent,
@@ -136,6 +137,44 @@ describe("Tenki coding executor approval boundary", () => {
       parallelToolCalls: false,
       store: false,
     });
+  });
+
+  it("recovers only approved implementation progress from a bounded model loop", () => {
+    const parsed = tenkiAgentJobSchema.parse({
+      schemaVersion: 2,
+      orgId: "org-1",
+      runId: "11111111-1111-4111-8111-111111111111",
+      repository: "owner/repo",
+      baseSha: "a".repeat(40),
+      promptHash: "b".repeat(64),
+      promptContent: "approved prompt",
+      promptArtifactPath: policy.promptArtifactPath,
+      repositoryArchiveUrl: "https://example.com/repository.tar.gz",
+      requiredCommands: ["npm test"],
+      permittedPaths: profilePolicy,
+      generatedTests: [{
+        path: "apps/web/tests/acceptance.pdd.test.ts",
+        content: "test('contract', () => {})",
+        contentHash: "c".repeat(64),
+        command: "npm test",
+      }],
+      acceptanceCriteria: [{ id: "AC-1", scenarioIds: ["TEST-1"] }],
+      testScenarios: [{ id: "TEST-1", testLevel: "integration", criterionIds: ["AC-1"] }],
+      callbackUrl: "https://www.closespan.com/api/internal/agent-runs/11111111-1111-4111-8111-111111111111",
+      expiresAt: "2026-07-30T08:00:00.000Z",
+      capabilities: ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"],
+      ...executionProfile,
+    });
+    expect(boundedAgentProgressOutput(parsed, [
+      "apps/web/tests/acceptance.pdd.test.ts",
+      "apps/web/src/export.ts",
+    ], "OpenAI", "gpt-5.6-terra", 12)).toMatchObject({
+      files: [{ path: "apps/web/src/export.ts" }],
+      remainingRisks: [expect.stringContaining("12 tool call")],
+    });
+    expect(boundedAgentProgressOutput(parsed, [
+      "apps/web/tests/acceptance.pdd.test.ts",
+    ], "OpenAI", "gpt-5.6-terra", 12)).toBeNull();
   });
 
   it("uses the configured OpenAI-compatible xAI provider when OpenAI is absent", () => {
