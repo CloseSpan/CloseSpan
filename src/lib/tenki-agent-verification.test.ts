@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExecResult } from "@tenkicloud/sandbox";
 import type { AgentImplementationReport } from "./agent-run-verification";
@@ -151,7 +152,10 @@ const report: AgentImplementationReport = {
   logs: [],
 };
 
-function setup(failedCommand?: string) {
+function setup(
+  failedCommand?: string,
+  fileHashes: Record<string, string> = {},
+) {
   const session = {
     id: "tenki-session-1",
     inboundEnabled: false,
@@ -162,8 +166,11 @@ function setup(failedCommand?: string) {
     close: vi.fn().mockResolvedValue(undefined),
     exec: vi.fn().mockImplementation(async (command: string, options?: { args?: string[] }) => {
       if (command === "sha256sum") {
+        const file = options?.args?.[0] ?? context.promptArtifactPath;
         return execution(command, {
-          stdout: new TextEncoder().encode(`${context.promptHash}  ${context.promptArtifactPath}`),
+          stdout: new TextEncoder().encode(
+            `${fileHashes[file] ?? context.promptHash}  ${file}`,
+          ),
         });
       }
       const approvedCommand = command === "bash" ? options?.args?.[1] : undefined;
@@ -254,6 +261,85 @@ describe("Tenki independent agent verification", () => {
     ]);
     expect(verified.criteria[0]?.status).toBe("Not verified");
     expect(verified.independentVerification?.status).toBe("failed");
+  });
+
+  it("re-hashes the exact approved PDD test inside the independent VM", async () => {
+    const generatedTestContent = [
+      'import test from "node:test";',
+      'test("approved PDD contract", () => {});',
+      "",
+    ].join("\n");
+    const generatedTest = {
+      path: "packages/app/tests/export.pdd.test.ts",
+      content: generatedTestContent,
+      contentHash: createHash("sha256").update(generatedTestContent, "utf8").digest("hex"),
+      command: "npm test",
+    };
+    const pddContext = { ...context, generatedTests: [generatedTest] };
+    const pddReport: AgentImplementationReport = {
+      ...report,
+      changedFiles: [
+        ...report.changedFiles,
+        {
+          path: generatedTest.path,
+          contentBase64: Buffer.from(generatedTest.content, "utf8").toString("base64"),
+          reason: "Immutable PDD acceptance contract.",
+        },
+      ],
+      testFiles: [generatedTest.path],
+    };
+    const { session, client } = setup(undefined, {
+      [generatedTest.path]: generatedTest.contentHash,
+    });
+
+    await verifyAgentRunWithTenki(pddContext, pddReport, {
+      apiKey: "tk_test",
+      createClient: () => client,
+      repositoryArchive: vi.fn().mockResolvedValue(new Uint8Array([1])),
+    });
+
+    expect(session.writeFile).toHaveBeenCalledWith(
+      `/home/tenki/repo/${generatedTest.path}`,
+      new TextEncoder().encode(generatedTest.content),
+    );
+    expect(session.exec).toHaveBeenCalledWith("sha256sum", {
+      args: [generatedTest.path],
+      cwd: "/home/tenki/repo",
+      timeoutMs: 10_000,
+    });
+  });
+
+  it("fails before creating a VM when the PDD test differs from the approved artifact", async () => {
+    const generatedTestContent = 'test("approved", () => {});\n';
+    const generatedTest = {
+      path: "packages/app/tests/export.pdd.test.ts",
+      content: generatedTestContent,
+      contentHash: createHash("sha256").update(generatedTestContent, "utf8").digest("hex"),
+      command: "npm test",
+    };
+    const { client } = setup();
+
+    await expect(verifyAgentRunWithTenki(
+      { ...context, generatedTests: [generatedTest] },
+      {
+        ...report,
+        changedFiles: [
+          ...report.changedFiles,
+          {
+            path: generatedTest.path,
+            contentBase64: Buffer.from('test("tampered", () => {});\n').toString("base64"),
+            reason: "Tampered artifact.",
+          },
+        ],
+        testFiles: [generatedTest.path],
+      },
+      {
+        apiKey: "tk_test",
+        createClient: () => client,
+        repositoryArchive: vi.fn().mockResolvedValue(new Uint8Array([1])),
+      },
+    )).rejects.toMatchObject({ code: "sandbox_failed" });
+    expect(client.createAndWait).not.toHaveBeenCalled();
   });
 
   it("skips transparently when optional verification is not configured", async () => {

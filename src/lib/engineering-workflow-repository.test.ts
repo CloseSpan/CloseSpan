@@ -69,14 +69,16 @@ describe("approval-bound engineering workflow", () => {
       .toBe("Pending");
   });
 
-  it("invalidates the prompt and pending approval when the ticket changes", async () => {
+  it("rejects ticket mutation while an implementation approval is pending", async () => {
     const awaiting = await prepareApproval();
     const edited = structuredClone(awaiting.specification!);
     edited.expectedBehavior += " Completion telemetry records the final row count.";
-    const result = await saveEngineeringSpecification(ORG_ID, primaryProblem.id, edited, actor);
-    expect(result.prompt?.status).toBe("Superseded");
-    expect(result.approval?.status).toBe("Superseded");
-    expect(result.specification?.implementationState).toBe("Draft specification");
+    await expect(saveEngineeringSpecification(ORG_ID, primaryProblem.id, edited, actor))
+      .rejects.toThrow("Reject or expire the pending implementation approval");
+    const unchanged = await getEngineeringWorkflow(ORG_ID, primaryProblem.id);
+    expect(unchanged.prompt?.status).toBe("Awaiting approval");
+    expect(unchanged.approval?.status).toBe("Pending");
+    expect(unchanged.specification?.expectedBehavior).toBe(awaiting.specification?.expectedBehavior);
   });
 
   it("keeps release evidence distinct from implementation tests", async () => {

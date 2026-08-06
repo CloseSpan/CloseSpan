@@ -625,14 +625,49 @@ export async function saveEngineeringSpecification(
   const draft = sanitizeEngineeringTicketDraft(input);
   if (workspacePersistenceMode(orgId) === "memory") {
     const current = memoryWorkflow(orgId, problemId);
+    if (current.approval?.status === "Pending") {
+      throw new EngineeringWorkflowError(
+        "Reject or expire the pending implementation approval before changing the engineering ticket.",
+        409,
+      );
+    }
+    if (current.run && ["Queued", "Running", "Tests passed"].includes(current.run.status)) {
+      throw new EngineeringWorkflowError(
+        "Wait for or cancel the active implementation run before changing the engineering ticket.",
+        409,
+      );
+    }
     current.specification = { ...draft, id: current.specification.id ?? randomUUID(), revision: (current.specification.revision ?? 0) + 1, implementationState: "Draft specification" };
     if (current.prompt) current.prompt.status = "Superseded";
-    if (current.verification) current.verification.status = "Superseded";
-    if (current.approval?.status === "Pending") current.approval.status = "Superseded";
+    if (current.verification && current.approval?.status !== "Approved") current.verification.status = "Superseded";
     return getEngineeringWorkflow(orgId, problemId);
   }
   await transaction(async (client) => {
     await assertProblem(client, orgId, problemId);
+    const pendingApproval = await client.query<{ id: string }>(
+      `SELECT id FROM approval_requests
+        WHERE org_id=$1 AND problem_id=$2 AND action_type='agent_run' AND status='Pending'
+        LIMIT 1 FOR UPDATE`,
+      [orgId, problemId],
+    );
+    if (pendingApproval.rowCount) {
+      throw new EngineeringWorkflowError(
+        "Reject or expire the pending implementation approval before changing the engineering ticket.",
+        409,
+      );
+    }
+    const activeRun = await client.query<{ id: string }>(
+      `SELECT id FROM agent_runs
+        WHERE org_id=$1 AND problem_id=$2 AND status IN ('Queued','Running','Tests passed')
+        LIMIT 1 FOR UPDATE`,
+      [orgId, problemId],
+    );
+    if (activeRun.rowCount) {
+      throw new EngineeringWorkflowError(
+        "Wait for or cancel the active implementation run before changing the engineering ticket.",
+        409,
+      );
+    }
     const existing = await client.query<{ id: string; revision: number }>(
       "SELECT id,revision FROM engineering_ticket_specifications WHERE org_id=$1 AND problem_id=$2 FOR UPDATE",
       [orgId, problemId],
@@ -680,9 +715,31 @@ export async function saveEngineeringSpecification(
       );
     }
     await client.query("UPDATE implementation_prompts SET status='Superseded' WHERE org_id=$1 AND problem_id=$2 AND status <> 'Superseded'", [orgId, problemId]);
-    await client.query("UPDATE pdd_prompt_verifications SET status='Superseded',completed_at=coalesce(completed_at,now()) WHERE org_id=$1 AND problem_id=$2 AND status NOT IN ('Failed','Superseded')", [orgId, problemId]);
-    await client.query("UPDATE approval_requests SET status='Superseded',updated_at=now() WHERE org_id=$1 AND problem_id=$2 AND action_type='agent_run' AND status='Pending'", [orgId, problemId]);
-    await audit(client, orgId, actor, `Saved engineering ticket specification revision ${revision}; prior pending prompt approvals were superseded`, "EngineeringTicket", problemId);
+    await client.query(
+      `UPDATE pdd_prompt_verifications verification
+          SET status='Superseded',
+              completed_at=CASE
+                WHEN verification.status IN ('Queued','Generating tests')
+                  THEN coalesce(verification.completed_at,now())
+                ELSE verification.completed_at
+              END
+        WHERE verification.org_id=$1 AND verification.problem_id=$2
+          AND verification.status NOT IN ('Failed','Superseded')
+          AND NOT EXISTS (
+            SELECT 1 FROM approval_requests approval
+             WHERE approval.org_id=verification.org_id
+               AND approval.pdd_verification_id=verification.id
+               AND approval.status IN ('Pending','Approved')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM agent_runs run
+             WHERE run.org_id=verification.org_id
+               AND run.pdd_verification_id=verification.id
+               AND run.status IN ('Queued','Running','Tests passed')
+          )`,
+      [orgId, problemId],
+    );
+    await audit(client, orgId, actor, `Saved engineering ticket specification revision ${revision}; unbound prompt and PDD drafts were superseded`, "EngineeringTicket", problemId);
   });
   return postgresWorkflow(orgId, problemId);
 }
@@ -1069,9 +1126,21 @@ export async function testUserStoryAgainstPrompt(
     });
     await transaction(async (client) => {
       await client.query(
-        `UPDATE pdd_prompt_verifications SET status='Superseded',completed_at=coalesce(completed_at,now())
-          WHERE org_id=$1 AND problem_id=$2 AND status IN ('Queued','Generating tests','Ready for approval')`,
-        [orgId, problemId],
+        `UPDATE pdd_prompt_verifications
+            SET status='Superseded',
+                completed_at=CASE
+                  WHEN status IN ('Queued','Generating tests') THEN coalesce(completed_at,now())
+                  ELSE completed_at
+                END
+          WHERE org_id=$1 AND problem_id=$2 AND prompt_revision_id=$3
+            AND status IN ('Queued','Generating tests','Ready for approval')
+            AND NOT EXISTS (
+              SELECT 1 FROM approval_requests approval
+               WHERE approval.org_id=pdd_prompt_verifications.org_id
+                 AND approval.pdd_verification_id=pdd_prompt_verifications.id
+                 AND approval.status IN ('Pending','Approved')
+            )`,
+        [orgId, problemId, prompt.id],
       );
       await client.query(
         `INSERT INTO pdd_prompt_verifications(
@@ -1315,21 +1384,21 @@ export async function requestImplementationApproval(
       `INSERT INTO approval_requests(
         id,org_id,problem_id,recommendation_id,action,reason,confidence,systems,data_shared,
         reversible,risk,status,action_type,prompt_revision_id,prompt_hash,repository,base_branch,
-        base_sha,allowed_capabilities,expires_at,execution_profile_id,execution_profile_hash,
-        execution_profile_snapshot
-      ) VALUES($1,$2,$3,$4,$5,$6,1,$7,$8,true,'Medium','Pending','agent_run',$9,$10,$11,$12,$13,$14,now()+interval '30 minutes',$15,$16,$17)`,
+        base_sha,allowed_capabilities,expires_at,pdd_verification_id,execution_profile_id,
+        execution_profile_hash,execution_profile_snapshot
+      ) VALUES($1,$2,$3,$4,$5,$6,1,$7,$8,true,'Medium','Pending','agent_run',$9,$10,$11,$12,$13,$14,now()+interval '30 minutes',$15,$16,$17,$18)`,
       [approvalId, orgId, row.problem_id, promptId,
         `Run one coding agent and open a draft PR in ${row.repository}`,
-        "The approval is bound to an immutable prompt, base commit, repository, expiry, and single execution.",
+        "The approval is bound to an immutable prompt, PDD acceptance contract, base commit, repository, expiry, and single execution.",
         JSON.stringify(["Tenki Sandbox", "GitHub"]),
-        JSON.stringify(["Approved prompt", "Redacted evidence", "Repository snapshot"]),
+        JSON.stringify(["Approved prompt", "PDD acceptance contract", "Redacted evidence", "Repository snapshot"]),
         promptId, row.content_hash, row.repository, row.base_branch, row.base_sha,
-        JSON.stringify(capabilities), executionProfileSnapshot.profileId,
+        JSON.stringify(capabilities), verificationRow.id, executionProfileSnapshot.profileId,
         executionProfileSnapshot.contentHash, JSON.stringify(executionProfileSnapshot)],
     );
     await client.query("UPDATE implementation_prompts SET status='Awaiting approval' WHERE org_id=$1 AND id=$2", [orgId, promptId]);
     await client.query("UPDATE engineering_ticket_specifications SET implementation_state='Awaiting approval',updated_at=now() WHERE org_id=$1 AND problem_id=$2", [orgId, row.problem_id]);
-    await audit(client, orgId, actor, `Requested one-run coding approval for prompt ${row.content_hash}`, "ApprovalRequest", approvalId);
+    await audit(client, orgId, actor, `Requested one-run coding approval for prompt ${row.content_hash} and PDD verification ${verificationRow.id}`, "ApprovalRequest", approvalId);
   });
   return postgresWorkflow(orgId, problemId);
 }
@@ -1367,10 +1436,11 @@ export async function approveImplementationRun(
       id: string; problem_id: string; status: EngineeringApprovalView["status"];
       expires_at: Date; prompt_revision_id: string; prompt_hash: string;
       repository: string; base_branch: string; base_sha: string;
+      pdd_verification_id: string | null;
       execution_profile_id: string | null; execution_profile_hash: string | null;
       execution_profile_snapshot: unknown;
     }>(`SELECT id,problem_id,status,expires_at,prompt_revision_id,prompt_hash,repository,base_branch,base_sha,
-                execution_profile_id,execution_profile_hash,execution_profile_snapshot
+                pdd_verification_id,execution_profile_id,execution_profile_hash,execution_profile_snapshot
           FROM approval_requests
          WHERE org_id=$1 AND id=$2 AND action_type='agent_run' FOR UPDATE`, [orgId, approvalId]);
     const row = approval.rows[0];
@@ -1397,18 +1467,36 @@ export async function approveImplementationRun(
       [orgId, row.repository],
     );
     if (!repository.rowCount) throw new EngineeringWorkflowError("The target repository is not allowlisted for agent execution", 409);
-    const verification = await client.query<{ id: string } & ExecutionProfileBindingRow>(
-      `SELECT id,execution_profile_id,execution_profile_hash,execution_profile_snapshot
-         FROM pdd_prompt_verifications
-        WHERE org_id=$1 AND prompt_revision_id=$2 AND prompt_hash=$3 AND status='Ready for approval'
-        ORDER BY completed_at DESC LIMIT 1 FOR UPDATE`,
-      [orgId, row.prompt_revision_id, row.prompt_hash],
-    );
+    const verification = row.pdd_verification_id
+      ? await client.query<{ id: string } & ExecutionProfileBindingRow>(
+          `SELECT id,execution_profile_id,execution_profile_hash,execution_profile_snapshot
+             FROM pdd_prompt_verifications
+            WHERE org_id=$1 AND id=$2 AND prompt_revision_id=$3 AND prompt_hash=$4
+              AND status='Ready for approval' FOR UPDATE`,
+          [orgId, row.pdd_verification_id, row.prompt_revision_id, row.prompt_hash],
+        )
+      : await client.query<{ id: string } & ExecutionProfileBindingRow>(
+          `SELECT id,execution_profile_id,execution_profile_hash,execution_profile_snapshot
+             FROM pdd_prompt_verifications
+            WHERE org_id=$1 AND prompt_revision_id=$2 AND prompt_hash=$3 AND status='Ready for approval'
+            ORDER BY completed_at DESC LIMIT 1 FOR UPDATE`,
+          [orgId, row.prompt_revision_id, row.prompt_hash],
+        );
     const verificationRow = verification.rows[0];
     if (!verificationRow) throw new EngineeringWorkflowError("The PDD acceptance contract is no longer ready", 409);
     const verificationProfile = validatedExecutionProfileBinding(verificationRow, "PDD verification");
     if (!sameExecutionProfileBinding(approvalProfile, verificationProfile)) {
       throw new EngineeringWorkflowError("The approval no longer matches the PDD execution profile", 409);
+    }
+    if (!row.pdd_verification_id) {
+      const bound = await client.query(
+        `UPDATE approval_requests SET pdd_verification_id=$3,updated_at=now()
+          WHERE org_id=$1 AND id=$2 AND pdd_verification_id IS NULL`,
+        [orgId, approvalId, verificationRow.id],
+      );
+      if (!bound.rowCount) {
+        throw new EngineeringWorkflowError("The approval's PDD acceptance contract changed before execution", 409);
+      }
     }
     const title = await client.query<{ title: string }>("SELECT title FROM product_problems WHERE org_id=$1 AND id=$2", [orgId, row.problem_id]);
     const runId = randomUUID();
@@ -1477,6 +1565,8 @@ export async function getAgentRunExecutionContext(
     prompt_hash: string; rendered_content: string; artifact_path: string;
     structured_snapshot: ImplementationPromptSnapshot; expires_at: Date; allowed_capabilities: string[];
     generated_tests: PddGeneratedTest[];
+    run_pdd_verification_id: string | null;
+    approval_pdd_verification_id: string | null;
     run_execution_profile_id: string | null; run_execution_profile_hash: string | null;
     run_execution_profile_snapshot: unknown;
     approval_execution_profile_id: string | null; approval_execution_profile_hash: string | null;
@@ -1487,6 +1577,8 @@ export async function getAgentRunExecutionContext(
              run.base_branch,run.base_sha,run.branch_name,run.prompt_revision_id,run.prompt_hash,
              prompt.rendered_content,prompt.artifact_path,prompt.structured_snapshot,
              approval.expires_at,approval.allowed_capabilities,verification.generated_tests,
+             run.pdd_verification_id AS run_pdd_verification_id,
+             approval.pdd_verification_id AS approval_pdd_verification_id,
              run.execution_profile_id AS run_execution_profile_id,
              run.execution_profile_hash AS run_execution_profile_hash,
              run.execution_profile_snapshot AS run_execution_profile_snapshot,
@@ -1500,12 +1592,22 @@ export async function getAgentRunExecutionContext(
         JOIN implementation_prompts prompt ON prompt.org_id=run.org_id AND prompt.id=run.prompt_revision_id
         JOIN approval_requests approval ON approval.org_id=run.org_id AND approval.id=run.approval_id
         JOIN pdd_prompt_verifications verification ON verification.org_id=run.org_id
-          AND verification.id=run.pdd_verification_id AND verification.status='Ready for approval'
+          AND verification.id=run.pdd_verification_id
         JOIN github_repository_allowlists allowlist ON allowlist.org_id=run.org_id
           AND allowlist.repository=run.repository AND allowlist.active=true
        WHERE run.org_id=$1 AND run.id=$2`, [orgId, runId]);
   const row = result.rows[0];
   if (!row) throw new EngineeringWorkflowError("Agent run or repository authorization was not found", 404);
+  if (
+    !row.run_pdd_verification_id
+    || !row.approval_pdd_verification_id
+    || row.run_pdd_verification_id !== row.approval_pdd_verification_id
+  ) {
+    throw new EngineeringWorkflowError(
+      "Agent run PDD verification no longer matches its approval-bound acceptance contract",
+      409,
+    );
+  }
   const executionProfileSnapshot = validatedExecutionProfileBinding({
     execution_profile_id: row.run_execution_profile_id,
     execution_profile_hash: row.run_execution_profile_hash,

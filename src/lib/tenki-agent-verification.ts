@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   TenkiSandbox,
@@ -85,6 +86,33 @@ function verificationWorkingDirectory(profile: ExecutionProfileConfig | null): s
   return !profile || profile.workingDirectory === "."
     ? WORKSPACE
     : `${WORKSPACE}/${profile.workingDirectory}`;
+}
+
+function assertPddArtifactsMatchApprovedRun(
+  context: AgentRunExecutionContext,
+  report: AgentImplementationReport,
+): void {
+  const changedFiles = new Map(report.changedFiles.map((file) => [file.path, file]));
+  for (const generatedTest of context.generatedTests ?? []) {
+    const approvedHash = createHash("sha256")
+      .update(generatedTest.content, "utf8")
+      .digest("hex");
+    const changed = changedFiles.get(generatedTest.path);
+    const changedContent = changed?.contentBase64 === null || changed?.contentBase64 === undefined
+      ? null
+      : Buffer.from(changed.contentBase64, "base64");
+    if (
+      approvedHash !== generatedTest.contentHash
+      || !changedContent
+      || !changedContent.equals(Buffer.from(generatedTest.content, "utf8"))
+      || !report.testFiles.includes(generatedTest.path)
+    ) {
+      throw new TenkiIndependentVerificationError(
+        "sandbox_failed",
+        `The immutable PDD acceptance test changed before independent verification: ${generatedTest.path}.`,
+      );
+    }
+  }
 }
 
 type VerificationSession = Pick<
@@ -283,6 +311,7 @@ export async function verifyAgentRunWithTenki(
   const now = dependencies.now ?? Date.now;
   const startedAt = now();
   const profile = verificationProfile(context);
+  assertPddArtifactsMatchApprovedRun(context, report);
   const sessionDurationMs = Math.min(profile?.maxDurationMs ?? SESSION_DURATION_MS, SESSION_DURATION_MS);
   let archive: Uint8Array;
   try {
@@ -406,6 +435,22 @@ export async function verifyAgentRunWithTenki(
         "sandbox_failed",
         "Tenki could not verify the approved prompt artifact byte-for-byte.",
       );
+    }
+    for (const generatedTest of context.generatedTests ?? []) {
+      const generatedTestHash = await session.exec("sha256sum", {
+        args: [generatedTest.path],
+        cwd: WORKSPACE,
+        timeoutMs: 10_000,
+      });
+      if (
+        !succeeded(generatedTestHash)
+        || !output(generatedTestHash).startsWith(generatedTest.contentHash)
+      ) {
+        throw new TenkiIndependentVerificationError(
+          "sandbox_failed",
+          `Tenki could not verify the immutable PDD acceptance test byte-for-byte: ${generatedTest.path}.`,
+        );
+      }
     }
 
     const tests: AgentImplementationReport["tests"] = [];
