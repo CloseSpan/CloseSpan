@@ -194,7 +194,7 @@ describe("Tenki runtime environment", () => {
     expect(run.mock.calls[2]?.[0][2]).toContain("setsid bash -c");
     expect(run.mock.calls[2]?.[0].slice(-2)).toEqual(["--", "npm run dev"]);
     expect(run.mock.calls[0]?.[1]).toMatchObject({ env: { APP_TOKEN: "token-value" } });
-    expect(exposePort).toHaveBeenCalledWith(3000, { ttlMs: 60_000, slug: "run-preview" });
+    expect(exposePort).toHaveBeenCalledWith(3000, { slug: "run-preview" });
     expect(environment.logs()).toContain("[REDACTED]");
     expect(environment.logs()).not.toContain("token-value");
 

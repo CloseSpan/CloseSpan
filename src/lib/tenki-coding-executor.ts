@@ -6,7 +6,6 @@ import {
   Runner,
   applyDiff,
   applyPatchTool,
-  shellTool,
   tool,
   type ApplyPatchResult,
   type Editor,
@@ -58,6 +57,7 @@ const RUN_DURATION_MS = 4 * 60_000;
 // independent verification, publication, callbacks, and cleanup.
 const AGENT_DURATION_MS = 2 * 60_000;
 const AGENT_MAX_TURNS = 24;
+const PRE_EDIT_TOOL_BUDGET = 8;
 const COMMAND_TIMEOUT_MS = 300_000;
 const OUTPUT_LIMIT = 20_000;
 const MAX_SHELL_OUTPUT_LIMIT = 30_000;
@@ -400,7 +400,7 @@ function tenkiExecutorAllowsPublishedPath(job: TenkiAgentJob, path: string): boo
 export function tenkiExecutorAllowsInspectionCommand(command: string): boolean {
   if (/[;&|`$><\n\r]/.test(command)) return false;
   if (/(?:^|\s)\//.test(command) || /(?:^|\s)\S*\.\.(?:\/|\s|$)/.test(command) || /(?:^|\s)--pre(?:=|\s|$)/.test(command)) return false;
-  return /^(pwd|ls(?:\s+[-A-Za-z0-9_./*]+)*|find\s+\.\s+-maxdepth\s+[1-6]\s+-type\s+[fd]|git\s+(?:status(?:\s+--short)?|diff(?:\s+--(?:stat|name-only))?|log\s+-n\s+[1-9][0-9]?|show\s+--stat)|cat\s+[A-Za-z0-9_./*-]+|sed\s+-n\s+[0-9,]+p\s+[A-Za-z0-9_./*-]+|rg(?:\s+[-A-Za-z0-9_./*:=]+){1,12})$/.test(command.trim());
+  return /^(pwd|ls(?:\s+[-A-Za-z0-9_./*]+)*|find\s+\.\s+(?:(?:-maxdepth\s+[1-6]\s+)?-type\s+[fd]|(?:-maxdepth\s+[1-6]\s+)?-name\s+AGENTS\.md\s+-print)|git\s+(?:status(?:\s+--short)?|diff(?:\s+--(?:stat|name-only|check))?|log\s+-n\s+[1-9][0-9]?|show\s+--stat)|cat\s+[A-Za-z0-9_./*-]+|sed\s+-n\s+[0-9,]+p\s+[A-Za-z0-9_./*-]+|rg(?:\s+[-A-Za-z0-9_./*:=]+){1,12})$/.test(command.trim());
 }
 
 interface CommandLog {
@@ -482,7 +482,13 @@ export class RestrictedShell implements Shell {
 }
 
 export class RestrictedEditor implements Editor {
+  private mutationCount = 0;
+
   constructor(private readonly session: Session, private readonly job: TenkiAgentJob) {}
+
+  get approvedMutationCount(): number {
+    return this.mutationCount;
+  }
 
   private resolve(path: string): string {
     const supplied = path.startsWith(`${REPOSITORY_ROOT}/`) ? path.slice(REPOSITORY_ROOT.length + 1) : path;
@@ -507,19 +513,26 @@ export class RestrictedEditor implements Editor {
     const target = this.resolve(operation.path);
     await this.prepareParent(target);
     await this.session.writeFile(target, applyDiff("", operation.diff, "create"));
+    this.mutationCount += 1;
     return { status: "completed", output: `Created ${operation.path}` };
   }
 
   async updateFile(operation: UpdateFileOperation): Promise<ApplyPatchResult> {
     const target = this.resolve(operation.path);
     const original = decode(await this.session.readFile(target));
-    await this.session.writeFile(target, applyDiff(original, operation.diff));
+    const updated = applyDiff(original, operation.diff);
+    if (updated === original) {
+      return { status: "completed", output: `No change required for ${operation.path}` };
+    }
+    await this.session.writeFile(target, updated);
+    this.mutationCount += 1;
     return { status: "completed", output: `Updated ${operation.path}` };
   }
 
   async deleteFile(operation: DeleteFileOperation): Promise<ApplyPatchResult> {
     const target = this.resolve(operation.path);
     await this.session.remove(target);
+    this.mutationCount += 1;
     return { status: "completed", output: `Deleted ${operation.path}` };
   }
 
@@ -528,13 +541,21 @@ export class RestrictedEditor implements Editor {
     if (bytes.byteLength > 1_000_000) throw new Error(`File content exceeds the editor limit: ${path}`);
     const target = this.resolve(path);
     await this.prepareParent(target);
+    try {
+      const existing = await this.session.readFile(target);
+      if (Buffer.from(existing).equals(Buffer.from(bytes))) return `No change required for ${path}`;
+    } catch {
+      // A missing approved file is expected when the agent creates new source.
+    }
     await this.session.writeFile(target, bytes);
+    this.mutationCount += 1;
     return `Wrote ${path}`;
   }
 
   async deleteApprovedFile(path: string): Promise<string> {
     const target = this.resolve(path);
     await this.session.remove(target);
+    this.mutationCount += 1;
     return `Deleted ${path}`;
   }
 }
@@ -643,11 +664,28 @@ async function defaultRunAgent(input: {
     workflowName: "CloseSpan approval-bound implementation",
   });
   let toolCalls = 0;
-  runner.on("agent_tool_start", () => {
+  const toolNames: string[] = [];
+  const progressController = new AbortController();
+  let preEditBudgetExceeded = false;
+  runner.on("agent_tool_start", (_context, _agent, selectedTool) => {
     toolCalls += 1;
+    toolNames.push(selectedTool.name);
+    if (toolNames.length > AGENT_MAX_TURNS) toolNames.shift();
   });
+  runner.on("agent_tool_end", () => {
+    if (
+      toolCalls >= PRE_EDIT_TOOL_BUDGET
+      && input.editor.approvedMutationCount === 0
+      && !progressController.signal.aborted
+    ) {
+      preEditBudgetExceeded = true;
+      progressController.abort();
+    }
+  });
+  const agentSignal = AbortSignal.any([input.signal, progressController.signal]);
   const recoverBoundedProgress = async (error: unknown): Promise<AgentOutput> => {
     const bounded = input.signal.aborted
+      || progressController.signal.aborted
       || error instanceof MaxTurnsExceededError
       || (error instanceof Error && error.message === "Request was aborted.");
     if (!bounded) throw error;
@@ -660,8 +698,19 @@ async function defaultRunAgent(input: {
       toolCalls,
     );
     if (recovered) return recovered;
+    const recentTools = toolNames.slice(-8).join(",") || "none";
+    const recentCommands = input.shell.results
+      .slice(-5)
+      .map((entry) => entry.command.replace(/\s+/g, " ").slice(0, 120))
+      .join(" | ") || "none";
+    if (preEditBudgetExceeded) {
+      throw new Error(
+        `Coding agent reached the ${PRE_EDIT_TOOL_BUDGET}-call pre-edit budget without changing an approved implementation path; recent tools: ${recentTools}; recent commands: ${recentCommands}`,
+        { cause: error },
+      );
+    }
     throw new Error(
-      `Coding agent exhausted its bounded tool loop after ${toolCalls} tool call(s) without changing an approved implementation path`,
+      `Coding agent exhausted its bounded tool loop after ${toolCalls} tool call(s) without changing an approved implementation path; recent tools: ${recentTools}; recent commands: ${recentCommands}`,
       { cause: error },
     );
   };
@@ -671,8 +720,10 @@ async function defaultRunAgent(input: {
     "When editing, use repository-relative paths even when commands run from a nested workspace directory.",
     "Do not change the approved prompt, workflow files, deployments, production systems, or files outside the permitted paths.",
     input.ai.provider === "OpenAI"
-      ? "Use apply_patch for all code changes. Shell access is limited to inspection and explicitly approved validation commands."
+      ? "Use apply_patch or the approved text-file tools for code changes. Command access is limited to inspection and explicitly approved validation commands."
       : "Use the approved text-file tools for code changes. Command access is limited to inspection and explicitly approved validation commands.",
+    "Pass each inspection or validation command as a separate commands-array item. Shell operators, cd, absolute paths, parent traversal, and compound commands are prohibited; the executor already sets the approved working directory.",
+    "Use no more than six read-only inspection calls before making the first approved source change. If the ticket is small and the target is clear, edit immediately, then validate.",
     "Do not stop after describing your plan. Inspect the repository, make the approved code and test changes, and run the approved validation commands before finishing.",
     input.runtime
       ? input.restartAllowed === false
@@ -779,26 +830,30 @@ async function defaultRunAgent(input: {
     }));
   }
 
+  const approvedCommandTool = tool({
+    name: "run_approved_commands",
+    description: "Run repository inspection commands or exact approved validation commands in the isolated workspace. Put each command in a separate array item; never use shell operators or cd.",
+    parameters: z.object({ commands: z.array(z.string().min(1).max(500)).min(1).max(6) }).strict(),
+    execute: async ({ commands }) => JSON.stringify(await input.shell.run({ commands })),
+  });
+  const approvedWriteTool = tool({
+    name: "write_approved_text_file",
+    description: "Create or completely replace one UTF-8 text file inside the ticket's approved paths.",
+    parameters: z.object({ path: z.string().min(1).max(500), content: z.string().max(500_000) }).strict(),
+    execute: async ({ path, content }) => input.editor.writeApprovedTextFile(path, content),
+  });
+  const approvedDeleteTool = tool({
+    name: "delete_approved_file",
+    description: "Delete one file inside the ticket's approved paths.",
+    parameters: z.object({ path: z.string().min(1).max(500) }).strict(),
+    execute: async ({ path }) => input.editor.deleteApprovedFile(path),
+  });
+
   if (input.ai.provider === "xAI") {
     const compatibleTools = [
-      tool({
-        name: "run_approved_commands",
-        description: "Run one or more repository inspection commands or exact approved validation commands in the isolated workspace.",
-        parameters: z.object({ commands: z.array(z.string().min(1).max(500)).min(1).max(6) }).strict(),
-        execute: async ({ commands }) => JSON.stringify(await input.shell.run({ commands })),
-      }),
-      tool({
-        name: "write_approved_text_file",
-        description: "Create or completely replace one UTF-8 text file inside the ticket's approved paths.",
-        parameters: z.object({ path: z.string().min(1).max(500), content: z.string().max(500_000) }).strict(),
-        execute: async ({ path, content }) => input.editor.writeApprovedTextFile(path, content),
-      }),
-      tool({
-        name: "delete_approved_file",
-        description: "Delete one file inside the ticket's approved paths.",
-        parameters: z.object({ path: z.string().min(1).max(500) }).strict(),
-        execute: async ({ path }) => input.editor.deleteApprovedFile(path),
-      }),
+      approvedCommandTool,
+      approvedWriteTool,
+      approvedDeleteTool,
       ...liveTools,
     ];
     const implementationAgent = new Agent({
@@ -815,7 +870,7 @@ async function defaultRunAgent(input: {
         const feedback = attempt === 0
           ? input.job.promptContent
           : `${input.job.promptContent}\n\nExecutor feedback: no repository files have changed yet. Continue now by using the approved write tool to implement the ticket and its automated test.`;
-        await runner.run(implementationAgent, feedback, { maxTurns: AGENT_MAX_TURNS, signal: input.signal });
+        await runner.run(implementationAgent, feedback, { maxTurns: AGENT_MAX_TURNS, signal: agentSignal });
         changedPaths = (await input.shell.changedPaths())
           .filter((path) => tenkiExecutorAllowsPath(input.job, path));
       }
@@ -845,8 +900,10 @@ async function defaultRunAgent(input: {
     model: input.ai.model,
     instructions,
     tools: [
-      shellTool({ shell: input.shell, needsApproval: false }),
+      approvedCommandTool,
       applyPatchTool({ editor: input.editor, needsApproval: false }),
+      approvedWriteTool,
+      approvedDeleteTool,
       ...liveTools,
     ],
     outputType: agentOutputSchema,
@@ -856,9 +913,14 @@ async function defaultRunAgent(input: {
   try {
     const result = await runner.run(agent, input.job.promptContent, {
       maxTurns: AGENT_MAX_TURNS,
-      signal: input.signal,
+      signal: agentSignal,
     });
     if (!result.finalOutput) throw new Error("Coding agent did not return an implementation report");
+    const implementationPaths = (await input.shell.changedPaths())
+      .filter((path) => tenkiExecutorAllowsPath(input.job, path));
+    if (implementationPaths.length === 0) {
+      throw new Error("Coding agent completed without changing an approved implementation path");
+    }
     return agentOutputSchema.parse(result.finalOutput);
   } catch (error) {
     return recoverBoundedProgress(error);

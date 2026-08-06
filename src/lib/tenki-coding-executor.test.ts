@@ -236,8 +236,12 @@ describe("Tenki coding executor approval boundary", () => {
   it("allows bounded repository inspection and rejects command composition or network tools", () => {
     expect(tenkiExecutorAllowsInspectionCommand("git status --short")).toBe(true);
     expect(tenkiExecutorAllowsInspectionCommand("rg -n export src")).toBe(true);
+    expect(tenkiExecutorAllowsInspectionCommand("git diff --check")).toBe(true);
+    expect(tenkiExecutorAllowsInspectionCommand("find . -name AGENTS.md -print")).toBe(true);
     expect(tenkiExecutorAllowsInspectionCommand("curl https://example.com")).toBe(false);
     expect(tenkiExecutorAllowsInspectionCommand("git status && rm -rf .")).toBe(false);
+    expect(tenkiExecutorAllowsInspectionCommand("pwd && ls -la")).toBe(false);
+    expect(tenkiExecutorAllowsInspectionCommand("find .. -name AGENTS.md -print")).toBe(false);
     expect(tenkiExecutorAllowsInspectionCommand("cat /etc/passwd")).toBe(false);
   });
 
@@ -420,13 +424,20 @@ describe("Tenki coding executor approval boundary", () => {
     const session = {
       exec: vi.fn().mockResolvedValue({ status: "SUCCEEDED", exitCode: 0, stdout: new Uint8Array(), stderr: new Uint8Array() }),
       writeFile: vi.fn().mockResolvedValue(undefined),
+      readFile: vi.fn()
+        .mockRejectedValueOnce(new Error("not found"))
+        .mockResolvedValue(new TextEncoder().encode("export const ok = true;\n")),
     };
     const editor = new RestrictedEditor(session as never, parsed);
     await editor.writeApprovedTextFile("src/export.ts", "export const ok = true;\n");
+    expect(editor.approvedMutationCount).toBe(1);
     expect(session.writeFile).toHaveBeenCalledWith(
       "/home/tenki/repo/apps/web/src/export.ts",
       expect.any(Uint8Array),
     );
+    await editor.writeApprovedTextFile("src/export.ts", "export const ok = true;\n");
+    expect(editor.approvedMutationCount).toBe(1);
+    expect(session.writeFile).toHaveBeenCalledTimes(1);
     await expect(editor.writeApprovedTextFile("../outside.ts", "nope\n"))
       .rejects.toThrow("outside the approved paths");
   });

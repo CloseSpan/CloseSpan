@@ -879,8 +879,12 @@ export class TenkiRuntimeEnvironment {
     if (!this.config.preview.allowed) return;
     this.assertRuntimeConfigured();
     this.exposedPort = await this.session.exposePort(this.port!, {
-      ttlMs: this.config.preview.ttlMs,
-      ...(this.config.preview.slug ? { slug: this.config.preview.slug } : {}),
+      // Tenki rejects an explicit expires_at/ttl when a stable slug is used.
+      // Slugged previews remain bounded by the VM lease and are explicitly
+      // unexposed during every normal restart and cleanup path.
+      ...(this.config.preview.slug
+        ? { slug: this.config.preview.slug }
+        : { ttlMs: this.config.preview.ttlMs }),
     });
   }
 
