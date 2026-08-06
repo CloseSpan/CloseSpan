@@ -1,6 +1,6 @@
 # CloseSpan PDD runner
 
-This service pins `pdd-cli==0.0.306` and uses PDD local/manual test generation.
+This service pins `pdd-cli==0.0.309` and uses PDD local/manual test generation.
 It downloads a short-lived GitHub archive, writes the signed CloseSpan prompt,
 and invokes:
 

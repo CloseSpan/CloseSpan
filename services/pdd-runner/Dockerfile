@@ -1,6 +1,6 @@
 FROM python:3.12.11-slim
 
-ARG PDD_CLI_VERSION=0.0.306
+ARG PDD_CLI_VERSION=0.0.309
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates \
   && rm -rf /var/lib/apt/lists/* \

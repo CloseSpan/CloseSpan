@@ -8,7 +8,7 @@ const runnerSource = path.join(projectRoot, "services/pdd-runner/server.py");
 const stateDirectory = path.join(projectRoot, ".tenki");
 const statePath = path.join(stateDirectory, "pdd-runner.json");
 const port = 8080;
-const pddVersion = "0.0.306";
+const pddVersion = "0.0.309";
 
 function required(name) {
   const value = process.env[name]?.trim();

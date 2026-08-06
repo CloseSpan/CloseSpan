@@ -47,7 +47,7 @@ def job():
         "promptId": "33333333-3333-4333-8333-333333333333",
         "promptHash": "b" * 64,
         "pddPrompt": "Generate a test.",
-        "pddVersion": "0.0.306",
+        "pddVersion": "0.0.309",
         "executionProfileId": profile_id,
         "executionProfileHash": content_hash,
         "executionProfileSnapshot": {

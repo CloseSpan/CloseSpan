@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ImplementationPromptSnapshot } from "./engineering-prompt";
 
-export const PDD_CLI_VERSION = "0.0.306";
+export const PDD_CLI_VERSION = "0.0.309";
 
 export const pddVerificationStatuses = [
   "Queued",
