@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProcessRunHandle, ProcessRunResult } from "@tenkicloud/sandbox";
 import {
   RestrictedShell,
+  TENKI_RUNTIME_GIT_EXCLUDES,
   RestrictedEditor,
   assertRuntimeSecretPublicationSafe,
   assertTenkiExecutionProfileBinding,
@@ -175,6 +176,20 @@ describe("Tenki coding executor approval boundary", () => {
     expect(boundedAgentProgressOutput(parsed, [
       "apps/web/tests/acceptance.pdd.test.ts",
     ], "OpenAI", "gpt-5.6-terra", 12)).toBeNull();
+  });
+
+  it("keeps generated runtime dependencies and build artifacts out of publication diffs", () => {
+    expect(TENKI_RUNTIME_GIT_EXCLUDES).toEqual(expect.arrayContaining([
+      "node_modules/",
+      ".next/",
+      "dist/",
+      "build/",
+      ".venv/",
+      "target/",
+      ".closespan/",
+    ]));
+    expect(TENKI_RUNTIME_GIT_EXCLUDES).not.toContain("src/");
+    expect(TENKI_RUNTIME_GIT_EXCLUDES).not.toContain("tests/");
   });
 
   it("uses the configured OpenAI-compatible xAI provider when OpenAI is absent", () => {

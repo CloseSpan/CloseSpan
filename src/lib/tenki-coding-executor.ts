@@ -62,6 +62,26 @@ const COMMAND_TIMEOUT_MS = 300_000;
 const OUTPUT_LIMIT = 20_000;
 const MAX_SHELL_OUTPUT_LIMIT = 30_000;
 
+export const TENKI_RUNTIME_GIT_EXCLUDES = [
+  ".closespan/",
+  ".cache/",
+  ".next/",
+  ".turbo/",
+  ".venv/",
+  ".gradle/",
+  ".pytest_cache/",
+  ".mypy_cache/",
+  ".ruff_cache/",
+  "__pycache__/",
+  "node_modules/",
+  "coverage/",
+  "dist/",
+  "build/",
+  "target/",
+  "venv/",
+  "*.log",
+] as const;
+
 const criterionSchema = z.object({
   id: z.string().regex(/^AC-[1-9][0-9]*$/),
   scenarioIds: z.array(z.string().regex(/^TEST-[1-9][0-9]*$/)).max(50),
@@ -1040,6 +1060,16 @@ export async function executeTenkiCodingJob(
     await requireCommand(session, "git", { args: ["config", "user.email", "agent@closespan.com"], cwd: REPOSITORY_ROOT, timeoutMs: 10_000 }, "Could not configure the isolated repository");
     await requireCommand(session, "git", { args: ["add", "-A"], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Could not capture the approved base snapshot");
     await requireCommand(session, "git", { args: ["commit", "-q", "-m", "approved-base"], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Could not capture the approved base snapshot");
+    // Automatic install/build/start commands may create large dependency and
+    // compiler artifacts after the approved base commit. Keep those available
+    // inside the VM while preventing them from entering Git diff discovery or
+    // the publication payload. Existing tracked files are never hidden by
+    // .git/info/exclude, so deliberate changes to repository source remain
+    // visible and subject to the normal permitted-path boundary.
+    await session.writeFile(
+      `${REPOSITORY_ROOT}/.git/info/exclude`,
+      new TextEncoder().encode(`${TENKI_RUNTIME_GIT_EXCLUDES.join("\n")}\n`),
+    );
 
     for (const generatedTest of job.generatedTests ?? []) {
       if (await sha256(generatedTest.content) !== generatedTest.contentHash)
