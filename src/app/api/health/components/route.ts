@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getEnvironmentAiHealthConfiguration } from "@/lib/ai-config";
 import { getPipedreamClient, pipedreamConfigured } from "@/lib/pipedream";
+import { probePddRunner } from "@/lib/pdd-runner-client";
 import { validStatusProbe } from "@/lib/status-probe-auth";
 
 export const runtime = "nodejs";
@@ -31,15 +32,22 @@ async function aiCanary(): Promise<boolean> {
   return response.ok;
 }
 
+async function componentCanary(component: string): Promise<boolean> {
+  if (component === "integrations") return integrationCanary();
+  if (component === "ai") return aiCanary();
+  if (component === "pdd") return probePddRunner();
+  return false;
+}
+
 export async function GET(request: NextRequest) {
   if (!await validStatusProbe(request))
     return NextResponse.json({ error: "Not found" }, { status: 404, headers: responseHeaders });
   const component = request.nextUrl.searchParams.get("component");
-  if (component !== "integrations" && component !== "ai")
+  if (component !== "integrations" && component !== "ai" && component !== "pdd")
     return NextResponse.json({ error: "Unknown component" }, { status: 400, headers: responseHeaders });
   const checkedAt = new Date().toISOString();
   try {
-    const healthy = component === "integrations" ? await integrationCanary() : await aiCanary();
+    const healthy = await componentCanary(component);
     return NextResponse.json({ status: healthy ? "ok" : "degraded", component, checkedAt }, {
       status: healthy ? 200 : 503,
       headers: responseHeaders,

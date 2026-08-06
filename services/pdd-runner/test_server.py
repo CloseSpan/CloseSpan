@@ -365,11 +365,17 @@ class PddVersionDetectionTest(unittest.TestCase):
                 "status": "ok",
                 "pddVersion": "0.0.309",
                 "executionProfileSchemaVersions": [1, 2],
+                "activeJobs": 0,
+                "queuedJobs": 0,
+                "runConcurrency": server.RUN_CONCURRENCY,
+                "maxQueuedJobs": server.MAX_QUEUED_JOBS,
             })
 
 
 class PddHandlerV2ValidationTest(unittest.TestCase):
     def setUp(self):
+        server.ACTIVE_JOBS = 0
+        server.QUEUED_JOBS = 0
         self.secret = b"handler-test-secret"
         self.shared_secret = mock.patch.object(server, "SHARED_SECRET", self.secret)
         self.callback = mock.patch.object(
@@ -383,6 +389,8 @@ class PddHandlerV2ValidationTest(unittest.TestCase):
         self.execute_mock = self.execute.start()
 
     def tearDown(self):
+        server.ACTIVE_JOBS = 0
+        server.QUEUED_JOBS = 0
         self.execute.stop()
         self.version.stop()
         self.callback.stop()
@@ -443,6 +451,17 @@ class PddHandlerV2ValidationTest(unittest.TestCase):
             "verificationId": payload["verificationId"],
         })
         self.execute_mock.assert_called_once_with(payload)
+
+    def test_queue_capacity_is_bounded(self):
+        payload = job(profile_config_v2())
+        server.ACTIVE_JOBS = server.RUN_CONCURRENCY
+        try:
+            with mock.patch.object(server, "MAX_QUEUED_JOBS", 0):
+                status, _ = self.post(payload)
+            self.assertEqual(status, 429)
+            self.assertEqual(server.QUEUED_JOBS, 0)
+        finally:
+            server.ACTIVE_JOBS = 0
 
     def test_signed_invalid_v2_post_is_rejected_before_execution(self):
         payload = job(profile_config_v2())

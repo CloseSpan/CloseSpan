@@ -1,0 +1,49 @@
+name: PDD runner rotation
+
+on:
+  schedule:
+    # Run away from the top of the hour to avoid common Actions traffic spikes.
+    - cron: "23 11 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Replace the healthy runner even when its maximum age has not elapsed
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pdd-runner-production-rotation
+  cancel-in-progress: false
+
+jobs:
+  rotate:
+    name: Check and rotate production runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PDD_MODEL: gpt-5.4
+      PDD_RUNNER_CONCURRENCY: "2"
+      PDD_RUNNER_STABLE_SLUG: closespan-pdd-production
+      PDD_RUNNER_ROTATION_MAX_AGE_DAYS: "21"
+      PDD_RUNNER_DRAIN_MS: "300000"
+      PDD_RUNNER_FORCE_ROTATION: ${{ github.event_name == 'workflow_dispatch' && inputs.force && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check and rotate the Tenki runner
+        env:
+          TENKI_API_KEY: ${{ secrets.TENKI_API_KEY }}
+          PDD_RUNNER_SHARED_SECRET: ${{ secrets.PDD_RUNNER_SHARED_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLOSESPAN_CALLBACK_ORIGIN: ${{ secrets.CLOSESPAN_CALLBACK_ORIGIN }}
+          CLOSESPAN_INTERNAL_BASE_URL: ${{ secrets.CLOSESPAN_INTERNAL_BASE_URL }}
+          STATUS_PROBE_SECRET: ${{ secrets.STATUS_PROBE_SECRET }}
+        run: npm run pdd:runner:rotate

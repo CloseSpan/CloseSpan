@@ -29,7 +29,14 @@ MAX_ARCHIVE_BYTES = 50_000_000
 MAX_OUTPUT_BYTES = 750_000
 RUN_TIMEOUT_SECONDS = 240
 PDD_VERSION_TIMEOUT_SECONDS = 60
-RUN_SLOTS = threading.BoundedSemaphore(int(os.getenv("PDD_RUNNER_CONCURRENCY", "2")))
+RUN_CONCURRENCY = int(os.getenv("PDD_RUNNER_CONCURRENCY", "2"))
+MAX_QUEUED_JOBS = int(os.getenv("PDD_RUNNER_MAX_QUEUED_JOBS", str(RUN_CONCURRENCY * 4)))
+if RUN_CONCURRENCY <= 0 or MAX_QUEUED_JOBS < 0:
+    raise ValueError("PDD runner concurrency and queue limits must be non-negative")
+RUN_SLOTS = threading.BoundedSemaphore(RUN_CONCURRENCY)
+JOB_STATE_LOCK = threading.Lock()
+ACTIVE_JOBS = 0
+QUEUED_JOBS = 0
 SHARED_SECRET = os.environ.get("PDD_RUNNER_SHARED_SECRET", "").encode()
 PDD_MODEL = os.environ.get("PDD_MODEL", "").strip()
 CALLBACK_ORIGIN = os.environ.get("CLOSESPAN_CALLBACK_ORIGIN", "").strip().rstrip("/")
@@ -128,11 +135,46 @@ def detect_pdd_cli_version() -> str:
 
 def health_payload() -> dict:
     configured = bool(SHARED_SECRET and CALLBACK_ORIGIN and PDD_CLI_VERSION)
+    with JOB_STATE_LOCK:
+        active_jobs = ACTIVE_JOBS
+        queued_jobs = QUEUED_JOBS
     return {
         "status": "ok" if configured else "not_configured",
         "pddVersion": PDD_CLI_VERSION,
         "executionProfileSchemaVersions": [1, 2],
+        "activeJobs": active_jobs,
+        "queuedJobs": queued_jobs,
+        "runConcurrency": RUN_CONCURRENCY,
+        "maxQueuedJobs": MAX_QUEUED_JOBS,
     }
+
+
+def reserve_job() -> bool:
+    global QUEUED_JOBS
+    with JOB_STATE_LOCK:
+        if ACTIVE_JOBS + QUEUED_JOBS >= RUN_CONCURRENCY + MAX_QUEUED_JOBS:
+            return False
+        QUEUED_JOBS += 1
+        return True
+
+
+def cancel_reserved_job() -> None:
+    global QUEUED_JOBS
+    with JOB_STATE_LOCK:
+        QUEUED_JOBS = max(0, QUEUED_JOBS - 1)
+
+
+def begin_reserved_job() -> None:
+    global ACTIVE_JOBS, QUEUED_JOBS
+    with JOB_STATE_LOCK:
+        QUEUED_JOBS = max(0, QUEUED_JOBS - 1)
+        ACTIVE_JOBS += 1
+
+
+def finish_job() -> None:
+    global ACTIVE_JOBS
+    with JOB_STATE_LOCK:
+        ACTIVE_JOBS = max(0, ACTIVE_JOBS - 1)
 
 
 def safe_relative_path(value: object, label: str) -> str:
@@ -621,7 +663,7 @@ def execute(job: dict) -> None:
         "failureMessage": "PDD runner failed before producing a safe test artifact.",
     }
     try:
-        with RUN_SLOTS, tempfile.TemporaryDirectory(prefix="closespan-pdd-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="closespan-pdd-") as temporary:
             root = pathlib.Path(temporary)
             extract_archive(download_archive(job["repositoryArchiveUrl"]), root)
             target, language, output = choose_target(root, job.get("suspectedFiles", []))
@@ -678,6 +720,15 @@ def execute(job: dict) -> None:
     callback(job, result)
 
 
+def execute_reserved(job: dict) -> None:
+    with RUN_SLOTS:
+        begin_reserved_job()
+        try:
+            execute(job)
+        finally:
+            finish_job()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "CloseSpanPDD/1"
 
@@ -709,7 +760,16 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             self.send_error(400)
             return
-        threading.Thread(target=execute, args=(job,), daemon=True).start()
+        if not reserve_job():
+            self.send_response(429)
+            self.send_header("retry-after", "10")
+            self.end_headers()
+            return
+        try:
+            threading.Thread(target=execute_reserved, args=(job,), daemon=True).start()
+        except Exception:
+            cancel_reserved_job()
+            raise
         payload = json.dumps({"accepted": True, "verificationId": job["verificationId"]}).encode()
         self.send_response(202)
         self.send_header("content-type", "application/json")
