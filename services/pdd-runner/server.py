@@ -28,6 +28,7 @@ MAX_JOB_BYTES = 1_000_000
 MAX_ARCHIVE_BYTES = 50_000_000
 MAX_OUTPUT_BYTES = 750_000
 RUN_TIMEOUT_SECONDS = 240
+PDD_VERSION_TIMEOUT_SECONDS = 60
 RUN_SLOTS = threading.BoundedSemaphore(int(os.getenv("PDD_RUNNER_CONCURRENCY", "2")))
 SHARED_SECRET = os.environ.get("PDD_RUNNER_SHARED_SECRET", "").encode()
 PDD_MODEL = os.environ.get("PDD_MODEL", "").strip()
@@ -110,7 +111,7 @@ def detect_pdd_cli_version() -> str:
     try:
         process = subprocess.run(
             ["pdd", "--version"], capture_output=True, text=True,
-            timeout=10, check=False,
+            timeout=PDD_VERSION_TIMEOUT_SECONDS, check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise RuntimeError("Could not execute pdd --version") from error

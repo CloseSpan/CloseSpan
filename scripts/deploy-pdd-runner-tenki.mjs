@@ -9,6 +9,7 @@ const stateDirectory = path.join(projectRoot, ".tenki");
 const statePath = path.join(stateDirectory, "pdd-runner.json");
 const port = 8080;
 const pddVersion = "0.0.309";
+const runnerHealthAttempts = 90;
 
 function required(name) {
   const value = process.env[name]?.trim();
@@ -119,7 +120,9 @@ try {
     throw new Error(`PDD runner did not start: ${decoded(launch).slice(-4_000)}`);
 
   let healthy = false;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  // A clean PDD virtual environment may spend tens of seconds initializing
+  // `pdd --version` before the HTTP server binds its port.
+  for (let attempt = 0; attempt < runnerHealthAttempts; attempt += 1) {
     const health = await session.exec("/home/tenki/pdd-runner-venv/bin/python", {
       args: ["-c", `import urllib.request; urllib.request.urlopen('http://127.0.0.1:${port}/health', timeout=2).read()`],
       timeoutMs: 5_000,

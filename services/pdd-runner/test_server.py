@@ -323,7 +323,7 @@ class PddVersionDetectionTest(unittest.TestCase):
             self.assertEqual(server.detect_pdd_cli_version(), "0.0.309")
         run.assert_called_once_with(
             ["pdd", "--version"], capture_output=True, text=True,
-            timeout=10, check=False,
+            timeout=server.PDD_VERSION_TIMEOUT_SECONDS, check=False,
         )
 
     def test_accepts_version_output_written_to_stderr(self):
@@ -342,7 +342,11 @@ class PddVersionDetectionTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "exactly one semantic version"):
                 server.detect_pdd_cli_version()
 
-        with mock.patch.object(server.subprocess, "run", side_effect=TimeoutExpired("pdd", 10)):
+        with mock.patch.object(
+            server.subprocess,
+            "run",
+            side_effect=TimeoutExpired("pdd", server.PDD_VERSION_TIMEOUT_SECONDS),
+        ):
             with self.assertRaisesRegex(RuntimeError, "Could not execute"):
                 server.detect_pdd_cli_version()
 
