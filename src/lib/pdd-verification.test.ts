@@ -68,4 +68,55 @@ describe("PDD acceptance verification", () => {
       failureMessage: null,
     }, snapshot)).toThrow("was not approved");
   });
+
+  it("requires non-unit user-story tests to target the VM-local running app", () => {
+    const liveSnapshot: ImplementationPromptSnapshot = {
+      ...snapshot,
+      ticket: {
+        ...snapshot.ticket,
+        testScenarios: snapshot.ticket.testScenarios.map((scenario) => ({
+          ...scenario,
+          testLevel: "end-to-end" as const,
+        })),
+        requiredTestLevels: ["end-to-end"],
+      },
+    };
+    const noOp = "test('claims to be live', () => {})";
+    expect(() => validateGeneratedTests({
+      schemaVersion: 1,
+      verificationId: "11111111-1111-4111-8111-111111111111",
+      promptHash: "b".repeat(64),
+      status: "Ready for approval",
+      pddVersion: PDD_CLI_VERSION,
+      model: null,
+      costUsd: null,
+      summary: "Generated.",
+      generatedTests: [{
+        path: "tests/export.pdd.test.ts",
+        content: noOp,
+        contentHash: sha256(noOp),
+        command: "npm test",
+      }],
+      failureMessage: null,
+    }, liveSnapshot)).toThrow("CLOSESPAN_APP_URL");
+
+    const live = "test('uses the app', async () => { await fetch(process.env.CLOSESPAN_APP_URL + '/exports') })";
+    expect(validateGeneratedTests({
+      schemaVersion: 1,
+      verificationId: "11111111-1111-4111-8111-111111111111",
+      promptHash: "b".repeat(64),
+      status: "Ready for approval",
+      pddVersion: PDD_CLI_VERSION,
+      model: null,
+      costUsd: null,
+      summary: "Generated.",
+      generatedTests: [{
+        path: "tests/export.pdd.test.ts",
+        content: live,
+        contentHash: sha256(live),
+        command: "npm test",
+      }],
+      failureMessage: null,
+    }, liveSnapshot).generatedTests[0]?.content).toContain("CLOSESPAN_APP_URL");
+  });
 });

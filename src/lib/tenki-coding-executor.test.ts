@@ -1,17 +1,65 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ProcessRunHandle, ProcessRunResult } from "@tenkicloud/sandbox";
 import {
   RestrictedShell,
   RestrictedEditor,
+  assertRuntimeSecretPublicationSafe,
   assertTenkiExecutionProfileBinding,
   resolveExecutorAiConfiguration,
+  runtimeToolsForAgent,
   tenkiSandboxCreateOptions,
   tenkiAgentJobSchema,
   tenkiExecutorAllowsInspectionCommand,
   tenkiExecutorAllowsPath,
+  tenkiRuntimeEnvironmentForProfile,
 } from "./tenki-coding-executor";
-import { hashExecutionProfileConfig } from "./execution-profile";
+import {
+  hashExecutionProfileConfig,
+  upgradeExecutionProfileConfigV2,
+} from "./execution-profile";
+import { createRuntimeSecretRedactor } from "./runtime-secret-redaction";
 
 afterEach(() => vi.unstubAllEnvs());
+
+describe("runtime secret publication boundary", () => {
+  it("rejects transformed secret content and secret-derived paths", () => {
+    const secret = "private-runtime-credential";
+    const redactor = createRuntimeSecretRedactor([secret]);
+    expect(() => assertRuntimeSecretPublicationSafe(
+      `artifacts/${Buffer.from(secret).toString("hex")}.txt`,
+      "safe content",
+      redactor,
+    )).toThrow("path derived from a resolved runtime secret");
+    expect(() => assertRuntimeSecretPublicationSafe(
+      "artifacts/result.txt",
+      Buffer.from(secret).toString("hex"),
+      redactor,
+    )).toThrow("resolved runtime secret or encoded secret");
+    expect(() => assertRuntimeSecretPublicationSafe(
+      "artifacts/result.txt",
+      "safe content",
+      redactor,
+    )).not.toThrow();
+  });
+});
+
+function hostRunHandle(overrides: Partial<ProcessRunResult> = {}): ProcessRunHandle {
+  const completion = Promise.resolve<ProcessRunResult>({
+    exitCode: 0,
+    stdout: new Uint8Array(),
+    stderr: new Uint8Array(),
+    ...overrides,
+  });
+  return {
+    pid: Promise.resolve(1),
+    stdout: new ReadableStream<Uint8Array>(),
+    stderr: new ReadableStream<Uint8Array>(),
+    stdin: new WritableStream<Uint8Array>(),
+    signal: vi.fn(async () => undefined),
+    kill: vi.fn(async () => undefined),
+    then: completion.then.bind(completion),
+  };
+}
 
 const policy = {
   promptArtifactPath: ".prompt/tickets/CS-142-export.prompt.md",
@@ -234,19 +282,43 @@ describe("Tenki coding executor approval boundary", () => {
   });
 
   it("honors the model-requested bounded shell output length", async () => {
-    const exec = vi.fn().mockResolvedValue({
-      status: "SUCCEEDED",
-      exitCode: 0,
+    const run = vi.fn(() => hostRunHandle({
       stdout: new TextEncoder().encode("ok"),
-      stderr: new Uint8Array(),
-    });
+    }));
     const shell = new RestrictedShell(
-      { exec } as never,
+      { run } as never,
       { requiredCommands: ["npm test"] } as never,
     );
     const result = await shell.run({ commands: ["npm test"], maxOutputLength: 30_000 });
     expect(result.maxOutputLength).toBe(30_000);
     expect(result.output[0]?.stdout).toBe("ok");
+  });
+
+  it("injects test secrets only into approved validation commands and redacts their output", async () => {
+    const run = vi.fn((argv: string[], options?: { env?: Record<string, string> }) => {
+      void argv;
+      void options;
+      return hostRunHandle({
+        stdout: new TextEncoder().encode("credential=test-secret-value"),
+      });
+    });
+    const shell = new RestrictedShell(
+      { run } as never,
+      { requiredCommands: ["npm test"] } as never,
+      {
+        testEnvironment: { TEST_TOKEN: "test-secret-value" },
+        redactionValues: ["test-secret-value"],
+      },
+    );
+
+    const result = await shell.run({ commands: ["npm test"] });
+
+    expect(run.mock.calls[0]?.[0]?.slice(-3)).toEqual(["bash", "-c", "npm test"]);
+    expect(run.mock.calls[0]?.[1]).toMatchObject({
+      env: { CI: "true", TEST_TOKEN: "test-secret-value" },
+    });
+    expect(result.output[0]?.stdout).toBe("credential=[REDACTED_RUNTIME_SECRET]");
+    expect(shell.results[0]?.stdout).not.toContain("test-secret-value");
   });
 
   it("resolves editor paths from a monorepo working directory without widening scope", async () => {
@@ -284,8 +356,53 @@ describe("Tenki coding executor approval boundary", () => {
   });
 
   it("rejects unbounded model-requested shell output", async () => {
-    const shell = new RestrictedShell({ exec: vi.fn() } as never, { requiredCommands: ["npm test"] } as never);
+    const shell = new RestrictedShell({ run: vi.fn() } as never, { requiredCommands: ["npm test"] } as never);
     await expect(shell.run({ commands: ["npm test"], maxOutputLength: 30_001 }))
       .rejects.toThrow("Shell output limit must be between 0 and 30000");
+  });
+
+  it("injects only the immutable secret bindings assigned to each execution phase", () => {
+    const runtimeProfile = {
+      ...upgradeExecutionProfileConfigV2(profileConfig),
+      publicEnvironment: [{ name: "PUBLIC_MODE", value: "test" }],
+      applicationPort: 3000,
+      secretBindings: [
+        { envName: "INSTALL_TOKEN", secretId: "11111111-1111-4111-8111-111111111111", secretVersion: 1, exposure: "setup" as const },
+        { envName: "APP_TOKEN", secretId: "22222222-2222-4222-8222-222222222222", secretVersion: 2, exposure: "runtime" as const },
+        { envName: "TEST_TOKEN", secretId: "33333333-3333-4333-8333-333333333333", secretVersion: 3, exposure: "test" as const },
+      ],
+    };
+    expect(tenkiRuntimeEnvironmentForProfile(runtimeProfile, {
+      setup: { INSTALL_TOKEN: "install-secret" },
+      runtime: { APP_TOKEN: "app-secret" },
+      test: { TEST_TOKEN: "test-secret" },
+      redactionValues: ["install-secret", "app-secret", "test-secret"],
+    })).toMatchObject({
+      setup: { PUBLIC_MODE: "test", INSTALL_TOKEN: "install-secret", CI: "true" },
+      runtime: { PUBLIC_MODE: "test", APP_TOKEN: "app-secret", PORT: "3000" },
+      test: {
+        PUBLIC_MODE: "test",
+        TEST_TOKEN: "test-secret",
+        CI: "true",
+        CLOSESPAN_APP_URL: "http://127.0.0.1:3000",
+      },
+    });
+    expect(() => tenkiRuntimeEnvironmentForProfile(runtimeProfile, {
+      setup: { INSTALL_TOKEN: "install-secret" },
+      runtime: { APP_TOKEN: "app-secret", EXTRA_TOKEN: "not-approved" },
+      test: { TEST_TOKEN: "test-secret" },
+      redactionValues: [],
+    })).toThrow("exact runtime secret bindings");
+  });
+
+  it("withholds health-dependent tools after baseline runtime startup fails", () => {
+    const configured = { http: true, browser: true, logs: true };
+
+    expect(runtimeToolsForAgent(configured, false)).toEqual({
+      http: false,
+      browser: false,
+      logs: true,
+    });
+    expect(runtimeToolsForAgent(configured, true)).toBe(configured);
   });
 });

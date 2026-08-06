@@ -42,7 +42,7 @@
     "APPLICATION_URL": "https://www.closespan.com/login",
     "API_HEALTH_URL": "https://www.closespan.com/api/health",
     "COMPONENT_HEALTH_URL": "https://www.closespan.com/api/health/components",
-    "AGENT_EXECUTOR_URL": "https://closespan-agent-executor.shanmukhsain.workers.dev"
+    "AGENT_EXECUTOR_URL": "https://closespan-agent-tenki-proxy.shanmukhsain.workers.dev"
   },
   "observability": {
     "enabled": true,

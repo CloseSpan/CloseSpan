@@ -5,16 +5,18 @@ import {
 } from "@/lib/execution-profile-repository";
 import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
 import {
+  authorizeAdminRead,
   authorizeAdminMutation,
-  authorizeRead,
   errorResponse,
   noStoreHeaders,
 } from "@/lib/request-security";
 import { workspacePersistenceMode } from "@/lib/workspace-persistence";
+import { sanitizeExecutionProfileConfig } from "@/lib/execution-profile";
+import { validateRuntimeSecretBindings } from "@/lib/runtime-secret-repository";
 
 export async function GET(request: NextRequest) {
   try {
-    const context = await authorizeRead(request);
+    const context = await authorizeAdminRead(request);
     if (workspacePersistenceMode(context.orgId) !== "postgres") {
       return NextResponse.json(
         { available: false, assignments: [], repositories: [] },
@@ -58,6 +60,15 @@ export async function PUT(request: NextRequest) {
         ? body.parentProfileId
         : undefined;
     if (parentProfileId === undefined) throw new Error("Parent profile ID is invalid");
+    const config = sanitizeExecutionProfileConfig(body.config);
+    if (config.schemaVersion === 2) {
+      await validateRuntimeSecretBindings({
+        orgId: context.orgId,
+        repository,
+        workspaceRoot,
+        bindings: config.secretBindings,
+      });
+    }
     const profile = await overrideExecutionProfile({
       orgId: context.orgId,
       repository,

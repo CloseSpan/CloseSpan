@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   SAFE_GENERIC_EXECUTION_PROFILE_CONFIG,
+  TENKI_BROWSER_PREFLIGHT_COMMAND,
   assertExecutionProfileNarrowing,
   assertExecutionProfileScopeBoundary,
   canonicalExecutionProfileJson,
+  executionProfileBrowserReadiness,
   hashExecutionProfileConfig,
+  playwrightChromiumInstallCommand,
   resolveExecutionProfile,
   sanitizeExecutionProfileConfig,
+  upgradeExecutionProfileConfigV2,
   type ExecutionProfileConfig,
   type ExecutionProfileSource,
   type ExecutionProfileVersion,
@@ -102,6 +106,287 @@ describe("execution profile configuration", () => {
       .toBe(hashExecutionProfileConfig(right));
     expect(hashExecutionProfileConfig({ ...left, testCommands: ["pnpm test:unit"] }))
       .not.toBe(hashExecutionProfileConfig(left));
+  });
+
+  it("preserves the version-one canonical shape while supporting immutable runtime profiles", () => {
+    const legacy = sanitizeExecutionProfileConfig({
+      schemaVersion: 1,
+      language: "typescript",
+      packageManager: "pnpm",
+      installCommands: ["pnpm install --frozen-lockfile"],
+      permittedPaths: ["src/**"],
+    });
+    expect(legacy.schemaVersion).toBe(1);
+    expect(canonicalExecutionProfileJson(legacy)).not.toContain("automaticInstall");
+
+    const runtime = upgradeExecutionProfileConfigV2(legacy);
+    expect(runtime).toMatchObject({
+      schemaVersion: 2,
+      automaticInstall: true,
+      automaticBuild: false,
+      startCommand: null,
+      applicationPort: null,
+      previewEnabled: false,
+      runtimeTools: { http: false, browser: false, logs: false },
+    });
+    expect(hashExecutionProfileConfig(runtime)).not.toBe(hashExecutionProfileConfig(legacy));
+  });
+
+  it("normalizes a complete running-app contract without storing secret values", () => {
+    const result = sanitizeExecutionProfileConfig({
+      schemaVersion: 2,
+      language: "typescript",
+      packageManager: "pnpm",
+      workingDirectory: ".",
+      installCommands: [
+        "pnpm install --frozen-lockfile",
+        TENKI_BROWSER_PREFLIGHT_COMMAND,
+      ],
+      buildCommands: ["pnpm build"],
+      testCommands: ["pnpm test"],
+      permittedPaths: ["src/**"],
+      automaticInstall: true,
+      automaticBuild: true,
+      publicEnvironment: [{ name: "NODE_ENV", value: "test" }],
+      secretBindings: [{
+        envName: "DATABASE_URL",
+        secretId: "9e31aa95-7092-4ed4-b859-238ad6aec584",
+        secretVersion: 3,
+        exposure: "runtime",
+      }],
+      startCommand: "pnpm start --hostname 0.0.0.0",
+      applicationPort: 3000,
+      healthCheckPath: "/api/health",
+      healthCheckTimeoutMs: 60_000,
+      previewEnabled: false,
+      previewTtlMs: 300_000,
+      runtimeTools: { http: true, browser: true, logs: true },
+      tenkiSnapshotId: "snapshot_browser_ready",
+      allowInbound: true,
+      allowOutbound: false,
+    });
+    expect(result.schemaVersion).toBe(2);
+    if (result.schemaVersion !== 2) throw new Error("Expected runtime profile");
+    expect(result.secretBindings[0]).toEqual({
+      envName: "DATABASE_URL",
+      secretId: "9e31aa95-7092-4ed4-b859-238ad6aec584",
+      secretVersion: 3,
+      exposure: "runtime",
+    });
+    expect(canonicalExecutionProfileJson(result)).not.toContain("postgres://");
+    expect(executionProfileBrowserReadiness(result)).toMatchObject({
+      ready: true,
+      mode: "image",
+    });
+  });
+
+  it("allows one immutable secret version in multiple isolated phases without duplicate phase bindings", () => {
+    const shared = {
+      envName: "DATABASE_URL",
+      secretId: "9e31aa95-7092-4ed4-b859-238ad6aec584",
+      secretVersion: 3,
+    };
+    const result = sanitizeExecutionProfileConfig({
+      schemaVersion: 2,
+      secretBindings: [
+        { ...shared, exposure: "runtime" },
+        { ...shared, exposure: "test" },
+      ],
+    });
+    expect(result.schemaVersion).toBe(2);
+    if (result.schemaVersion !== 2) throw new Error("Expected runtime profile");
+    expect(result.secretBindings).toHaveLength(2);
+    expect(() => sanitizeExecutionProfileConfig({
+      schemaVersion: 2,
+      secretBindings: [
+        { ...shared, exposure: "runtime" },
+        { ...shared, exposure: "runtime" },
+      ],
+    })).toThrow("Duplicate runtime secret environment variable");
+  });
+
+  it("rejects incomplete or unsafe running-app configuration", () => {
+    const base = {
+      schemaVersion: 2,
+      language: "typescript",
+      packageManager: "pnpm",
+      permittedPaths: ["src/**"],
+    } as const;
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      startCommand: "pnpm start",
+    })).toThrow("start command, application port, and health check path");
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      publicEnvironment: [{ name: "API_KEY", value: "not-public" }],
+    })).toThrow("must use the runtime secret vault");
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      startCommand: "pnpm start",
+      applicationPort: 3000,
+      healthCheckPath: "/health",
+      previewEnabled: true,
+      runtimeTools: { http: true, browser: true, logs: true },
+    })).toThrow("preview URL requires inbound networking");
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      startCommand: "pnpm start",
+      applicationPort: 3000,
+      healthCheckPath: "/health",
+      runtimeTools: { http: true, browser: false, logs: true },
+    })).not.toThrow();
+  });
+
+  it("requires exact, preflighted Chromium provisioning before advertising browser interaction", () => {
+    const installBrowser = playwrightChromiumInstallCommand("pnpm");
+    expect(installBrowser).toBe("pnpm exec playwright install chromium");
+    const base = {
+      schemaVersion: 2,
+      language: "typescript",
+      packageManager: "pnpm",
+      startCommand: "pnpm start",
+      applicationPort: 3000,
+      healthCheckPath: "/health",
+      automaticInstall: true,
+      allowOutbound: true,
+      runtimeTools: { http: true, browser: true, logs: true },
+    } as const;
+
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      installCommands: [installBrowser!],
+    })).toThrow("exact CloseSpan Chromium launch preflight");
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      installCommands: [
+        "pnpm exec playwright install --with-deps chromium",
+        TENKI_BROWSER_PREFLIGHT_COMMAND,
+      ],
+    })).toThrow("exact package-manager Chromium install command");
+
+    const repositoryProvisioned = sanitizeExecutionProfileConfig({
+      ...base,
+      installCommands: [installBrowser!, TENKI_BROWSER_PREFLIGHT_COMMAND],
+    });
+    expect(repositoryProvisioned.schemaVersion).toBe(2);
+    if (repositoryProvisioned.schemaVersion !== 2) throw new Error("Expected runtime profile");
+    expect(executionProfileBrowserReadiness(repositoryProvisioned)).toMatchObject({
+      ready: true,
+      mode: "repository",
+    });
+  });
+
+  it("keeps all outbound execution away from runtime and test secrets", () => {
+    const browserCommands = [
+      playwrightChromiumInstallCommand("npm")!,
+      TENKI_BROWSER_PREFLIGHT_COMMAND,
+    ];
+    const base = {
+      schemaVersion: 2,
+      language: "typescript",
+      packageManager: "npm",
+      installCommands: browserCommands,
+      automaticInstall: true,
+      startCommand: "npm start",
+      applicationPort: 3000,
+      healthCheckPath: "/health",
+      runtimeTools: { http: true, browser: true, logs: true },
+      allowOutbound: true,
+    } as const;
+    const secret = {
+      envName: "APP_SECRET",
+      secretId: "9e31aa95-7092-4ed4-b859-238ad6aec584",
+      secretVersion: 1,
+    } as const;
+
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      secretBindings: [{ ...secret, exposure: "runtime" }],
+    })).toThrow("cannot be combined with runtime or test secrets");
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      secretBindings: [{ ...secret, exposure: "test" }],
+    })).toThrow("cannot be combined with runtime or test secrets");
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      runtimeTools: { http: true, browser: false, logs: true },
+      installCommands: ["npm ci --ignore-scripts"],
+      secretBindings: [{ ...secret, exposure: "runtime" }],
+    })).toThrow("Outbound execution cannot be combined");
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      secretBindings: [{ ...secret, exposure: "setup" }],
+    })).not.toThrow();
+  });
+
+  it("keeps public previews away from runtime secrets", () => {
+    expect(() => sanitizeExecutionProfileConfig({
+      schemaVersion: 2,
+      startCommand: "npm start",
+      applicationPort: 3000,
+      healthCheckPath: "/health",
+      previewEnabled: true,
+      allowInbound: true,
+      secretBindings: [{
+        envName: "APP_SECRET",
+        secretId: "9e31aa95-7092-4ed4-b859-238ad6aec584",
+        secretVersion: 1,
+        exposure: "runtime",
+      }],
+    })).toThrow("public preview cannot be combined with runtime secrets");
+
+    expect(() => sanitizeExecutionProfileConfig({
+      schemaVersion: 2,
+      startCommand: "npm start",
+      applicationPort: 3000,
+      healthCheckPath: "/health",
+      previewEnabled: true,
+      allowInbound: true,
+      secretBindings: [{
+        envName: "TEST_TOKEN",
+        secretId: "9e31aa95-7092-4ed4-b859-238ad6aec584",
+        secretVersion: 1,
+        exposure: "test",
+      }],
+    })).not.toThrow();
+  });
+
+  it("keeps common credential names and secret-shaped values out of public environment", () => {
+    const base = {
+      schemaVersion: 2,
+      language: "typescript",
+      packageManager: "pnpm",
+      permittedPaths: ["src/**"],
+    } as const;
+    for (const name of [
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_ACCESS_KEY_ID",
+      "GITHUB_PAT",
+      "GITHUB_TOKEN",
+    ]) {
+      expect(() => sanitizeExecutionProfileConfig({
+        ...base,
+        publicEnvironment: [{ name, value: "credential-placeholder" }],
+      }), name).toThrow("must use the runtime secret vault");
+    }
+    for (const value of [
+      `github_pat_${"a".repeat(30)}`,
+      "https://service-user:service-password@example.com/api",
+      `Bearer ${"a".repeat(32)}`,
+      `${"a".repeat(16)}.${"b".repeat(16)}.${"c".repeat(16)}`,
+    ]) {
+      expect(() => sanitizeExecutionProfileConfig({
+        ...base,
+        publicEnvironment: [{ name: "PUBLIC_CONFIGURATION", value }],
+      }), value).toThrow("must use the runtime secret vault");
+    }
+    expect(() => sanitizeExecutionProfileConfig({
+      ...base,
+      publicEnvironment: [{
+        name: "PUBLIC_API_ORIGIN",
+        value: "https://api.example.com",
+      }],
+    })).not.toThrow();
   });
 
   it("requires tickets to narrow profile paths and commands", () => {

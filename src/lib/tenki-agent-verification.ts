@@ -14,7 +14,22 @@ import {
   hashExecutionProfileConfig,
   sanitizeExecutionProfileConfig,
   type ExecutionProfileConfig,
+  type ExecutionProfileConfigV2,
 } from "./execution-profile";
+import { createRuntimeSecretRedactor } from "./runtime-secret-redaction";
+import {
+  pddGeneratedTestsReferenceLiveApplication,
+  pddScenariosRequireLiveApplication,
+} from "./pdd-verification";
+import {
+  createTenkiRuntimeEnvironment,
+  type TenkiRuntimeEnvironment,
+  type TenkiRuntimeEnvironmentConfig,
+  type TenkiRuntimeEnvironmentDependencies,
+  type TenkiRuntimeStatus,
+} from "./tenki-runtime-environment";
+import { runTenkiHostCommand } from "./tenki-host-command";
+import { TenkiLiveReplayWitness } from "./tenki-live-replay-witness";
 
 const ARCHIVE_LIMIT_BYTES = 80_000_000;
 const CREATE_TIMEOUT_MS = 60_000;
@@ -117,7 +132,17 @@ function assertPddArtifactsMatchApprovedRun(
 
 type VerificationSession = Pick<
   Session,
-  "id" | "exec" | "mkdir" | "writeFile" | "remove" | "close" | "inboundEnabled" | "outboundEnabled"
+  | "id"
+  | "exec"
+  | "run"
+  | "mkdir"
+  | "writeFile"
+  | "remove"
+  | "exposePort"
+  | "unexposePort"
+  | "close"
+  | "inboundEnabled"
+  | "outboundEnabled"
 >;
 
 type VerificationClient = {
@@ -125,11 +150,30 @@ type VerificationClient = {
   close(): void;
 };
 
-interface VerificationDependencies {
+export interface TenkiVerificationResolvedEnvironment {
+  /** Resolved immediately before verification. These values must never be persisted in a job payload. */
+  setupEnv: Readonly<Record<string, string>>;
+  runtimeEnv: Readonly<Record<string, string>>;
+  testEnv: Readonly<Record<string, string>>;
+  redactionValues: readonly string[];
+}
+
+type VerificationRuntime = Pick<
+  TenkiRuntimeEnvironment,
+  "prepare" | "start" | "request" | "status" | "logs" | "close"
+>;
+
+export interface VerificationDependencies {
   apiKey?: string;
   now?: () => number;
   createClient?: (apiKey: string) => VerificationClient;
   repositoryArchive?: (context: AgentRunExecutionContext) => Promise<Uint8Array>;
+  runtimeEnvironment?: TenkiVerificationResolvedEnvironment;
+  createRuntimeEnvironment?: (
+    session: VerificationSession,
+    config: TenkiRuntimeEnvironmentConfig,
+    dependencies: TenkiRuntimeEnvironmentDependencies,
+  ) => VerificationRuntime;
 }
 
 export class TenkiIndependentVerificationError extends Error {
@@ -225,6 +269,116 @@ function output(result: ExecResult): string {
   return [stdout, stderr].filter(Boolean).join("\n").slice(-OUTPUT_LIMIT);
 }
 
+type ConfiguredRuntimeProfile = ExecutionProfileConfigV2 & {
+  startCommand: string;
+  applicationPort: number;
+  healthCheckPath: string;
+};
+
+function configuredRuntimeProfile(
+  profile: ExecutionProfileConfig | null,
+): ConfiguredRuntimeProfile | null {
+  if (
+    profile?.schemaVersion !== 2
+    || !profile.startCommand
+    || !profile.applicationPort
+    || !profile.healthCheckPath
+  ) {
+    return null;
+  }
+  return profile as ConfiguredRuntimeProfile;
+}
+
+function resolvedVerificationEnvironment(
+  profile: ExecutionProfileConfig | null,
+  input: TenkiVerificationResolvedEnvironment | undefined,
+): TenkiVerificationResolvedEnvironment {
+  const bindings = profile?.schemaVersion === 2 ? profile.secretBindings : [];
+  const resolved = input ?? {
+    setupEnv: {},
+    runtimeEnv: {},
+    testEnv: {},
+    redactionValues: [],
+  };
+  const phaseMaps = {
+    setup: resolved.setupEnv,
+    runtime: resolved.runtimeEnv,
+    test: resolved.testEnv,
+  } as const;
+
+  for (const exposure of ["setup", "runtime", "test"] as const) {
+    const expected = new Set(
+      bindings
+        .filter((binding) => binding.exposure === exposure)
+        .map((binding) => binding.envName),
+    );
+    const actual = new Set(Object.keys(phaseMaps[exposure]));
+    if (
+      expected.size !== actual.size
+      || [...expected].some((name) => !actual.has(name))
+    ) {
+      throw new TenkiIndependentVerificationError(
+        "sandbox_failed",
+        `Independent verification did not receive the exact ${exposure} secret bindings from the immutable execution profile.`,
+      );
+    }
+  }
+  return resolved;
+}
+
+function publicEnvironment(profile: ExecutionProfileConfig | null): Record<string, string> {
+  if (profile?.schemaVersion !== 2) return {};
+  return Object.fromEntries(
+    profile.publicEnvironment.map(({ name, value }) => [name, value]),
+  );
+}
+
+function approvedVerificationCommands(context: AgentRunExecutionContext): string[] {
+  return [...new Set([
+    ...context.promptSnapshot.ticket.requiredCommands,
+    ...(context.generatedTests ?? []).map((test) => test.command),
+  ])];
+}
+
+function runtimeConfig(
+  profile: ExecutionProfileConfigV2,
+): TenkiRuntimeEnvironmentConfig {
+  return {
+    workingDirectory: verificationWorkingDirectory(profile),
+    install: {
+      enabled: profile.automaticInstall,
+      commands: profile.installCommands,
+    },
+    build: {
+      enabled: profile.automaticBuild,
+      commands: profile.buildCommands,
+    },
+    startCommand: profile.startCommand,
+    port: profile.applicationPort,
+    healthPath: profile.healthCheckPath,
+    preview: {
+      allowed: profile.previewEnabled && profile.allowInbound,
+      ttlMs: Math.min(profile.previewTtlMs, 15 * 60_000),
+    },
+    commandTimeoutMs: Math.min(COMMAND_TIMEOUT_MS, profile.maxDurationMs),
+    startupTimeoutMs: profile.healthCheckTimeoutMs,
+    maxLogBytes: OUTPUT_LIMIT,
+    maxResponseBytes: OUTPUT_LIMIT,
+  };
+}
+
+function runtimeLogExcerpt(
+  runtime: VerificationRuntime | undefined,
+  redact: (value: string) => string,
+): string[] {
+  if (!runtime) return [];
+  return runtime.logs(OUTPUT_LIMIT)
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .slice(-20)
+    .map((line) => redact(line).slice(0, 5_000));
+}
+
 function succeeded(result: ExecResult): boolean {
   return result.status === "SUCCEEDED" && result.exitCode === 0;
 }
@@ -311,6 +465,38 @@ export async function verifyAgentRunWithTenki(
   const now = dependencies.now ?? Date.now;
   const startedAt = now();
   const profile = verificationProfile(context);
+  const runtimeProfile = profile?.schemaVersion === 2 ? profile : null;
+  const applicationProfile = configuredRuntimeProfile(profile);
+  const generatedTests = context.generatedTests ?? [];
+  const liveReplayRequired = generatedTests.length > 0
+    && pddScenariosRequireLiveApplication(
+      context.promptSnapshot.ticket.testScenarios,
+    );
+  if (
+    liveReplayRequired
+    && !pddGeneratedTestsReferenceLiveApplication(generatedTests)
+  ) {
+    throw new TenkiIndependentVerificationError(
+      "sandbox_failed",
+      "The immutable PDD live test does not reference CLOSESPAN_APP_URL.",
+    );
+  }
+  if (liveReplayRequired && !applicationProfile) {
+    throw new TenkiIndependentVerificationError(
+      "sandbox_failed",
+      "The immutable PDD live test requires a configured running application.",
+    );
+  }
+  const resolvedEnvironment = resolvedVerificationEnvironment(
+    profile,
+    dependencies.runtimeEnvironment,
+  );
+  const redactor = createRuntimeSecretRedactor([
+    ...Object.values(resolvedEnvironment.setupEnv),
+    ...Object.values(resolvedEnvironment.runtimeEnv),
+    ...Object.values(resolvedEnvironment.testEnv),
+    ...resolvedEnvironment.redactionValues,
+  ]);
   assertPddArtifactsMatchApprovedRun(context, report);
   const sessionDurationMs = Math.min(profile?.maxDurationMs ?? SESSION_DURATION_MS, SESSION_DURATION_MS);
   let archive: Uint8Array;
@@ -339,6 +525,8 @@ export async function verifyAgentRunWithTenki(
     );
   }
   let session: VerificationSession | undefined;
+  let runtime: VerificationRuntime | undefined;
+  let liveReplayWitness: TenkiLiveReplayWitness | undefined;
   let cleanupError: unknown;
 
   try {
@@ -418,6 +606,55 @@ export async function verifyAgentRunWithTenki(
       `${WORKSPACE}/${context.promptArtifactPath}`,
       context.promptContent,
     );
+
+    const runtimeInteractions: NonNullable<AgentImplementationReport["runtimeEvidence"]>["interactions"] = [];
+    let runtimeStatus: TenkiRuntimeStatus | undefined;
+    let runtimeFailure: string | undefined;
+    if (runtimeProfile) {
+      const sharedPublicEnvironment = publicEnvironment(runtimeProfile);
+      runtime = (dependencies.createRuntimeEnvironment ?? createTenkiRuntimeEnvironment)(
+        session,
+        runtimeConfig(runtimeProfile),
+        {
+          setupEnv: {
+            ...sharedPublicEnvironment,
+            ...resolvedEnvironment.setupEnv,
+          },
+          rerunEnv: {
+            ...sharedPublicEnvironment,
+            CI: "true",
+          },
+          runtimeEnv: {
+            ...sharedPublicEnvironment,
+            ...resolvedEnvironment.runtimeEnv,
+            ...(applicationProfile
+              ? { PORT: String(applicationProfile.applicationPort) }
+              : {}),
+          },
+          redactionValues: resolvedEnvironment.redactionValues,
+        },
+      );
+      try {
+        // The only setup-secret-bearing operation runs against the immutable
+        // repository archive, before any agent-authored change is applied.
+        await runtime.prepare({
+          runInstall: runtimeProfile.automaticInstall,
+          runBuild: false,
+        });
+      } catch (error) {
+        runtimeFailure = redactor.redact(
+          error instanceof Error ? error.message : "The trusted dependency bootstrap failed.",
+        ).slice(0, 5_000);
+        runtimeInteractions.push({
+          stage: "verification",
+          tool: "setup",
+          target: "trusted dependency bootstrap",
+          status: "failed",
+          evidence: runtimeFailure,
+        });
+      }
+    }
+
     for (const file of report.changedFiles) {
       await applyApprovedChange(session, file);
     }
@@ -453,30 +690,243 @@ export async function verifyAgentRunWithTenki(
       }
     }
 
+    if (runtimeProfile && runtime && runtimeFailure === undefined) {
+      try {
+        // Agent-authored code may build and start only after setup secrets have
+        // been permanently removed from the command environment.
+        await runtime.prepare({
+          runInstall: false,
+          runBuild: runtimeProfile.automaticBuild,
+        });
+        if (applicationProfile) {
+          runtimeStatus = await runtime.start();
+          if (!runtimeStatus.healthy) {
+            throw new Error("the configured application did not become healthy");
+          }
+          const health = await runtime.request({
+            method: "GET",
+            path: applicationProfile.healthCheckPath,
+          });
+          if (health.statusCode < 200 || health.statusCode >= 400) {
+            throw new Error(`the configured health check returned HTTP ${health.statusCode}`);
+          }
+          runtimeInteractions.push({
+            stage: "verification",
+            tool: "http",
+            target: applicationProfile.healthCheckPath,
+            status: `HTTP ${health.statusCode}`,
+            evidence: "Independent verification reached the running application over VM-local HTTP.",
+          });
+          if (runtimeStatus.previewUrl) {
+            runtimeInteractions.push({
+              stage: "verification",
+              tool: "preview",
+              target: runtimeStatus.previewUrl,
+              status: "preview ready",
+              evidence: "Tenki exposed the configured application through a short-lived preview URL.",
+            });
+          }
+        } else if (runtimeProfile.automaticInstall || runtimeProfile.automaticBuild) {
+          runtimeInteractions.push({
+            stage: "verification",
+            tool: "setup",
+            target: "automatic setup",
+            status: "passed",
+            evidence: "Independent verification completed trusted dependency bootstrap and the public-only build commands.",
+          });
+        }
+      } catch (error) {
+        runtimeFailure = redactor.redact(
+          error instanceof Error ? error.message : "The configured runtime failed to prepare.",
+        ).slice(0, 5_000);
+        if (applicationProfile) {
+          runtimeInteractions.push({
+            stage: "verification",
+            tool: "http",
+            target: applicationProfile.healthCheckPath,
+            status: "failed",
+            evidence: runtimeFailure,
+          });
+        } else {
+          runtimeInteractions.push({
+            stage: "verification",
+            tool: "setup",
+            target: "automatic setup",
+            status: "failed",
+            evidence: runtimeFailure,
+          });
+        }
+      }
+    }
+
     const tests: AgentImplementationReport["tests"] = [];
-    let passed = true;
-    for (const command of context.promptSnapshot.ticket.requiredCommands) {
+    let passed = runtimeFailure === undefined;
+    let testEnvironment = {
+      ...publicEnvironment(profile),
+      ...resolvedEnvironment.testEnv,
+      CI: "true",
+      ...(applicationProfile && runtimeStatus?.healthy
+        ? { CLOSESPAN_APP_URL: `http://127.0.0.1:${applicationProfile.applicationPort}` }
+        : {}),
+    };
+    let liveReplayRequestCount = 0;
+    if (
+      liveReplayRequired
+      && applicationProfile
+      && runtimeStatus?.healthy
+      && runtimeFailure === undefined
+    ) {
+      try {
+        liveReplayWitness = new TenkiLiveReplayWitness(
+          session,
+          applicationProfile.applicationPort,
+          applicationProfile.healthCheckPath,
+          verificationWorkingDirectory(profile),
+          resolvedEnvironment.redactionValues,
+        );
+        testEnvironment = {
+          ...testEnvironment,
+          CLOSESPAN_APP_URL: await liveReplayWitness.start(),
+        };
+      } catch (error) {
+        runtimeFailure = redactor.redact(
+          error instanceof Error
+            ? error.message
+            : "The VM-local replay witness could not start.",
+        ).slice(0, 5_000);
+        passed = false;
+      }
+    }
+    for (const command of approvedVerificationCommands(context)) {
       if (!passed) {
         tests.push({
           command,
           status: "skipped",
-          output: "Not run because an earlier independent verification command failed.",
+          output: runtimeFailure
+            ? "Not run because the configured application did not become healthy."
+            : "Not run because an earlier independent verification command failed.",
         });
         continue;
       }
-      const result = await session.exec("bash", {
-        args: ["-c", command],
+      const result = await runTenkiHostCommand(session, ["bash", "-c", command], {
         cwd: verificationWorkingDirectory(profile),
+        env: testEnvironment,
         timeoutMs: Math.min(COMMAND_TIMEOUT_MS, sessionDurationMs),
-        env: { CI: "true" },
       });
-      passed = succeeded(result);
+      passed = result.exitCode === 0 && !result.signal && !result.timedOut;
+      const safeOutput = redactor.redact([
+        new TextDecoder().decode(result.stdout).trim(),
+        new TextDecoder().decode(result.stderr).trim(),
+      ].filter(Boolean).join("\n")).slice(-OUTPUT_LIMIT);
       tests.push({
         command,
         status: passed ? "passed" : "failed",
-        output: output(result) || (passed ? "Command passed without output." : "Command failed without output."),
+        output: safeOutput || (passed ? "Command passed without output." : "Command failed without output."),
       });
     }
+    if (liveReplayWitness) {
+      liveReplayRequestCount = await liveReplayWitness.requestCount();
+      await liveReplayWitness.close();
+      liveReplayWitness = undefined;
+    }
+
+    if (applicationProfile && runtime && runtimeFailure === undefined) {
+      try {
+        runtimeStatus = await runtime.status();
+        if (!runtimeStatus.healthy) {
+          runtimeFailure = "The configured application stopped responding before verification completed.";
+          passed = false;
+          runtimeInteractions.push({
+            stage: "verification",
+            tool: "http",
+            target: applicationProfile?.healthCheckPath ?? "/",
+            status: "failed",
+            evidence: runtimeFailure,
+          });
+        }
+      } catch (error) {
+        runtimeFailure = redactor.redact(
+          error instanceof Error ? error.message : "The final application health check failed.",
+        ).slice(0, 5_000);
+        passed = false;
+        runtimeInteractions.push({
+          stage: "verification",
+          tool: "http",
+          target: applicationProfile?.healthCheckPath ?? "/",
+          status: "failed",
+          evidence: runtimeFailure,
+        });
+      }
+    }
+
+    const generatedCommands = new Set(
+      (context.generatedTests ?? []).map((generatedTest) => generatedTest.command),
+    );
+    const testByCommand = new Map(tests.map((test) => [test.command, test]));
+    const userStoryReplay = generatedCommands.size === 0
+      ? "not_required" as const
+      : [...generatedCommands].every(
+          (command) => testByCommand.get(command)?.status === "passed",
+        )
+        && runtimeFailure === undefined
+        && (!liveReplayRequired || liveReplayRequestCount > 0)
+        ? "passed" as const
+        : "failed" as const;
+    if (liveReplayRequired) {
+      runtimeInteractions.push({
+        stage: "verification",
+        tool: "http",
+        target: "CLOSESPAN_APP_URL",
+        status: userStoryReplay === "passed"
+          ? "PDD live replay passed"
+          : "PDD live replay failed",
+        evidence: userStoryReplay === "passed"
+          ? `The immutable PDD test made ${liveReplayRequestCount} witnessed request(s) to the healthy VM-local application and its approved command passed independently.`
+          : "The immutable PDD live test did not make a witnessed VM-local request, or the application/test did not pass independent verification.",
+      });
+    }
+    const logExcerpt = runtimeLogExcerpt(runtime, redactor.redact);
+    if (applicationProfile?.runtimeTools.logs && runtime) {
+      runtimeInteractions.push({
+        stage: "verification",
+        tool: "logs",
+        target: "application stdout/stderr",
+        status: `${logExcerpt.length} bounded lines captured`,
+        evidence: "Runtime output was bounded and secret-redacted before inclusion in verification evidence.",
+      });
+    }
+    const implementationInteractions = (report.runtimeEvidence?.interactions ?? []).map(
+      (interaction) => ({
+        ...interaction,
+        stage: interaction.stage ?? "implementation" as const,
+      }),
+    );
+    const preservedImplementationInteractions = implementationInteractions.slice(
+      -Math.max(0, 100 - runtimeInteractions.length),
+    );
+    const runtimeEvidence: AgentImplementationReport["runtimeEvidence"] = runtimeProfile
+      ? {
+          configured: applicationProfile !== null,
+          healthStatus: applicationProfile === null
+            ? "not_configured"
+            : runtimeFailure === undefined
+              ? "passed"
+              : "failed",
+          applicationPort: applicationProfile?.applicationPort ?? null,
+          previewUrl: runtimeStatus?.previewUrl ?? null,
+          interactions: [
+            ...preservedImplementationInteractions,
+            ...runtimeInteractions,
+          ].slice(-100),
+          logExcerpt,
+          userStoryReplay,
+          userStoryReplayMode: generatedCommands.size === 0
+            ? "not_required"
+            : liveReplayRequired
+              ? "live_application"
+              : "contract",
+        }
+      : undefined;
 
     const finishedAt = now();
     const independentVerification = {
@@ -504,6 +954,7 @@ export async function verifyAgentRunWithTenki(
         ...report.logs.slice(-199),
         `Tenki independent verification ${passed ? "passed" : "failed"} in session ${session.id}.`,
       ],
+      ...(runtimeEvidence ? { runtimeEvidence } : {}),
       independentVerification,
     };
   } catch (error) {
@@ -516,11 +967,25 @@ export async function verifyAgentRunWithTenki(
       "Tenki could not complete independent verification.",
     );
   } finally {
+    if (liveReplayWitness) {
+      try {
+        await liveReplayWitness.close();
+      } catch (error) {
+        cleanupError = error;
+      }
+    }
+    if (runtime) {
+      try {
+        await runtime.close();
+      } catch (error) {
+        cleanupError = error;
+      }
+    }
     if (session) {
       try {
         await session.close();
       } catch (error) {
-        cleanupError = error;
+        cleanupError ??= error;
       }
     }
     client.close();

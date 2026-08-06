@@ -1,12 +1,16 @@
 import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { hashExecutionProfileConfig } from "@/lib/execution-profile";
+import {
+  hashExecutionProfileConfig,
+  upgradeExecutionProfileConfigV2,
+} from "@/lib/execution-profile";
 
 const workflow = vi.hoisted(() => ({
   claim: vi.fn(),
   context: vi.fn(),
 }));
 const executor = vi.hoisted(() => ({ run: vi.fn() }));
+const runtimeSecrets = vi.hoisted(() => ({ resolve: vi.fn() }));
 
 vi.mock("@/lib/engineering-workflow-repository", () => ({
   claimQueuedAgentRun: workflow.claim,
@@ -17,6 +21,9 @@ vi.mock("@/lib/tenki-coding-executor", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/tenki-coding-executor")>();
   return { ...actual, executeTenkiCodingJob: executor.run };
 });
+vi.mock("@/lib/runtime-secret-repository", () => ({
+  resolveRuntimeSecretBindings: runtimeSecrets.resolve,
+}));
 
 import { NextRequest } from "next/server";
 import { POST } from "./route";
@@ -107,6 +114,12 @@ describe("Tenki executor internal boundary", () => {
     executor.run.mockReset().mockImplementation(async (_job, events) => {
       await events.started("tenki-session-1");
       return { schemaVersion: 1, status: "Tests passed" };
+    });
+    runtimeSecrets.resolve.mockReset().mockResolvedValue({
+      setup: {},
+      runtime: {},
+      test: {},
+      redactionValues: [],
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
   });
@@ -229,5 +242,65 @@ describe("Tenki executor internal boundary", () => {
     }));
     expect(response.status).toBe(200);
     expect(executor.run).toHaveBeenCalledOnce();
+  });
+
+  it("resolves exact secret versions only after claiming a v2 runtime job", async () => {
+    const runtimeConfig = {
+      ...upgradeExecutionProfileConfigV2(profileConfig),
+      startCommand: "npm run start",
+      applicationPort: 3000,
+      healthCheckPath: "/health",
+      runtimeTools: { http: true, browser: false, logs: true },
+      secretBindings: [{
+        envName: "DATABASE_URL",
+        secretId: "44444444-4444-4444-8444-444444444444",
+        secretVersion: 2,
+        exposure: "runtime" as const,
+      }],
+    };
+    const runtimeHash = hashExecutionProfileConfig(runtimeConfig);
+    const payload = {
+      ...job,
+      executionProfileHash: runtimeHash,
+      executionProfileSnapshot: {
+        ...job.executionProfileSnapshot,
+        contentHash: runtimeHash,
+        config: runtimeConfig,
+      },
+    };
+    workflow.context.mockResolvedValue({
+      ...context,
+      executionProfileHash: runtimeHash,
+      executionProfileSnapshot: payload.executionProfileSnapshot,
+    });
+    runtimeSecrets.resolve.mockResolvedValue({
+      setup: {},
+      runtime: { DATABASE_URL: "postgres://runtime-secret" },
+      test: {},
+      redactionValues: ["postgres://runtime-secret"],
+    });
+    const body = JSON.stringify(payload);
+    const response = await POST(new NextRequest("http://localhost/api/internal/tenki-executor", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-closespan-signature": createHmac("sha256", secret).update(body).digest("hex"),
+      },
+      body,
+    }));
+
+    expect(response.status).toBe(200);
+    expect(workflow.claim).toHaveBeenCalledBefore(runtimeSecrets.resolve);
+    expect(runtimeSecrets.resolve).toHaveBeenCalledWith({
+      orgId: job.orgId,
+      repository: job.repository,
+      workspaceRoot: ".",
+      bindings: runtimeConfig.secretBindings,
+    });
+    expect(executor.run).toHaveBeenCalledWith(
+      expect.objectContaining({ executionProfileHash: runtimeHash }),
+      expect.any(Object),
+      { runtimeEnvironment: expect.objectContaining({ runtime: { DATABASE_URL: "postgres://runtime-secret" } }) },
+    );
   });
 });

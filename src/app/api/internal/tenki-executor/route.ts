@@ -11,6 +11,8 @@ import {
   type TenkiAgentJob,
 } from "@/lib/tenki-coding-executor";
 import { noStoreHeaders } from "@/lib/request-security";
+import { sanitizeExecutionProfileConfig } from "@/lib/execution-profile";
+import { resolveRuntimeSecretBindings } from "@/lib/runtime-secret-repository";
 
 export const maxDuration = 300;
 
@@ -119,9 +121,25 @@ export async function POST(request: NextRequest) {
     if (claim === "terminal")
       return NextResponse.json({ ok: true, duplicate: true }, { headers: noStoreHeaders });
     claimed = true;
+    let runtimeEnvironment:
+      | Awaited<ReturnType<typeof resolveRuntimeSecretBindings>>
+      | undefined;
+    if (job.schemaVersion === 2) {
+      const profile = sanitizeExecutionProfileConfig(
+        job.executionProfileSnapshot.config,
+      );
+      if (profile.schemaVersion === 2) {
+        runtimeEnvironment = await resolveRuntimeSecretBindings({
+          orgId: job.orgId,
+          repository: job.repository,
+          workspaceRoot: job.executionProfileSnapshot.workspaceRoot,
+          bindings: profile.secretBindings,
+        });
+      }
+    }
     const report = await executeTenkiCodingJob(job, {
       started: (sessionId) => callback(job, { event: "started", sandboxId: sessionId, provider: "Tenki Sandbox" }, secret),
-    });
+    }, runtimeEnvironment ? { runtimeEnvironment } : {});
     await callback(job, { event: "completed", report }, secret);
     return NextResponse.json({ ok: true, runId: job.runId }, { headers: noStoreHeaders });
   } catch (error) {

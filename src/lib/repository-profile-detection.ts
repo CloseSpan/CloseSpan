@@ -1,11 +1,15 @@
 import { createHash } from "node:crypto";
 import {
+  TENKI_BROWSER_PREFLIGHT_COMMAND,
+  playwrightChromiumInstallCommand,
+} from "./execution-profile";
+import {
   saveDetectedExecutionProfileSuggestion,
   type ExecutionProfileActor,
 } from "./execution-profile-repository";
 import { createGithubInstallationClient } from "./github-app-auth";
 
-const DETECTOR_VERSION = 1;
+const DETECTOR_VERSION = 3;
 const PRIMARY_MANIFESTS = new Set([
   "package.json",
   "deno.json",
@@ -119,6 +123,13 @@ export interface SuggestedExecutionCommands {
   typecheck: string | null;
 }
 
+export interface SuggestedRunningApplication {
+  startCommand: string;
+  port: number;
+  healthPath: string;
+  browserDependencyDetected: boolean;
+}
+
 export interface DetectedRepositoryProfileSuggestion {
   repository: string;
   root: string;
@@ -129,6 +140,7 @@ export interface DetectedRepositoryProfileSuggestion {
   packageManager: string | null;
   runtime: string | null;
   commands: SuggestedExecutionCommands;
+  application: SuggestedRunningApplication | null;
   environment: {
     image: "sandbox";
     snapshotId: null;
@@ -187,6 +199,7 @@ interface ProfileDraft {
   packageManager: string | null;
   runtime: string | null;
   commands: SuggestedExecutionCommands;
+  application?: SuggestedRunningApplication | null;
   runtimeFamily: string | null;
   confidence: number;
 }
@@ -351,6 +364,8 @@ function detectJavascriptFramework(dependencies: Set<string>): string | null {
     ["@sveltejs/kit", "SvelteKit"],
     ["svelte", "Svelte"],
     ["@angular/core", "Angular"],
+    ["astro", "Astro"],
+    ["vite", "Vite"],
     ["vue", "Vue"],
     ["react", "React"],
     ["express", "Express"],
@@ -375,6 +390,37 @@ function javascriptCommand(packageManager: string, script: string): string {
   if (packageManager === "npm" && script === "test") return "npm test";
   if (packageManager === "yarn") return `yarn ${script}`;
   return `${packageManager} run ${script}`;
+}
+
+function detectedJavascriptApplication(
+  packageManager: string,
+  framework: string | null,
+  scripts: Record<string, unknown>,
+  dependencies: Set<string>,
+): SuggestedRunningApplication | null {
+  const scriptName = typeof scripts.start === "string"
+    ? "start"
+    : typeof scripts.dev === "string"
+      ? "dev"
+      : null;
+  if (!scriptName) return null;
+  const script = String(scripts[scriptName]);
+  const explicitPort = /(?:--port(?:=|\s+)|(?:^|\s)-p\s+)(\d{2,5})(?:\s|$)/.exec(script)?.[1];
+  const defaults: Record<string, number> = {
+    "Angular": 4200,
+    "Astro": 4321,
+    "SvelteKit": scriptName === "start" ? 3000 : 5173,
+    "Vite": scriptName === "start" ? 4173 : 5173,
+  };
+  const port = explicitPort ? Number(explicitPort) : defaults[framework ?? ""] ?? 3000;
+  if (!Number.isSafeInteger(port) || port < 1_024 || port > 65_535) return null;
+  return {
+    startCommand: javascriptCommand(packageManager, scriptName),
+    port,
+    healthPath: "/",
+    browserDependencyDetected:
+      dependencies.has("playwright") || dependencies.has("@playwright/test"),
+  };
 }
 
 function detectJavascript(files: ReadManifest[]): ProfileDraft {
@@ -412,6 +458,7 @@ function detectJavascript(files: ReadManifest[]): ProfileDraft {
   const dependencies = dependencyNames(packageJson);
   const scripts = record(packageJson.scripts);
   const packageManager = packageManagerFromFiles(files, packageJson);
+  const framework = detectJavascriptFramework(dependencies);
   const names = new Set(files.map((file) => file.name));
   const install = packageManager === "pnpm"
     ? "pnpm install --frozen-lockfile --ignore-scripts"
@@ -429,7 +476,7 @@ function detectJavascript(files: ReadManifest[]): ProfileDraft {
   const usesTypescript = dependencies.has("typescript") || Boolean(typecheckScript);
   return {
     language: usesTypescript ? "typescript" : "javascript",
-    framework: detectJavascriptFramework(dependencies),
+    framework,
     packageManager,
     runtime: nodeVersion ? `node ${nodeVersion}` : "node",
     commands: {
@@ -438,6 +485,12 @@ function detectJavascript(files: ReadManifest[]): ProfileDraft {
       test: typeof scripts.test === "string" ? javascriptCommand(packageManager, "test") : null,
       typecheck: typecheckScript ? javascriptCommand(packageManager, typecheckScript) : null,
     },
+    application: detectedJavascriptApplication(
+      packageManager,
+      framework,
+      scripts,
+      dependencies,
+    ),
     runtimeFamily: "node",
     confidence: packageFile ? (names.size > 1 ? 0.96 : 0.9) : 0.65,
   };
@@ -597,6 +650,7 @@ function suggestion(input: {
     packageManager: draft.packageManager,
     runtime: draft.runtime,
     commands: draft.commands,
+    application: draft.application ?? null,
     environment: {
       image: "sandbox" as const,
       snapshotId: null,
@@ -706,26 +760,58 @@ function optionalCommand(command: string | null): string[] {
   return command ? [command] : [];
 }
 
+function detectedInstallCommands(
+  detected: DetectedRepositoryProfileSuggestion,
+): string[] {
+  const commands = optionalCommand(detected.commands.install);
+  if (!detected.application?.browserDependencyDetected) return commands;
+  const installBrowser = playwrightChromiumInstallCommand(
+    detected.packageManager ?? "unknown",
+  );
+  if (!installBrowser) return commands;
+  return [...commands, installBrowser, TENKI_BROWSER_PREFLIGHT_COMMAND];
+}
+
 export function executionProfileSuggestionStore(
   actor: ExecutionProfileActor = { actorId: "system:repository-detector" },
 ): RepositoryProfileSuggestionStore {
   return {
     async saveDetectedSuggestion({ orgId, suggestion: detected, evidence }) {
+      const installCommands = detectedInstallCommands(detected);
+      const browserProvisioned = Boolean(
+        detected.application?.browserDependencyDetected
+        && playwrightChromiumInstallCommand(detected.packageManager ?? "unknown"),
+      );
       return saveDetectedExecutionProfileSuggestion({
         orgId,
         repository: detected.repository,
         workspaceRoot: detected.root,
         config: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           language: detected.language,
           framework: detected.framework,
           packageManager: detected.packageManager ?? "unknown",
           runtimeVersion: detected.runtime,
           workingDirectory: detected.root,
-          installCommands: optionalCommand(detected.commands.install),
+          installCommands,
           buildCommands: optionalCommand(detected.commands.build),
           testCommands: optionalCommand(detected.commands.test),
           typecheckCommands: optionalCommand(detected.commands.typecheck),
+          automaticInstall: installCommands.length > 0,
+          automaticBuild: Boolean(detected.commands.build),
+          publicEnvironment: [],
+          secretBindings: [],
+          startCommand: detected.application?.startCommand ?? null,
+          applicationPort: detected.application?.port ?? null,
+          healthCheckPath: detected.application?.healthPath ?? null,
+          healthCheckTimeoutMs: 90_000,
+          previewEnabled: false,
+          previewTtlMs: 600_000,
+          runtimeTools: {
+            http: Boolean(detected.application),
+            browser: browserProvisioned,
+            logs: Boolean(detected.application),
+          },
           // This is only the suggested root boundary. Ticket-level paths must
           // narrow it, and detected profiles cannot execute until confirmed.
           permittedPaths: detected.root === "." ? ["**/*"] : [`${detected.root}/**`],
@@ -739,7 +825,10 @@ export function executionProfileSuggestionStore(
           cpuCores: 2,
           memoryMb: 4_096,
           allowInbound: false,
-          allowOutbound: false,
+          // A detected Playwright profile downloads its exact Chromium build
+          // during setup. The profile contains no runtime or test secret
+          // bindings, and an admin must review it before activation.
+          allowOutbound: browserProvisioned,
           maxDurationMs: 1_800_000,
           idleTimeoutMinutes: 2,
         },

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { upgradeExecutionProfileConfigV2 } from "@/lib/execution-profile";
 
 const profiles = vi.hoisted(() => ({ list: vi.fn(), override: vi.fn() }));
 const repositories = vi.hoisted(() => ({ list: vi.fn() }));
+const runtimeSecrets = vi.hoisted(() => ({ validate: vi.fn() }));
 
 vi.mock("@/lib/execution-profile-repository", () => ({
   listExecutionProfileSettings: profiles.list,
@@ -13,6 +15,9 @@ vi.mock("@/lib/github-repository-allowlist", () => ({
 }));
 vi.mock("@/lib/workspace-persistence", () => ({
   workspacePersistenceMode: () => "postgres",
+}));
+vi.mock("@/lib/runtime-secret-repository", () => ({
+  validateRuntimeSecretBindings: runtimeSecrets.validate,
 }));
 
 import { GET, PUT } from "./route";
@@ -40,6 +45,7 @@ describe("execution profile settings API", () => {
     });
     profiles.override.mockReset().mockResolvedValue({ id: "override" });
     repositories.list.mockReset().mockResolvedValue([]);
+    runtimeSecrets.validate.mockReset().mockResolvedValue(undefined);
   });
 
   it("returns profiles and the workspace's GitHub-authorized repositories", async () => {
@@ -51,6 +57,17 @@ describe("execution profile settings API", () => {
       repositories: [],
     });
     expect(profiles.list).toHaveBeenCalledWith("org-1");
+  });
+
+  it("does not disclose execution profiles or repository access to non-admin members", async () => {
+    const response = await GET(request("GET", undefined, "Contributor"));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Administrator permission is required",
+    });
+    expect(profiles.list).not.toHaveBeenCalled();
+    expect(repositories.list).not.toHaveBeenCalled();
   });
 
   it("creates an immutable override only for an administrator", async () => {
@@ -70,5 +87,32 @@ describe("execution profile settings API", () => {
 
     const forbidden = await PUT(request("PUT", payload, "Contributor"));
     expect(forbidden.status).toBe(403);
+  });
+
+  it("validates opaque runtime secret bindings before persisting a v2 profile", async () => {
+    const config = {
+      ...upgradeExecutionProfileConfigV2({ schemaVersion: 1 }),
+      secretBindings: [{
+        envName: "DATABASE_URL",
+        secretId: "11111111-1111-4111-8111-111111111111",
+        secretVersion: 3,
+        exposure: "runtime" as const,
+      }],
+    };
+    const response = await PUT(request("PUT", {
+      repository: "acme/app",
+      workspaceRoot: ".",
+      parentProfileId: null,
+      config,
+    }));
+
+    expect(response.status).toBe(200);
+    expect(runtimeSecrets.validate).toHaveBeenCalledWith({
+      orgId: "org-1",
+      repository: "acme/app",
+      workspaceRoot: ".",
+      bindings: config.secretBindings,
+    });
+    expect(profiles.override).toHaveBeenCalledOnce();
   });
 });

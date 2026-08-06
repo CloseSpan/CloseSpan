@@ -23,6 +23,23 @@ const criterionResultSchema = z.object({
   scenarioIds: z.array(z.string().regex(/^TEST-[1-9][0-9]*$/)).max(50),
 });
 
+const runtimeEvidenceSchema = z.object({
+  configured: z.boolean(),
+  healthStatus: z.enum(["not_configured", "passed", "failed"]),
+  applicationPort: z.number().int().min(1_024).max(65_535).nullable(),
+  previewUrl: z.string().url().max(2_000).nullable(),
+  interactions: z.array(z.object({
+    stage: z.enum(["implementation", "verification"]).optional(),
+    tool: z.enum(["setup", "http", "browser", "preview", "logs", "restart"]),
+    target: z.string().max(1_000),
+    status: z.string().max(200),
+    evidence: z.string().max(5_000),
+  }).strict()).max(100),
+  logExcerpt: z.array(z.string().max(5_000)).max(100),
+  userStoryReplay: z.enum(["not_required", "passed", "failed"]),
+  userStoryReplayMode: z.enum(["not_required", "contract", "live_application"]).optional(),
+}).strict();
+
 export const agentImplementationReportSchema = z.object({
   schemaVersion: z.literal(1),
   runId: z.string().uuid(),
@@ -39,6 +56,7 @@ export const agentImplementationReportSchema = z.object({
   assumptions: z.array(z.string().trim().min(1).max(2_000)).max(30),
   manualVerification: z.array(z.string().trim().min(1).max(2_000)).max(30),
   logs: z.array(z.string().max(5_000)).max(200),
+  runtimeEvidence: runtimeEvidenceSchema.optional(),
   independentVerification: z.object({
     provider: z.literal("Tenki Sandbox"),
     sessionId: z.string().trim().min(1).max(200),

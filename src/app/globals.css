@@ -59,6 +59,9 @@ p { margin:0; line-height:1.55; }
 .badge.brand { color:#4338ca; border-color:#ced0fb; background:var(--brand-soft); }
 .two-col { display:grid; grid-template-columns:minmax(0, 1fr) 340px; gap:17px; align-items:start; }
 .detail-stack { display:grid; gap:17px; }
+.runtime-evidence-summary .callout { min-width:0; }
+.runtime-evidence-summary .callout p { margin:0 0 6px; }
+.runtime-tool-name { display:inline-block; margin-right:8px; text-transform:uppercase; letter-spacing:.08em; font-size:.72rem; color:var(--primary); }
 .summary { font-size:15px; color:#344258; }
 .score-ring { width:68px; height:68px; border-radius:50%; display:grid; place-items:center; background:conic-gradient(var(--brand) 0 82%, #e8ebf0 82%); position:relative; font-weight:800; }
 .score-ring::before { content:""; position:absolute; inset:6px; border-radius:50%; background:white; }
@@ -476,11 +479,58 @@ p { margin:0; line-height:1.55; }
 .execution-profile-network { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .execution-profile-network .toggle-row { margin:0; padding:12px; border:0; border-radius:13px; background:#fafafa; }
 .execution-profile-network .toggle-row p { margin-top:3px; }
+.execution-profile-runtime { display:grid; gap:14px; padding:15px; border-radius:14px; background:#fff; box-shadow:inset 3px 3px 9px rgba(29,40,67,.045),inset -3px -3px 9px rgba(255,255,255,.95); }
+.execution-profile-runtime-env { display:grid; gap:10px; }
+.execution-profile-env-row { display:grid; grid-template-columns:minmax(150px,.7fr) minmax(220px,1.3fr) auto; align-items:center; gap:9px; }
+.execution-profile-env-row > input { width:100%; min-width:0; min-height:44px; padding:10px 12px; border:0; border-radius:12px; background:#eef1f6; color:var(--ink); box-shadow:inset 3px 3px 8px rgba(29,40,67,.06),inset -3px -3px 8px rgba(255,255,255,.95); }
+.execution-profile-secret-bindings { display:grid; gap:11px; padding:14px; border-radius:13px; background:#fafafa; }
+.execution-profile-secret-bindings .split > div { display:grid; gap:3px; }
+.execution-profile-secret-row { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(180px,.8fr) auto; align-items:end; gap:10px; padding-top:11px; border-top:1px solid rgba(15,23,42,.065); }
+.execution-profile-secret-state { min-height:44px; display:flex; align-items:center; justify-content:flex-end; gap:7px; }
+.execution-profile-secret-empty { display:grid; gap:4px; padding:12px 0 2px; }
+.execution-profile-secret-empty code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
+.runtime-secret-manager { display:grid; min-width:0; gap:16px; padding:18px; border-radius:18px; background:#fff; box-shadow:8px 8px 22px rgba(29,40,67,.07),-8px -8px 22px rgba(255,255,255,.92); }
+.runtime-secret-manager-head { display:flex; min-width:0; align-items:flex-start; justify-content:space-between; gap:18px; }
+.runtime-secret-manager-head > div { min-width:0; display:grid; gap:5px; }
+.runtime-secret-manager-head h3 { font-size:15px; }
+.runtime-secret-manager-head p { max-width:72ch; }
+.runtime-secret-manager-head .badge { flex:none; }
+.runtime-secret-create { display:grid; gap:13px; padding:15px; border-radius:14px; background:#fafafa; box-shadow:inset 3px 3px 9px rgba(29,40,67,.045),inset -3px -3px 9px rgba(255,255,255,.95); }
+.runtime-secret-create-head { display:flex; min-width:0; align-items:baseline; justify-content:space-between; gap:14px; }
+.runtime-secret-create-head > * { min-width:0; overflow-wrap:anywhere; }
+.runtime-secret-create-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px; margin:0; padding:0; border:0; }
+.runtime-secret-create-grid .runtime-secret-value-field { grid-column:1/-1; }
+.runtime-secret-form-actions { display:flex; justify-content:flex-end; }
+.runtime-secret-feedback:empty { display:none; }
+.runtime-secret-feedback .toast { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0; }
+.runtime-secret-feedback .text-link { flex:none; padding:0; border:0; background:transparent; color:inherit; font-weight:750; text-decoration:underline; text-underline-offset:3px; }
+.runtime-secret-list { display:grid; min-width:0; gap:0; }
+.runtime-secret-list-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:10px; }
+.runtime-secret-empty { display:grid; gap:4px; padding:18px 0 3px; border-top:1px solid rgba(15,23,42,.065); }
+.runtime-secret-row { display:grid; min-width:0; gap:12px; padding:14px 0; border-top:1px solid rgba(15,23,42,.065); }
+.runtime-secret-row-main { display:grid; min-width:0; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:14px; }
+.runtime-secret-identity { display:grid; min-width:0; grid-template-columns:auto minmax(0,1fr); align-items:baseline; gap:4px 9px; }
+.runtime-secret-identity strong,.runtime-secret-identity code,.runtime-secret-identity span { min-width:0; overflow-wrap:anywhere; }
+.runtime-secret-identity code { color:var(--brand); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+.runtime-secret-identity .subtle { grid-column:1/-1; font-size:11px; }
+.runtime-secret-version { display:flex; align-items:center; justify-content:flex-end; gap:8px; }
+.runtime-secret-version .subtle { font-size:10px; white-space:nowrap; }
+.runtime-secret-actions,.runtime-secret-inline-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; }
+.runtime-secret-inline-form { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:12px; padding:13px; border-radius:13px; background:#fafafa; }
+.runtime-secret-inline-form.runtime-secret-revoke { grid-template-columns:minmax(220px,1fr) minmax(220px,.7fr) auto; align-items:end; background:#fff8f8; }
+.runtime-secret-inline-form > div:first-child { display:grid; gap:4px; }
+.runtime-secret-inline-form .field { min-width:0; }
 .execution-profile-no-repositories { min-height:220px; }
 
 @media (max-width:900px) {
   .execution-profile-facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .execution-profile-resource-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .runtime-secret-row-main { grid-template-columns:minmax(0,1fr) auto; }
+  .runtime-secret-actions { grid-column:1/-1; justify-content:flex-start; }
+  .runtime-secret-inline-form.runtime-secret-revoke { grid-template-columns:1fr; align-items:stretch; }
+  .runtime-secret-inline-form.runtime-secret-revoke .runtime-secret-inline-actions { justify-content:flex-start; }
+  .execution-profile-secret-row { grid-template-columns:minmax(0,1fr) minmax(180px,.8fr); }
+  .execution-profile-secret-state { grid-column:1/-1; justify-content:flex-start; }
 }
 
 @media (max-width:620px) {
@@ -491,7 +541,24 @@ p { margin:0; line-height:1.55; }
   .execution-profile-fields,
   .execution-profile-command-grid,
   .execution-profile-resource-fields,
-  .execution-profile-network { grid-template-columns:1fr; }
+  .execution-profile-network,
+  .execution-profile-env-row { grid-template-columns:1fr; }
+  .runtime-secret-manager { padding:14px; }
+  .runtime-secret-manager-head,
+  .runtime-secret-create-head { display:grid; }
+  .runtime-secret-manager-head .badge { width:max-content; }
+  .runtime-secret-create-grid,
+  .runtime-secret-row-main,
+  .runtime-secret-inline-form,
+  .execution-profile-secret-row { grid-template-columns:1fr; }
+  .runtime-secret-create-grid .runtime-secret-value-field { grid-column:auto; }
+  .runtime-secret-version,.runtime-secret-actions,.runtime-secret-inline-actions,.execution-profile-secret-state { justify-content:flex-start; flex-wrap:wrap; }
+  .runtime-secret-actions { grid-column:auto; }
+  .runtime-secret-form-actions .btn { width:100%; }
+  .runtime-secret-create input,
+  .runtime-secret-create select,
+  .runtime-secret-inline-form input,
+  .execution-profile-secret-row select { font-size:16px; }
 }
 
 /* Product-manager repository review on the engineering ticket */

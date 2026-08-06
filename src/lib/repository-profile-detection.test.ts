@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { TENKI_BROWSER_PREFLIGHT_COMMAND } from "./execution-profile";
 
 const profileRepository = vi.hoisted(() => ({ save: vi.fn() }));
 
@@ -25,15 +26,15 @@ function githubFixture() {
     ["pkg", encoded(JSON.stringify({
       packageManager: "npm@11.0.0",
       engines: { node: ">=22" },
-      scripts: { build: "next build", test: "vitest", typecheck: "tsc --noEmit" },
+      scripts: { build: "next build", start: "next start", test: "vitest", typecheck: "tsc --noEmit" },
       dependencies: { next: "16.0.0" },
       devDependencies: { typescript: "6.0.0" },
     }))],
     ["lock", encoded("lockfileVersion: 3")],
     ["web-pkg", encoded(JSON.stringify({
-      scripts: { build: "vite build", test: "vitest" },
+      scripts: { build: "vite build", dev: "vite --host 0.0.0.0 --port 4173", test: "vitest" },
       dependencies: { react: "19.0.0" },
-      devDependencies: { typescript: "6.0.0" },
+      devDependencies: { typescript: "6.0.0", vite: "7.0.0", "@playwright/test": "1.55.0" },
     }))],
     ["pnpm", encoded("lockfileVersion: '9.0'")],
     ["python", encoded('[project]\nrequires-python = ">=3.12"\ndependencies = ["fastapi", "pytest", "mypy"]')],
@@ -103,14 +104,26 @@ describe("repository execution-profile detection", () => {
         test: "npm test",
         typecheck: "npm run typecheck",
       },
+      application: {
+        startCommand: "npm run start",
+        port: 3000,
+        healthPath: "/",
+      },
       reviewState: "Pending review",
       active: false,
+      detectorVersion: 3,
       environment: { image: "sandbox", snapshotId: null, runtimeFamily: "node" },
     });
     expect(result.profiles.find((profile) => profile.root === "apps/web")).toMatchObject({
-      framework: "React",
+      framework: "Vite",
       packageManager: "pnpm",
       commands: { install: "pnpm install --frozen-lockfile --ignore-scripts" },
+      application: {
+        startCommand: "pnpm run dev",
+        port: 4173,
+        healthPath: "/",
+        browserDependencyDetected: true,
+      },
     });
     expect(result.profiles.find((profile) => profile.root === "apps/service")).toMatchObject({
       language: "python",
@@ -158,11 +171,18 @@ describe("repository execution-profile detection", () => {
       repository: "acme/platform",
       workspaceRoot: ".",
       config: expect.objectContaining({
+        schemaVersion: 2,
         workingDirectory: ".",
         installCommands: ["npm ci --ignore-scripts"],
         buildCommands: ["npm run build"],
         testCommands: ["npm test"],
         typecheckCommands: ["npm run typecheck"],
+        automaticInstall: true,
+        automaticBuild: true,
+        startCommand: "npm run start",
+        applicationPort: 3000,
+        healthCheckPath: "/",
+        runtimeTools: { http: true, browser: false, logs: true },
         permittedPaths: ["**/*"],
         tenkiImage: null,
         tenkiSnapshotId: null,
@@ -175,6 +195,26 @@ describe("repository execution-profile detection", () => {
         detectionHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
       actor: { actorId: "admin-1", actorName: "Admin" },
+    }));
+
+    const browserProfileCall = profileRepository.save.mock.calls
+      .map(([input]) => input)
+      .find((input) => input.workspaceRoot === "apps/web");
+    expect(browserProfileCall).toEqual(expect.objectContaining({
+      repository: "acme/platform",
+      workspaceRoot: "apps/web",
+      config: expect.objectContaining({
+        installCommands: [
+          "pnpm install --frozen-lockfile --ignore-scripts",
+          "pnpm exec playwright install chromium",
+          TENKI_BROWSER_PREFLIGHT_COMMAND,
+        ],
+        automaticInstall: true,
+        runtimeTools: { http: true, browser: true, logs: true },
+        allowOutbound: true,
+        secretBindings: [],
+        permittedPaths: ["apps/web/**"],
+      }),
     }));
   });
 

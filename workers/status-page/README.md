@@ -28,7 +28,7 @@ The Worker expects these secrets:
 - `STATUS_WEBHOOK_URL`: optional Slack/Discord-compatible operational webhook.
 
 The same `STATUS_PROBE_SECRET` must be configured in the CloseSpan Vercel app
-and the `closespan-agent-executor` Worker. Email alerts use the restricted
+and the `closespan-agent-tenki-proxy` Worker. Email alerts use the restricted
 `STATUS_EMAIL` binding with `status@closespan.com`; the domain must be onboarded
 for Cloudflare Email Sending before delivery succeeds.
 

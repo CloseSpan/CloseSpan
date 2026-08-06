@@ -26,8 +26,20 @@ import {
   hashExecutionProfileConfig,
   sanitizeExecutionProfileConfig,
   type ExecutionProfileConfig,
+  type ExecutionProfileConfigV2,
   type ExecutionProfileSnapshot,
 } from "./execution-profile";
+import { createRuntimeSecretRedactor } from "./runtime-secret-redaction";
+import {
+  pddGeneratedTestsReferenceLiveApplication,
+  pddScenariosRequireLiveApplication,
+} from "./pdd-verification";
+import {
+  createTenkiRuntimeEnvironment,
+  type TenkiRuntimeEnvironment,
+} from "./tenki-runtime-environment";
+import { runTenkiHostCommand } from "./tenki-host-command";
+import { TenkiLiveReplayWitness } from "./tenki-live-replay-witness";
 
 const MAX_ARCHIVE_BYTES = 50_000_000;
 const MAX_CHANGED_BYTES = 5_000_000;
@@ -60,36 +72,6 @@ const generatedTestSchema = z.object({
   command: z.string().min(1).max(500),
 }).strict();
 
-const executionProfileConfigSchema = z.object({
-  schemaVersion: z.literal(1),
-  language: z.string().min(1).max(80),
-  framework: z.string().min(1).max(120).nullable(),
-  packageManager: z.string().min(1).max(80),
-  runtimeVersion: z.string().min(1).max(120).nullable(),
-  workingDirectory: z.string().min(1).max(500),
-  installCommands: z.array(z.string().min(1).max(1_000)).max(30),
-  buildCommands: z.array(z.string().min(1).max(1_000)).max(30),
-  testCommands: z.array(z.string().min(1).max(1_000)).max(30),
-  typecheckCommands: z.array(z.string().min(1).max(1_000)).max(30),
-  permittedPaths: z.array(z.string().min(1).max(500)).max(100),
-  tenkiImage: z.string().min(1).max(500).nullable(),
-  tenkiSnapshotId: z.string().min(1).max(500).nullable(),
-  cpuCores: z.number().int().min(1).max(32),
-  memoryMb: z.number().int().min(512).max(131_072),
-  allowInbound: z.boolean(),
-  allowOutbound: z.boolean(),
-  maxDurationMs: z.number().int().min(60_000).max(86_400_000),
-  idleTimeoutMinutes: z.number().int().min(1).max(1_440),
-}).strict().superRefine((value, context) => {
-  if (value.tenkiImage && value.tenkiSnapshotId) {
-    context.addIssue({
-      code: "custom",
-      path: ["tenkiSnapshotId"],
-      message: "Configure either a Tenki image or snapshot, not both",
-    });
-  }
-});
-
 const executionProfileSnapshotSchema = z.object({
   profileId: z.string().uuid(),
   version: z.number().int().positive(),
@@ -97,7 +79,9 @@ const executionProfileSnapshotSchema = z.object({
   repository: z.string().max(300),
   workspaceRoot: z.string().min(1).max(500),
   contentHash: z.string().regex(/^[a-f0-9]{64}$/),
-  config: executionProfileConfigSchema,
+  // The app-level sanitizer below is authoritative and preserves immutable
+  // v1 hashes while allowing newer versioned runtime contracts.
+  config: z.unknown(),
 }).strict();
 
 const commonJobFields = {
@@ -206,16 +190,41 @@ export interface TenkiCodingExecutorEvents {
   started(sessionId: string): Promise<void>;
 }
 
+export interface TenkiResolvedRuntimeEnvironment {
+  setup: Readonly<Record<string, string>>;
+  runtime: Readonly<Record<string, string>>;
+  test: Readonly<Record<string, string>>;
+  redactionValues: readonly string[];
+}
+
+export function runtimeToolsForAgent(
+  configuredTools: ExecutionProfileConfigV2["runtimeTools"],
+  runtimeHealthy: boolean,
+): ExecutionProfileConfigV2["runtimeTools"] {
+  if (runtimeHealthy) return configuredTools;
+  return {
+    http: false,
+    browser: false,
+    logs: configuredTools.logs,
+  };
+}
+
 interface ExecutorDependencies {
   apiKey?: string;
   openAiApiKey?: string;
   aiBaseUrl?: string;
   aiModel?: string;
+  runtimeEnvironment?: TenkiResolvedRuntimeEnvironment;
   createClient?: (apiKey: string) => TenkiSandbox;
   runAgent?: (input: {
     job: TenkiAgentJob;
     shell: RestrictedShell;
     editor: RestrictedEditor;
+    runtime?: TenkiRuntimeEnvironment;
+    runtimeHealthy?: boolean;
+    runtimeTools?: ExecutionProfileConfigV2["runtimeTools"];
+    restartAllowed?: boolean;
+    runtimeInteractions: NonNullable<AgentImplementationReport["runtimeEvidence"]>["interactions"];
     signal: AbortSignal;
     ai: ExecutorAiConfiguration;
   }) => Promise<AgentOutput>;
@@ -320,8 +329,18 @@ type DeleteFileOperation = { type: "delete_file"; path: string };
 
 export class RestrictedShell implements Shell {
   readonly results: CommandLog[] = [];
+  private readonly redactor: ReturnType<typeof createRuntimeSecretRedactor>;
 
-  constructor(private readonly session: Session, private readonly job: TenkiAgentJob) {}
+  constructor(
+    private readonly session: Session,
+    private readonly job: TenkiAgentJob,
+    private readonly options: {
+      testEnvironment?: Readonly<Record<string, string>>;
+      redactionValues?: readonly string[];
+    } = {},
+  ) {
+    this.redactor = createRuntimeSecretRedactor(options.redactionValues ?? []);
+  }
 
   async run(action: ShellAction): Promise<ShellResult> {
     if (action.commands.length > 6) throw new Error("Too many commands in one shell action");
@@ -335,24 +354,32 @@ export class RestrictedShell implements Shell {
     const output: ShellResult["output"] = [];
     for (const command of action.commands) {
       try {
-        const result = await this.session.exec("bash", {
-          args: ["-c", command],
+        const approvedValidation = this.job.requiredCommands.includes(command.trim());
+        const result = await runTenkiHostCommand(this.session, ["bash", "-c", command], {
           cwd: workingDirectory(this.job),
           timeoutMs: Math.min(action.timeoutMs ?? 120_000, COMMAND_TIMEOUT_MS),
-          env: { CI: "true" },
+          env: approvedValidation
+            ? { CI: "true", ...(this.options.testEnvironment ?? {}) }
+            : { CI: "true" },
         });
-        const stdout = outputLimit === 0 ? "" : decode(result.stdout).slice(-outputLimit);
-        const stderr = outputLimit === 0 ? "" : decode(result.stderr).slice(-outputLimit);
+        const stdout = outputLimit === 0
+          ? ""
+          : this.redactor.redact(decode(result.stdout)).slice(-outputLimit);
+        const stderr = outputLimit === 0
+          ? ""
+          : this.redactor.redact(decode(result.stderr)).slice(-outputLimit);
         this.results.push({ command, stdout, stderr, exitCode: result.exitCode });
         output.push({
           command,
           stdout,
           stderr,
-          outcome: result.status === "TIMED_OUT" ? { type: "timeout" } : { type: "exit", exitCode: result.exitCode },
+          outcome: result.timedOut ? { type: "timeout" } : { type: "exit", exitCode: result.exitCode },
         });
-        if (result.status === "TIMED_OUT") break;
+        if (result.timedOut) break;
       } catch (error) {
-        const stderr = error instanceof Error ? error.message : "Tenki command failed";
+        const stderr = this.redactor.redact(
+          error instanceof Error ? error.message : "Tenki command failed",
+        );
         this.results.push({ command, stdout: "", stderr, exitCode: 1 });
         output.push({ command, stdout: "", stderr, outcome: { type: "exit", exitCode: 1 } });
       }
@@ -456,7 +483,25 @@ async function sha256(content: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function collectChangedFiles(session: Session, job: TenkiAgentJob, reasons: Map<string, string>) {
+export function assertRuntimeSecretPublicationSafe(
+  path: string,
+  content: string | null,
+  runtimeRedactor: ReturnType<typeof createRuntimeSecretRedactor>,
+): void {
+  if (runtimeRedactor.contains(path)) {
+    throw new Error("Final diff includes a path derived from a resolved runtime secret");
+  }
+  if (content !== null && runtimeRedactor.contains(content)) {
+    throw new Error(`Final diff includes a resolved runtime secret or encoded secret in ${path}`);
+  }
+}
+
+async function collectChangedFiles(
+  session: Session,
+  job: TenkiAgentJob,
+  reasons: Map<string, string>,
+  runtimeRedactor: ReturnType<typeof createRuntimeSecretRedactor>,
+) {
   await requireCommand(session, "git", { args: ["add", "-N", "--", "."], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Unable to enumerate newly created files");
   const diff = await requireCommand(session, "git", { args: ["diff", "--name-status", "--no-renames", "-z", "HEAD"], cwd: REPOSITORY_ROOT, timeoutMs: 30_000 }, "Unable to inspect the final diff");
   const fields = decode(diff.stdout).split("\0").filter(Boolean);
@@ -466,6 +511,7 @@ async function collectChangedFiles(session: Session, job: TenkiAgentJob, reasons
     const status = fields[index];
     const path = fields[index + 1];
     if (!status || !path || !/^[AMD]$/.test(status)) throw new Error("Unsupported or malformed change in final diff");
+    assertRuntimeSecretPublicationSafe(path, null, runtimeRedactor);
     if (!tenkiExecutorAllowsPublishedPath(job, path)) throw new Error(`Final diff includes prohibited path ${path}`);
     let contentBase64: string | null = null;
     if (status !== "D") {
@@ -474,6 +520,8 @@ async function collectChangedFiles(session: Session, job: TenkiAgentJob, reasons
       if (info.isDir || info.isSymlink) throw new Error(`Only regular, non-symlink files may be published: ${path}`);
       const file = await session.readFile(target);
       if (file.includes(0)) throw new Error(`Binary change is prohibited: ${path}`);
+      const text = new TextDecoder().decode(file);
+      assertRuntimeSecretPublicationSafe(path, text, runtimeRedactor);
       contentBase64 = Buffer.from(file).toString("base64");
       if (contentBase64.length > 1_500_000) throw new Error(`Changed file exceeds the per-file publication limit: ${path}`);
       total += file.byteLength;
@@ -488,6 +536,11 @@ async function defaultRunAgent(input: {
   job: TenkiAgentJob;
   shell: RestrictedShell;
   editor: RestrictedEditor;
+  runtime?: TenkiRuntimeEnvironment;
+  runtimeHealthy?: boolean;
+  runtimeTools?: ExecutionProfileConfigV2["runtimeTools"];
+  restartAllowed?: boolean;
+  runtimeInteractions: NonNullable<AgentImplementationReport["runtimeEvidence"]>["interactions"];
   signal: AbortSignal;
   ai: ExecutorAiConfiguration;
 }): Promise<AgentOutput> {
@@ -511,8 +564,110 @@ async function defaultRunAgent(input: {
       ? "Use apply_patch for all code changes. Shell access is limited to inspection and explicitly approved validation commands."
       : "Use the approved text-file tools for code changes. Command access is limited to inspection and explicitly approved validation commands.",
     "Do not stop after describing your plan. Inspect the repository, make the approved code and test changes, and run the approved validation commands before finishing.",
+    input.runtime
+      ? input.restartAllowed === false
+        ? "A baseline application is available for read-only inspection. Resolved runtime secrets are never re-injected into agent-modified code; CloseSpan will restart and verify the sealed implementation after the publication payload is captured."
+        : input.runtimeHealthy === false
+        ? "The configured baseline application did not become healthy. HTTP and browser tools are intentionally unavailable; use only the provided logs and restart recovery tools until the code is fixed, then rely on the approved validation commands."
+        : input.runtimeTools?.http || input.runtimeTools?.browser
+          ? "A healthy running application is configured in the same VM. Use the provided runtime tools to inspect behavior, logs, and approved localhost endpoints."
+          : "A healthy running application is configured, but this profile permits only its provided recovery or log tools. Rely on the approved validation commands for other evidence."
+      : "No running application is configured for this execution profile; rely on the approved repository and validation commands.",
     "Return criterion-level evidence honestly. Manual scenarios must remain Pending manual. Do not fabricate test evidence.",
   ].join("\n");
+
+  const recordRuntimeInteraction = (
+    toolName: "http" | "browser" | "logs" | "restart",
+    target: string,
+    status: string,
+    evidence: string,
+  ) => {
+    input.runtimeInteractions.push({
+      stage: "implementation",
+      tool: toolName,
+      target: target.slice(0, 1_000),
+      status: status.slice(0, 200),
+      evidence: evidence.slice(0, 5_000),
+    });
+  };
+  const liveTools: ReturnType<typeof tool>[] = [];
+  if (input.runtime && input.runtimeTools?.http) {
+    liveTools.push(tool({
+      name: "request_running_application",
+      description: "Make a bounded HTTP request to the configured application on its fixed localhost port. Paths cannot target another host.",
+      parameters: z.object({
+        method: z.enum(["GET", "HEAD", "OPTIONS"]),
+        path: z.string().min(1).max(2_000),
+      }).strict(),
+      execute: async ({ method, path }) => {
+        try {
+          const response = await input.runtime!.request({ method, path });
+          recordRuntimeInteraction("http", `${method} ${path}`, `HTTP ${response.statusCode}`, response.body);
+          return JSON.stringify(response);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Runtime HTTP request failed";
+          recordRuntimeInteraction("http", `${method} ${path}`, "failed", message);
+          throw error;
+        }
+      },
+    }));
+  }
+  if (input.runtime && input.runtimeTools?.browser) {
+    liveTools.push(tool({
+      name: "inspect_running_page",
+      description: "Open the running application in a real headless Playwright browser for read-only inspection and return a bounded DOM snapshot plus the short-lived preview URL.",
+      parameters: z.object({
+        path: z.string().min(1).max(2_000).default("/"),
+      }).strict(),
+      execute: async ({ path }) => {
+        try {
+          const [status, page] = await Promise.all([
+            input.runtime!.status(),
+            input.runtime!.browser({ path, actions: [] }),
+          ]);
+          const result = { previewUrl: status.previewUrl ?? null, ...page };
+          recordRuntimeInteraction("browser", path, "browser interaction passed", `${status.previewUrl ?? "localhost-only"}\n${page.title}\n${page.text}`);
+          return JSON.stringify(result);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Runtime page inspection failed";
+          recordRuntimeInteraction("browser", path, "failed", message);
+          throw error;
+        }
+      },
+    }));
+  }
+  if (input.runtime && input.runtimeTools?.logs) {
+    liveTools.push(tool({
+      name: "read_running_application_logs",
+      description: "Read the bounded, secret-redacted tail of the running application's logs.",
+      parameters: z.object({ maxBytes: z.number().int().min(1_000).max(128_000).default(20_000) }).strict(),
+      execute: async ({ maxBytes }) => {
+        const logs = input.runtime!.logs(maxBytes);
+        recordRuntimeInteraction("logs", "application log tail", "read", logs);
+        return logs || "The running application has not emitted logs.";
+      },
+    }));
+  }
+  if (input.runtime && input.restartAllowed !== false) {
+    liveTools.push(tool({
+      name: "restart_running_application",
+      description: "Restart the configured application after code changes and optionally rerun approved build commands without trusted bootstrap secrets.",
+      parameters: z.object({
+        runBuild: z.boolean().default(true),
+      }).strict(),
+      execute: async ({ runBuild }) => {
+        try {
+          const status = await input.runtime!.restart({ runInstall: false, runBuild });
+          recordRuntimeInteraction("restart", "running application", status.healthy ? "healthy" : status.state, JSON.stringify(status));
+          return JSON.stringify(status);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Runtime restart failed";
+          recordRuntimeInteraction("restart", "running application", "failed", message);
+          throw error;
+        }
+      },
+    }));
+  }
 
   if (input.ai.provider === "xAI") {
     const compatibleTools = [
@@ -534,6 +689,7 @@ async function defaultRunAgent(input: {
         parameters: z.object({ path: z.string().min(1).max(500) }).strict(),
         execute: async ({ path }) => input.editor.deleteApprovedFile(path),
       }),
+      ...liveTools,
     ];
     const implementationAgent = new Agent({
       name: "CloseSpan implementation agent",
@@ -576,6 +732,7 @@ async function defaultRunAgent(input: {
     tools: [
       shellTool({ shell: input.shell, needsApproval: false }),
       applyPatchTool({ editor: input.editor, needsApproval: false }),
+      ...liveTools,
     ],
     outputType: agentOutputSchema,
     modelSettings: { toolChoice: "required", parallelToolCalls: false, store: false },
@@ -618,6 +775,73 @@ export function tenkiSandboxCreateOptions(job: TenkiAgentJob) {
   };
 }
 
+const EMPTY_RESOLVED_RUNTIME_ENVIRONMENT: TenkiResolvedRuntimeEnvironment = {
+  setup: {},
+  runtime: {},
+  test: {},
+  redactionValues: [],
+};
+
+function environmentRecord(
+  profile: ExecutionProfileConfigV2,
+): Record<string, string> {
+  return Object.fromEntries(
+    profile.publicEnvironment.map(({ name, value }) => [name, value]),
+  );
+}
+
+export function tenkiRuntimeEnvironmentForProfile(
+  profile: ExecutionProfileConfigV2,
+  resolved: TenkiResolvedRuntimeEnvironment,
+) {
+  const phaseMaps = {
+    setup: resolved.setup,
+    runtime: resolved.runtime,
+    test: resolved.test,
+  } as const;
+  for (const exposure of ["setup", "runtime", "test"] as const) {
+    const expected = new Set(
+      profile.secretBindings
+        .filter((binding) => binding.exposure === exposure)
+        .map((binding) => binding.envName),
+    );
+    const actual = new Set(Object.keys(phaseMaps[exposure]));
+    if (
+      expected.size !== actual.size
+      || [...expected].some((name) => !actual.has(name))
+    ) {
+      throw new Error(
+        `Coding execution did not receive the exact ${exposure} secret bindings from the immutable execution profile`,
+      );
+    }
+  }
+  const publicEnvironment = environmentRecord(profile);
+  const applicationUrl = profile.applicationPort === null
+    ? undefined
+    : `http://127.0.0.1:${profile.applicationPort}`;
+  return {
+    setup: {
+      ...publicEnvironment,
+      ...resolved.setup,
+      CI: "true",
+    },
+    runtime: {
+      ...publicEnvironment,
+      ...resolved.runtime,
+      ...(profile.applicationPort === null
+        ? {}
+        : { PORT: String(profile.applicationPort) }),
+    },
+    test: {
+      ...publicEnvironment,
+      ...resolved.test,
+      CI: "true",
+      ...(applicationUrl ? { CLOSESPAN_APP_URL: applicationUrl } : {}),
+    },
+    redactionValues: resolved.redactionValues,
+  };
+}
+
 export async function executeTenkiCodingJob(
   input: unknown,
   events: TenkiCodingExecutorEvents,
@@ -631,6 +855,47 @@ export async function executeTenkiCodingJob(
   const apiKey = dependencies.apiKey ?? process.env.TENKI_API_KEY?.trim();
   const ai = resolveExecutorAiConfiguration(dependencies);
   if (!apiKey) throw new Error("TENKI_API_KEY is required for coding execution");
+  const executionProfile = executionProfileForJob(job);
+  const runtimeProfile = executionProfile?.schemaVersion === 2
+    ? executionProfile
+    : null;
+  const generatedTests = job.generatedTests ?? [];
+  const liveReplayRequired = generatedTests.length > 0
+    && pddScenariosRequireLiveApplication(job.testScenarios);
+  if (
+    liveReplayRequired
+    && !pddGeneratedTestsReferenceLiveApplication(generatedTests)
+  ) {
+    throw new Error(
+      "The approved PDD live test does not reference CLOSESPAN_APP_URL",
+    );
+  }
+  if (
+    liveReplayRequired
+    && (
+      !runtimeProfile?.startCommand
+      || !runtimeProfile.applicationPort
+      || !runtimeProfile.healthCheckPath
+    )
+  ) {
+    throw new Error(
+      "The approved PDD live test requires a configured running application",
+    );
+  }
+  if (
+    runtimeProfile?.secretBindings.length
+    && !dependencies.runtimeEnvironment
+  ) {
+    throw new Error("The execution profile requires resolved runtime secret bindings");
+  }
+  const resolvedRuntime = dependencies.runtimeEnvironment
+    ?? EMPTY_RESOLVED_RUNTIME_ENVIRONMENT;
+  const runtimeEnvironment = runtimeProfile
+    ? tenkiRuntimeEnvironmentForProfile(runtimeProfile, resolvedRuntime)
+    : null;
+  const runtimeRedactor = createRuntimeSecretRedactor(
+    runtimeEnvironment?.redactionValues ?? [],
+  );
 
   const options = tenkiSandboxCreateOptions(job);
   const deadline = Date.now() + options.maxDurationMs;
@@ -640,6 +905,8 @@ export async function executeTenkiCodingJob(
     dataPlaneReadyTimeoutMs: CREATE_TIMEOUT_MS,
   })))(apiKey);
   let session: Session | undefined;
+  let applicationRuntime: TenkiRuntimeEnvironment | undefined;
+  let liveReplayWitness: TenkiLiveReplayWitness | undefined;
   let cleanupError: unknown;
   try {
     session = await client.createAndWait(options);
@@ -673,7 +940,91 @@ export async function executeTenkiCodingJob(
       await session.writeFile(target, generatedTest.content);
     }
 
-    const shell = new RestrictedShell(session, job);
+    const runtimeInteractions: NonNullable<AgentImplementationReport["runtimeEvidence"]>["interactions"] = [];
+    let runtimeStatus: Awaited<ReturnType<TenkiRuntimeEnvironment["status"]>> | undefined;
+    if (
+      runtimeProfile
+      && runtimeEnvironment
+      && (
+        runtimeProfile.automaticInstall
+        || runtimeProfile.automaticBuild
+        || runtimeProfile.startCommand !== null
+      )
+    ) {
+      applicationRuntime = createTenkiRuntimeEnvironment(
+        session,
+        {
+          workingDirectory: workingDirectory(job),
+          install: {
+            enabled: runtimeProfile.automaticInstall,
+            commands: runtimeProfile.installCommands,
+          },
+          build: {
+            enabled: runtimeProfile.automaticBuild,
+            commands: runtimeProfile.buildCommands,
+          },
+          startCommand: runtimeProfile.startCommand,
+          port: runtimeProfile.applicationPort,
+          healthPath: runtimeProfile.healthCheckPath,
+          preview: {
+            allowed: runtimeProfile.previewEnabled && runtimeProfile.allowInbound,
+            ttlMs: Math.min(runtimeProfile.previewTtlMs, 15 * 60_000),
+            slug: `closespan-${job.runId.slice(0, 8)}`,
+          },
+          commandTimeoutMs: Math.min(COMMAND_TIMEOUT_MS, options.maxDurationMs),
+          startupTimeoutMs: runtimeProfile.healthCheckTimeoutMs,
+          requestTimeoutMs: 10_000,
+          terminationGraceMs: 5_000,
+          maxLogBytes: 128_000,
+          maxResponseBytes: 128_000,
+        },
+        {
+          setupEnv: runtimeEnvironment.setup,
+          rerunEnv: {
+            ...environmentRecord(runtimeProfile),
+            CI: "true",
+          },
+          runtimeEnv: runtimeEnvironment.runtime,
+          redactionValues: runtimeEnvironment.redactionValues,
+        },
+      );
+      try {
+        await applicationRuntime.prepare();
+        if (runtimeProfile.startCommand !== null) {
+          runtimeStatus = await applicationRuntime.start();
+        }
+        runtimeInteractions.push({
+          stage: "implementation",
+          tool: runtimeProfile.startCommand === null ? "setup" : "restart",
+          target: runtimeProfile.startCommand === null
+            ? "automatic setup"
+            : runtimeProfile.healthCheckPath ?? "/",
+          status: runtimeStatus?.healthy ? "healthy" : "setup passed",
+          evidence: runtimeStatus?.previewUrl
+            ? `Application became healthy; short-lived preview: ${runtimeStatus.previewUrl}`
+            : runtimeProfile.startCommand
+              ? "Application became healthy on its fixed localhost port."
+              : "Automatic install and build completed before the coding agent started.",
+        });
+      } catch (error) {
+        runtimeInteractions.push({
+          stage: "implementation",
+          tool: runtimeProfile.startCommand === null ? "setup" : "restart",
+          target: runtimeProfile.healthCheckPath ?? "automatic setup",
+          status: "baseline failed",
+          evidence: runtimeRedactor.redact(
+            error instanceof Error ? error.message : "The baseline runtime could not start.",
+          ).slice(0, 5_000),
+        });
+      }
+    }
+
+    const shell = new RestrictedShell(session, job, {
+      testEnvironment: runtimeProfile
+        ? environmentRecord(runtimeProfile)
+        : undefined,
+      redactionValues: runtimeEnvironment?.redactionValues,
+    });
     const editor = new RestrictedEditor(session, job);
     const agentBudget = Math.min(AGENT_DURATION_MS, deadline - Date.now());
     if (agentBudget <= 0) throw new Error("Agent run exceeded the approval duration");
@@ -681,6 +1032,20 @@ export async function executeTenkiCodingJob(
       job,
       shell,
       editor,
+      ...(runtimeProfile?.startCommand && applicationRuntime
+        ? {
+            runtime: applicationRuntime,
+            runtimeHealthy: runtimeStatus?.healthy === true,
+            runtimeTools: runtimeToolsForAgent(
+              runtimeProfile.runtimeTools,
+              runtimeStatus?.healthy === true,
+            ),
+            restartAllowed: !runtimeProfile.secretBindings.some(
+              (binding) => binding.exposure === "runtime",
+            ),
+          }
+        : {}),
+      runtimeInteractions,
       signal: AbortSignal.timeout(agentBudget),
       ai,
     });
@@ -693,24 +1058,110 @@ export async function executeTenkiCodingJob(
       if (await sha256(content) !== generatedTest.contentHash)
         throw new Error(`The immutable PDD acceptance test changed during execution: ${generatedTest.path}`);
     }
+    // Capture the exact publication payload before agent-modified processes
+    // receive any runtime or test secret. Later checks run against mutable VM
+    // state, while publication and independent verification use these bytes.
+    const changedFiles = await collectChangedFiles(
+      session,
+      job,
+      new Map(agentReport.files.map((file) => [file.path, file.reason])),
+      runtimeRedactor,
+    );
+
+    if (runtimeProfile?.startCommand && applicationRuntime) {
+      runtimeStatus = await applicationRuntime.restart({
+        runInstall: false,
+        runBuild: runtimeProfile.automaticBuild,
+      });
+      runtimeInteractions.push({
+        stage: "implementation",
+        tool: "restart",
+        target: runtimeProfile.healthCheckPath ?? "/",
+        status: runtimeStatus.healthy ? "healthy" : runtimeStatus.state,
+        evidence: "Rebuilt and restarted the changed application before immutable acceptance replay.",
+      });
+    } else if (
+      runtimeProfile
+      && applicationRuntime
+      && (runtimeProfile.automaticInstall || runtimeProfile.automaticBuild)
+    ) {
+      await applicationRuntime.prepare({
+        runInstall: false,
+        runBuild: runtimeProfile.automaticBuild,
+      });
+      runtimeInteractions.push({
+        stage: "implementation",
+        tool: "setup",
+        target: "automatic setup",
+        status: "passed",
+        evidence: "Re-ran approved build commands after the agent changes without trusted bootstrap secrets.",
+      });
+    }
+
+    let liveReplayRequestCount = 0;
+    let acceptanceEnvironment = runtimeEnvironment?.test ?? { CI: "true" };
+    if (liveReplayRequired) {
+      liveReplayWitness = new TenkiLiveReplayWitness(
+        session,
+        runtimeProfile!.applicationPort!,
+        runtimeProfile!.healthCheckPath!,
+        workingDirectory(job),
+        runtimeEnvironment?.redactionValues ?? [],
+      );
+      const witnessedApplicationUrl = await liveReplayWitness.start();
+      acceptanceEnvironment = {
+        ...acceptanceEnvironment,
+        CLOSESPAN_APP_URL: witnessedApplicationUrl,
+      };
+    }
 
     const tests: AgentImplementationReport["tests"] = [];
     for (const command of job.requiredCommands) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error("Agent run exceeded the approval duration");
-      const result = await session.exec("bash", {
-        args: ["-c", command],
+      const result = await runTenkiHostCommand(session, ["bash", "-c", command], {
         cwd: workingDirectory(job),
+        env: acceptanceEnvironment,
         timeoutMs: Math.min(COMMAND_TIMEOUT_MS, remaining),
-        env: { CI: "true" },
       });
+      const commandPassed = result.exitCode === 0 && !result.signal && !result.timedOut;
       tests.push({
         command,
-        status: succeeded(result) ? "passed" : "failed",
-        output: combinedOutput(result) || (succeeded(result) ? "Command passed without output." : "Command failed without output."),
+        status: commandPassed ? "passed" : "failed",
+        output: runtimeRedactor.redact(
+          [decode(result.stdout).trim(), decode(result.stderr).trim()]
+            .filter(Boolean)
+            .join("\n")
+            .slice(-OUTPUT_LIMIT),
+        ) || (commandPassed ? "Command passed without output." : "Command failed without output."),
       });
     }
+    if (liveReplayWitness) {
+      liveReplayRequestCount = await liveReplayWitness.requestCount();
+      await liveReplayWitness.close();
+      liveReplayWitness = undefined;
+    }
     const allTestsPassed = tests.every((test) => test.status === "passed");
+    const userStoryReplayPassed = generatedTests.length > 0
+      && allTestsPassed
+      && (
+        !liveReplayRequired
+        || (
+          runtimeStatus?.healthy === true
+          && liveReplayRequestCount > 0
+        )
+      );
+    if (liveReplayRequired) {
+      runtimeInteractions.push({
+        stage: "implementation",
+        tool: "http",
+        target: "CLOSESPAN_APP_URL",
+        status: userStoryReplayPassed ? "PDD live replay passed" : "PDD live replay failed",
+        evidence: userStoryReplayPassed
+          ? `The immutable PDD test made ${liveReplayRequestCount} witnessed request(s) to the healthy VM-local application and its approved command passed.`
+          : "The immutable PDD live test did not make a witnessed VM-local request, or the application/test did not pass.",
+      });
+    }
     const reportedCriteria = new Map(agentReport.criteria.map((item) => [item.criterionId, item]));
     const criteria: AgentImplementationReport["criteria"] = job.acceptanceCriteria.map((criterion) => {
       const reported = reportedCriteria.get(criterion.id);
@@ -723,7 +1174,6 @@ export async function executeTenkiCodingJob(
         scenarioIds: scenarios.map((scenario) => scenario.id),
       };
     });
-    const changedFiles = await collectChangedFiles(session, job, new Map(agentReport.files.map((file) => [file.path, file.reason])));
     const changedPaths = new Set(changedFiles.map((file) => file.path));
     const testFiles = [...new Set([
       ...agentReport.testFiles,
@@ -748,13 +1198,51 @@ export async function executeTenkiCodingJob(
       assumptions: agentReport.assumptions,
       manualVerification: agentReport.manualVerification,
       logs: shell.results.slice(-200).map((entry) => `${entry.command}\n${entry.stdout}\n${entry.stderr}`.slice(-5_000)),
+      ...(runtimeProfile
+        ? {
+            runtimeEvidence: {
+              configured: runtimeProfile.startCommand !== null,
+              healthStatus: runtimeProfile.startCommand === null
+                ? "not_configured"
+                : runtimeStatus?.healthy
+                  ? "passed"
+                  : "failed",
+              applicationPort: runtimeProfile.applicationPort,
+              previewUrl: runtimeStatus?.previewUrl ?? null,
+              interactions: runtimeInteractions,
+              logExcerpt: applicationRuntime
+                ? applicationRuntime.logs(20_000).split("\n").filter(Boolean).slice(-100)
+                : [],
+              userStoryReplay: generatedTests.length === 0
+                ? "not_required"
+                : userStoryReplayPassed
+                  ? "passed"
+                  : "failed",
+              userStoryReplayMode: generatedTests.length === 0
+                ? "not_required"
+                : liveReplayRequired
+                  ? "live_application"
+                  : "contract",
+            },
+          }
+        : {}),
     });
   } finally {
     if (session) {
       try {
-        await session.close();
+        await liveReplayWitness?.close();
       } catch (error) {
         cleanupError = error;
+      }
+      try {
+        await applicationRuntime?.close();
+      } catch (error) {
+        cleanupError = error;
+      }
+      try {
+        await session.close();
+      } catch (error) {
+        cleanupError ??= error;
       }
     }
     client.close();

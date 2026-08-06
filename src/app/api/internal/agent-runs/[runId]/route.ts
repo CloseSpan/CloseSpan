@@ -12,7 +12,10 @@ import { noStoreHeaders } from "@/lib/request-security";
 import {
   TenkiIndependentVerificationError,
   verifyAgentRunWithTenki,
+  type TenkiVerificationResolvedEnvironment,
 } from "@/lib/tenki-agent-verification";
+import { sanitizeExecutionProfileConfig } from "@/lib/execution-profile";
+import { resolveRuntimeSecretBindings } from "@/lib/runtime-secret-repository";
 
 export const maxDuration = 300;
 
@@ -66,12 +69,36 @@ export async function POST(
     }
     await completeAgentRun(context, { ...report, status: "Tests passed" });
     after(async () => {
+      let verificationPassed = false;
       try {
-        const verified = await verifyAgentRunWithTenki(context, report);
+        let runtimeEnvironment: TenkiVerificationResolvedEnvironment | undefined;
+        if (context.executionProfileSnapshot) {
+          const profile = sanitizeExecutionProfileConfig(
+            context.executionProfileSnapshot.config,
+          );
+          if (profile.schemaVersion === 2) {
+            const resolved = await resolveRuntimeSecretBindings({
+              orgId: context.orgId,
+              repository: context.repository,
+              workspaceRoot: context.executionProfileSnapshot.workspaceRoot,
+              bindings: profile.secretBindings,
+            });
+            runtimeEnvironment = {
+              setupEnv: resolved.setup,
+              runtimeEnv: resolved.runtime,
+              testEnv: resolved.test,
+              redactionValues: resolved.redactionValues,
+            };
+          }
+        }
+        const verified = runtimeEnvironment
+          ? await verifyAgentRunWithTenki(context, report, { runtimeEnvironment })
+          : await verifyAgentRunWithTenki(context, report);
         if (verified.status === "Failed") {
           await completeAgentRun(context, verified);
           return;
         }
+        verificationPassed = true;
         const publication = await publishAgentRun(context, verified);
         await completeAgentRun(
           context,
@@ -81,7 +108,7 @@ export async function POST(
       } catch (error) {
         await failAgentRun(
           context,
-          error instanceof TenkiIndependentVerificationError
+          !verificationPassed || error instanceof TenkiIndependentVerificationError
             ? "independent_verification_failed"
             : "publication_failed",
           error instanceof Error

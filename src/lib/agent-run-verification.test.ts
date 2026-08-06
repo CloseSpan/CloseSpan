@@ -50,4 +50,41 @@ describe("agent implementation report verification", () => {
     report.changedFiles[0]!.contentBase64 = Buffer.from("OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz123456").toString("base64");
     expect(() => validateAgentImplementationReport(report, { runId, promptHash, baseSha, promptArtifactPath: ".prompt/tickets/CS-1.prompt.md", promptSnapshot: snapshot })).toThrow("Potential secret");
   });
+
+  it("accepts stage-tagged setup evidence while preserving legacy interactions", () => {
+    const report = {
+      ...validReport(),
+      runtimeEvidence: {
+        configured: false,
+        healthStatus: "not_configured" as const,
+        applicationPort: null,
+        previewUrl: null,
+        interactions: [
+          {
+            stage: "verification" as const,
+            tool: "setup" as const,
+            target: "automatic setup",
+            status: "passed",
+            evidence: "Install and build completed.",
+          },
+          {
+            tool: "logs" as const,
+            target: "application log tail",
+            status: "read",
+            evidence: "Legacy evidence remains valid.",
+          },
+        ],
+        logExcerpt: [],
+        userStoryReplay: "not_required" as const,
+      },
+    };
+
+    expect(validateAgentImplementationReport(report, {
+      runId,
+      promptHash,
+      baseSha,
+      promptArtifactPath: ".prompt/tickets/CS-1.prompt.md",
+      promptSnapshot: snapshot,
+    }).runtimeEvidence?.interactions).toHaveLength(2);
+  });
 });

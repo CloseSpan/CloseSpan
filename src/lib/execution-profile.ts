@@ -10,6 +10,117 @@ export const executionProfileSources = [
 
 export type ExecutionProfileSource = (typeof executionProfileSources)[number];
 
+export const TENKI_BROWSER_PREFLIGHT_COMMAND = `node -e "let c;try{c=require('playwright').chromium}catch{c=require('@playwright/test').chromium}(async()=>{const b=await c.launch({headless:true});const x=await b.newContext({serviceWorkers:'block'});if(typeof x.routeWebSocket!=='function')throw new Error('Playwright WebSocket routing is unavailable');await x.close();await b.close()})().catch(e=>{console.error(e instanceof Error?e.message:String(e));process.exit(1)})"`;
+
+const playwrightInstallCommands = {
+  npm: "npm exec -- playwright install chromium",
+  pnpm: "pnpm exec playwright install chromium",
+  yarn: "yarn exec playwright install chromium",
+  bun: "bunx playwright install chromium",
+} as const;
+
+export type ExecutionProfileBrowserProvisioningMode =
+  | "none"
+  | "repository"
+  | "image";
+
+export interface ExecutionProfileBrowserReadiness {
+  ready: boolean;
+  mode: ExecutionProfileBrowserProvisioningMode;
+  installCommand: string | null;
+  reason: string;
+}
+
+function normalizedJavascriptPackageManager(value: string): keyof typeof playwrightInstallCommands | null {
+  const normalized = value.trim().toLowerCase().split("@")[0];
+  return normalized && normalized in playwrightInstallCommands
+    ? normalized as keyof typeof playwrightInstallCommands
+    : null;
+}
+
+export function playwrightChromiumInstallCommand(packageManager: string): string | null {
+  const normalized = normalizedJavascriptPackageManager(packageManager);
+  return normalized ? playwrightInstallCommands[normalized] : null;
+}
+
+export function isPlaywrightChromiumInstallCommand(command: string): boolean {
+  return Object.values(playwrightInstallCommands).includes(
+    command.trim() as (typeof playwrightInstallCommands)[keyof typeof playwrightInstallCommands],
+  );
+}
+
+export function executionProfileBrowserReadiness(input: {
+  packageManager: string;
+  installCommands: readonly string[];
+  automaticInstall: boolean;
+  tenkiImage: string | null;
+  tenkiSnapshotId: string | null;
+  allowOutbound: boolean;
+}): ExecutionProfileBrowserReadiness {
+  const commands = new Set(input.installCommands.map((command) => command.trim()));
+  const installCommand = playwrightChromiumInstallCommand(input.packageManager);
+  const preflightConfigured = commands.has(TENKI_BROWSER_PREFLIGHT_COMMAND);
+  const immutableBootSource = Boolean(input.tenkiImage || input.tenkiSnapshotId);
+  const repositoryProvisioning = Boolean(installCommand && commands.has(installCommand));
+
+  if (!input.automaticInstall) {
+    return {
+      ready: false,
+      mode: "none",
+      installCommand,
+      reason: "Browser interaction requires automatic setup so readiness is checked before the agent starts.",
+    };
+  }
+  if (!preflightConfigured) {
+    return {
+      ready: false,
+      mode: "none",
+      installCommand,
+      reason: "Browser interaction requires the exact CloseSpan Chromium launch preflight command.",
+    };
+  }
+  if (immutableBootSource && repositoryProvisioning) {
+    return {
+      ready: false,
+      mode: "none",
+      installCommand,
+      reason: "Choose either image or snapshot provisioning, or repository Chromium provisioning, not both.",
+    };
+  }
+  if (immutableBootSource) {
+    return {
+      ready: true,
+      mode: "image",
+      installCommand: null,
+      reason: "The selected image or snapshot must provide Playwright and pass a real Chromium launch preflight.",
+    };
+  }
+  if (!repositoryProvisioning) {
+    return {
+      ready: false,
+      mode: "none",
+      installCommand,
+      reason: installCommand
+        ? "Browser interaction requires the exact package-manager Chromium install command."
+        : "Choose npm, pnpm, yarn, or bun, or select a browser-ready Tenki image or snapshot.",
+    };
+  }
+  if (!input.allowOutbound) {
+    return {
+      ready: false,
+      mode: "repository",
+      installCommand,
+      reason: "Repository Chromium provisioning requires outbound access during setup.",
+    };
+  }
+  return {
+    ready: true,
+    mode: "repository",
+    installCommand,
+    reason: "Chromium is installed from the locked repository dependency and launch-tested before the agent starts.",
+  };
+}
+
 const commandListSchema = z
   .array(z.string().trim().min(1).max(1_000))
   .max(30)
@@ -19,53 +130,171 @@ const nullableLabelSchema = z
   .union([z.string().trim().min(1).max(120), z.null()])
   .default(null);
 
-const executionProfileConfigInputSchema = z
+const executionProfileBaseShape = {
+  language: z.string().trim().min(1).max(80).default("unknown"),
+  framework: nullableLabelSchema,
+  packageManager: z.string().trim().min(1).max(80).default("unknown"),
+  runtimeVersion: nullableLabelSchema,
+  workingDirectory: z.string().trim().min(1).max(500).default("."),
+  installCommands: commandListSchema,
+  buildCommands: commandListSchema,
+  testCommands: commandListSchema,
+  typecheckCommands: commandListSchema,
+  permittedPaths: z
+    .array(z.string().trim().min(1).max(500))
+    .max(100)
+    .default([]),
+  tenkiImage: z
+    .union([z.string().trim().min(1).max(500), z.null()])
+    .default(null),
+  tenkiSnapshotId: z
+    .union([z.string().trim().min(1).max(500), z.null()])
+    .default(null),
+  cpuCores: z.number().int().min(1).max(32).default(2),
+  memoryMb: z.number().int().min(512).max(131_072).default(4_096),
+  allowInbound: z.boolean().default(false),
+  allowOutbound: z.boolean().default(false),
+  maxDurationMs: z
+    .number()
+    .int()
+    .min(60_000)
+    .max(86_400_000)
+    .default(1_800_000),
+  idleTimeoutMinutes: z.number().int().min(1).max(1_440).default(2),
+} as const;
+
+function refineBootSource(
+  value: { tenkiImage: string | null; tenkiSnapshotId: string | null },
+  context: z.RefinementCtx,
+): void {
+  if (value.tenkiImage && value.tenkiSnapshotId) {
+    context.addIssue({
+      code: "custom",
+      path: ["tenkiSnapshotId"],
+      message: "Configure either a Tenki image or snapshot, not both",
+    });
+  }
+}
+
+const executionProfileConfigV1InputSchema = z
   .object({
     schemaVersion: z.literal(1).default(1),
-    language: z.string().trim().min(1).max(80).default("unknown"),
-    framework: nullableLabelSchema,
-    packageManager: z.string().trim().min(1).max(80).default("unknown"),
-    runtimeVersion: nullableLabelSchema,
-    workingDirectory: z.string().trim().min(1).max(500).default("."),
-    installCommands: commandListSchema,
-    buildCommands: commandListSchema,
-    testCommands: commandListSchema,
-    typecheckCommands: commandListSchema,
-    permittedPaths: z
-      .array(z.string().trim().min(1).max(500))
-      .max(100)
-      .default([]),
-    tenkiImage: z
-      .union([z.string().trim().min(1).max(500), z.null()])
-      .default(null),
-    tenkiSnapshotId: z
-      .union([z.string().trim().min(1).max(500), z.null()])
-      .default(null),
-    cpuCores: z.number().int().min(1).max(32).default(2),
-    memoryMb: z.number().int().min(512).max(131_072).default(4_096),
-    allowInbound: z.boolean().default(false),
-    allowOutbound: z.boolean().default(false),
-    maxDurationMs: z
-      .number()
-      .int()
-      .min(60_000)
-      .max(86_400_000)
-      .default(1_800_000),
-    idleTimeoutMinutes: z.number().int().min(1).max(1_440).default(2),
+    ...executionProfileBaseShape,
+  })
+  .strict()
+  .superRefine(refineBootSource);
+
+const environmentNameSchema = z.string()
+  .trim()
+  .regex(/^[A-Z_][A-Z0-9_]{0,127}$/, "Environment names must use uppercase letters, numbers, and underscores");
+
+const runtimeToolsSchema = z.object({
+  http: z.boolean().default(false),
+  browser: z.boolean().default(false),
+  logs: z.boolean().default(false),
+}).strict().default({ http: false, browser: false, logs: false });
+
+const executionProfileConfigV2InputSchema = z
+  .object({
+    schemaVersion: z.literal(2),
+    ...executionProfileBaseShape,
+    automaticInstall: z.boolean().default(false),
+    automaticBuild: z.boolean().default(false),
+    publicEnvironment: z.array(z.object({
+      name: environmentNameSchema,
+      value: z.string().max(4_000),
+    }).strict()).max(100).default([]),
+    secretBindings: z.array(z.object({
+      envName: environmentNameSchema,
+      secretId: z.string().uuid(),
+      secretVersion: z.number().int().positive(),
+      exposure: z.enum(["setup", "runtime", "test"]),
+    }).strict()).max(100).default([]),
+    startCommand: z.union([z.string().trim().min(1).max(1_000), z.null()]).default(null),
+    applicationPort: z.union([z.number().int().min(1_024).max(65_535), z.null()]).default(null),
+    healthCheckPath: z.union([
+      z.string().trim().regex(/^\/(?!\/)[^\s?#]{0,499}$/, "Health check must be an absolute HTTP path without a query or fragment"),
+      z.null(),
+    ]).default(null),
+    healthCheckTimeoutMs: z.number().int().min(5_000).max(600_000).default(90_000),
+    previewEnabled: z.boolean().default(false),
+    previewTtlMs: z.number().int().min(60_000).max(900_000).default(600_000),
+    runtimeTools: runtimeToolsSchema,
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.tenkiImage && value.tenkiSnapshotId) {
+    refineBootSource(value, context);
+    const publicNames = new Set<string>();
+    const secretNames = new Set<string>();
+    for (const item of value.publicEnvironment) {
+      if (publicNames.has(item.name)) {
+        context.addIssue({ code: "custom", path: ["publicEnvironment"], message: `Duplicate public environment variable: ${item.name}` });
+      }
+      publicNames.add(item.name);
+    }
+    for (const item of value.secretBindings) {
+      const phaseName = `${item.exposure}:${item.envName}`;
+      if (secretNames.has(phaseName)) {
+        context.addIssue({ code: "custom", path: ["secretBindings"], message: `Duplicate ${item.exposure} secret environment variable: ${item.envName}` });
+      }
+      secretNames.add(phaseName);
+      if (publicNames.has(item.envName)) {
+        context.addIssue({ code: "custom", path: ["secretBindings"], message: `${item.envName} cannot be both public and secret` });
+      }
+    }
+    if (value.automaticInstall && value.installCommands.length === 0) {
+      context.addIssue({ code: "custom", path: ["automaticInstall"], message: "Automatic install requires at least one install command" });
+    }
+    if (value.automaticBuild && value.buildCommands.length === 0) {
+      context.addIssue({ code: "custom", path: ["automaticBuild"], message: "Automatic build requires at least one build command" });
+    }
+    const runtimeConfigured = Boolean(value.startCommand || value.applicationPort || value.healthCheckPath);
+    if (runtimeConfigured && !(value.startCommand && value.applicationPort && value.healthCheckPath)) {
       context.addIssue({
         code: "custom",
-        path: ["tenkiSnapshotId"],
-        message: "Configure either a Tenki image or snapshot, not both",
+        path: ["startCommand"],
+        message: "A running application requires a start command, application port, and health check path",
+      });
+    }
+    if ((value.runtimeTools.http || value.runtimeTools.browser || value.runtimeTools.logs) && !value.startCommand) {
+      context.addIssue({ code: "custom", path: ["runtimeTools"], message: "Runtime tools require a configured running application" });
+    }
+    if (value.runtimeTools.browser) {
+      const browserReadiness = executionProfileBrowserReadiness(value);
+      if (!browserReadiness.ready) {
+        context.addIssue({
+          code: "custom",
+          path: ["runtimeTools", "browser"],
+          message: browserReadiness.reason,
+        });
+      }
+    }
+    if (
+      value.allowOutbound
+      && value.secretBindings.some((binding) => binding.exposure === "runtime" || binding.exposure === "test")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["secretBindings"],
+        message: "Outbound execution cannot be combined with runtime or test secrets until scoped egress policies are available",
+      });
+    }
+    if (value.previewEnabled && !value.allowInbound) {
+      context.addIssue({ code: "custom", path: ["allowInbound"], message: "A preview URL requires inbound networking" });
+    }
+    if (
+      value.previewEnabled
+      && value.secretBindings.some((binding) => binding.exposure === "runtime")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["previewEnabled"],
+        message: "A public preview cannot be combined with runtime secrets",
       });
     }
   });
 
-export interface ExecutionProfileConfig {
-  schemaVersion: 1;
+export interface ExecutionProfileConfigBase {
   language: string;
   framework: string | null;
   packageManager: string;
@@ -85,6 +314,45 @@ export interface ExecutionProfileConfig {
   maxDurationMs: number;
   idleTimeoutMinutes: number;
 }
+
+export interface ExecutionProfileConfigV1 extends ExecutionProfileConfigBase {
+  schemaVersion: 1;
+}
+
+export interface ExecutionProfilePublicEnvironmentVariable {
+  name: string;
+  value: string;
+}
+
+export interface ExecutionProfileSecretBinding {
+  envName: string;
+  secretId: string;
+  secretVersion: number;
+  exposure: "setup" | "runtime" | "test";
+}
+
+export interface ExecutionProfileRuntimeTools {
+  http: boolean;
+  browser: boolean;
+  logs: boolean;
+}
+
+export interface ExecutionProfileConfigV2 extends ExecutionProfileConfigBase {
+  schemaVersion: 2;
+  automaticInstall: boolean;
+  automaticBuild: boolean;
+  publicEnvironment: ExecutionProfilePublicEnvironmentVariable[];
+  secretBindings: ExecutionProfileSecretBinding[];
+  startCommand: string | null;
+  applicationPort: number | null;
+  healthCheckPath: string | null;
+  healthCheckTimeoutMs: number;
+  previewEnabled: boolean;
+  previewTtlMs: number;
+  runtimeTools: ExecutionProfileRuntimeTools;
+}
+
+export type ExecutionProfileConfig = ExecutionProfileConfigV1 | ExecutionProfileConfigV2;
 
 export interface ExecutionProfileScope {
   repository: string;
@@ -176,6 +444,88 @@ function normalizeCommands(commands: string[], field: string): string[] {
   });
 }
 
+const reservedRuntimeEnvironmentNames = new Set([
+  "BASH_ENV",
+  "CI",
+  "ENV",
+  "HOME",
+  "IFS",
+  "LD_LIBRARY_PATH",
+  "LD_PRELOAD",
+  "NODE_OPTIONS",
+  "OLDPWD",
+  "PATH",
+  "PORT",
+  "PWD",
+  "SHELL",
+]);
+
+const credentialEnvironmentNamePattern = new RegExp(
+  [
+    "(?:^|_)(?:API_KEY|PRIVATE_KEY|SECRET_ACCESS_KEY|ACCESS_KEY_ID|CLIENT_SECRET|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN|WEBHOOK_SECRET|SIGNING_SECRET|ENCRYPTION_KEY)(?:_|$)",
+    "(?:^|_)(?:SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?|DSN|PAT)$",
+    "^(?:DATABASE|REDIS|MONGODB|POSTGRES)_URL$",
+  ].join("|"),
+);
+
+const credentialValuePatterns = [
+  /-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/,
+  /(?:github_pat_|gh[pousr]_|glpat-|xox[baprs]-)[A-Za-z0-9_-]{16,}/,
+  /(?:^|[^A-Za-z0-9])AKIA[0-9A-Z]{16}(?:$|[^A-Za-z0-9])/,
+  /(?:^|[^A-Za-z0-9])(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,}/,
+  /(?:^|[^A-Za-z0-9])sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}/,
+  /^Bearer\s+\S+/i,
+  /^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$/,
+  /^[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^/\s@]+@/i,
+  /(?:^|[?&;\s])(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|secret)=[^\s&;]+/i,
+];
+
+function assertRuntimeEnvironmentName(name: string, secret: boolean): void {
+  if (
+    reservedRuntimeEnvironmentNames.has(name)
+    || name.startsWith("CLOSESPAN_")
+    || name.startsWith("TENKI_")
+  ) {
+    throw new Error(`Runtime environment variable ${name} is reserved`);
+  }
+  if (
+    !secret
+    && credentialEnvironmentNamePattern.test(name)
+  ) {
+    throw new Error(`Secret-looking environment variable ${name} must use the runtime secret vault`);
+  }
+}
+
+function assertPublicEnvironmentValue(name: string, value: string): void {
+  if (credentialValuePatterns.some((pattern) => pattern.test(value))) {
+    throw new Error(`Secret-looking value for public environment variable ${name} must use the runtime secret vault`);
+  }
+}
+
+function normalizePublicEnvironment(
+  input: ExecutionProfilePublicEnvironmentVariable[],
+): ExecutionProfilePublicEnvironmentVariable[] {
+  return input.map((item) => {
+    assertRuntimeEnvironmentName(item.name, false);
+    assertPublicEnvironmentValue(item.name, item.value);
+    if (/\0|[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(item.value)) {
+      throw new Error(`Public environment variable ${item.name} contains an unsupported control character`);
+    }
+    return { name: item.name, value: item.value.replace(/\r\n?/g, "\n") };
+  }).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function normalizeSecretBindings(
+  input: ExecutionProfileSecretBinding[],
+): ExecutionProfileSecretBinding[] {
+  return input.map((item) => {
+    assertRuntimeEnvironmentName(item.envName, true);
+    return { ...item };
+  }).sort((left, right) => left.envName.localeCompare(right.envName)
+    || left.exposure.localeCompare(right.exposure)
+    || left.secretVersion - right.secretVersion);
+}
+
 export function normalizeExecutionProfileScope(
   scope: Partial<ExecutionProfileScope>,
 ): ExecutionProfileScope {
@@ -199,7 +549,12 @@ export function normalizeExecutionProfileScope(
 export function sanitizeExecutionProfileConfig(
   input: unknown,
 ): ExecutionProfileConfig {
-  const parsed = executionProfileConfigInputSchema.parse(input);
+  const requestedVersion = input && typeof input === "object"
+    ? (input as { schemaVersion?: unknown }).schemaVersion
+    : undefined;
+  const parsed = requestedVersion === 2
+    ? executionProfileConfigV2InputSchema.parse(input)
+    : executionProfileConfigV1InputSchema.parse(input);
   const workingDirectory = normalizeRelativePath(
     parsed.workingDirectory,
     "Working directory",
@@ -211,8 +566,7 @@ export function sanitizeExecutionProfileConfig(
     parsed.permittedPaths.map((path) => normalizeRelativePath(path, "Permitted path")),
   )].sort((left, right) => left.localeCompare(right));
 
-  return {
-    schemaVersion: 1,
+  const base: ExecutionProfileConfigBase = {
     language: parsed.language.toLowerCase(),
     framework: parsed.framework,
     packageManager: parsed.packageManager.toLowerCase(),
@@ -235,6 +589,48 @@ export function sanitizeExecutionProfileConfig(
     maxDurationMs: parsed.maxDurationMs,
     idleTimeoutMinutes: parsed.idleTimeoutMinutes,
   };
+  if (parsed.schemaVersion === 1) {
+    return { schemaVersion: 1, ...base };
+  }
+  return {
+    schemaVersion: 2,
+    ...base,
+    automaticInstall: parsed.automaticInstall,
+    automaticBuild: parsed.automaticBuild,
+    publicEnvironment: normalizePublicEnvironment(parsed.publicEnvironment),
+    secretBindings: normalizeSecretBindings(parsed.secretBindings),
+    startCommand: parsed.startCommand === null
+      ? null
+      : normalizeCommands([parsed.startCommand], "Start command")[0]!,
+    applicationPort: parsed.applicationPort,
+    healthCheckPath: parsed.healthCheckPath,
+    healthCheckTimeoutMs: parsed.healthCheckTimeoutMs,
+    previewEnabled: parsed.previewEnabled,
+    previewTtlMs: parsed.previewTtlMs,
+    runtimeTools: { ...parsed.runtimeTools },
+  };
+}
+
+export function upgradeExecutionProfileConfigV2(
+  input: unknown,
+): ExecutionProfileConfigV2 {
+  const config = sanitizeExecutionProfileConfig(input);
+  if (config.schemaVersion === 2) return config;
+  return sanitizeExecutionProfileConfig({
+    ...config,
+    schemaVersion: 2,
+    automaticInstall: config.installCommands.length > 0,
+    automaticBuild: config.buildCommands.length > 0,
+    publicEnvironment: [],
+    secretBindings: [],
+    startCommand: null,
+    applicationPort: null,
+    healthCheckPath: null,
+    healthCheckTimeoutMs: 90_000,
+    previewEnabled: false,
+    previewTtlMs: 600_000,
+    runtimeTools: { http: false, browser: false, logs: false },
+  }) as ExecutionProfileConfigV2;
 }
 
 export const executionProfileConfigSchema = z.unknown().transform(

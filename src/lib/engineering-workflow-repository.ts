@@ -107,6 +107,7 @@ export interface AgentRunView {
   remainingRisks?: string[];
   manualVerification?: string[];
   logs?: string[];
+  runtimeEvidence?: AgentImplementationReport["runtimeEvidence"];
   independentVerification?: AgentImplementationReport["independentVerification"];
 }
 
@@ -519,6 +520,7 @@ async function readRun(
     remainingRisks: row.implementation_report?.remainingRisks,
     manualVerification: row.implementation_report?.manualVerification,
     logs: row.implementation_report?.logs,
+    runtimeEvidence: row.implementation_report?.runtimeEvidence,
     independentVerification: row.implementation_report?.independentVerification,
   };
 }

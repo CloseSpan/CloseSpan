@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { upgradeExecutionProfileConfigV2 } from "@/lib/execution-profile";
 
 const background = vi.hoisted(() => ({
   tasks: [] as Array<() => Promise<void>>,
@@ -16,6 +17,7 @@ const tenki = vi.hoisted(() => ({
 const github = vi.hoisted(() => ({
   publish: vi.fn(),
 }));
+const runtimeSecrets = vi.hoisted(() => ({ resolve: vi.fn() }));
 
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -46,6 +48,9 @@ vi.mock("@/lib/tenki-agent-verification", async (importOriginal) => {
 
 vi.mock("@/lib/github-agent-publisher", () => ({
   publishAgentRun: github.publish,
+}));
+vi.mock("@/lib/runtime-secret-repository", () => ({
+  resolveRuntimeSecretBindings: runtimeSecrets.resolve,
 }));
 
 import { NextRequest } from "next/server";
@@ -103,6 +108,12 @@ describe("agent-run completion callback", () => {
       pullRequestNumber: 2,
       pullRequestUrl: "https://github.com/owner/repo/pull/2",
     });
+    runtimeSecrets.resolve.mockReset().mockResolvedValue({
+      setup: {},
+      runtime: {},
+      test: {},
+      redactionValues: [],
+    });
   });
 
   it("acknowledges the executor promptly and verifies automatically before publication", async () => {
@@ -149,5 +160,62 @@ describe("agent-run completion callback", () => {
     expect(github.publish).not.toHaveBeenCalled();
     expect(workflow.complete).toHaveBeenCalledTimes(2);
     expect(workflow.fail).not.toHaveBeenCalled();
+  });
+
+  it("resolves the same immutable secret versions for independent verification", async () => {
+    const runtimeConfig = {
+      ...upgradeExecutionProfileConfigV2({ schemaVersion: 1 }),
+      secretBindings: [{
+        envName: "DATABASE_URL",
+        secretId: "22222222-2222-4222-8222-222222222222",
+        secretVersion: 4,
+        exposure: "test" as const,
+      }],
+    };
+    const runtimeContext = {
+      ...context,
+      repository: "owner/repo",
+      executionProfileSnapshot: {
+        profileId: "33333333-3333-4333-8333-333333333333",
+        version: 2,
+        source: "confirmed",
+        repository: "owner/repo",
+        workspaceRoot: ".",
+        contentHash: "c".repeat(64),
+        config: runtimeConfig,
+      },
+    };
+    workflow.context.mockResolvedValue(runtimeContext);
+    runtimeSecrets.resolve.mockResolvedValue({
+      setup: {},
+      runtime: {},
+      test: { DATABASE_URL: "postgres://verification-secret" },
+      redactionValues: ["postgres://verification-secret"],
+    });
+    await POST(
+      callbackRequest({ event: "completed", orgId: "org-1", report }),
+      { params: Promise.resolve({ runId }) },
+    );
+
+    await background.tasks[0]!();
+
+    expect(runtimeSecrets.resolve).toHaveBeenCalledWith({
+      orgId: "org-1",
+      repository: "owner/repo",
+      workspaceRoot: ".",
+      bindings: runtimeConfig.secretBindings,
+    });
+    expect(tenki.verify).toHaveBeenCalledWith(
+      runtimeContext,
+      report,
+      {
+        runtimeEnvironment: {
+          setupEnv: {},
+          runtimeEnv: {},
+          testEnv: { DATABASE_URL: "postgres://verification-secret" },
+          redactionValues: ["postgres://verification-secret"],
+        },
+      },
+    );
   });
 });

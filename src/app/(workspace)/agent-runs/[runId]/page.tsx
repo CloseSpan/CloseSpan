@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AgentRunAutoRefresh } from "@/components/agent-run-auto-refresh";
+import { RuntimeInteractionEvidence } from "@/components/runtime-interaction-evidence";
 import { requireWorkspaceUser } from "@/lib/auth-user";
 import { getAgentRunById } from "@/lib/engineering-workflow-repository";
 
@@ -12,6 +13,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
   const result = await getAgentRunById(user.orgId, runId);
   if (!result) notFound();
   const { run, problemId } = result;
+  const runtime = run.runtimeEvidence;
   return (
     <>
       <section className="card">
@@ -20,6 +22,78 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
           <p>{run.implementationSummary ?? run.failureMessage ?? "The executor has not returned a report yet."}</p>
           <p className="subtle">Coding environment: Tenki Sandbox · Branch: {run.branchName}</p>
           <div className="top-actions"><Link className="btn" href={`/problems/${problemId}#engineering-ticket`}>Open ticket</Link>{run.pullRequestUrl && <a className="btn primary" href={run.pullRequestUrl}>Open draft PR</a>}</div>
+        </div>
+      </section>
+      <section className="card section-gap">
+        <div className="card-head">
+          <div>
+            <h2>Runtime and PDD verification</h2>
+            <p className="subtle">Install, build, health checks, tool interactions, and immutable user-story replay from the isolated Tenki environment.</p>
+          </div>
+          <span className={`badge ${runtime?.healthStatus === "passed" && runtime.userStoryReplay !== "failed" ? "success" : runtime?.healthStatus === "failed" || runtime?.userStoryReplay === "failed" ? "high" : "medium"}`}>
+            {runtime?.healthStatus === "passed" && runtime.userStoryReplay !== "failed"
+              ? "Runtime passed"
+              : runtime?.healthStatus === "failed" || runtime?.userStoryReplay === "failed"
+                ? "Runtime failed"
+                : runtime?.configured
+                  ? "Runtime pending"
+                  : "Not configured"}
+          </span>
+        </div>
+        <div className="card-body detail-stack">
+          {runtime ? (
+            <>
+              <div className="grid cols-3 runtime-evidence-summary">
+                <div className="callout">
+                  <p className="subtle">Application health</p>
+                  <strong>{runtime.healthStatus === "passed" ? "Healthy" : runtime.healthStatus === "failed" ? "Failed" : "Not configured"}</strong>
+                </div>
+                <div className="callout">
+                  <p className="subtle">Application port</p>
+                  <strong>{runtime.applicationPort ?? "Not configured"}</strong>
+                </div>
+                <div className="callout">
+                  <p className="subtle">
+                    {runtime.userStoryReplayMode === "live_application"
+                      ? "Live user-story replay"
+                      : runtime.userStoryReplayMode === "contract"
+                        ? "PDD contract replay"
+                        : "User-story replay"}
+                  </p>
+                  <strong>{runtime.userStoryReplay === "passed" ? "Passed" : runtime.userStoryReplay === "failed" ? "Failed" : "Not required"}</strong>
+                </div>
+              </div>
+              {runtime.previewUrl ? (
+                <p>
+                  <a className="btn" href={runtime.previewUrl} target="_blank" rel="noreferrer">Open temporary preview</a>{" "}
+                  <span className="subtle">Tenki preview links are short-lived and may have expired after verification.</span>
+                </p>
+              ) : null}
+              {runtime.interactions.length ? (
+                <div className="detail-stack">
+                  <h3>Tool interactions</h3>
+                  {runtime.interactions.map((interaction, index) => (
+                    <RuntimeInteractionEvidence
+                      interaction={interaction}
+                      key={`${interaction.tool}:${interaction.target}:${index}`}
+                    />
+                  ))}
+                </div>
+              ) : <p className="subtle">No runtime tool interactions were required.</p>}
+              {runtime.logExcerpt.length ? (
+                <details>
+                  <summary>Show redacted runtime logs</summary>
+                  <pre className="code-block">{runtime.logExcerpt.join("\n\n")}</pre>
+                </details>
+              ) : null}
+            </>
+          ) : (
+            <p className="subtle">
+              {run.status === "Queued" || run.status === "Running" || run.status === "Tests passed"
+                ? "Runtime evidence will appear after the isolated implementation and verification sessions finish."
+                : "This run did not include a configured running application."}
+            </p>
+          )}
         </div>
       </section>
       <section className="card section-gap">

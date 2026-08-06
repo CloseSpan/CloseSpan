@@ -75,6 +75,25 @@ export function sha256(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
+const liveApplicationTestLevels = new Set([
+  "integration",
+  "api",
+  "component",
+  "end-to-end",
+]);
+
+export function pddScenariosRequireLiveApplication(
+  scenarios: ReadonlyArray<{ testLevel: string }>,
+): boolean {
+  return scenarios.some((scenario) => liveApplicationTestLevels.has(scenario.testLevel));
+}
+
+export function pddGeneratedTestsReferenceLiveApplication(
+  tests: ReadonlyArray<{ content: string }>,
+): boolean {
+  return tests.some((test) => /\bCLOSESPAN_APP_URL\b/.test(test.content));
+}
+
 function pathMatches(pattern: string, path: string): boolean {
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -104,6 +123,15 @@ export function validateGeneratedTests(
       throw new Error(`PDD selected a validation command that was not approved: ${test.command}`);
     }
   }
+  if (
+    parsed.status === "Ready for approval"
+    && pddScenariosRequireLiveApplication(snapshot.ticket.testScenarios)
+    && !pddGeneratedTestsReferenceLiveApplication(parsed.generatedTests)
+  ) {
+    throw new Error(
+      "PDD live application tests must read the VM-local base URL from CLOSESPAN_APP_URL",
+    );
+  }
   return parsed;
 }
 
@@ -123,7 +151,8 @@ export function renderPddPrompt(
     "Treat the user story and acceptance criteria as the contract. Do not implement the solution.",
     "Use only the repository's existing test framework and approved validation commands.",
     "The test must fail when the reported behavior is present and pass only when the expected behavior is implemented.",
-    "Do not use network access, live credentials, production data, snapshots without assertions, or timing-dependent sleeps.",
+    "For API, component, or end-to-end scenarios, read the isolated application base URL from process.env.CLOSESPAN_APP_URL. Do not hard-code a host or contact any other network destination.",
+    "Do not use external network access, live credentials, production data, snapshots without assertions, or timing-dependent sleeps.",
     "",
     "## Product-manager user story",
     userStory,

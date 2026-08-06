@@ -20,8 +20,7 @@ const generatedTestSchema = z.object({
   command: z.string().min(1).max(500),
 }).strict();
 
-const executionProfileConfigSchema = z.object({
-  schemaVersion: z.literal(1),
+const executionProfileBaseShape = {
   language: z.string().min(1).max(80),
   framework: z.string().min(1).max(120).nullable(),
   packageManager: z.string().min(1).max(80),
@@ -40,7 +39,12 @@ const executionProfileConfigSchema = z.object({
   allowOutbound: z.boolean(),
   maxDurationMs: z.number().int().min(60_000).max(86_400_000),
   idleTimeoutMinutes: z.number().int().min(1).max(1_440),
-}).strict().superRefine((value, context) => {
+};
+
+function validateExecutionProfileBootSource(
+  value: { tenkiImage: string | null; tenkiSnapshotId: string | null },
+  context: z.RefinementCtx,
+): void {
   if (value.tenkiImage && value.tenkiSnapshotId) {
     context.addIssue({
       code: "custom",
@@ -48,7 +52,45 @@ const executionProfileConfigSchema = z.object({
       message: "Configure either a Tenki image or snapshot, not both",
     });
   }
-});
+}
+
+const executionProfileConfigV1Schema = z.object({
+  schemaVersion: z.literal(1),
+  ...executionProfileBaseShape,
+}).strict().superRefine(validateExecutionProfileBootSource);
+
+const executionProfileConfigV2Schema = z.object({
+  schemaVersion: z.literal(2),
+  ...executionProfileBaseShape,
+  automaticInstall: z.boolean(),
+  automaticBuild: z.boolean(),
+  publicEnvironment: z.array(z.object({
+    name: z.string().regex(/^[A-Z_][A-Z0-9_]{0,127}$/),
+    value: z.string().max(4_000),
+  }).strict()).max(100),
+  secretBindings: z.array(z.object({
+    envName: z.string().regex(/^[A-Z_][A-Z0-9_]{0,127}$/),
+    secretId: z.string().uuid(),
+    secretVersion: z.number().int().positive(),
+    exposure: z.enum(["setup", "runtime", "test"]),
+  }).strict()).max(100),
+  startCommand: z.string().min(1).max(1_000).nullable(),
+  applicationPort: z.number().int().min(1_024).max(65_535).nullable(),
+  healthCheckPath: z.string().min(1).max(500).nullable(),
+  healthCheckTimeoutMs: z.number().int().min(5_000).max(600_000),
+  previewEnabled: z.boolean(),
+  previewTtlMs: z.number().int().min(60_000).max(900_000),
+  runtimeTools: z.object({
+    http: z.boolean(),
+    browser: z.boolean(),
+    logs: z.boolean(),
+  }).strict(),
+}).strict().superRefine(validateExecutionProfileBootSource);
+
+const executionProfileConfigSchema = z.discriminatedUnion("schemaVersion", [
+  executionProfileConfigV1Schema,
+  executionProfileConfigV2Schema,
+]);
 
 const executionProfileSnapshotSchema = z.object({
   profileId: z.string().uuid(),
