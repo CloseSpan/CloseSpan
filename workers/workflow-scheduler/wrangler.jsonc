@@ -5,7 +5,7 @@
   "compatibility_date": "2026-07-30",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "CLOSESPAN_ORIGIN": "https://closespan.com"
+    "CLOSESPAN_ORIGIN": "https://www.closespan.com"
   },
   "triggers": {
     "crons": ["* * * * *"]

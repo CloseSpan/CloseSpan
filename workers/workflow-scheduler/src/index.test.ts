@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import worker, { triggerWorkflowAutomation } from "./index";
 
 const env = {
-  CLOSESPAN_ORIGIN: "https://closespan.com",
+  CLOSESPAN_ORIGIN: "https://www.closespan.com",
   CRON_SECRET: "test-workflow-secret",
 } as Env;
 
@@ -17,7 +17,7 @@ describe("workflow scheduler Worker", () => {
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, init] = fetcher.mock.calls[0];
     expect(String(url)).toBe(
-      "https://closespan.com/api/internal/workflow/automation",
+      "https://www.closespan.com/api/internal/workflow/automation",
     );
     expect(new Headers(init?.headers).get("authorization")).toBe(
       "Bearer test-workflow-secret",
