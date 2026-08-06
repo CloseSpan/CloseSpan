@@ -241,6 +241,25 @@ interface ExecutorAiConfiguration {
   provider: "OpenAI" | "xAI";
 }
 
+export function executorImplementationModelSettings(
+  provider: ExecutorAiConfiguration["provider"],
+) {
+  return {
+    toolChoice: "required" as const,
+    parallelToolCalls: false,
+    store: false,
+    ...(provider === "OpenAI" ? {
+      // Coding runs are bounded by both the Tenki lease and Vercel's function
+      // ceiling. Explicit medium reasoning plus terse responses keeps the
+      // agent useful without allowing an implicit high-effort model default to
+      // consume the entire approval window before it can use a repository tool.
+      reasoning: { effort: "medium" as const },
+      text: { verbosity: "low" as const },
+      maxTokens: 12_000,
+    } : {}),
+  };
+}
+
 function optionalHttpsBaseUrl(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
@@ -258,7 +277,10 @@ export function resolveExecutorAiConfiguration(
     return {
       apiKey: openAiApiKey,
       baseUrl: optionalHttpsBaseUrl(dependencies.aiBaseUrl ?? process.env.OPENAI_BASE_URL),
-      model: dependencies.aiModel?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-5.6-sol",
+      model: dependencies.aiModel?.trim()
+        || process.env.AGENT_EXECUTOR_MODEL?.trim()
+        || process.env.OPENAI_MODEL?.trim()
+        || "gpt-5.6-terra",
       provider: "OpenAI",
     };
   }
@@ -700,7 +722,7 @@ async function defaultRunAgent(input: {
       model: input.ai.model,
       instructions,
       tools: compatibleTools,
-      modelSettings: { toolChoice: "required", parallelToolCalls: false, store: false },
+      modelSettings: executorImplementationModelSettings(input.ai.provider),
       resetToolChoice: true,
     });
     let changedPaths: string[] = [];
@@ -739,7 +761,7 @@ async function defaultRunAgent(input: {
       ...liveTools,
     ],
     outputType: agentOutputSchema,
-    modelSettings: { toolChoice: "required", parallelToolCalls: false, store: false },
+    modelSettings: executorImplementationModelSettings(input.ai.provider),
     resetToolChoice: true,
   });
   const result = await runner.run(agent, input.job.promptContent, { maxTurns: 80, signal: input.signal });

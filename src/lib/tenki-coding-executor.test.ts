@@ -5,6 +5,7 @@ import {
   RestrictedEditor,
   assertRuntimeSecretPublicationSafe,
   assertTenkiExecutionProfileBinding,
+  executorImplementationModelSettings,
   resolveExecutorAiConfiguration,
   runtimeToolsForAgent,
   tenkiSandboxCreateOptions,
@@ -113,6 +114,27 @@ describe("Tenki coding executor approval boundary", () => {
       baseUrl: undefined,
       model: "test-model",
       provider: "OpenAI",
+    });
+  });
+
+  it("uses a dedicated bounded coding model and explicit OpenAI effort", () => {
+    vi.stubEnv("AGENT_EXECUTOR_MODEL", "gpt-5.6-terra");
+    vi.stubEnv("OPENAI_MODEL", "gpt-5.6-sol");
+    expect(resolveExecutorAiConfiguration({
+      openAiApiKey: "test-openai-key",
+    }).model).toBe("gpt-5.6-terra");
+    expect(executorImplementationModelSettings("OpenAI")).toEqual({
+      toolChoice: "required",
+      parallelToolCalls: false,
+      store: false,
+      reasoning: { effort: "medium" },
+      text: { verbosity: "low" },
+      maxTokens: 12_000,
+    });
+    expect(executorImplementationModelSettings("xAI")).toEqual({
+      toolChoice: "required",
+      parallelToolCalls: false,
+      store: false,
     });
   });
 
