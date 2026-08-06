@@ -14,6 +14,7 @@ import io
 import json
 import os
 import pathlib
+import re
 import subprocess
 import tarfile
 import tempfile
@@ -32,6 +33,10 @@ RUN_SLOTS = threading.BoundedSemaphore(int(os.getenv("PDD_RUNNER_CONCURRENCY", "
 SHARED_SECRET = os.environ.get("PDD_RUNNER_SHARED_SECRET", "").encode()
 PDD_MODEL = os.environ.get("PDD_MODEL", "").strip()
 CALLBACK_ORIGIN = os.environ.get("CLOSESPAN_CALLBACK_ORIGIN", "").strip().rstrip("/")
+PDD_CLI_VERSION: str | None = None
+PDD_VERSION_TOKEN = re.compile(
+    r"(?<![0-9A-Za-z.])v?(\d{1,4}\.\d{1,4}\.\d{1,4})(?![0-9A-Za-z.])"
+)
 
 PROFILE_CONFIG_KEYS = {
     "schemaVersion", "language", "framework", "packageManager", "runtimeVersion",
@@ -53,6 +58,34 @@ def digest(value: str) -> str:
 
 def canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def detect_pdd_cli_version() -> str:
+    """Return the one bounded semantic-version token reported by the PDD binary."""
+    try:
+        process = subprocess.run(
+            ["pdd", "--version"], capture_output=True, text=True,
+            timeout=10, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError("Could not execute pdd --version") from error
+    if process.returncode != 0:
+        raise RuntimeError("pdd --version exited unsuccessfully")
+    output = "\n".join(part for part in (process.stdout, process.stderr) if part).strip()
+    if not output or len(output) > 4_096:
+        raise RuntimeError("pdd --version returned invalid output")
+    versions = set(PDD_VERSION_TOKEN.findall(output))
+    if len(versions) != 1:
+        raise RuntimeError("pdd --version did not report exactly one semantic version")
+    return versions.pop()
+
+
+def health_payload() -> dict:
+    configured = bool(SHARED_SECRET and CALLBACK_ORIGIN and PDD_CLI_VERSION)
+    return {
+        "status": "ok" if configured else "not_configured",
+        "pddVersion": PDD_CLI_VERSION,
+    }
 
 
 def safe_relative_path(value: object, label: str) -> str:
@@ -197,6 +230,10 @@ def validate_job(job: object) -> dict:
     }
     if job.get("schemaVersion") != 2 or not required.issubset(job):
         raise ValueError("Invalid PDD job")
+    if not PDD_CLI_VERSION:
+        raise ValueError("PDD runner version is not initialized")
+    if job["pddVersion"] != PDD_CLI_VERSION:
+        raise ValueError("PDD job version does not match the installed runner version")
     if not isinstance(job["repository"], str) or len(job["repository"].split("/")) != 2:
         raise ValueError("Invalid PDD repository")
     if not isinstance(job["baseSha"], str) or len(job["baseSha"]) != 40 or any(
@@ -340,7 +377,7 @@ def execute(job: dict) -> None:
         "verificationId": job["verificationId"],
         "promptHash": job["promptHash"],
         "status": "Failed",
-        "pddVersion": job["pddVersion"],
+        "pddVersion": PDD_CLI_VERSION,
         "model": PDD_MODEL or None,
         "costUsd": None,
         "summary": "PDD could not generate the acceptance contract.",
@@ -410,10 +447,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/health":
-            self.send_response(200 if SHARED_SECRET and CALLBACK_ORIGIN else 503)
+            payload = health_payload()
+            self.send_response(200 if payload["status"] == "ok" else 503)
             self.send_header("content-type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"status": "ok" if SHARED_SECRET and CALLBACK_ORIGIN else "not_configured"}).encode())
+            self.wfile.write(json.dumps(payload).encode())
             return
         self.send_error(404)
 
@@ -450,4 +488,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if not SHARED_SECRET or not CALLBACK_ORIGIN:
         raise SystemExit("PDD_RUNNER_SHARED_SECRET and CLOSESPAN_CALLBACK_ORIGIN are required")
+    PDD_CLI_VERSION = detect_pdd_cli_version()
     ThreadingHTTPServer(("0.0.0.0", int(os.getenv("PORT", "8080"))), Handler).serve_forever()

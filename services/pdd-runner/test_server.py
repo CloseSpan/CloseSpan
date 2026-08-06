@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 import unittest
+from subprocess import CompletedProcess, TimeoutExpired
+from unittest import mock
 
 os.environ.setdefault("CLOSESPAN_CALLBACK_ORIGIN", "https://closespan.example")
 
@@ -69,8 +71,21 @@ def job():
 
 
 class PddJobV2ValidationTest(unittest.TestCase):
+    def setUp(self):
+        self.version = mock.patch.object(server, "PDD_CLI_VERSION", "0.0.309")
+        self.version.start()
+
+    def tearDown(self):
+        self.version.stop()
+
     def test_accepts_profile_bound_v2_job(self):
         self.assertEqual(server.validate_job(job())["schemaVersion"], 2)
+
+    def test_rejects_job_for_another_pdd_version(self):
+        value = job()
+        value["pddVersion"] = "0.0.306"
+        with self.assertRaisesRegex(ValueError, "installed runner version"):
+            server.validate_job(value)
 
     def test_rejects_legacy_job(self):
         value = job()
@@ -112,6 +127,53 @@ class PddJobV2ValidationTest(unittest.TestCase):
         value["executionProfileSnapshot"]["config"]["allowOutbound"] = "false"
         with self.assertRaisesRegex(ValueError, "network policy"):
             server.validate_job(value)
+
+
+class PddVersionDetectionTest(unittest.TestCase):
+    def test_detects_and_normalizes_the_installed_cli_version(self):
+        completed = CompletedProcess(["pdd", "--version"], 0, "pdd, version v0.0.309\n", "")
+        with mock.patch.object(server.subprocess, "run", return_value=completed) as run:
+            self.assertEqual(server.detect_pdd_cli_version(), "0.0.309")
+        run.assert_called_once_with(
+            ["pdd", "--version"], capture_output=True, text=True,
+            timeout=10, check=False,
+        )
+
+    def test_accepts_version_output_written_to_stderr(self):
+        completed = CompletedProcess(["pdd", "--version"], 0, "", "pdd 0.0.309\n")
+        with mock.patch.object(server.subprocess, "run", return_value=completed):
+            self.assertEqual(server.detect_pdd_cli_version(), "0.0.309")
+
+    def test_rejects_failed_or_ambiguous_version_detection(self):
+        failed = CompletedProcess(["pdd", "--version"], 1, "", "failed")
+        with mock.patch.object(server.subprocess, "run", return_value=failed):
+            with self.assertRaisesRegex(RuntimeError, "exited unsuccessfully"):
+                server.detect_pdd_cli_version()
+
+        ambiguous = CompletedProcess(["pdd", "--version"], 0, "pdd 0.0.309 python 3.12.11", "")
+        with mock.patch.object(server.subprocess, "run", return_value=ambiguous):
+            with self.assertRaisesRegex(RuntimeError, "exactly one semantic version"):
+                server.detect_pdd_cli_version()
+
+        with mock.patch.object(server.subprocess, "run", side_effect=TimeoutExpired("pdd", 10)):
+            with self.assertRaisesRegex(RuntimeError, "Could not execute"):
+                server.detect_pdd_cli_version()
+
+        embedded = CompletedProcess(["pdd", "--version"], 0, "not-a-version0.0.309garbage", "")
+        with mock.patch.object(server.subprocess, "run", return_value=embedded):
+            with self.assertRaisesRegex(RuntimeError, "exactly one semantic version"):
+                server.detect_pdd_cli_version()
+
+    def test_health_payload_attests_the_actual_version(self):
+        with (
+            mock.patch.object(server, "SHARED_SECRET", b"secret"),
+            mock.patch.object(server, "CALLBACK_ORIGIN", "https://closespan.example"),
+            mock.patch.object(server, "PDD_CLI_VERSION", "0.0.309"),
+        ):
+            self.assertEqual(server.health_payload(), {
+                "status": "ok",
+                "pddVersion": "0.0.309",
+            })
 
 
 if __name__ == "__main__":
