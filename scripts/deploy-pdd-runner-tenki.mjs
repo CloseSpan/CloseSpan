@@ -130,7 +130,18 @@ try {
     }
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
-  if (!healthy) throw new Error("PDD runner did not become healthy inside Tenki");
+  if (!healthy) {
+    let logTail = "startup log was unavailable";
+    try {
+      const log = new TextDecoder().decode(
+        await session.readFile("/home/tenki/pdd-runner.log"),
+      ).trim();
+      if (log) logTail = log.slice(-4_000);
+    } catch {
+      // The generic message remains useful if the session cannot return its log.
+    }
+    throw new Error(`PDD runner did not become healthy inside Tenki: ${logTail}`);
+  }
 
   const exposed = await session.exposePort(port, {
     ttlMs: previewTtlMs,
