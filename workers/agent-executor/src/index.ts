@@ -87,7 +87,10 @@ const executionProfileConfigV2Schema = z.object({
   }).strict(),
 }).strict().superRefine(validateExecutionProfileBootSource);
 
-const executionProfileConfigSchema = z.discriminatedUnion("schemaVersion", [
+// Zod v3 discriminatedUnion reads object shapes eagerly and cannot unwrap the
+// ZodEffects produced by superRefine. A plain union preserves the boot-source
+// refinements and is safe during Cloudflare's module-startup validation.
+const executionProfileConfigSchema = z.union([
   executionProfileConfigV1Schema,
   executionProfileConfigV2Schema,
 ]);
