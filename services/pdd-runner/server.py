@@ -21,7 +21,6 @@ import tempfile
 import threading
 import urllib.parse
 import urllib.request
-import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -38,18 +37,64 @@ PDD_VERSION_TOKEN = re.compile(
     r"(?<![0-9A-Za-z.])v?(\d{1,4}\.\d{1,4}\.\d{1,4})(?![0-9A-Za-z.])"
 )
 
-PROFILE_CONFIG_KEYS = {
-    "schemaVersion", "language", "framework", "packageManager", "runtimeVersion",
+PROFILE_CONFIG_BASE_KEYS = {
+    "language", "framework", "packageManager", "runtimeVersion",
     "workingDirectory", "installCommands", "buildCommands", "testCommands",
     "typecheckCommands", "permittedPaths", "tenkiImage", "tenkiSnapshotId",
     "cpuCores", "memoryMb", "allowInbound", "allowOutbound", "maxDurationMs",
     "idleTimeoutMinutes",
+}
+PROFILE_CONFIG_V1_KEYS = PROFILE_CONFIG_BASE_KEYS | {"schemaVersion"}
+PROFILE_CONFIG_V2_KEYS = PROFILE_CONFIG_V1_KEYS | {
+    "automaticInstall", "automaticBuild", "publicEnvironment", "secretBindings",
+    "startCommand", "applicationPort", "healthCheckPath", "healthCheckTimeoutMs",
+    "previewEnabled", "previewTtlMs", "runtimeTools",
 }
 PROFILE_SNAPSHOT_KEYS = {
     "profileId", "version", "source", "repository", "workspaceRoot",
     "contentHash", "config",
 }
 PROFILE_SOURCES = {"confirmed", "override", "safe_generic"}
+ENVIRONMENT_NAME = re.compile(r"^[A-Z_][A-Z0-9_]{0,127}$")
+REPOSITORY_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+HEALTH_CHECK_PATH = re.compile(r"^/(?!/)[^\s?#]{0,499}$")
+UUID_VALUE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+RESERVED_RUNTIME_ENVIRONMENT_NAMES = {
+    "BASH_ENV", "CI", "ENV", "HOME", "IFS", "LD_LIBRARY_PATH", "LD_PRELOAD",
+    "NODE_OPTIONS", "OLDPWD", "PATH", "PORT", "PWD", "SHELL",
+}
+CREDENTIAL_ENVIRONMENT_NAME = re.compile(
+    r"(?:^|_)(?:API_KEY|PRIVATE_KEY|SECRET_ACCESS_KEY|ACCESS_KEY_ID|CLIENT_SECRET|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN|WEBHOOK_SECRET|SIGNING_SECRET|ENCRYPTION_KEY)(?:_|$)"
+    r"|(?:^|_)(?:SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?|DSN|PAT)$"
+    r"|^(?:DATABASE|REDIS|MONGODB|POSTGRES)_URL$"
+)
+CREDENTIAL_VALUE_PATTERNS = (
+    re.compile(r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----"),
+    re.compile(r"(?:github_pat_|gh[pousr]_|glpat-|xox[baprs]-)[A-Za-z0-9_-]{16,}"),
+    re.compile(r"(?:^|[^A-Za-z0-9])AKIA[0-9A-Z]{16}(?:$|[^A-Za-z0-9])"),
+    re.compile(r"(?:^|[^A-Za-z0-9])(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,}"),
+    re.compile(r"(?:^|[^A-Za-z0-9])sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}"),
+    re.compile(r"^Bearer\s+\S+", re.IGNORECASE),
+    re.compile(r"^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$"),
+    re.compile(r"^[a-z][a-z0-9+.-]*://[^/\s:@]+:[^/\s@]+@", re.IGNORECASE),
+    re.compile(r"(?:^|[?&;\s])(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|secret)=[^\s&;]+", re.IGNORECASE),
+)
+RUNTIME_TOOL_KEYS = {"http", "browser", "logs"}
+BROWSER_PREFLIGHT_COMMAND = (
+    'node -e "let c;try{c=require(\'playwright\').chromium}catch{c=require(\'@playwright/test\').chromium}'
+    "(async()=>{const b=await c.launch({headless:true});const x=await b.newContext({serviceWorkers:'block'});"
+    "if(typeof x.routeWebSocket!=='function')throw new Error('Playwright WebSocket routing is unavailable');"
+    "await x.close();await b.close()})().catch(e=>{console.error(e instanceof Error?e.message:String(e));process.exit(1)})\""
+)
+PLAYWRIGHT_INSTALL_COMMANDS = {
+    "npm": "npm exec -- playwright install chromium",
+    "pnpm": "pnpm exec playwright install chromium",
+    "yarn": "yarn exec playwright install chromium",
+    "bun": "bunx playwright install chromium",
+}
 
 
 def digest(value: str) -> str:
@@ -85,6 +130,7 @@ def health_payload() -> dict:
     return {
         "status": "ok" if configured else "not_configured",
         "pddVersion": PDD_CLI_VERSION,
+        "executionProfileSchemaVersions": [1, 2],
     }
 
 
@@ -129,15 +175,175 @@ def path_pattern_is_narrower(ticket_pattern: str, allowed_pattern: str) -> bool:
     return False
 
 
+def validate_environment_name(value: object, *, secret: bool) -> str:
+    if not isinstance(value, str) or not ENVIRONMENT_NAME.fullmatch(value):
+        raise ValueError("PDD execution profile environment name is invalid")
+    if (
+        value in RESERVED_RUNTIME_ENVIRONMENT_NAMES
+        or value.startswith("CLOSESPAN_")
+        or value.startswith("TENKI_")
+    ):
+        raise ValueError(f"PDD execution profile environment name {value} is reserved")
+    if not secret and CREDENTIAL_ENVIRONMENT_NAME.search(value):
+        raise ValueError(f"PDD public environment variable {value} looks like a secret")
+    return value
+
+
+def valid_uuid(value: object) -> bool:
+    return isinstance(value, str) and UUID_VALUE.fullmatch(value) is not None
+
+
+def validate_public_environment(value: object) -> tuple[list[dict], set[str]]:
+    if not isinstance(value, list) or len(value) > 100:
+        raise ValueError("PDD execution profile publicEnvironment is invalid")
+    result: list[dict] = []
+    names: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"name", "value"}:
+            raise ValueError("PDD execution profile publicEnvironment is invalid")
+        name = validate_environment_name(item.get("name"), secret=False)
+        public_value = item.get("value")
+        if not isinstance(public_value, str) or len(public_value) > 4_000:
+            raise ValueError(f"PDD public environment variable {name} is invalid")
+        if any(
+            ord(character) in {*range(0, 9), 11, 12, *range(14, 32), 127}
+            for character in public_value
+        ):
+            raise ValueError(f"PDD public environment variable {name} contains a prohibited control character")
+        if "\r" in public_value:
+            raise ValueError(f"PDD public environment variable {name} is not normalized")
+        if any(pattern.search(public_value) for pattern in CREDENTIAL_VALUE_PATTERNS):
+            raise ValueError(f"PDD public environment variable {name} contains a secret-looking value")
+        if name in names:
+            raise ValueError(f"Duplicate public environment variable: {name}")
+        names.add(name)
+        result.append(item)
+    if result != sorted(result, key=lambda item: item["name"]):
+        raise ValueError("PDD execution profile publicEnvironment is not normalized")
+    return result, names
+
+
+def validate_secret_bindings(value: object, public_names: set[str]) -> list[dict]:
+    if not isinstance(value, list) or len(value) > 100:
+        raise ValueError("PDD execution profile secretBindings is invalid")
+    result: list[dict] = []
+    phase_names: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {
+            "envName", "secretId", "secretVersion", "exposure",
+        }:
+            raise ValueError("PDD execution profile secretBindings must contain metadata only")
+        name = validate_environment_name(item.get("envName"), secret=True)
+        secret_id = item.get("secretId")
+        if not valid_uuid(secret_id):
+            raise ValueError("PDD execution profile secret binding ID is invalid") from None
+        version = item.get("secretVersion")
+        if type(version) is not int or version <= 0:
+            raise ValueError("PDD execution profile secret binding version is invalid")
+        exposure = item.get("exposure")
+        if exposure not in {"setup", "runtime", "test"}:
+            raise ValueError("PDD execution profile secret binding exposure is invalid")
+        if name in public_names:
+            raise ValueError(f"PDD environment variable {name} cannot be both public and secret")
+        phase_name = f"{exposure}:{name}"
+        if phase_name in phase_names:
+            raise ValueError(f"Duplicate {exposure} secret environment variable: {name}")
+        phase_names.add(phase_name)
+        result.append(item)
+    expected = sorted(
+        result,
+        key=lambda item: (item["envName"], item["exposure"], item["secretVersion"]),
+    )
+    if result != expected:
+        raise ValueError("PDD execution profile secretBindings is not normalized")
+    return result
+
+
+def validate_runtime_v2_config(config: dict, command_groups: dict[str, list[str]]) -> None:
+    for field in ("automaticInstall", "automaticBuild", "previewEnabled"):
+        if type(config.get(field)) is not bool:
+            raise ValueError(f"PDD execution profile {field} is invalid")
+    if config["automaticInstall"] and not command_groups["installCommands"]:
+        raise ValueError("PDD automatic install requires at least one install command")
+    if config["automaticBuild"] and not command_groups["buildCommands"]:
+        raise ValueError("PDD automatic build requires at least one build command")
+
+    _, public_names = validate_public_environment(config.get("publicEnvironment"))
+    secret_bindings = validate_secret_bindings(config.get("secretBindings"), public_names)
+
+    start_command = config.get("startCommand")
+    if start_command is not None:
+        normalized = string_list([start_command], "startCommand", 1)[0]
+        if normalized != start_command:
+            raise ValueError("PDD execution profile startCommand is not normalized")
+    application_port = config.get("applicationPort")
+    if application_port is not None and (
+        type(application_port) is not int or not 1_024 <= application_port <= 65_535
+    ):
+        raise ValueError("PDD execution profile applicationPort is invalid")
+    health_path = config.get("healthCheckPath")
+    if health_path is not None and (
+        not isinstance(health_path, str) or not HEALTH_CHECK_PATH.fullmatch(health_path)
+    ):
+        raise ValueError("PDD execution profile healthCheckPath is invalid")
+    runtime_fields = (start_command, application_port, health_path)
+    if any(value is not None for value in runtime_fields) and not all(
+        value is not None for value in runtime_fields
+    ):
+        raise ValueError("PDD running application requires start command, port, and health check")
+    for field, minimum, maximum in (
+        ("healthCheckTimeoutMs", 5_000, 600_000),
+        ("previewTtlMs", 60_000, 900_000),
+    ):
+        value = config.get(field)
+        if type(value) is not int or value < minimum or value > maximum:
+            raise ValueError(f"PDD execution profile {field} is invalid")
+
+    runtime_tools = config.get("runtimeTools")
+    if not isinstance(runtime_tools, dict) or set(runtime_tools) != RUNTIME_TOOL_KEYS:
+        raise ValueError("PDD execution profile runtimeTools is invalid")
+    if any(type(runtime_tools.get(tool)) is not bool for tool in RUNTIME_TOOL_KEYS):
+        raise ValueError("PDD execution profile runtimeTools is invalid")
+    if any(runtime_tools.values()) and start_command is None:
+        raise ValueError("PDD runtime tools require a configured running application")
+
+    if config["previewEnabled"] and not config["allowInbound"]:
+        raise ValueError("PDD preview requires inbound networking")
+    if config["previewEnabled"] and any(
+        binding["exposure"] == "runtime" for binding in secret_bindings
+    ):
+        raise ValueError("PDD preview cannot be combined with runtime secrets")
+    if config["allowOutbound"] and any(
+        binding["exposure"] in {"runtime", "test"} for binding in secret_bindings
+    ):
+        raise ValueError("PDD outbound execution cannot use runtime or test secrets")
+
+    if runtime_tools["browser"]:
+        install_commands = set(command_groups["installCommands"])
+        package_manager = config["packageManager"].strip().lower().split("@", 1)[0]
+        playwright_install = PLAYWRIGHT_INSTALL_COMMANDS.get(package_manager)
+        immutable_boot = bool(config.get("tenkiImage") or config.get("tenkiSnapshotId"))
+        repository_provisioning = bool(playwright_install and playwright_install in install_commands)
+        if not config["automaticInstall"]:
+            raise ValueError("PDD browser tool requires automatic setup")
+        if BROWSER_PREFLIGHT_COMMAND not in install_commands:
+            raise ValueError("PDD browser tool requires the exact Chromium launch preflight")
+        if immutable_boot and repository_provisioning:
+            raise ValueError("PDD browser tool must use either image or repository provisioning")
+        if not immutable_boot:
+            if not repository_provisioning:
+                raise ValueError("PDD browser tool requires the exact Chromium install command")
+            if not config["allowOutbound"]:
+                raise ValueError("PDD repository Chromium provisioning requires outbound access")
+
+
 def validate_execution_profile(job: dict) -> dict:
     profile_id = job.get("executionProfileId")
     profile_hash = job.get("executionProfileHash")
     snapshot = job.get("executionProfileSnapshot")
     if not isinstance(profile_id, str) or not isinstance(profile_hash, str):
         raise ValueError("PDD job is missing its execution profile binding")
-    try:
-        uuid.UUID(profile_id)
-    except (ValueError, AttributeError):
+    if not valid_uuid(profile_id):
         raise ValueError("PDD execution profile ID is invalid") from None
     if len(profile_hash) != 64 or any(character not in "0123456789abcdef" for character in profile_hash):
         raise ValueError("PDD execution profile hash is invalid")
@@ -152,31 +358,51 @@ def validate_execution_profile(job: dict) -> dict:
 
     repository = snapshot.get("repository")
     if not isinstance(repository, str) or (
-        repository and len(repository.split("/")) != 2
+        repository and not REPOSITORY_NAME.fullmatch(repository)
     ):
         raise ValueError("PDD execution profile repository is invalid")
     if repository and repository != job.get("repository"):
         raise ValueError("PDD execution profile belongs to another repository")
     workspace_root = safe_relative_path(snapshot.get("workspaceRoot"), "Workspace root")
+    if workspace_root != snapshot.get("workspaceRoot"):
+        raise ValueError("PDD execution profile workspace root is not normalized")
     if not repository and workspace_root != ".":
         raise ValueError("A workspace execution profile must use the repository root")
 
     config = snapshot.get("config")
-    if not isinstance(config, dict) or set(config) != PROFILE_CONFIG_KEYS:
+    if not isinstance(config, dict):
         raise ValueError("PDD execution profile configuration is invalid")
-    if config.get("schemaVersion") != 1:
+    schema_version = config.get("schemaVersion")
+    expected_keys = (
+        PROFILE_CONFIG_V1_KEYS if type(schema_version) is int and schema_version == 1
+        else PROFILE_CONFIG_V2_KEYS if type(schema_version) is int and schema_version == 2
+        else None
+    )
+    if expected_keys is None or set(config) != expected_keys:
         raise ValueError("PDD execution profile configuration version is invalid")
     for label in ("language", "packageManager"):
         value = config.get(label)
         if not isinstance(value, str) or not value.strip() or len(value) > 80:
             raise ValueError(f"PDD execution profile {label} is invalid")
-    for label in ("framework", "runtimeVersion", "tenkiImage", "tenkiSnapshotId"):
+        if value != value.strip().lower():
+            raise ValueError(f"PDD execution profile {label} is not normalized")
+    for label in ("framework", "runtimeVersion"):
+        value = config.get(label)
+        if value is not None and (not isinstance(value, str) or not value.strip() or len(value) > 120):
+            raise ValueError(f"PDD execution profile {label} is invalid")
+        if value is not None and value != value.strip():
+            raise ValueError(f"PDD execution profile {label} is not normalized")
+    for label in ("tenkiImage", "tenkiSnapshotId"):
         value = config.get(label)
         if value is not None and (not isinstance(value, str) or not value.strip() or len(value) > 500):
             raise ValueError(f"PDD execution profile {label} is invalid")
+        if value is not None and value != value.strip():
+            raise ValueError(f"PDD execution profile {label} is not normalized")
     if config.get("tenkiImage") and config.get("tenkiSnapshotId"):
         raise ValueError("PDD execution profile cannot use an image and snapshot together")
     working_directory = safe_relative_path(config.get("workingDirectory"), "Working directory")
+    if working_directory != config.get("workingDirectory"):
+        raise ValueError("PDD execution profile working directory is not normalized")
     if not repository and working_directory != ".":
         raise ValueError("A workspace execution profile must run from the repository root")
     if workspace_root != "." and not (
@@ -185,9 +411,16 @@ def validate_execution_profile(job: dict) -> dict:
         raise ValueError("PDD execution profile working directory is outside its monorepo root")
 
     commands: list[str] = []
+    command_groups: dict[str, list[str]] = {}
     for key in ("installCommands", "buildCommands", "testCommands", "typecheckCommands"):
-        commands.extend(string_list(config.get(key), key, 30))
+        command_group = string_list(config.get(key), key, 30)
+        if command_group != config.get(key):
+            raise ValueError(f"PDD execution profile {key} is not normalized")
+        command_groups[key] = command_group
+        commands.extend(command_group)
     profile_paths = [safe_relative_path(path, "Profile permitted path") for path in string_list(config.get("permittedPaths"), "permittedPaths", 100)]
+    if profile_paths != config.get("permittedPaths") or profile_paths != sorted(set(profile_paths)):
+        raise ValueError("PDD execution profile permittedPaths is not normalized")
     for path in profile_paths:
         if workspace_root != "." and not path_pattern_is_narrower(path, f"{workspace_root}/**"):
             raise ValueError("PDD execution profile path is outside its monorepo root")
@@ -203,6 +436,8 @@ def validate_execution_profile(job: dict) -> dict:
             raise ValueError(f"PDD execution profile {key} is invalid")
     if type(config.get("allowInbound")) is not bool or type(config.get("allowOutbound")) is not bool:
         raise ValueError("PDD execution profile network policy is invalid")
+    if schema_version == 2:
+        validate_runtime_v2_config(config, command_groups)
 
     computed_hash = digest(canonical_json(config))
     if computed_hash != profile_hash:
@@ -234,7 +469,7 @@ def validate_job(job: object) -> dict:
         raise ValueError("PDD runner version is not initialized")
     if job["pddVersion"] != PDD_CLI_VERSION:
         raise ValueError("PDD job version does not match the installed runner version")
-    if not isinstance(job["repository"], str) or len(job["repository"].split("/")) != 2:
+    if not isinstance(job["repository"], str) or not REPOSITORY_NAME.fullmatch(job["repository"]):
         raise ValueError("Invalid PDD repository")
     if not isinstance(job["baseSha"], str) or len(job["baseSha"]) != 40 or any(
         character not in "0123456789abcdef" for character in job["baseSha"]

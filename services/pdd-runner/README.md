@@ -15,11 +15,16 @@ model, and measured cost through an HMAC-signed callback. CloseSpan validates
 the paths, command, hashes, prompt identity, and budget again before exposing an
 approval.
 
-Every accepted job uses signed payload schema v2. The runner verifies the
-immutable execution-profile ID, canonical configuration hash, repository/root
-scope, resource and network policy, and confirms that ticket paths and commands
-are narrower than the bound profile. Legacy or inactive detected profiles fail
-closed before any archive is downloaded.
+Every accepted job uses signed payload schema v2. Embedded execution-profile
+schemas v1 and v2 are supported and attested by `/health` as
+`executionProfileSchemaVersions: [1, 2]`. The runner verifies the immutable
+profile ID, canonical configuration hash, repository/root scope, resource and
+network policy, and confirms that ticket paths and commands are narrower than
+the bound profile. For profile v2 it additionally validates automatic setup,
+metadata-only secret bindings, public environment values, application startup,
+health checks, previews, and runtime-tool provisioning. Secret values are never
+accepted by this service. Legacy job payloads, malformed profiles, and inactive
+detected profiles fail closed before any archive is downloaded.
 
 PDD's manual `test` command reports cost but does not currently expose a
 pre-spend hard budget flag. For a strict dollar ceiling, route the runner's model
