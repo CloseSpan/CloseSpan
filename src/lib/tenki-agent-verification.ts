@@ -18,6 +18,10 @@ import {
 } from "./execution-profile";
 import { createRuntimeSecretRedactor } from "./runtime-secret-redaction";
 import {
+  attestTenkiBootSource,
+  type TenkiBootSourceEvidence,
+} from "./tenki-boot-source-attestation";
+import {
   pddGeneratedTestsReferenceLiveApplication,
   pddScenariosRequireLiveApplication,
 } from "./pdd-verification";
@@ -143,6 +147,10 @@ type VerificationSession = Pick<
   | "close"
   | "inboundEnabled"
   | "outboundEnabled"
+  | "sourceSnapshotId"
+  | "sourceRegistryImageId"
+  | "sourceRegistryWorkspaceId"
+  | "sourceRegistryRef"
 >;
 
 type VerificationClient = {
@@ -525,6 +533,12 @@ export async function verifyAgentRunWithTenki(
     );
   }
   let session: VerificationSession | undefined;
+  let observedBootSource: TenkiBootSourceEvidence = {
+    sourceSnapshotId: null,
+    sourceRegistryImageId: null,
+    sourceRegistryWorkspaceId: null,
+    sourceRegistryRef: null,
+  };
   let runtime: VerificationRuntime | undefined;
   let liveReplayWitness: TenkiLiveReplayWitness | undefined;
   let cleanupError: unknown;
@@ -561,6 +575,17 @@ export async function verifyAgentRunWithTenki(
       ...(image ? { image } : {}),
       ...(snapshotId ? { snapshotId } : {}),
     });
+    try {
+      observedBootSource = attestTenkiBootSource(session, {
+        tenkiSnapshotId: profile?.tenkiSnapshotId,
+        tenkiImage: profile?.tenkiImage,
+      });
+    } catch {
+      throw new TenkiIndependentVerificationError(
+        "sandbox_failed",
+        "Tenki verification boot source does not match the immutable execution profile.",
+      );
+    }
     if (
       session.inboundEnabled !== (profile?.allowInbound ?? false)
       || session.outboundEnabled !== (profile?.allowOutbound ?? false)
@@ -914,6 +939,7 @@ export async function verifyAgentRunWithTenki(
               : "failed",
           applicationPort: applicationProfile?.applicationPort ?? null,
           previewUrl: runtimeStatus?.previewUrl ?? null,
+          ...observedBootSource,
           interactions: [
             ...preservedImplementationInteractions,
             ...runtimeInteractions,
@@ -932,6 +958,7 @@ export async function verifyAgentRunWithTenki(
     const independentVerification = {
       provider: "Tenki Sandbox" as const,
       sessionId: session.id,
+      ...observedBootSource,
       status: passed ? "passed" as const : "failed" as const,
       completedAt: new Date(finishedAt).toISOString(),
       durationMs: Math.max(0, finishedAt - startedAt),

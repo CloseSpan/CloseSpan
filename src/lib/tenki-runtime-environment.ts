@@ -19,7 +19,7 @@ const MAX_REQUEST_BODY_BYTES = 64_000;
 
 const RUNTIME_SUPERVISOR_SOURCE = String.raw`
 set -u
-setsid bash -lc "$1" &
+setsid bash -c "$1" &
 child_pid=$!
 shutdown_runtime() {
   trap - TERM INT
@@ -752,7 +752,7 @@ export class TenkiRuntimeEnvironment {
   ): Promise<void> {
     for (let index = 0; index < commands.length; index += 1) {
       this.logBuffer.appendRedacted(`[${stage}] command ${index + 1} started\n`);
-      const handle = this.session.run(["bash", "-lc", commands[index]], {
+      const handle = this.session.run(["bash", "-c", commands[index]], {
         cwd: this.workingDirectory,
         env: environment,
       });
@@ -782,7 +782,7 @@ export class TenkiRuntimeEnvironment {
     this.lastExit = undefined;
     const handle = this.session.run([
       "bash",
-      "-lc",
+      "-c",
       RUNTIME_SUPERVISOR_SOURCE,
       "--",
       this.startCommand!,

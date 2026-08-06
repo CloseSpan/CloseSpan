@@ -59,6 +59,10 @@ describe("agent implementation report verification", () => {
         healthStatus: "not_configured" as const,
         applicationPort: null,
         previewUrl: null,
+        sourceSnapshotId: "snapshot-profile-1",
+        sourceRegistryImageId: "image-1",
+        sourceRegistryWorkspaceId: "workspace-1",
+        sourceRegistryRef: "workspace/node@snapshot-profile-1",
         interactions: [
           {
             stage: "verification" as const,
@@ -85,6 +89,15 @@ describe("agent implementation report verification", () => {
       baseSha,
       promptArtifactPath: ".prompt/tickets/CS-1.prompt.md",
       promptSnapshot: snapshot,
-    }).runtimeEvidence?.interactions).toHaveLength(2);
+    }).runtimeEvidence).toMatchObject({
+      sourceSnapshotId: "snapshot-profile-1",
+      sourceRegistryImageId: "image-1",
+      sourceRegistryWorkspaceId: "workspace-1",
+      sourceRegistryRef: "workspace/node@snapshot-profile-1",
+      interactions: expect.arrayContaining([
+        expect.objectContaining({ tool: "setup" }),
+        expect.objectContaining({ tool: "logs" }),
+      ]),
+    });
   });
 });

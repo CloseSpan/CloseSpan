@@ -108,6 +108,38 @@ function baseConfig(overrides: Partial<TenkiRuntimeEnvironmentConfig> = {}): Ten
 }
 
 describe("Tenki runtime environment", () => {
+  it("preserves the configured repository cwd for setup and application shells", async () => {
+    const install = controllableProcess({ immediateResult: processResult() });
+    const runtime = controllableProcess({ exitOnTerm: true });
+    const health = httpProcess(200);
+    const processes = [install, runtime, health];
+    const run = vi.fn<Session["run"]>(() => {
+      const process = processes.shift();
+      if (!process) throw new Error("Unexpected process launch");
+      return process.handle;
+    });
+    const workingDirectory = "/home/tenki/repo/apps/web";
+    const environment = createTenkiRuntimeEnvironment(
+      { inboundEnabled: false, run, exposePort: vi.fn(), unexposePort: vi.fn() },
+      baseConfig({
+        workingDirectory,
+        install: { enabled: true, commands: ["npm ci"] },
+      }),
+      { setupEnv: {}, runtimeEnv: {}, redactionValues: [] },
+    );
+
+    await environment.start();
+
+    expect(run.mock.calls[0]?.[0]).toEqual(["bash", "-c", "npm ci"]);
+    expect(run.mock.calls[0]?.[1]).toMatchObject({ cwd: workingDirectory });
+    expect(run.mock.calls[1]?.[0].slice(0, 2)).toEqual(["bash", "-c"]);
+    expect(run.mock.calls[1]?.[0][2]).toContain("setsid bash -c");
+    expect(run.mock.calls[1]?.[1]).toMatchObject({ cwd: workingDirectory });
+    expect(run.mock.calls.flatMap(([argv]) => argv)).not.toContain("-lc");
+
+    await environment.close();
+  });
+
   it("runs enabled setup, starts the app, exposes a short preview, redacts logs, and cleans up", async () => {
     const install = controllableProcess({
       stdout: ["installed with tok", "en-value\n"],
@@ -155,11 +187,11 @@ describe("Tenki runtime environment", () => {
     await Promise.resolve();
 
     expect(run.mock.calls.slice(0, 2).map((call) => call[0])).toEqual([
-      ["bash", "-lc", "npm ci"],
-      ["bash", "-lc", "npm run build"],
+      ["bash", "-c", "npm ci"],
+      ["bash", "-c", "npm run build"],
     ]);
-    expect(run.mock.calls[2]?.[0].slice(0, 2)).toEqual(["bash", "-lc"]);
-    expect(run.mock.calls[2]?.[0][2]).toContain("setsid bash -lc");
+    expect(run.mock.calls[2]?.[0].slice(0, 2)).toEqual(["bash", "-c"]);
+    expect(run.mock.calls[2]?.[0][2]).toContain("setsid bash -c");
     expect(run.mock.calls[2]?.[0].slice(-2)).toEqual(["--", "npm run dev"]);
     expect(run.mock.calls[0]?.[1]).toMatchObject({ env: { APP_TOKEN: "token-value" } });
     expect(exposePort).toHaveBeenCalledWith(3000, { ttlMs: 60_000, slug: "run-preview" });
@@ -253,7 +285,7 @@ describe("Tenki runtime environment", () => {
     });
     expect(run.mock.calls[0]?.[0]).toEqual([
       "bash",
-      "-lc",
+      "-c",
       TENKI_BROWSER_PREFLIGHT_COMMAND,
     ]);
     expect(run.mock.calls[3]?.[0].slice(0, 2)).toEqual(["node", "-e"]);
@@ -327,8 +359,8 @@ describe("Tenki runtime environment", () => {
 
     await expect(environment.prepare()).resolves.toBeUndefined();
     expect(run.mock.calls.map((call) => call[0])).toEqual([
-      ["bash", "-lc", "npm ci"],
-      ["bash", "-lc", "npm run build"],
+      ["bash", "-c", "npm ci"],
+      ["bash", "-c", "npm run build"],
     ]);
     await expect(environment.start()).rejects.toThrow("not configured");
     await environment.close();

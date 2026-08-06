@@ -28,6 +28,10 @@ const runtimeEvidenceSchema = z.object({
   healthStatus: z.enum(["not_configured", "passed", "failed"]),
   applicationPort: z.number().int().min(1_024).max(65_535).nullable(),
   previewUrl: z.string().url().max(2_000).nullable(),
+  sourceSnapshotId: z.string().trim().min(1).max(500).nullable().optional(),
+  sourceRegistryImageId: z.string().trim().min(1).max(500).nullable().optional(),
+  sourceRegistryWorkspaceId: z.string().trim().min(1).max(500).nullable().optional(),
+  sourceRegistryRef: z.string().trim().min(1).max(500).nullable().optional(),
   interactions: z.array(z.object({
     stage: z.enum(["implementation", "verification"]).optional(),
     tool: z.enum(["setup", "http", "browser", "preview", "logs", "restart"]),
@@ -60,6 +64,10 @@ export const agentImplementationReportSchema = z.object({
   independentVerification: z.object({
     provider: z.literal("Tenki Sandbox"),
     sessionId: z.string().trim().min(1).max(200),
+    sourceSnapshotId: z.string().trim().min(1).max(500).nullable().optional(),
+    sourceRegistryImageId: z.string().trim().min(1).max(500).nullable().optional(),
+    sourceRegistryWorkspaceId: z.string().trim().min(1).max(500).nullable().optional(),
+    sourceRegistryRef: z.string().trim().min(1).max(500).nullable().optional(),
     status: z.enum(["passed", "failed"]),
     completedAt: z.string().datetime(),
     durationMs: z.number().int().nonnegative(),

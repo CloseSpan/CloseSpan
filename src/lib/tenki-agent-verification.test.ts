@@ -234,9 +234,16 @@ function setup(
   failedCommand?: string,
   fileHashes: Record<string, string> = {},
   commandOutput = "passed",
+  bootSource: {
+    sourceSnapshotId?: string;
+    sourceRegistryImageId?: string;
+    sourceRegistryWorkspaceId?: string;
+    sourceRegistryRef?: string;
+  } = {},
 ) {
   const session = {
     id: "tenki-session-1",
+    ...bootSource,
     inboundEnabled: false,
     outboundEnabled: false,
     mkdir: vi.fn().mockResolvedValue(undefined),
@@ -349,12 +356,72 @@ describe("Tenki independent agent verification", () => {
     expect(verified.tests.every((test) => test.status === "passed")).toBe(true);
     expect(verified.independentVerification).toMatchObject({
       provider: "Tenki Sandbox",
+      sourceSnapshotId: null,
       status: "passed",
       durationMs: 600,
     });
     expect(verified.criteria[0]?.evidence).toContain("tenki-session-1");
     expect(session.close).toHaveBeenCalledOnce();
     expect(client.close).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a verification VM that did not boot from the bound snapshot", async () => {
+    const { session, client } = setup(
+      undefined,
+      {},
+      "passed",
+      { sourceSnapshotId: "snapshot-other" },
+    );
+
+    await expect(verifyAgentRunWithTenki(context, report, {
+      apiKey: "tk_test",
+      createClient: () => client,
+      repositoryArchive: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+    })).rejects.toMatchObject({
+      code: "sandbox_failed",
+      message: expect.stringContaining("boot source does not match"),
+    });
+    expect(session.mkdir).not.toHaveBeenCalled();
+    expect(session.close).toHaveBeenCalledOnce();
+    expect(client.close).toHaveBeenCalledOnce();
+  });
+
+  it("attests exact private-image provenance and records every observed source field", async () => {
+    const sourceSnapshotId = "d578a017-eb4b-4a3f-b7d5-1753f9261fc1";
+    const sourceRegistryRef = `vbev25/closespan-agent@${sourceSnapshotId}`;
+    const imageProfile = {
+      ...profileConfig,
+      tenkiImage: sourceRegistryRef,
+      tenkiSnapshotId: null,
+    };
+    const imageProfileHash = hashExecutionProfileConfig(imageProfile);
+    const imageContext: AgentRunExecutionContext = {
+      ...context,
+      executionProfileHash: imageProfileHash,
+      executionProfileSnapshot: {
+        ...context.executionProfileSnapshot,
+        contentHash: imageProfileHash,
+        config: imageProfile,
+      },
+    };
+    const bootSource = {
+      sourceSnapshotId,
+      sourceRegistryImageId: "019fd5e4-314b-7c3b-b9b3-df09364ee706",
+      sourceRegistryWorkspaceId: "019fa584-01d1-71b8-a93b-6d052830a63d",
+      sourceRegistryRef,
+    };
+    const { client } = setup(undefined, {}, "passed", bootSource);
+
+    const verified = await verifyAgentRunWithTenki(imageContext, report, {
+      apiKey: "tk_test",
+      createClient: () => client,
+      repositoryArchive: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+    });
+
+    expect(client.createAndWait).toHaveBeenCalledWith(expect.objectContaining({
+      image: sourceRegistryRef,
+    }));
+    expect(verified.independentVerification).toMatchObject(bootSource);
   });
 
   it("blocks publication evidence when an independent command fails", async () => {

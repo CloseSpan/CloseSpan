@@ -31,6 +31,10 @@ import {
 } from "./execution-profile";
 import { createRuntimeSecretRedactor } from "./runtime-secret-redaction";
 import {
+  attestTenkiBootSource,
+  type TenkiBootSourceEvidence,
+} from "./tenki-boot-source-attestation";
+import {
   pddGeneratedTestsReferenceLiveApplication,
   pddScenariosRequireLiveApplication,
 } from "./pdd-verification";
@@ -905,11 +909,21 @@ export async function executeTenkiCodingJob(
     dataPlaneReadyTimeoutMs: CREATE_TIMEOUT_MS,
   })))(apiKey);
   let session: Session | undefined;
+  let observedBootSource: TenkiBootSourceEvidence = {
+    sourceSnapshotId: null,
+    sourceRegistryImageId: null,
+    sourceRegistryWorkspaceId: null,
+    sourceRegistryRef: null,
+  };
   let applicationRuntime: TenkiRuntimeEnvironment | undefined;
   let liveReplayWitness: TenkiLiveReplayWitness | undefined;
   let cleanupError: unknown;
   try {
     session = await client.createAndWait(options);
+    observedBootSource = attestTenkiBootSource(session, {
+      tenkiSnapshotId: executionProfile?.tenkiSnapshotId,
+      tenkiImage: executionProfile?.tenkiImage,
+    });
     if (
       session.outboundEnabled !== options.allowOutbound
       || session.inboundEnabled !== options.allowInbound
@@ -1209,6 +1223,7 @@ export async function executeTenkiCodingJob(
                   : "failed",
               applicationPort: runtimeProfile.applicationPort,
               previewUrl: runtimeStatus?.previewUrl ?? null,
+              ...observedBootSource,
               interactions: runtimeInteractions,
               logExcerpt: applicationRuntime
                 ? applicationRuntime.logs(20_000).split("\n").filter(Boolean).slice(-100)
