@@ -226,7 +226,7 @@ function RuntimeSecretManager({
   const activeRepositories = repositories.filter((repository) => repository.active);
   const [environmentName, setEnvironmentName] = useState("");
   const [label, setLabel] = useState("");
-  const [scopeType, setScopeType] = useState<"workspace" | "repository">("workspace");
+  const [scopeType, setScopeType] = useState<"workspace" | "repository">("repository");
   const [repository, setRepository] = useState("");
   const [workspaceRoot, setWorkspaceRoot] = useState(".");
   const [secretValue, setSecretValue] = useState("");
@@ -338,19 +338,34 @@ function RuntimeSecretManager({
   }
 
   return (
-    <section className="runtime-secret-manager" aria-labelledby="runtime-secret-manager-title">
-      <div className="runtime-secret-manager-head">
-        <div>
-          <h3 id="runtime-secret-manager-title">Runtime secret vault</h3>
-          <p className="subtle">Encrypt credentials for Tenki without storing plaintext in an execution profile. Only metadata and immutable version references return to this page.</p>
-        </div>
-        <span className="badge success">Encrypted at rest</span>
-      </div>
+    <details
+      className="runtime-secret-manager"
+      open={error ? true : undefined}
+    >
+      <summary className="runtime-secret-manager-summary">
+        <span className="runtime-secret-manager-heading">
+          <span className="runtime-secret-manager-title-line">
+            <strong id="runtime-secret-manager-title">Runtime environment secrets</strong>
+            <span className="badge">Advanced</span>
+          </span>
+          <span className="subtle">Add staging credentials only when an authorized repository must run inside Tenki.</span>
+        </span>
+        <span className="runtime-secret-manager-status">
+          <span className="subtle">{secrets.length} {secrets.length === 1 ? "secret" : "secrets"}</span>
+          <span className="badge success">Encrypted at rest</span>
+        </span>
+      </summary>
 
-      <form className="runtime-secret-create" onSubmit={createSecret}>
+      <div className="runtime-secret-manager-body">
+        <div className="callout warning runtime-secret-safety" role="note">
+          <div className="callout-title">Use staging or test credentials only</div>
+          <p className="subtle">Never add production database credentials or access to live customer data. Prefer short-lived, least-privilege values scoped to one repository and workspace root.</p>
+        </div>
+
+        <form className="runtime-secret-create" onSubmit={createSecret}>
         <div className="runtime-secret-create-head">
           <strong>Add a secret</strong>
-          <span className="subtle">The value is write-only and cannot be retrieved from settings.</span>
+          <span className="subtle">The value is write-only and cannot be retrieved after storage.</span>
         </div>
         <fieldset className="runtime-secret-create-grid" disabled={busy}>
           <label className="field">Environment name
@@ -359,7 +374,7 @@ function RuntimeSecretManager({
               required
               maxLength={128}
               pattern="[A-Z_][A-Z0-9_]*"
-              placeholder="DATABASE_URL"
+              placeholder="TEST_DATABASE_URL"
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
@@ -368,15 +383,15 @@ function RuntimeSecretManager({
             <small>Uppercase letters, numbers, and underscores. Reserved executor names are rejected.</small>
           </label>
           <label className="field">Label
-            <input value={label} maxLength={120} placeholder="Production database" onChange={(event) => setLabel(event.target.value)} />
+            <input value={label} maxLength={120} placeholder="Staging database" onChange={(event) => setLabel(event.target.value)} />
             <small>Human-readable context only. Never include the secret value.</small>
           </label>
           <label className="field">Scope
             <select value={scopeType} onChange={(event) => setScopeType(event.target.value as "workspace" | "repository")}>
-              <option value="workspace">Workspace</option>
               <option value="repository">Repository and root</option>
+              <option value="workspace">Entire workspace</option>
             </select>
-            <small>Workspace secrets are eligible for every authorized repository; repository secrets are exact-scope only.</small>
+            <small>Repository scope is safest. Workspace scope makes the secret eligible for every authorized repository.</small>
           </label>
           {scopeType === "repository" && (
             <>
@@ -392,6 +407,12 @@ function RuntimeSecretManager({
               </label>
             </>
           )}
+          {scopeType === "workspace" && (
+            <div className="callout warning runtime-secret-workspace-warning" role="status">
+              <div className="callout-title">This secret will be available workspace-wide</div>
+              <p className="subtle">Every authorized repository can bind this version. Use repository scope unless the same test credential is intentionally shared.</p>
+            </div>
+          )}
           <label className="field runtime-secret-value-field">Secret value
             <input
               type="password"
@@ -405,7 +426,7 @@ function RuntimeSecretManager({
               aria-describedby="runtime-secret-value-hint"
               onChange={(event) => setSecretValue(event.target.value)}
             />
-            <small id="runtime-secret-value-hint">Sent once over the authenticated settings API, then removed from this form after storage.</small>
+            <small id="runtime-secret-value-hint">Sent once through the authenticated admin API, encrypted, and cleared from this form after storage.</small>
           </label>
         </fieldset>
         <div className="runtime-secret-form-actions">
@@ -413,9 +434,9 @@ function RuntimeSecretManager({
             {busy ? "Encrypting…" : "Encrypt & store"}
           </button>
         </div>
-      </form>
+        </form>
 
-      <div className="runtime-secret-feedback" aria-live="polite">
+        <div className="runtime-secret-feedback" aria-live="polite">
         {notice && <p className="toast success" role="status">{notice}</p>}
         {(error || actionError) && (
           <div className="toast error" role="alert">
@@ -423,21 +444,21 @@ function RuntimeSecretManager({
             {error && !actionError && <button type="button" className="text-link" onClick={onRetry}>Try again</button>}
           </div>
         )}
-      </div>
-
-      <div className="runtime-secret-list" aria-busy={loading}>
-        <div className="runtime-secret-list-head">
-          <strong>Stored secret metadata</strong>
-          <span className="subtle">{secrets.length} {secrets.length === 1 ? "secret" : "secrets"}</span>
         </div>
-        {loading && <p className="chatgpt-text-loading" role="status">Loading secret metadata<span aria-hidden="true">…</span></p>}
-        {!loading && !error && secrets.length === 0 && (
-          <div className="runtime-secret-empty">
-            <strong>No runtime secrets yet</strong>
-            <p className="subtle">Add the first write-only value above, then bind its active version inside a runtime profile.</p>
+
+        <div className="runtime-secret-list" aria-busy={loading}>
+          <div className="runtime-secret-list-head">
+            <strong>Stored secret metadata</strong>
+            <span className="subtle">{secrets.length} {secrets.length === 1 ? "secret" : "secrets"}</span>
           </div>
-        )}
-        {!loading && secrets.map((secret) => {
+          {loading && <p className="chatgpt-text-loading" role="status">Loading secret metadata<span aria-hidden="true">…</span></p>}
+          {!loading && !error && secrets.length === 0 && (
+            <div className="runtime-secret-empty">
+              <strong>No runtime secrets yet</strong>
+              <p className="subtle">Add the first write-only value above, then bind its active version inside a runtime profile.</p>
+            </div>
+          )}
+          {!loading && secrets.map((secret) => {
           const activeVersion = secret.versions.find((version) => version.active);
           const revokedCount = secret.versions.filter((version) => !version.active).length;
           const editing = action?.secretId === secret.id;
@@ -489,9 +510,10 @@ function RuntimeSecretManager({
               )}
             </div>
           );
-        })}
+          })}
+        </div>
       </div>
-    </section>
+    </details>
   );
 }
 

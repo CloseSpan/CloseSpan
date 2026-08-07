@@ -22,7 +22,7 @@ import { ExecutionProfileSettings } from "./execution-profile-settings";
 const settingsSections = [
   ["agent", "Agent autonomy"],
   ["prompt-drafts", "Prompt drafting"],
-  ["execution", "Execution profiles"],
+  ["execution", "Execution environments"],
   ["model", "AI provider"],
   ["priority", "Prioritization"],
   ["data", "Data & privacy"],
@@ -358,8 +358,8 @@ export function SettingsScreen({
           <section className="card" id="execution">
             <div className="card-head">
               <div>
-                <h2>Repository execution profiles</h2>
-                <p className="subtle">Detect, review, and version the exact environment used by PDD and both Tenki VMs.</p>
+                <h2>Repository execution environments</h2>
+                <p className="subtle">Detect, review, and version the exact environment used by PDD and both Tenki VMs. Advanced staging credentials are managed here when a running application requires them.</p>
               </div>
               <span className="badge brand">Approval-bound</span>
             </div>

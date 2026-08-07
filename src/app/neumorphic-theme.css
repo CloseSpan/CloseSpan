@@ -1597,7 +1597,8 @@ input[type="radio"] {
 }
 
 .toggle-row input[type="checkbox"]:checked::before {
-  background: var(--toggle-thumb);
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-hover);
   transform: translateX(20px);
 }
 
@@ -5680,7 +5681,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 }
 
 :root[data-theme="dark"] .app-shell :is(
-  input,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   textarea,
   select,
   option
