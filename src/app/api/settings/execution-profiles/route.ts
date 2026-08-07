@@ -11,8 +11,15 @@ import {
   noStoreHeaders,
 } from "@/lib/request-security";
 import { workspacePersistenceMode } from "@/lib/workspace-persistence";
-import { sanitizeExecutionProfileConfig } from "@/lib/execution-profile";
+import {
+  assertTenkiProviderResourceLimits,
+  sanitizeExecutionProfileConfig,
+} from "@/lib/execution-profile";
 import { validateRuntimeSecretBindings } from "@/lib/runtime-secret-repository";
+import {
+  assertManagedTenkiBootSourceAllowed,
+  listManagedTenkiEnvironmentArtifacts,
+} from "@/lib/tenki-environment-catalog-repository";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,12 +30,13 @@ export async function GET(request: NextRequest) {
         { headers: noStoreHeaders },
       );
     }
-    const [settings, repositories] = await Promise.all([
+    const [settings, repositories, managedEnvironments] = await Promise.all([
       listExecutionProfileSettings(context.orgId),
       listGithubRepositoryAuthorizations(context.orgId),
+      listManagedTenkiEnvironmentArtifacts(context.orgId),
     ]);
     return NextResponse.json(
-      { available: true, ...settings, repositories },
+      { available: true, ...settings, repositories, managedEnvironments },
       { headers: noStoreHeaders },
     );
   } catch (error) {
@@ -61,6 +69,7 @@ export async function PUT(request: NextRequest) {
         : undefined;
     if (parentProfileId === undefined) throw new Error("Parent profile ID is invalid");
     const config = sanitizeExecutionProfileConfig(body.config);
+    assertTenkiProviderResourceLimits(config);
     if (config.schemaVersion === 2) {
       await validateRuntimeSecretBindings({
         orgId: context.orgId,
@@ -69,6 +78,12 @@ export async function PUT(request: NextRequest) {
         bindings: config.secretBindings,
       });
     }
+    await assertManagedTenkiBootSourceAllowed({
+      orgId: context.orgId,
+      repository,
+      workspaceRoot,
+      config,
+    });
     const profile = await overrideExecutionProfile({
       orgId: context.orgId,
       repository,

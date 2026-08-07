@@ -132,7 +132,7 @@ describe("agent-run completion callback", () => {
 
     await background.tasks[0]!();
 
-    expect(tenki.verify).toHaveBeenCalledWith(context, report);
+    expect(tenki.verify).toHaveBeenCalledWith(context, report, {});
     expect(github.publish).toHaveBeenCalledOnce();
     expect(workflow.complete).toHaveBeenCalledTimes(2);
     expect(workflow.fail).not.toHaveBeenCalled();

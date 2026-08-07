@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   confirmDetectedExecutionProfile,
+  getExecutionProfileVersion,
   listExecutionProfileSettings,
 } from "@/lib/execution-profile-repository";
 import { refreshPendingProblemRepositoryMatches } from "@/lib/problem-repository-match-repository";
@@ -10,6 +11,8 @@ import {
   HttpError,
   noStoreHeaders,
 } from "@/lib/request-security";
+import { assertManagedTenkiBootSourceAllowed } from "@/lib/tenki-environment-catalog-repository";
+import { assertTenkiProviderResourceLimits } from "@/lib/execution-profile";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,6 +24,20 @@ export async function POST(request: NextRequest) {
     ) {
       throw new HttpError(400, "A detected execution profile is required");
     }
+    const detected = await getExecutionProfileVersion(
+      context.orgId,
+      body.detectedProfileId,
+    );
+    if (!detected || detected.source !== "detected") {
+      throw new HttpError(404, "Detected execution profile was not found");
+    }
+    assertTenkiProviderResourceLimits(detected.config);
+    await assertManagedTenkiBootSourceAllowed({
+      orgId: context.orgId,
+      repository: detected.repository,
+      workspaceRoot: detected.workspaceRoot,
+      config: detected.config,
+    });
     const profile = await confirmDetectedExecutionProfile({
       orgId: context.orgId,
       detectedProfileId: body.detectedProfileId,

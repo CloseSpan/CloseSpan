@@ -111,7 +111,7 @@ describe("repository execution-profile detection", () => {
       },
       reviewState: "Pending review",
       active: false,
-      detectorVersion: 3,
+      detectorVersion: 4,
       environment: { image: "sandbox", snapshotId: null, runtimeFamily: "node" },
     });
     expect(result.profiles.find((profile) => profile.root === "apps/web")).toMatchObject({
@@ -187,7 +187,10 @@ describe("repository execution-profile detection", () => {
         tenkiImage: null,
         tenkiSnapshotId: null,
         allowInbound: false,
-        allowOutbound: false,
+        // A generic toolchain image still needs temporary outbound access for
+        // its reviewed dependency install. Repository-private environments
+        // switch this back off because dependencies are sealed in the image.
+        allowOutbound: true,
       }),
       detectionEvidence: expect.objectContaining({
         sourceSha: COMMIT_SHA,

@@ -13,6 +13,11 @@ import {
 import { noStoreHeaders } from "@/lib/request-security";
 import { sanitizeExecutionProfileConfig } from "@/lib/execution-profile";
 import { resolveRuntimeSecretBindings } from "@/lib/runtime-secret-repository";
+import {
+  assertManagedTenkiBootSourceAllowed,
+  markManagedTenkiEnvironmentUsed,
+} from "@/lib/tenki-environment-catalog-repository";
+import type { TrustedTenkiBootSource } from "@/lib/tenki-boot-source-attestation";
 
 export const maxDuration = 300;
 
@@ -124,10 +129,39 @@ export async function POST(request: NextRequest) {
     let runtimeEnvironment:
       | Awaited<ReturnType<typeof resolveRuntimeSecretBindings>>
       | undefined;
+    let trustedBootSource: TrustedTenkiBootSource | undefined;
     if (job.schemaVersion === 2) {
       const profile = sanitizeExecutionProfileConfig(
         job.executionProfileSnapshot.config,
       );
+      const managedEnvironment = await assertManagedTenkiBootSourceAllowed({
+        orgId: job.orgId,
+        repository: job.repository,
+        workspaceRoot: job.executionProfileSnapshot.workspaceRoot,
+        config: profile,
+        permitDeprecated: true,
+      });
+      if (managedEnvironment) {
+        await markManagedTenkiEnvironmentUsed({
+          artifactId: managedEnvironment.id,
+          orgId: job.orgId,
+          runId: job.runId,
+        });
+        if (
+          !managedEnvironment.registryDigestRef
+          || !managedEnvironment.registryImageId
+          || !managedEnvironment.tenkiWorkspaceId
+          || !managedEnvironment.snapshotId
+        ) {
+          throw new Error("The managed Tenki environment is missing its immutable provider binding");
+        }
+        trustedBootSource = {
+          registryDigestRef: managedEnvironment.registryDigestRef,
+          registryImageId: managedEnvironment.registryImageId,
+          workspaceId: managedEnvironment.tenkiWorkspaceId,
+          snapshotId: managedEnvironment.snapshotId,
+        };
+      }
       if (profile.schemaVersion === 2) {
         runtimeEnvironment = await resolveRuntimeSecretBindings({
           orgId: job.orgId,
@@ -139,7 +173,10 @@ export async function POST(request: NextRequest) {
     }
     const report = await executeTenkiCodingJob(job, {
       started: (sessionId) => callback(job, { event: "started", sandboxId: sessionId, provider: "Tenki Sandbox" }, secret),
-    }, runtimeEnvironment ? { runtimeEnvironment } : {});
+    }, {
+      ...(runtimeEnvironment ? { runtimeEnvironment } : {}),
+      ...(trustedBootSource ? { trustedBootSource } : {}),
+    });
     await callback(job, { event: "completed", report }, secret);
     return NextResponse.json({ ok: true, runId: job.runId }, { headers: noStoreHeaders });
   } catch (error) {

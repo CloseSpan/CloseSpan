@@ -8,8 +8,15 @@ import {
   type ExecutionProfileActor,
 } from "./execution-profile-repository";
 import { createGithubInstallationClient } from "./github-app-auth";
+import {
+  resolveManagedTenkiEnvironment,
+} from "./tenki-environment-catalog-repository";
+import type {
+  ManagedTenkiEnvironmentArtifact,
+  ManagedTenkiEnvironmentRequest,
+} from "./tenki-environment-catalog";
 
-const DETECTOR_VERSION = 3;
+const DETECTOR_VERSION = 4;
 const PRIMARY_MANIFESTS = new Set([
   "package.json",
   "deno.json",
@@ -151,6 +158,7 @@ export interface DetectedRepositoryProfileSuggestion {
   reviewState: "Pending review";
   active: false;
   detectorVersion: number;
+  dependencyFingerprint: string;
   detectionHash: string;
 }
 
@@ -179,6 +187,9 @@ export interface RepositoryProfileSuggestionStore {
 export interface RepositoryProfileDetectionDependencies {
   github?: RepositoryMetadataGithubClient;
   limits?: Partial<RepositoryDetectionLimits>;
+  managedEnvironmentResolver?: {
+    resolve(input: ManagedTenkiEnvironmentRequest): Promise<ManagedTenkiEnvironmentArtifact | null>;
+  };
 }
 
 interface ManifestMetadata {
@@ -640,6 +651,12 @@ function suggestion(input: {
   files: ReadManifest[];
 }): DetectedRepositoryProfileSuggestion {
   const draft = profileDraft(input.files);
+  const dependencyFingerprint = createHash("sha256")
+    .update(JSON.stringify(input.files
+      .filter((file) => PRIMARY_MANIFESTS.has(file.name) || AUXILIARY_MANIFESTS.has(file.name))
+      .map((file) => [file.path, file.sha, createHash("sha256").update(file.content).digest("hex")])
+      .sort((left, right) => left[0].localeCompare(right[0]))))
+    .digest("hex");
   const base = {
     repository: input.repository,
     root: input.root,
@@ -661,6 +678,7 @@ function suggestion(input: {
     reviewState: "Pending review" as const,
     active: false as const,
     detectorVersion: DETECTOR_VERSION,
+    dependencyFingerprint,
   };
   return { ...base, detectionHash: detectionHash(base) };
 }
@@ -762,9 +780,19 @@ function optionalCommand(command: string | null): string[] {
 
 function detectedInstallCommands(
   detected: DetectedRepositoryProfileSuggestion,
+  managedEnvironment: ManagedTenkiEnvironmentArtifact | null,
 ): string[] {
-  const commands = optionalCommand(detected.commands.install);
+  const commands = managedEnvironment?.scopeType === "repository_private"
+    && managedEnvironment.capabilities.includes("dependency-cache")
+    ? [
+        `/opt/closespan/restore-cache.sh /home/tenki/repo/${detected.root === "." ? "" : detected.root}`
+          .replace(/\/$/, ""),
+      ]
+    : optionalCommand(detected.commands.install);
   if (!detected.application?.browserDependencyDetected) return commands;
+  if (managedEnvironment?.capabilities.includes("browser")) {
+    return [...commands, TENKI_BROWSER_PREFLIGHT_COMMAND];
+  }
   const installBrowser = playwrightChromiumInstallCommand(
     detected.packageManager ?? "unknown",
   );
@@ -774,13 +802,46 @@ function detectedInstallCommands(
 
 export function executionProfileSuggestionStore(
   actor: ExecutionProfileActor = { actorId: "system:repository-detector" },
+  dependencies: Pick<RepositoryProfileDetectionDependencies, "managedEnvironmentResolver"> = {},
 ): RepositoryProfileSuggestionStore {
   return {
     async saveDetectedSuggestion({ orgId, suggestion: detected, evidence }) {
-      const installCommands = detectedInstallCommands(detected);
+      const managedEnvironment = await (
+        dependencies.managedEnvironmentResolver?.resolve({
+          orgId,
+          repository: detected.repository,
+          workspaceRoot: detected.root,
+          runtimeFamily: detected.environment.runtimeFamily,
+          runtimeVersion: detected.runtime,
+          packageManager: detected.packageManager,
+          requiredCapabilities: detected.application?.browserDependencyDetected
+            ? ["browser"]
+            : [],
+          dependencyFingerprint: detected.dependencyFingerprint,
+        })
+        ?? resolveManagedTenkiEnvironment({
+          orgId,
+          repository: detected.repository,
+          workspaceRoot: detected.root,
+          runtimeFamily: detected.environment.runtimeFamily,
+          runtimeVersion: detected.runtime,
+          packageManager: detected.packageManager,
+          requiredCapabilities: detected.application?.browserDependencyDetected
+            ? ["browser"]
+            : [],
+          dependencyFingerprint: detected.dependencyFingerprint,
+        })
+      );
+      const installCommands = detectedInstallCommands(
+        detected,
+        managedEnvironment,
+      );
       const browserProvisioned = Boolean(
         detected.application?.browserDependencyDetected
-        && playwrightChromiumInstallCommand(detected.packageManager ?? "unknown"),
+        && (
+          managedEnvironment?.capabilities.includes("browser")
+          || playwrightChromiumInstallCommand(detected.packageManager ?? "unknown")
+        ),
       );
       return saveDetectedExecutionProfileSuggestion({
         orgId,
@@ -818,17 +879,23 @@ export function executionProfileSuggestionStore(
           // "sandbox" means Tenki's safe generic base. Keep the stored image
           // unset so a workspace-owned immutable image/snapshot can be chosen
           // during review without creating one global runtime dependency.
-          tenkiImage: detected.environment.image === "sandbox"
-            ? null
-            : detected.environment.image,
-          tenkiSnapshotId: detected.environment.snapshotId,
+          tenkiImage: managedEnvironment?.registryDigestRef ?? null,
+          // Managed artifacts always execute through the private immutable
+          // registry digest. The backing snapshot remains lifecycle metadata.
+          tenkiSnapshotId: null,
           cpuCores: 2,
           memoryMb: 4_096,
           allowInbound: false,
           // A detected Playwright profile downloads its exact Chromium build
           // during setup. The profile contains no runtime or test secret
           // bindings, and an admin must review it before activation.
-          allowOutbound: browserProvisioned,
+          // Toolchain-only images intentionally contain no customer
+          // dependencies, so their reviewed install still needs outbound
+          // access. A repository-private dependency snapshot restores its
+          // sealed cache and remains fully network isolated.
+          allowOutbound: managedEnvironment?.scopeType === "repository_private"
+            ? false
+            : installCommands.length > 0,
           maxDurationMs: 1_800_000,
           idleTimeoutMinutes: 2,
         },
@@ -840,6 +907,14 @@ export function executionProfileSuggestionStore(
           confidence: detected.confidence,
           detectorVersion: detected.detectorVersion,
           detectionHash: detected.detectionHash,
+          dependencyFingerprint: detected.dependencyFingerprint,
+          managedEnvironment: managedEnvironment ? {
+            artifactId: managedEnvironment.id,
+            catalogKey: managedEnvironment.catalogKey,
+            version: managedEnvironment.version,
+            snapshotId: managedEnvironment.snapshotId,
+            registryDigestRef: managedEnvironment.registryDigestRef,
+          } : null,
           scan: evidence,
         },
         actor,
@@ -860,7 +935,7 @@ export async function detectAndSaveGithubRepositoryProfiles(
 ): Promise<GithubRepositoryProfileDetection> {
   return detectAndPersistGithubRepositoryProfiles(
     input,
-    executionProfileSuggestionStore(input.actor),
+    executionProfileSuggestionStore(input.actor, dependencies),
     dependencies,
   );
 }

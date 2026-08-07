@@ -150,6 +150,9 @@ const executionProfileBaseShape = {
   tenkiSnapshotId: z
     .union([z.string().trim().min(1).max(500), z.null()])
     .default(null),
+  // Preserve the historical parser ceiling so already-bound immutable
+  // profiles remain readable. New saves and execution are separately limited
+  // to the current provider ceilings below.
   cpuCores: z.number().int().min(1).max(32).default(2),
   memoryMb: z.number().int().min(512).max(131_072).default(4_096),
   allowInbound: z.boolean().default(false),
@@ -353,6 +356,17 @@ export interface ExecutionProfileConfigV2 extends ExecutionProfileConfigBase {
 }
 
 export type ExecutionProfileConfig = ExecutionProfileConfigV1 | ExecutionProfileConfigV2;
+
+export function assertTenkiProviderResourceLimits(
+  config: Pick<ExecutionProfileConfig, "cpuCores" | "memoryMb">,
+): void {
+  if (config.cpuCores > 16) {
+    throw new Error("Tenki execution profiles support at most 16 CPU cores");
+  }
+  if (config.memoryMb > 65_536) {
+    throw new Error("Tenki execution profiles support at most 65536 MB of memory");
+  }
+}
 
 export interface ExecutionProfileScope {
   repository: string;

@@ -8,6 +8,14 @@ export interface TenkiBootSourceObservation {
 export interface TenkiRequestedBootSource {
   readonly tenkiSnapshotId?: string | null;
   readonly tenkiImage?: string | null;
+  readonly trustedCatalogSource?: TrustedTenkiBootSource;
+}
+
+export interface TrustedTenkiBootSource {
+  readonly registryDigestRef: string;
+  readonly registryImageId: string;
+  readonly workspaceId: string;
+  readonly snapshotId: string;
 }
 
 export interface TenkiBootSourceEvidence {
@@ -18,6 +26,8 @@ export interface TenkiBootSourceEvidence {
 }
 
 const TENKI_SNAPSHOT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TENKI_IMMUTABLE_REGISTRY_REF_PATTERN =
+  /^[a-z0-9][a-z0-9._/-]{1,399}@(sha256:[a-f0-9]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 /**
  * Attest the strongest boot provenance currently returned by Tenki.
@@ -53,10 +63,9 @@ export function attestTenkiBootSource(
   }
 
   if (requestedImage !== null) {
-    const imageSource = requestedImage.split("@").at(-1) ?? "";
-    const immutableImageRef = TENKI_SNAPSHOT_ID_PATTERN.test(imageSource)
-      || /^sha256:[a-f0-9]{64}$/i.test(imageSource);
-    if (!immutableImageRef) {
+    const imageSource = TENKI_IMMUTABLE_REGISTRY_REF_PATTERN
+      .exec(requestedImage)?.[1] ?? "";
+    if (!imageSource) {
       throw new Error(
         "Tenki image boot source must be pinned to an immutable digest",
       );
@@ -73,6 +82,21 @@ export function attestTenkiBootSource(
     ) {
       throw new Error(
         "Tenki image boot source does not match the immutable execution profile",
+      );
+    }
+  }
+
+  const trusted = requested.trustedCatalogSource;
+  if (trusted) {
+    if (
+      requestedImage !== trusted.registryDigestRef
+      || evidence.sourceRegistryRef !== trusted.registryDigestRef
+      || evidence.sourceRegistryImageId !== trusted.registryImageId
+      || evidence.sourceRegistryWorkspaceId !== trusted.workspaceId
+      || evidence.sourceSnapshotId !== trusted.snapshotId
+    ) {
+      throw new Error(
+        "Tenki session boot source does not match the trusted catalog artifact",
       );
     }
   }

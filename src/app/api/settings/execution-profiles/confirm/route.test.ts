@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const profiles = vi.hoisted(() => ({ confirm: vi.fn(), list: vi.fn() }));
+const profiles = vi.hoisted(() => ({
+  confirm: vi.fn(),
+  getVersion: vi.fn(),
+  list: vi.fn(),
+}));
 const matches = vi.hoisted(() => ({ refresh: vi.fn() }));
 
 vi.mock("@/lib/execution-profile-repository", () => ({
   confirmDetectedExecutionProfile: profiles.confirm,
+  getExecutionProfileVersion: profiles.getVersion,
   listExecutionProfileSettings: profiles.list,
 }));
 vi.mock("@/lib/problem-repository-match-repository", () => ({
@@ -32,6 +37,13 @@ function request(role = "Admin") {
 describe("execution profile confirmation API", () => {
   beforeEach(() => {
     profiles.confirm.mockReset().mockResolvedValue({ id: "confirmed" });
+    profiles.getVersion.mockReset().mockResolvedValue({
+      id: "11111111-1111-4111-8111-111111111111",
+      source: "detected",
+      repository: "acme/platform",
+      workspaceRoot: ".",
+      config: {},
+    });
     profiles.list.mockReset().mockResolvedValue({ assignments: [] });
     matches.refresh.mockReset().mockResolvedValue([]);
   });

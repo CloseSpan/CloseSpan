@@ -16,6 +16,8 @@ import {
 } from "@/lib/tenki-agent-verification";
 import { sanitizeExecutionProfileConfig } from "@/lib/execution-profile";
 import { resolveRuntimeSecretBindings } from "@/lib/runtime-secret-repository";
+import { assertManagedTenkiBootSourceAllowed } from "@/lib/tenki-environment-catalog-repository";
+import type { TrustedTenkiBootSource } from "@/lib/tenki-boot-source-attestation";
 
 export const maxDuration = 300;
 
@@ -72,10 +74,34 @@ export async function POST(
       let verificationPassed = false;
       try {
         let runtimeEnvironment: TenkiVerificationResolvedEnvironment | undefined;
+        let trustedBootSource: TrustedTenkiBootSource | undefined;
         if (context.executionProfileSnapshot) {
           const profile = sanitizeExecutionProfileConfig(
             context.executionProfileSnapshot.config,
           );
+          const managedEnvironment = await assertManagedTenkiBootSourceAllowed({
+            orgId: context.orgId,
+            repository: context.repository,
+            workspaceRoot: context.executionProfileSnapshot.workspaceRoot,
+            config: profile,
+            permitDeprecated: true,
+          });
+          if (managedEnvironment) {
+            if (
+              !managedEnvironment.registryDigestRef
+              || !managedEnvironment.registryImageId
+              || !managedEnvironment.tenkiWorkspaceId
+              || !managedEnvironment.snapshotId
+            ) {
+              throw new Error("The managed Tenki environment is missing its immutable provider binding");
+            }
+            trustedBootSource = {
+              registryDigestRef: managedEnvironment.registryDigestRef,
+              registryImageId: managedEnvironment.registryImageId,
+              workspaceId: managedEnvironment.tenkiWorkspaceId,
+              snapshotId: managedEnvironment.snapshotId,
+            };
+          }
           if (profile.schemaVersion === 2) {
             const resolved = await resolveRuntimeSecretBindings({
               orgId: context.orgId,
@@ -91,9 +117,10 @@ export async function POST(
             };
           }
         }
-        const verified = runtimeEnvironment
-          ? await verifyAgentRunWithTenki(context, report, { runtimeEnvironment })
-          : await verifyAgentRunWithTenki(context, report);
+        const verified = await verifyAgentRunWithTenki(context, report, {
+          ...(runtimeEnvironment ? { runtimeEnvironment } : {}),
+          ...(trustedBootSource ? { trustedBootSource } : {}),
+        });
         if (verified.status === "Failed") {
           await completeAgentRun(context, verified);
           return;

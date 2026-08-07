@@ -1,0 +1,93 @@
+name: Tenki managed environment lifecycle
+
+on:
+  schedule:
+    - cron: "41 10 * * *"
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: Build and promote new versions even when the catalog is current
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tenki-managed-environment-production
+  cancel-in-progress: false
+
+jobs:
+  reconcile-managed:
+    name: Reconcile and validate trusted toolchain catalog
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 90
+    env:
+      TENKI_MANAGED_CATALOG_ENABLED: "true"
+      TENKI_STRICT_CATALOG_ENABLED: "true"
+      TENKI_CATALOG_RETENTION_DAYS: "14"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Reconcile trusted toolchain catalog
+        env:
+          TENKI_API_KEY: ${{ secrets.TENKI_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL: ${{ secrets.DATABASE_SSL }}
+        run: npm run tenki:catalog:reconcile -- ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild && '--force' || '' }}
+  reconcile-private:
+    name: Reconcile repository-private dependency environments
+    needs: reconcile-managed
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 90
+    env:
+      TENKI_MANAGED_CATALOG_ENABLED: "true"
+      TENKI_STRICT_CATALOG_ENABLED: "true"
+      TENKI_PRIVATE_BUILD_LIMIT: "3"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build, validate, promote, and bind private environments
+        env:
+          TENKI_API_KEY: ${{ secrets.TENKI_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL: ${{ secrets.DATABASE_SSL }}
+          GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          CLOSESPAN_INTERNAL_BASE_URL: ${{ secrets.CLOSESPAN_INTERNAL_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: npm run tenki:private:reconcile -- ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild && '--force' || '' }}
+
+  cleanup:
+    name: Recover interrupted work and retire unreferenced artifacts
+    needs: [reconcile-managed, reconcile-private]
+    if: always()
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Retire unreferenced superseded artifacts and caches
+        env:
+          TENKI_API_KEY: ${{ secrets.TENKI_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL: ${{ secrets.DATABASE_SSL }}
+          TENKI_CATALOG_RETENTION_DAYS: "14"
+          TENKI_CACHE_RETENTION_DAYS: "30"
+        run: npm run tenki:catalog:cleanup

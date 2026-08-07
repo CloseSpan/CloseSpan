@@ -9,6 +9,7 @@ import type { AgentImplementationReport } from "./agent-run-verification";
 import type { AgentRunExecutionContext } from "./engineering-workflow-repository";
 import { createRepositoryArchiveUrl } from "./github-agent-publisher";
 import {
+  assertTenkiProviderResourceLimits,
   assertExecutionProfileNarrowing,
   assertExecutionProfileScopeBoundary,
   hashExecutionProfileConfig,
@@ -19,8 +20,10 @@ import {
 import { createRuntimeSecretRedactor } from "./runtime-secret-redaction";
 import {
   attestTenkiBootSource,
+  type TrustedTenkiBootSource,
   type TenkiBootSourceEvidence,
 } from "./tenki-boot-source-attestation";
+import { strictManagedTenkiCatalogMode } from "./tenki-environment-catalog";
 import {
   pddGeneratedTestsReferenceLiveApplication,
   pddScenariosRequireLiveApplication,
@@ -177,6 +180,7 @@ export interface VerificationDependencies {
   createClient?: (apiKey: string) => VerificationClient;
   repositoryArchive?: (context: AgentRunExecutionContext) => Promise<Uint8Array>;
   runtimeEnvironment?: TenkiVerificationResolvedEnvironment;
+  trustedBootSource?: TrustedTenkiBootSource;
   createRuntimeEnvironment?: (
     session: VerificationSession,
     config: TenkiRuntimeEnvironmentConfig,
@@ -473,6 +477,41 @@ export async function verifyAgentRunWithTenki(
   const now = dependencies.now ?? Date.now;
   const startedAt = now();
   const profile = verificationProfile(context);
+  const strictManagedEnvironment = strictManagedTenkiCatalogMode();
+  if (
+    strictManagedEnvironment
+    && !context.executionProfileSnapshot
+  ) {
+    throw new TenkiIndependentVerificationError(
+      "sandbox_failed",
+      "Legacy verification jobs are disabled by strict Tenki catalog enforcement.",
+    );
+  }
+  if (profile) assertTenkiProviderResourceLimits(profile);
+  if (
+    strictManagedEnvironment
+    && profile?.tenkiSnapshotId
+  ) {
+    throw new TenkiIndependentVerificationError(
+      "sandbox_failed",
+      "Raw Tenki snapshots are not permitted by the trusted environment catalog.",
+    );
+  }
+  if (
+    strictManagedEnvironment
+    && (
+      !profile?.tenkiImage
+      || dependencies.trustedBootSource?.registryDigestRef !== profile.tenkiImage
+      || !dependencies.trustedBootSource.registryImageId
+      || !dependencies.trustedBootSource.workspaceId
+      || !dependencies.trustedBootSource.snapshotId
+    )
+  ) {
+    throw new TenkiIndependentVerificationError(
+      "sandbox_failed",
+      "Independent verification did not receive the trusted catalog binding for the approved Tenki image.",
+    );
+  }
   const runtimeProfile = profile?.schemaVersion === 2 ? profile : null;
   const applicationProfile = configuredRuntimeProfile(profile);
   const generatedTests = context.generatedTests ?? [];
@@ -572,6 +611,9 @@ export async function verifyAgentRunWithTenki(
         } : {}),
       },
       timeoutMs: CREATE_TIMEOUT_MS,
+      ...(dependencies.trustedBootSource
+        ? { workspaceId: dependencies.trustedBootSource.workspaceId }
+        : {}),
       ...(image ? { image } : {}),
       ...(snapshotId ? { snapshotId } : {}),
     });
@@ -579,6 +621,7 @@ export async function verifyAgentRunWithTenki(
       observedBootSource = attestTenkiBootSource(session, {
         tenkiSnapshotId: profile?.tenkiSnapshotId,
         tenkiImage: profile?.tenkiImage,
+        trustedCatalogSource: dependencies.trustedBootSource,
       });
     } catch {
       throw new TenkiIndependentVerificationError(

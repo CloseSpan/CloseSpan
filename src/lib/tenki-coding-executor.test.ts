@@ -345,7 +345,12 @@ describe("Tenki coding executor approval boundary", () => {
       capabilities: ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"],
       ...executionProfile,
     });
-    expect(tenkiSandboxCreateOptions(parsed)).toMatchObject({
+    expect(tenkiSandboxCreateOptions(parsed, {
+      registryDigestRef: profileConfig.tenkiImage,
+      registryImageId: "image-1",
+      workspaceId: "workspace-1",
+      snapshotId: "11111111-1111-4111-8111-111111111111",
+    })).toMatchObject({
       cpuCores: 4,
       memoryMb: 8192,
       allowInbound: false,
@@ -353,6 +358,7 @@ describe("Tenki coding executor approval boundary", () => {
       maxDurationMs: 180_000,
       idleTimeoutMinutes: 3,
       image: profileConfig.tenkiImage,
+      workspaceId: "workspace-1",
     });
     if (parsed.schemaVersion !== 2) throw new Error("Expected a profile-bound job");
     expect(() => assertTenkiExecutionProfileBinding({

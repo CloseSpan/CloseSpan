@@ -21,6 +21,7 @@ import {
 import { z } from "zod/v3";
 import { agentImplementationReportSchema, type AgentImplementationReport } from "./agent-run-verification";
 import {
+  assertTenkiProviderResourceLimits,
   assertExecutionProfileNarrowing,
   assertExecutionProfileScopeBoundary,
   hashExecutionProfileConfig,
@@ -32,8 +33,10 @@ import {
 import { createRuntimeSecretRedactor } from "./runtime-secret-redaction";
 import {
   attestTenkiBootSource,
+  type TrustedTenkiBootSource,
   type TenkiBootSourceEvidence,
 } from "./tenki-boot-source-attestation";
+import { strictManagedTenkiCatalogMode } from "./tenki-environment-catalog";
 import {
   pddGeneratedTestsReferenceLiveApplication,
   pddScenariosRequireLiveApplication,
@@ -280,6 +283,12 @@ interface ExecutorDependencies {
   aiBaseUrl?: string;
   aiModel?: string;
   runtimeEnvironment?: TenkiResolvedRuntimeEnvironment;
+  /**
+   * Server-resolved catalog binding. When strict catalog enforcement is on,
+   * the executor refuses to start a VM unless this immutable digest exactly
+   * matches the approved profile snapshot.
+   */
+  trustedBootSource?: TrustedTenkiBootSource;
   createClient?: (apiKey: string) => TenkiSandbox;
   runAgent?: (input: {
     job: TenkiAgentJob;
@@ -927,7 +936,10 @@ async function defaultRunAgent(input: {
   }
 }
 
-export function tenkiSandboxCreateOptions(job: TenkiAgentJob) {
+export function tenkiSandboxCreateOptions(
+  job: TenkiAgentJob,
+  trustedBootSource?: TrustedTenkiBootSource,
+) {
   const profile = executionProfileForJob(job);
   // Environment-level image selection is retained only for already-queued v1
   // jobs. Every new v2 job is fully defined by its immutable profile snapshot.
@@ -954,6 +966,7 @@ export function tenkiSandboxCreateOptions(job: TenkiAgentJob) {
       } : {}),
     },
     timeoutMs: CREATE_TIMEOUT_MS,
+    ...(trustedBootSource ? { workspaceId: trustedBootSource.workspaceId } : {}),
     ...(image ? { image } : {}),
     ...(snapshotId ? { snapshotId } : {}),
   };
@@ -1032,6 +1045,10 @@ export async function executeTenkiCodingJob(
   dependencies: ExecutorDependencies = {},
 ): Promise<AgentImplementationReport> {
   const job = tenkiAgentJobSchema.parse(input);
+  const strictManagedEnvironment = strictManagedTenkiCatalogMode();
+  if (strictManagedEnvironment && job.schemaVersion !== 2) {
+    throw new Error("Legacy executor jobs are disabled by strict Tenki catalog enforcement");
+  }
   if (job.schemaVersion === 2) assertTenkiExecutionProfileBinding(job);
   if (Date.parse(job.expiresAt) <= Date.now()) throw new Error("Approval expired before execution began");
   if (!job.capabilities.includes("repository:read") || !job.capabilities.includes("repository:write") || !job.capabilities.includes("tests:execute"))
@@ -1040,6 +1057,26 @@ export async function executeTenkiCodingJob(
   const ai = resolveExecutorAiConfiguration(dependencies);
   if (!apiKey) throw new Error("TENKI_API_KEY is required for coding execution");
   const executionProfile = executionProfileForJob(job);
+  if (executionProfile) assertTenkiProviderResourceLimits(executionProfile);
+  if (
+    strictManagedEnvironment
+    && executionProfile?.tenkiSnapshotId
+  ) {
+    throw new Error("Raw Tenki snapshots are not permitted by the trusted environment catalog");
+  }
+  if (
+    strictManagedEnvironment
+    && (
+      !executionProfile?.tenkiImage
+      || dependencies.trustedBootSource?.registryDigestRef
+        !== executionProfile.tenkiImage
+      || !dependencies.trustedBootSource.registryImageId
+      || !dependencies.trustedBootSource.workspaceId
+      || !dependencies.trustedBootSource.snapshotId
+    )
+  ) {
+    throw new Error("The executor did not receive a trusted catalog binding for the approved Tenki image");
+  }
   const runtimeProfile = executionProfile?.schemaVersion === 2
     ? executionProfile
     : null;
@@ -1081,7 +1118,7 @@ export async function executeTenkiCodingJob(
     runtimeEnvironment?.redactionValues ?? [],
   );
 
-  const options = tenkiSandboxCreateOptions(job);
+  const options = tenkiSandboxCreateOptions(job, dependencies.trustedBootSource);
   const deadline = Date.now() + options.maxDurationMs;
   const client = (dependencies.createClient ?? ((key) => new TenkiSandbox({
     authToken: key,
@@ -1103,6 +1140,7 @@ export async function executeTenkiCodingJob(
     observedBootSource = attestTenkiBootSource(session, {
       tenkiSnapshotId: executionProfile?.tenkiSnapshotId,
       tenkiImage: executionProfile?.tenkiImage,
+      trustedCatalogSource: dependencies.trustedBootSource,
     });
     if (
       session.outboundEnabled !== options.allowOutbound

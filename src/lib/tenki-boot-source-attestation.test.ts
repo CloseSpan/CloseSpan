@@ -49,6 +49,35 @@ describe("Tenki boot-source attestation", () => {
     });
   });
 
+  it("binds the observed image, workspace, and snapshot to the trusted catalog artifact", () => {
+    const snapshotId = "d578a017-eb4b-4a3f-b7d5-1753f9261fc1";
+    const registryDigestRef = `workspace/node@${snapshotId}`;
+    const trustedCatalogSource = {
+      registryDigestRef,
+      registryImageId: "image-1",
+      workspaceId: "workspace-1",
+      snapshotId,
+    };
+    expect(attestTenkiBootSource(
+      {
+        sourceSnapshotId: snapshotId,
+        sourceRegistryImageId: "image-1",
+        sourceRegistryWorkspaceId: "workspace-1",
+        sourceRegistryRef: registryDigestRef,
+      },
+      { tenkiImage: registryDigestRef, trustedCatalogSource },
+    )).toMatchObject({ sourceSnapshotId: snapshotId });
+    expect(() => attestTenkiBootSource(
+      {
+        sourceSnapshotId: snapshotId,
+        sourceRegistryImageId: "image-other",
+        sourceRegistryWorkspaceId: "workspace-1",
+        sourceRegistryRef: registryDigestRef,
+      },
+      { tenkiImage: registryDigestRef, trustedCatalogSource },
+    )).toThrow("trusted catalog artifact");
+  });
+
   it("rejects mutable or incompletely attested image sources", () => {
     const snapshotId = "d578a017-eb4b-4a3f-b7d5-1753f9261fc1";
     const digestRef = `workspace/node@${snapshotId}`;
@@ -65,5 +94,21 @@ describe("Tenki boot-source attestation", () => {
       },
       { tenkiSnapshotId: null, tenkiImage: digestRef },
     )).toThrow("image boot source does not match");
+  });
+
+  it.each([
+    "workspace/node:latest@d578a017-eb4b-4a3f-b7d5-1753f9261fc1",
+    `workspace/node:latest@sha256:${"a".repeat(64)}`,
+    "workspace/node@d578a017-eb4b-4a3f-b7d5-1753f9261fc1@d578a017-eb4b-4a3f-b7d5-1753f9261fc1",
+  ])("rejects a mutable or malformed image reference %s", (tenkiImage) => {
+    expect(() => attestTenkiBootSource(
+      {
+        sourceSnapshotId: "d578a017-eb4b-4a3f-b7d5-1753f9261fc1",
+        sourceRegistryImageId: "image-1",
+        sourceRegistryWorkspaceId: "workspace-1",
+        sourceRegistryRef: tenkiImage,
+      },
+      { tenkiSnapshotId: null, tenkiImage },
+    )).toThrow("pinned to an immutable digest");
   });
 });

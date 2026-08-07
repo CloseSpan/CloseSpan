@@ -15,6 +15,7 @@
   --surface-hover: #f5f6fb;
   --surface-pressed: #e8ecf5;
   --surface-muted: #e6ebf5;
+  --surface-disabled: #e5eaf3;
 
   --text: #3f4b63;
   --text-strong: #263249;
@@ -69,6 +70,9 @@
   --shadow-inset-sm:
     inset 3px 3px 7px rgba(174, 185, 207, 0.27),
     inset -3px -3px 7px rgba(255, 255, 255, 0.88);
+  --shadow-disabled-inset:
+    inset 3px 3px 7px rgba(174, 185, 207, 0.32),
+    inset -3px -3px 7px rgba(255, 255, 255, 0.72);
   --shadow-focus: 0 7px 18px rgba(81, 70, 229, 0.22);
   --shadow-overlay:
     -12px -12px 24px rgba(255, 255, 255, 0.86),
@@ -211,6 +215,7 @@
   --surface-hover: #1a2230;
   --surface-pressed: #111722;
   --surface-muted: #202938;
+  --surface-disabled: #111722;
 
   --text: #c9d2e3;
   --text-strong: #f2f5fb;
@@ -263,6 +268,9 @@
   --shadow-inset-sm:
     inset 3px 3px 7px rgba(3, 7, 14, 0.58),
     inset -3px -3px 7px rgba(49, 60, 81, 0.36);
+  --shadow-disabled-inset:
+    inset 3px 3px 7px rgba(3, 7, 14, 0.72),
+    inset -3px -3px 7px rgba(49, 60, 81, 0.25);
   --shadow-focus: 0 7px 18px rgba(126, 116, 255, 0.24);
   --shadow-overlay:
     -12px -12px 24px rgba(49, 60, 81, 0.42),
@@ -5681,6 +5689,54 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   color: var(--text-strong);
 }
 
+/* Repository review was added in the legacy structural layer with fixed
+ * near-white panels. Rebuild its dark hierarchy from the same pressed and
+ * raised surfaces as the surrounding engineering-ticket workflow. */
+:root[data-theme="dark"] .app-shell .repository-match-review {
+  border: 0;
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset);
+}
+
+:root[data-theme="dark"] .app-shell :is(
+  .repository-profile-selection,
+  .repository-match-empty
+) {
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+:root[data-theme="dark"] .app-shell .repository-match-history {
+  border: 0;
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+:root[data-theme="dark"] .app-shell .repository-profile-boundary {
+  color: var(--warning);
+}
+
+:root[data-theme="dark"] .app-shell .repository-match-evidence {
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] .app-shell .repository-match-evidence > strong,
+:root[data-theme="dark"] .app-shell :is(
+  .repository-profile-selection,
+  .repository-match-empty,
+  .repository-match-history
+) strong {
+  color: var(--text-strong);
+}
+
+:root[data-theme="dark"] .app-shell .repository-match-history li {
+  border-color: var(--border-subtle);
+}
+
 :root[data-theme="dark"] .app-shell :is(
   .truncate,
   .integration-copilot-message.assistant,
@@ -6017,6 +6073,42 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   background: var(--warning-fill-active);
   box-shadow: var(--shadow-color-inset);
   transform: translateY(0);
+}
+
+/* Enabled actions lift from the canvas; disabled actions recede into it. The
+ * opposing depth direction makes availability legible without relying only on
+ * color or opacity. */
+:is(.app-shell, .landing, .feature-requests-page, .login-page, .error-page)
+  :is(
+    .btn,
+    .btn.primary,
+    .btn.success,
+    .btn.danger,
+    .btn.warning,
+    .icon-btn,
+    .icon-button,
+    .organization-create-submit,
+    .organization-rename-submit,
+    .feature-request-primary,
+    .delphi-chip,
+    .delphi-send,
+    .integration-copilot-primary-action,
+    .integration-copilot-composer button,
+    .integration-copilot-replies button,
+    .guided-demo-footer button,
+    .trust-card-actions button
+  ):disabled,
+:is(.app-shell, .landing, .feature-requests-page, .login-page, .error-page)
+  :is(.btn, .icon-btn, .icon-button)[aria-disabled="true"] {
+  border: 0;
+  background: var(--surface-disabled);
+  background-image: none;
+  color: var(--text-muted);
+  box-shadow: var(--shadow-disabled-inset) !important;
+  opacity: 1;
+  filter: none;
+  transform: none !important;
+  cursor: not-allowed;
 }
 
 /* Decorative separators from the flat theme are removed. Spacing and surface

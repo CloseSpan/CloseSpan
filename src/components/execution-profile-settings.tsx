@@ -20,10 +20,15 @@ import type {
   ExecutionProfileSecretBinding,
 } from "@/lib/execution-profile";
 import type { GithubRepositoryAuthorization } from "@/lib/github-repository-allowlist";
+import {
+  runtimeFamilyForExecutionProfile,
+  type ManagedTenkiEnvironmentArtifact,
+} from "@/lib/tenki-environment-catalog";
 
 interface ExecutionProfileApiView extends ExecutionProfileSettingsView {
   available: boolean;
   repositories: GithubRepositoryAuthorization[];
+  managedEnvironments: ManagedTenkiEnvironmentArtifact[];
 }
 
 interface ApiResult {
@@ -530,6 +535,7 @@ function ProfileEditor({
   runtimeSecrets,
   runtimeSecretsLoading,
   runtimeSecretsError,
+  managedEnvironments,
   onSaved,
 }: {
   orgId: string;
@@ -540,6 +546,7 @@ function ProfileEditor({
   runtimeSecrets: RuntimeSecretMetadata[];
   runtimeSecretsLoading: boolean;
   runtimeSecretsError?: string;
+  managedEnvironments: ManagedTenkiEnvironmentArtifact[];
   onSaved: (settings: ExecutionProfileSettingsView) => void;
 }) {
   const [config, setConfig] = useState(() => structuredClone(profile.config));
@@ -558,6 +565,35 @@ function ProfileEditor({
   const browserReadiness = config.schemaVersion === 2
     ? executionProfileBrowserReadiness(config)
     : null;
+  const profileRuntimeFamily = runtimeFamilyForExecutionProfile(config);
+  const detectedDependencyFingerprint = typeof profile.detectionEvidence
+    ?.dependencyFingerprint === "string"
+    ? profile.detectionEvidence.dependencyFingerprint
+    : null;
+  const eligibleManagedEnvironments = managedEnvironments.filter((artifact) =>
+    artifact.status === "active"
+    && artifact.approved
+    && artifact.registryDigestRef
+    && artifact.runtimeFamily === profileRuntimeFamily
+    && (
+      !artifact.packageManager
+      || config.packageManager === "unknown"
+      || artifact.packageManager === config.packageManager
+    )
+    && (
+      config.schemaVersion !== 2
+      || !config.runtimeTools.browser
+      || artifact.capabilities.includes("browser")
+    )
+    && (
+      artifact.scopeType === "managed_toolchain"
+      || (
+        artifact.orgId === orgId
+        && artifact.repository === repository
+        && artifact.workspaceRoot === workspaceRoot
+        && artifact.dependencyFingerprint === detectedDependencyFingerprint
+      )
+    ));
 
   function secretPhaseAvailable(
     environmentName: string,
@@ -944,10 +980,10 @@ function ProfileEditor({
         </section>
         <div className="execution-profile-fields execution-profile-resource-fields">
           <label className="field">CPU cores
-            <input type="number" min="1" max="32" value={config.cpuCores} disabled={!isAdmin} onChange={(event) => change("cpuCores", Number(event.target.value))} />
+            <input type="number" min="1" max="16" value={config.cpuCores} disabled={!isAdmin} onChange={(event) => change("cpuCores", Number(event.target.value))} />
           </label>
           <label className="field">Memory (MB)
-            <input type="number" min="512" max="131072" step="512" value={config.memoryMb} disabled={!isAdmin} onChange={(event) => change("memoryMb", Number(event.target.value))} />
+            <input type="number" min="512" max="65536" step="512" value={config.memoryMb} disabled={!isAdmin} onChange={(event) => change("memoryMb", Number(event.target.value))} />
           </label>
           <label className="field">Requested max duration (minutes)
             <input type="number" min="1" max="1440" value={Math.round(config.maxDurationMs / 60_000)} disabled={!isAdmin} onChange={(event) => change("maxDurationMs", Number(event.target.value) * 60_000)} />
@@ -956,11 +992,23 @@ function ProfileEditor({
           <label className="field">Idle timeout (minutes)
             <input type="number" min="1" max="1440" value={config.idleTimeoutMinutes} disabled={!isAdmin} onChange={(event) => change("idleTimeoutMinutes", Number(event.target.value))} />
           </label>
-          <label className="field">Tenki image
-            <input value={config.tenkiImage ?? ""} disabled={!isAdmin} placeholder="Use Tenki default" onChange={(event) => change("tenkiImage", event.target.value || null)} />
-          </label>
-          <label className="field">Tenki snapshot ID
-            <input value={config.tenkiSnapshotId ?? ""} disabled={!isAdmin} placeholder="Optional" onChange={(event) => change("tenkiSnapshotId", event.target.value || null)} />
+          <label className="field">Managed Tenki environment
+            <select
+              value={config.tenkiImage ?? ""}
+              disabled={!isAdmin}
+              onChange={(event) => {
+                change("tenkiImage", event.target.value || null);
+                change("tenkiSnapshotId", null);
+              }}
+            >
+              <option value="" disabled>Select a managed environment</option>
+              {eligibleManagedEnvironments.map((artifact) => (
+                <option key={artifact.id} value={artifact.registryDigestRef ?? ""}>
+                  {artifact.catalogKey} · v{artifact.version} · {artifact.scopeType === "repository_private" ? "Private repository" : "CloseSpan managed"}
+                </option>
+              ))}
+            </select>
+            <small>Only active, validated, digest-pinned environments from the CloseSpan catalog can be selected. Raw snapshot IDs and mutable image tags are rejected.</small>
           </label>
         </div>
         <div className="execution-profile-network">
@@ -1176,6 +1224,7 @@ export function ExecutionProfileSettings({
           runtimeSecrets={runtimeSecrets}
           runtimeSecretsLoading={runtimeSecretsLoading}
           runtimeSecretsError={runtimeSecretsError}
+          managedEnvironments={view.managedEnvironments ?? []}
           onSaved={applySettings}
         />
       </article>
@@ -1205,6 +1254,7 @@ export function ExecutionProfileSettings({
                     runtimeSecrets={runtimeSecrets}
                     runtimeSecretsLoading={runtimeSecretsLoading}
                     runtimeSecretsError={runtimeSecretsError}
+                    managedEnvironments={view.managedEnvironments ?? []}
                     onSaved={applySettings}
                   />
                 </div>
@@ -1235,6 +1285,7 @@ export function ExecutionProfileSettings({
                       runtimeSecrets={runtimeSecrets}
                       runtimeSecretsLoading={runtimeSecretsLoading}
                       runtimeSecretsError={runtimeSecretsError}
+                      managedEnvironments={view.managedEnvironments ?? []}
                       onSaved={applySettings}
                     />
                   </div>
