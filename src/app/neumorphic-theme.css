@@ -8205,6 +8205,22 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
     0 0 0 3px color-mix(in srgb, var(--accent) 44%, transparent) !important;
 }
 
+.app-shell .prompt-evaluation-revision {
+  max-width: 100%;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+  font: inherit;
+  line-height: var(--leading-relaxed);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 @media (forced-colors: active) {
   :is(.app-shell, .shell-immersive, .landing, .feature-requests-page, .login-page)
     :is(input, textarea, select):is(:focus, :focus-visible) {

@@ -11,8 +11,8 @@ COPY server.py /app/server.py
 
 ENV PORT=8080 \
     PYTHONUNBUFFERED=1 \
-    PDD_FORCE_LOCAL=1 \
-    PDD_CLOUD_RUN=false
+    PDD_EXECUTION_MODE=local \
+    PDD_CLOUD_FALLBACK_ENABLED=false
 
 USER 65532:65532
 CMD ["python", "/app/server.py"]

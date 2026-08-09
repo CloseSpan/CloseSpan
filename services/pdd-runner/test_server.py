@@ -3,6 +3,7 @@ import hmac
 import io
 import json
 import os
+import pathlib
 import unittest
 from subprocess import CompletedProcess, TimeoutExpired
 from unittest import mock
@@ -364,6 +365,8 @@ class PddVersionDetectionTest(unittest.TestCase):
             self.assertEqual(server.health_payload(), {
                 "status": "ok",
                 "pddVersion": "0.0.309",
+                "executionMode": server.PDD_EXECUTION_MODE,
+                "localFallbackEnabled": server.PDD_CLOUD_FALLBACK_ENABLED,
                 "executionProfileSchemaVersions": [1, 2],
                 "activeJobs": 0,
                 "queuedJobs": 0,
@@ -471,6 +474,69 @@ class PddHandlerV2ValidationTest(unittest.TestCase):
         status, _ = self.post(payload)
         self.assertEqual(status, 400)
         self.execute_mock.assert_not_called()
+
+
+class PddExecutionModeTests(unittest.TestCase):
+    def test_cloud_environment_uses_pddc_and_strips_direct_provider_keys(self):
+        with (
+            mock.patch.object(server, "PDD_REFRESH_TOKEN", "durable-refresh-token"),
+            mock.patch.dict(
+                os.environ,
+                {
+                    "PDD_JWT_TOKEN": "signed-token",
+                    "PDD_REFRESH_TOKEN": "durable-refresh-token",
+                    "OPENAI_API_KEY": "direct-openai-key",
+                    "ANTHROPIC_API_KEY": "direct-anthropic-key",
+                    "PDD_FORCE_LOCAL": "1",
+                },
+                clear=False,
+            ),
+        ):
+            environment = server.pdd_environment("cloud", 0.25)
+
+        self.assertEqual(environment["PDD_CLOUD_RUN"], "true")
+        self.assertEqual(environment["PDD_COMMAND_MAX_COST_USD"], "0.250000")
+        self.assertEqual(environment["PDD_NO_INTERACTIVE"], "1")
+        self.assertNotIn("PDD_FORCE_LOCAL", environment)
+        self.assertNotIn("PDD_REFRESH_TOKEN", environment)
+        self.assertNotIn("PDD_JWT_TOKEN", environment)
+        self.assertNotIn("OPENAI_API_KEY", environment)
+        self.assertNotIn("ANTHROPIC_API_KEY", environment)
+
+    def test_local_environment_is_explicit_and_keeps_provider_keys(self):
+        with mock.patch.dict(
+            os.environ, {"OPENAI_API_KEY": "direct-openai-key"}, clear=False
+        ):
+            environment = server.pdd_environment("local", 0.10)
+
+        self.assertEqual(environment["PDD_CLOUD_RUN"], "false")
+        self.assertEqual(environment["PDD_FORCE_LOCAL"], "1")
+        self.assertEqual(environment["OPENAI_API_KEY"], "direct-openai-key")
+
+    def test_cloud_command_does_not_force_local_mode(self):
+        command = server.pdd_command(
+            mode="cloud",
+            costs=pathlib.Path("costs.csv"),
+            language="TypeScript",
+            output="example.pdd.test.ts",
+            prompt=pathlib.Path("example.prompt"),
+            target=pathlib.Path("src/example.ts"),
+        )
+
+        self.assertNotIn("--local", command)
+        self.assertEqual(command[-2:], ["example.prompt", "src/example.ts"])
+
+    def test_local_command_includes_local_flag(self):
+        command = server.pdd_command(
+            mode="local",
+            costs=pathlib.Path("costs.csv"),
+            language="Python",
+            output="tests/test_example_pdd.py",
+            prompt=pathlib.Path("example.prompt"),
+            target=pathlib.Path("example.py"),
+        )
+
+        self.assertIn("--local", command)
 
 
 if __name__ == "__main__":

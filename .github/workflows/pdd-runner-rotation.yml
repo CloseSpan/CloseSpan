@@ -26,6 +26,9 @@ jobs:
     timeout-minutes: 45
     env:
       PDD_MODEL: gpt-5.4
+      PDD_EXECUTION_MODE: cloud
+      PDD_CLOUD_FALLBACK_ENABLED: "true"
+      PDD_CLOUD_TIMEOUT: "240"
       PDD_RUNNER_CONCURRENCY: "2"
       PDD_RUNNER_STABLE_SLUG: closespan-pdd-production
       PDD_RUNNER_ROTATION_MAX_AGE_DAYS: "21"
@@ -42,6 +45,8 @@ jobs:
         env:
           TENKI_API_KEY: ${{ secrets.TENKI_API_KEY }}
           PDD_RUNNER_SHARED_SECRET: ${{ secrets.PDD_RUNNER_SHARED_SECRET }}
+          PDD_JWT_TOKEN: ${{ secrets.PDD_JWT_TOKEN }}
+          PDD_REFRESH_TOKEN: ${{ secrets.PDD_REFRESH_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CLOSESPAN_CALLBACK_ORIGIN: ${{ secrets.CLOSESPAN_CALLBACK_ORIGIN }}
           CLOSESPAN_INTERNAL_BASE_URL: ${{ secrets.CLOSESPAN_INTERNAL_BASE_URL }}

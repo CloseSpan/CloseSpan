@@ -272,9 +272,9 @@ export function RepositoryMatchReview({
         </div>
         <span className={`badge ${view.pddProfileReady ? "success" : "medium"}`}>
           {view.pddProfileReady ? (
-            <><CheckCircle2 size={13} />Ready for PDD</>
+            <><CheckCircle2 size={13} />Repository ready</>
           ) : (
-            <><ShieldCheck size={13} />Review required</>
+            <><ShieldCheck size={13} />Repository review required</>
           )}
         </span>
       </div>

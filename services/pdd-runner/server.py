@@ -1,4 +1,4 @@
-"""Small signed adapter around PDD local mode.
+"""Small signed adapter around PDD Cloud with a controlled local fallback.
 
 The service may reach the configured model provider and short-lived GitHub archive
 URLs. It never receives GitHub credentials and never executes repository code.
@@ -39,6 +39,14 @@ ACTIVE_JOBS = 0
 QUEUED_JOBS = 0
 SHARED_SECRET = os.environ.get("PDD_RUNNER_SHARED_SECRET", "").encode()
 PDD_MODEL = os.environ.get("PDD_MODEL", "").strip()
+PDD_EXECUTION_MODE = os.environ.get("PDD_EXECUTION_MODE", "local").strip().lower()
+if PDD_EXECUTION_MODE not in {"cloud", "local"}:
+    raise ValueError("PDD_EXECUTION_MODE must be cloud or local")
+PDD_CLOUD_FALLBACK_ENABLED = os.environ.get(
+    "PDD_CLOUD_FALLBACK_ENABLED", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+PDD_JWT_TOKEN = os.environ.get("PDD_JWT_TOKEN", "").strip()
+PDD_REFRESH_TOKEN = os.environ.get("PDD_REFRESH_TOKEN", "").strip()
 CALLBACK_ORIGIN = os.environ.get("CLOSESPAN_CALLBACK_ORIGIN", "").strip().rstrip("/")
 PDD_CLI_VERSION: str | None = None
 PDD_VERSION_TOKEN = re.compile(
@@ -90,6 +98,11 @@ CREDENTIAL_VALUE_PATTERNS = (
     re.compile(r"^[a-z][a-z0-9+.-]*://[^/\s:@]+:[^/\s@]+@", re.IGNORECASE),
     re.compile(r"(?:^|[?&;\s])(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|secret)=[^\s&;]+", re.IGNORECASE),
 )
+LOCAL_PROVIDER_CREDENTIALS = {
+    "ANTHROPIC_API_KEY", "AZURE_API_KEY", "AZURE_OPENAI_API_KEY",
+    "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY",
+    "OPENAI_API_KEY", "OPENROUTER_API_KEY", "TOGETHERAI_API_KEY", "XAI_API_KEY",
+}
 RUNTIME_TOOL_KEYS = {"http", "browser", "logs"}
 BROWSER_PREFLIGHT_COMMAND = (
     'node -e "let c;try{c=require(\'playwright\').chromium}catch{c=require(\'@playwright/test\').chromium}'
@@ -134,13 +147,20 @@ def detect_pdd_cli_version() -> str:
 
 
 def health_payload() -> dict:
-    configured = bool(SHARED_SECRET and CALLBACK_ORIGIN and PDD_CLI_VERSION)
+    cloud_configured = PDD_EXECUTION_MODE != "cloud" or bool(
+        PDD_REFRESH_TOKEN or PDD_JWT_TOKEN
+    )
+    configured = bool(
+        SHARED_SECRET and CALLBACK_ORIGIN and PDD_CLI_VERSION and cloud_configured
+    )
     with JOB_STATE_LOCK:
         active_jobs = ACTIVE_JOBS
         queued_jobs = QUEUED_JOBS
     return {
         "status": "ok" if configured else "not_configured",
         "pddVersion": PDD_CLI_VERSION,
+        "executionMode": PDD_EXECUTION_MODE,
+        "localFallbackEnabled": PDD_CLOUD_FALLBACK_ENABLED,
         "executionProfileSchemaVersions": [1, 2],
         "activeJobs": active_jobs,
         "queuedJobs": queued_jobs,
@@ -637,6 +657,80 @@ def cost_report(path: pathlib.Path) -> tuple[float | None, str | None]:
     return round(total, 6), model
 
 
+def pdd_environment(mode: str, budget_usd: float) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["PDD_NO_INTERACTIVE"] = "1"
+    environment["PDD_ALLOW_INTERACTIVE"] = "0"
+    environment["PDD_COMMAND_MAX_COST_USD"] = f"{budget_usd:.6f}"
+    if PDD_MODEL:
+        environment["PDD_MODEL_DEFAULT"] = PDD_MODEL
+    if mode == "cloud":
+        environment.pop("PDD_FORCE_LOCAL", None)
+        environment.pop("PDD_REFRESH_TOKEN", None)
+        if PDD_REFRESH_TOKEN:
+            # A stale injected JWT would bypass the durable refresh credential.
+            environment.pop("PDD_JWT_TOKEN", None)
+        environment["PDD_CLOUD_RUN"] = "true"
+        # Prevent the PDD CLI from silently switching to a directly billed model
+        # provider. CloseSpan owns the fallback decision and reports it explicitly.
+        for name in LOCAL_PROVIDER_CREDENTIALS:
+            environment.pop(name, None)
+    else:
+        environment["PDD_FORCE_LOCAL"] = "1"
+        environment["PDD_CLOUD_RUN"] = "false"
+    return environment
+
+
+def configure_cloud_credentials() -> None:
+    """Persist the injected refresh credential for unattended PDD CLI refreshes."""
+    if not PDD_REFRESH_TOKEN:
+        return
+    os.environ.setdefault(
+        "PYTHON_KEYRING_BACKEND", "keyrings.alt.file.PlaintextKeyring"
+    )
+    try:
+        import keyring
+
+        keyring.set_password(
+            "firebase-auth-PDD CLI", "refresh_token", PDD_REFRESH_TOKEN
+        )
+    except Exception as error:
+        raise RuntimeError("Could not configure the PDD Cloud credential") from error
+
+
+def pdd_command(
+    *, mode: str, costs: pathlib.Path, language: str, output: str,
+    prompt: pathlib.Path, target: pathlib.Path,
+) -> list[str]:
+    command = ["pdd"]
+    if mode == "local":
+        command.append("--local")
+    command.extend([
+        "--force", "--quiet", "--no-core-dump", "--output-cost", str(costs),
+        "test", "--manual", "--language", language, "--output", output,
+        prompt.name, target.as_posix(),
+    ])
+    return command
+
+
+def run_pdd(
+    *, root: pathlib.Path, mode: str, budget_usd: float, costs: pathlib.Path,
+    language: str, output: str, prompt: pathlib.Path, target: pathlib.Path,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        pdd_command(
+            mode=mode, costs=costs, language=language, output=output,
+            prompt=prompt, target=target,
+        ),
+        cwd=root,
+        env=pdd_environment(mode, budget_usd),
+        capture_output=True,
+        text=True,
+        timeout=RUN_TIMEOUT_SECONDS,
+        check=False,
+    )
+
+
 def callback(job: dict, result: dict) -> None:
     body = json.dumps({"orgId": job["orgId"], "result": result}, separators=(",", ":")).encode()
     signature = hmac.new(SHARED_SECRET, body, hashlib.sha256).hexdigest()
@@ -678,21 +772,26 @@ def execute(job: dict) -> None:
             prompt.write_text(job["pddPrompt"], encoding="utf-8")
             (root / output).parent.mkdir(parents=True, exist_ok=True)
             costs = root / "pdd-costs.csv"
-            environment = os.environ.copy()
-            environment["PDD_CLOUD_RUN"] = "false"
-            environment["PDD_FORCE_LOCAL"] = "1"
-            if PDD_MODEL:
-                environment["PDD_MODEL_DEFAULT"] = PDD_MODEL
-            process = subprocess.run(
-                [
-                    "pdd", "--local", "--force", "--quiet", "--no-core-dump",
-                    "--output-cost", str(costs), "test", "--manual",
-                    "--language", language, "--output", output_text,
-                    prompt.name, relative_target.as_posix(),
-                ],
-                cwd=root, env=environment, capture_output=True, text=True,
-                timeout=RUN_TIMEOUT_SECONDS, check=False,
+            budget_usd = float(job["budgetUsd"])
+            execution_mode = PDD_EXECUTION_MODE
+            process = run_pdd(
+                root=root, mode=execution_mode, budget_usd=budget_usd, costs=costs,
+                language=language, output=output_text, prompt=prompt,
+                target=relative_target,
             )
+            if (
+                process.returncode != 0
+                and execution_mode == "cloud"
+                and PDD_CLOUD_FALLBACK_ENABLED
+            ):
+                (root / output).unlink(missing_ok=True)
+                costs.unlink(missing_ok=True)
+                execution_mode = "local"
+                process = run_pdd(
+                    root=root, mode=execution_mode, budget_usd=budget_usd, costs=costs,
+                    language=language, output=output_text, prompt=prompt,
+                    target=relative_target,
+                )
             cost, model = cost_report(costs)
             if process.returncode != 0:
                 raise RuntimeError(f"PDD test generation exited with code {process.returncode}; inspect the runner's private logs")
@@ -702,13 +801,17 @@ def execute(job: dict) -> None:
             content = generated.read_text(encoding="utf-8")
             if not content or len(content.encode()) > MAX_OUTPUT_BYTES:
                 raise RuntimeError("PDD test output is empty or too large")
-            if cost is not None and cost > float(job["budgetUsd"]):
-                raise RuntimeError(f"PDD cost ${cost:.4f} exceeded the configured ${float(job['budgetUsd']):.4f} review budget")
+            if cost is not None and cost > budget_usd:
+                raise RuntimeError(f"PDD cost ${cost:.4f} exceeded the configured ${budget_usd:.4f} review budget")
             result.update({
                 "status": "Ready for approval",
                 "model": model,
                 "costUsd": cost,
-                "summary": "PDD generated one immutable repository-native acceptance test from the PM user story.",
+                "summary": (
+                    "PDD Cloud generated one immutable repository-native acceptance test from the PM user story."
+                    if execution_mode == "cloud"
+                    else "PDD local fallback generated one immutable repository-native acceptance test from the PM user story."
+                ),
                 "generatedTests": [{
                     "path": output_text, "content": content,
                     "contentHash": digest(content), "command": command,
@@ -784,5 +887,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if not SHARED_SECRET or not CALLBACK_ORIGIN:
         raise SystemExit("PDD_RUNNER_SHARED_SECRET and CLOSESPAN_CALLBACK_ORIGIN are required")
+    configure_cloud_credentials()
     PDD_CLI_VERSION = detect_pdd_cli_version()
     ThreadingHTTPServer(("0.0.0.0", int(os.getenv("PORT", "8080"))), Handler).serve_forever()

@@ -7,14 +7,14 @@ import {
   requestImplementationApproval,
   resetMemoryEngineeringWorkflows,
   saveEngineeringSpecification,
-  testUserStoryAgainstPrompt,
+  generatePddAcceptanceContract,
 } from "./engineering-workflow-repository";
 
 const actor = { actorId: "admin", actorName: "Admin", traceId: "trace", idempotencyKey: "workflow_test_1" };
 
 async function prepareApproval() {
   const initial = await getEngineeringWorkflow(ORG_ID, primaryProblem.id);
-  return testUserStoryAgainstPrompt(
+  return generatePddAcceptanceContract(
     ORG_ID,
     primaryProblem.id,
     initial.specification!.userStory,
@@ -90,7 +90,7 @@ describe("approval-bound engineering workflow", () => {
   it("generates a missing prompt and tests one user-story input", async () => {
     const initial = await getEngineeringWorkflow(ORG_ID, primaryProblem.id);
     const story = initial.specification!.userStory;
-    const first = await testUserStoryAgainstPrompt(
+    const first = await generatePddAcceptanceContract(
       ORG_ID,
       primaryProblem.id,
       story,
@@ -103,7 +103,7 @@ describe("approval-bound engineering workflow", () => {
     expect(first.workflow.prompt?.status).toBe("Awaiting approval");
     expect(first.workflow.prompt?.content).toContain(`## User story\n<user_story>\n${story}\n</user_story>`);
 
-    const repeated = await testUserStoryAgainstPrompt(
+    const repeated = await generatePddAcceptanceContract(
       ORG_ID,
       primaryProblem.id,
       story,
@@ -116,7 +116,7 @@ describe("approval-bound engineering workflow", () => {
 
   it("rejects a vague story without changing prompt state", async () => {
     await expect(
-      testUserStoryAgainstPrompt(
+      generatePddAcceptanceContract(
         ORG_ID,
         primaryProblem.id,
         "Exports should work",
@@ -128,13 +128,13 @@ describe("approval-bound engineering workflow", () => {
 
   it("does not rewrite the prompt or approval when a different story is tested", async () => {
     const initial = await getEngineeringWorkflow(ORG_ID, primaryProblem.id);
-    const first = await testUserStoryAgainstPrompt(
+    const first = await generatePddAcceptanceContract(
       ORG_ID,
       primaryProblem.id,
       initial.specification!.userStory,
       actor,
     );
-    await expect(testUserStoryAgainstPrompt(
+    await expect(generatePddAcceptanceContract(
       ORG_ID,
       primaryProblem.id,
       "As an analyst, I want large exports to preserve every row so that scheduled reports stay accurate.",

@@ -165,6 +165,14 @@ export interface UserStoryPromptTestView {
   promptHash: string;
 }
 
+export interface PromptAlignmentContext {
+  workflow: EngineeringWorkflowView;
+  userStory: string;
+  promptId: string;
+  promptHash: string;
+  implementationPrompt: string;
+}
+
 export interface PddVerificationExecutionContext {
   orgId: string;
   problemId: string;
@@ -1076,7 +1084,47 @@ export async function generateImplementationPrompt(
   return postgresWorkflow(orgId, problemId);
 }
 
-export async function testUserStoryAgainstPrompt(
+export async function getPromptAlignmentContext(
+  orgId: string,
+  problemId: string,
+  userStory: unknown,
+  actor: ActorContext,
+): Promise<PromptAlignmentContext> {
+  const issue = userStoryInputIssue(userStory);
+  if (issue) throw new EngineeringWorkflowError(issue, 400);
+  const story = (userStory as string).trim();
+  let workflow = await getEngineeringWorkflow(orgId, problemId);
+  if (!workflow.prompt || workflow.prompt.status === "Superseded") {
+    if (!workflow.specification || !workflow.readiness.ready) {
+      throw new EngineeringWorkflowError(
+        "A reviewable implementation prompt is required before testing the suggested prompt.",
+        409,
+      );
+    }
+    workflow = await generateImplementationPrompt(orgId, problemId, actor);
+  }
+  if (!workflow.prompt) {
+    throw new EngineeringWorkflowError(
+      "A reviewable implementation prompt is required before testing the suggested prompt.",
+      409,
+    );
+  }
+  if (workflow.prompt.status === "Approved") {
+    throw new EngineeringWorkflowError(
+      "This implementation prompt has already been approved for execution.",
+      409,
+    );
+  }
+  return {
+    workflow,
+    userStory: story,
+    promptId: workflow.prompt.id,
+    promptHash: workflow.prompt.contentHash,
+    implementationPrompt: workflow.prompt.content,
+  };
+}
+
+export async function generatePddAcceptanceContract(
   orgId: string,
   problemId: string,
   userStory: unknown,
@@ -1091,7 +1139,7 @@ export async function testUserStoryAgainstPrompt(
   let workflow = await getEngineeringWorkflow(orgId, problemId);
   if (!workflow.specification) {
     throw new EngineeringWorkflowError(
-      "Ticket context is incomplete. CloseSpan could not build a testable prompt yet.",
+      "Engineering ticket specification is missing. Review the investigation and complete the ticket context before generating an acceptance test.",
       409,
     );
   }
@@ -1115,7 +1163,7 @@ export async function testUserStoryAgainstPrompt(
   if (!workflow.prompt || workflow.prompt.status === "Superseded") {
     if (!workflow.readiness.ready) {
       throw new EngineeringWorkflowError(
-        "Ticket context is incomplete. CloseSpan could not build a testable prompt yet.",
+        `Engineering ticket specification is incomplete: ${workflow.readiness.issues.slice(0, 3).join("; ")}`,
         409,
       );
     }
@@ -1124,7 +1172,7 @@ export async function testUserStoryAgainstPrompt(
   if (workflow.prompt?.status === "Draft") {
     if (!workflow.readiness.ready) {
       throw new EngineeringWorkflowError(
-        "The automatic prompt draft needs product-manager review and complete repository context before PDD can test it.",
+        `The automatic prompt draft needs product-manager review: ${workflow.readiness.issues.slice(0, 3).join("; ")}`,
         409,
       );
     }
@@ -1137,7 +1185,11 @@ export async function testUserStoryAgainstPrompt(
     );
   }
   const prompt = workflow.prompt;
-  if (workflow.verification?.promptHash === prompt.contentHash && workflow.verification.userStory === story) {
+  if (
+    workflow.verification?.promptHash === prompt.contentHash &&
+    workflow.verification.userStory === story &&
+    !["Failed", "Superseded"].includes(workflow.verification.status)
+  ) {
     return {
       workflow,
       storyTest: {

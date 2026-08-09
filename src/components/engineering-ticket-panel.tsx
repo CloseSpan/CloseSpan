@@ -7,6 +7,7 @@ import type {
   EngineeringWorkflowView,
   UserStoryPromptTestView,
 } from "@/lib/engineering-workflow-repository";
+import type { PromptAlignmentEvaluation } from "@/lib/prompt-alignment-evaluation";
 import { userStoryInputIssue } from "@/lib/user-story-prompt-test";
 import { RepositoryMatchReview } from "./repository-match-review";
 
@@ -44,7 +45,16 @@ export function EngineeringTicketPanel({
     initialWorkflow.specification?.userStory ?? "",
   );
   const [storyTest, setStoryTest] = useState<UserStoryPromptTestView>();
+  const [promptEvaluation, setPromptEvaluation] = useState<
+    PromptAlignmentEvaluation & {
+      provider: string;
+      model: string;
+      promptHash: string;
+      alignmentReceipt: string | null;
+    }
+  >();
   const [busy, setBusy] = useState(false);
+  const [pddBusy, setPddBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [pddProfileReady, setPddProfileReady] = useState(false);
@@ -87,17 +97,23 @@ export function EngineeringTicketPanel({
     setBusy(true);
     setError(undefined);
     setStoryTest(undefined);
+    setPromptEvaluation(undefined);
     try {
       const result = await request<{
         workflow: EngineeringWorkflowView;
-        storyTest: UserStoryPromptTestView;
+        promptEvaluation: PromptAlignmentEvaluation & {
+          provider: string;
+          model: string;
+          promptHash: string;
+          alignmentReceipt: string | null;
+        };
       }>(
         `/api/problems/${problemId}/engineering/test-story`,
         orgId,
         { userStory: userStory.trim() },
       );
       setWorkflow(result.workflow);
-      setStoryTest(result.storyTest);
+      setPromptEvaluation(result.promptEvaluation);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -106,6 +122,35 @@ export function EngineeringTicketPanel({
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function generateAcceptanceTests() {
+    setPddBusy(true);
+    setError(undefined);
+    setStoryTest(undefined);
+    try {
+      const result = await request<{
+        workflow: EngineeringWorkflowView;
+        storyTest: UserStoryPromptTestView;
+      }>(
+        `/api/problems/${problemId}/engineering/generate-acceptance`,
+        orgId,
+        {
+          userStory: userStory.trim(),
+          alignmentReceipt: promptEvaluation?.alignmentReceipt,
+        },
+      );
+      setWorkflow(result.workflow);
+      setStoryTest(result.storyTest);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Repository acceptance tests could not be generated.",
+      );
+    } finally {
+      setPddBusy(false);
     }
   }
 
@@ -132,6 +177,13 @@ export function EngineeringTicketPanel({
   const promptStatus = workflow.prompt?.status ?? "No prompt yet";
   const verification = workflow.verification;
   const verificationReady = verification?.status === "Ready for approval";
+  const ticketContextMissing = !workflow.specification || !workflow.readiness.ready;
+  const pddReady = pddProfileReady && !ticketContextMissing;
+  const canTestPrompt = Boolean(workflow.prompt) || Boolean(
+    workflow.specification && workflow.readiness.ready,
+  );
+  const promptAligned = promptEvaluation?.verdict === "Aligned";
+  const displayedPromptStatus = promptEvaluation?.verdict ?? promptStatus;
 
   return (
     <section className="card section-gap" id="engineering-ticket">
@@ -139,23 +191,18 @@ export function EngineeringTicketPanel({
         <div>
           <h2>Test the implementation prompt</h2>
           <p className="subtle">
-            Write the outcome as a user story. PDD will turn it into executable
-            acceptance tests for the agent&apos;s proposed solution.
+            Compare the agent&apos;s suggested prompt with your user story before any
+            repository access or sandbox execution.
           </p>
         </div>
         <span
           className={`badge ${verificationReady ? "success" : "medium"}`}
         >
-          {promptStatus}
+          {displayedPromptStatus}
         </span>
       </div>
 
       <div className="card-body detail-stack">
-        <RepositoryMatchReview
-          orgId={orgId}
-          problemId={problemId}
-          onPddProfileReady={setPddProfileReady}
-        />
         {workflow.prompt?.status === "Draft" && (
           <div className="callout" role="status">
             <div className="callout-title">Agent-created draft ready for review</div>
@@ -166,14 +213,6 @@ export function EngineeringTicketPanel({
                 {workflow.prompt.reviewerNotificationRequested ? " · notification created" : ""}
                 {workflow.prompt.reviewerEmailNotificationRequested ? " · email queued" : ""}
               </p>
-            )}
-            {!workflow.readiness.ready && (
-              <>
-                <p className="subtle">Complete these ticket details before PDD testing:</p>
-                <ul className="evidence-list">
-                  {workflow.readiness.issues.slice(0, 6).map((issue) => <li key={issue}>{issue}</li>)}
-                </ul>
-              </>
             )}
           </div>
         )}
@@ -186,6 +225,7 @@ export function EngineeringTicketPanel({
             onChange={(event) => {
               setUserStory(event.target.value);
               setStoryTest(undefined);
+              setPromptEvaluation(undefined);
               setError(undefined);
             }}
           />
@@ -198,17 +238,137 @@ export function EngineeringTicketPanel({
           <button
             type="button"
             className="btn primary"
-            disabled={busy || !pddProfileReady}
+            disabled={busy || !canTestPrompt}
             onClick={testAgainstPrompt}
           >
             <CheckCircle2 size={14} />
             {busy
-              ? "Queuing…"
-              : pddProfileReady
-                ? "Generate acceptance test"
-                : "Review repository first"}
+              ? "Testing…"
+              : canTestPrompt
+                ? "Test suggested prompt"
+                : "Suggested prompt required"}
           </button>
         </div>
+
+        {promptEvaluation && (
+          <div
+            className={`callout ${promptAligned ? "success" : "warning"}`}
+            role="status"
+          >
+            <div className="callout-title">
+              {promptAligned ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+              {promptEvaluation.verdict} · {promptEvaluation.score}%
+            </div>
+            <p>{promptEvaluation.summary}</p>
+            {promptEvaluation.strengths.length > 0 && (
+              <>
+                <strong>What is covered</strong>
+                <ul className="evidence-list">
+                  {promptEvaluation.strengths.map((strength) => (
+                    <li key={strength}>{strength}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {promptEvaluation.gaps.length > 0 && (
+              <>
+                <strong>Gaps to resolve</strong>
+                <ul className="evidence-list">
+                  {promptEvaluation.gaps.map((gap) => <li key={gap}>{gap}</li>)}
+                </ul>
+              </>
+            )}
+            <details>
+              <summary>Acceptance scenarios</summary>
+              <ul className="evidence-list">
+                {promptEvaluation.acceptanceScenarios.map((scenario) => (
+                  <li key={`${scenario.title}-${scenario.then}`}>
+                    <strong>{scenario.title}</strong> — Given {scenario.given}; when {scenario.when}; then {scenario.then}.
+                  </li>
+                ))}
+              </ul>
+            </details>
+            {promptEvaluation.suggestedRevision && (
+              <details>
+                <summary>Suggested prompt revision</summary>
+                <pre className="prompt-evaluation-revision">
+                  {promptEvaluation.suggestedRevision}
+                </pre>
+              </details>
+            )}
+            <p className="subtle">
+              Evaluated by {promptEvaluation.provider} · {promptEvaluation.model}. No repository or Tenki session was used.
+            </p>
+          </div>
+        )}
+
+        {promptAligned && (
+          <section className="detail-stack" aria-label="Repository acceptance tests">
+            <div>
+              <h3>Generate repository acceptance tests</h3>
+              <p className="subtle">
+                After prompt alignment, bind the approved repository context and let PDD create executable tests. This is the first step that needs repository access.
+              </p>
+            </div>
+            <RepositoryMatchReview
+              orgId={orgId}
+              problemId={problemId}
+              onPddProfileReady={setPddProfileReady}
+            />
+            {ticketContextMissing && (
+              <div
+                className="callout warning"
+                id="ticket-context-readiness"
+                role="status"
+              >
+                <div className="callout-title">
+                  <AlertCircle size={14} />
+                  {workflow.specification
+                    ? "Complete the engineering ticket"
+                    : "Engineering ticket specification required"}
+                </div>
+                <p className="subtle">
+                  Repository-native PDD generation requires reviewed acceptance criteria, test commands, and code boundaries.
+                </p>
+                <ul className="evidence-list">
+                  {workflow.specification ? (
+                    workflow.readiness.issues.slice(0, 6).map((issue) => (
+                      <li key={issue}>{issue}</li>
+                    ))
+                  ) : (
+                    <>
+                      <li>Current behavior, expected behavior, reproduction steps, and business outcome</li>
+                      <li>Measurable acceptance criteria mapped to test scenarios</li>
+                      <li>Permitted code paths and required validation commands</li>
+                      <li>Repository, base branch, and exact base commit</li>
+                    </>
+                  )}
+                </ul>
+                <Link className="btn secondary" href="/settings#prompt-drafts">
+                  Review drafting policy
+                </Link>
+              </div>
+            )}
+            <div className="top-actions">
+              <button
+                type="button"
+                className="btn primary"
+                disabled={pddBusy || !pddReady}
+                aria-describedby={ticketContextMissing ? "ticket-context-readiness" : undefined}
+                onClick={generateAcceptanceTests}
+              >
+                <CheckCircle2 size={14} />
+                {pddBusy
+                  ? "Generating…"
+                  : pddReady
+                    ? "Generate repository acceptance tests"
+                    : ticketContextMissing
+                      ? "Complete ticket context"
+                      : "Review repository first"}
+              </button>
+            </div>
+          </section>
+        )}
 
         {storyTest && (
           <div

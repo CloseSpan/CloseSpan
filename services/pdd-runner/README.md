@@ -1,17 +1,23 @@
 # CloseSpan PDD runner
 
-This service pins `pdd-cli==0.0.309` and uses PDD local/manual test generation.
+This service pins `pdd-cli==0.0.309` and uses Prompt Driven Cloud/manual test
+generation as its primary prompt-to-prompt evaluator.
 It downloads a short-lived GitHub archive, writes the signed CloseSpan prompt,
 and invokes:
 
 ```text
-pdd --local --force --quiet --no-core-dump --output-cost pdd-costs.csv \
+pdd --force --quiet --no-core-dump --output-cost pdd-costs.csv \
   test --manual --language <language> --output <test> <prompt> <source>
 ```
 
+`PDD_EXECUTION_MODE=cloud` spends the workspace's PDDC credits. The runner strips
+direct model-provider credentials from the Cloud subprocess, so the PDD CLI
+cannot silently switch billing providers. If `PDD_CLOUD_FALLBACK_ENABLED=true`,
+CloseSpan may explicitly retry once in local mode after a Cloud failure.
+
 The runner does not receive GitHub credentials and does not execute repository
 code. It returns the generated test, SHA-256 hash, approved repository command,
-model, and measured cost through an HMAC-signed callback. CloseSpan validates
+model, measured cost, and provider-specific summary through an HMAC-signed callback. CloseSpan validates
 the paths, command, hashes, prompt identity, and budget again before exposing an
 approval.
 
@@ -26,9 +32,7 @@ health checks, previews, and runtime-tool provisioning. Secret values are never
 accepted by this service. Legacy job payloads, malformed profiles, and inactive
 detected profiles fail closed before any archive is downloaded.
 
-PDD's manual `test` command reports cost but does not currently expose a
-pre-spend hard budget flag. For a strict dollar ceiling, route the runner's model
-traffic through a provider gateway that enforces a per-request/project budget.
+Every invocation sets `PDD_COMMAND_MAX_COST_USD` from the signed ticket budget.
 CloseSpan also rejects completed artifacts whose reported cost exceeds
 `PDD_MAX_BUDGET_USD`, preventing them from unlocking an agent run.
 
@@ -99,7 +103,9 @@ The workflow requires these GitHub repository secrets:
 
 - `TENKI_API_KEY`
 - `PDD_RUNNER_SHARED_SECRET`
-- `OPENAI_API_KEY`
+- `PDD_REFRESH_TOKEN`
+- `PDD_JWT_TOKEN` (optional short-lived override)
+- `OPENAI_API_KEY` (only when local fallback is enabled)
 - `CLOSESPAN_CALLBACK_ORIGIN`
 - `CLOSESPAN_INTERNAL_BASE_URL`
 - `STATUS_PROBE_SECRET`
@@ -122,7 +128,14 @@ Required environment:
 - `TENKI_API_KEY`
 - `PDD_RUNNER_SHARED_SECRET`
 - `CLOSESPAN_CALLBACK_ORIGIN` (for example `https://www.closespan.com`)
-- one PDD-supported local model credential, such as `OPENAI_API_KEY`
+- `PDD_REFRESH_TOKEN` created by `pdd auth login` and stored as the durable
+  unattended credential; the runner exchanges it for short-lived JWTs
+- optional `PDD_JWT_TOKEN` issued by `pdd auth token` for a one-off run only
+- one PDD-supported local model credential, such as `OPENAI_API_KEY`, only when
+  `PDD_CLOUD_FALLBACK_ENABLED=true`
+- optional `PDD_EXECUTION_MODE` (`cloud`, the production default, or `local`)
+- optional `PDD_CLOUD_FALLBACK_ENABLED` (default `true` in the Tenki deployer)
+- optional `PDD_CLOUD_TIMEOUT` in seconds (default `240`)
 - optional `PDD_RUNNER_STABLE_SLUG` (default `closespan-pdd-production`)
 - optional `PDD_RUNNER_ROTATION_MAX_AGE_DAYS` (default `21`)
 - optional `PDD_RUNNER_DRAIN_MS` (default `300000`)

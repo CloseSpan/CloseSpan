@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  failPddVerification,
-  getEngineeringWorkflow,
-  getPddVerificationExecutionContext,
-  markPddVerificationGenerating,
-  testUserStoryAgainstPrompt,
+  getPromptAlignmentContext,
 } from "@/lib/engineering-workflow-repository";
-import {
-  assertPddRunnerConfigured,
-  dispatchPddVerification,
-  pddRunnerConfigured,
-} from "@/lib/pdd-runner-client";
+import { getAiRuntimeConfiguration } from "@/lib/ai-config";
+import { evaluatePromptAlignment } from "@/lib/prompt-alignment-evaluation";
+import { createPromptAlignmentReceipt } from "@/lib/prompt-alignment-receipt";
+import { sha256 } from "@/lib/pdd-verification";
 import {
   authorizeMutation,
   errorResponse,
@@ -53,29 +48,38 @@ export async function POST(
         ? (body as { userStory: unknown }).userStory
         : undefined;
     const { problemId } = await params;
-    if (process.env.APP_MODE === "production") assertPddRunnerConfigured();
-    const result = await testUserStoryAgainstPrompt(
-        context.orgId,
-        problemId,
-        userStory,
-        context,
-      );
-    if (result.storyTest.status === "Queued" && pddRunnerConfigured()) {
-      try {
-        const execution = await getPddVerificationExecutionContext(context.orgId, result.storyTest.id);
-        await markPddVerificationGenerating(context.orgId, result.storyTest.id);
-        await dispatchPddVerification(execution);
-        result.workflow = await getEngineeringWorkflow(context.orgId, problemId);
-        result.storyTest = { ...result.storyTest, status: "Generating tests", message: "PDD is translating the story into repository-native acceptance tests." };
-      } catch (dispatchError) {
-        const message = dispatchError instanceof Error ? dispatchError.message : "PDD runner dispatch failed";
-        await failPddVerification(context.orgId, result.storyTest.id, message);
-        result.workflow = await getEngineeringWorkflow(context.orgId, problemId);
-        result.storyTest = { ...result.storyTest, status: "Failed", message };
-      }
-    }
+    const promptContext = await getPromptAlignmentContext(
+      context.orgId,
+      problemId,
+      userStory,
+      context,
+    );
+    const configuration = await getAiRuntimeConfiguration(context.orgId);
+    const evaluation = await evaluatePromptAlignment({
+      configuration,
+      userStory: promptContext.userStory,
+      implementationPrompt: promptContext.implementationPrompt,
+    });
+    const alignmentReceipt =
+      evaluation.verdict === "Aligned"
+        ? createPromptAlignmentReceipt({
+            orgId: context.orgId,
+            problemId,
+            promptHash: promptContext.promptHash,
+            storyHash: sha256(
+              promptContext.userStory.replace(/\s+/g, " ").trim(),
+            ),
+          })
+        : null;
     return NextResponse.json(
-      result,
+      {
+        workflow: promptContext.workflow,
+        promptEvaluation: {
+          ...evaluation,
+          promptHash: promptContext.promptHash,
+          alignmentReceipt,
+        },
+      },
       { headers: noStoreHeaders },
     );
   } catch (error) {

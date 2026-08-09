@@ -15,7 +15,7 @@ const stateDirectory = path.join(projectRoot, ".tenki");
 const statePath = path.join(stateDirectory, "pdd-runner.json");
 const port = 8080;
 const pddVersion = "0.0.309";
-const runnerReleaseSchema = "2";
+const runnerReleaseSchema = "4";
 const runnerHealthAttempts = 90;
 const managedMetadata = {
   purpose: "pdd-test-generation",
@@ -102,6 +102,14 @@ async function configuration() {
       ?? process.env.CLOSESPAN_INTERNAL_BASE_URL
       ?? "",
   );
+  const executionMode = (process.env.PDD_EXECUTION_MODE?.trim() || "cloud").toLowerCase();
+  if (!["cloud", "local"].includes(executionMode))
+    throw new Error("PDD_EXECUTION_MODE must be cloud or local");
+  const localFallbackEnabled = enabled(process.env.PDD_CLOUD_FALLBACK_ENABLED ?? "true");
+  const jwtToken = process.env.PDD_JWT_TOKEN?.trim() || null;
+  const refreshToken = process.env.PDD_REFRESH_TOKEN?.trim() || null;
+  if (executionMode === "cloud" && !jwtToken && !refreshToken)
+    throw new Error("PDD_REFRESH_TOKEN or PDD_JWT_TOKEN is required when PDD_EXECUTION_MODE=cloud");
   const providerKeys = [
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
@@ -110,14 +118,18 @@ async function configuration() {
     "OPENROUTER_API_KEY",
     "XAI_API_KEY",
   ].flatMap((name) => process.env[name]?.trim() ? [[name, process.env[name].trim()]] : []);
-  if (providerKeys.length === 0)
-    throw new Error("At least one PDD-supported model provider credential is required");
+  if ((executionMode === "local" || localFallbackEnabled) && providerKeys.length === 0)
+    throw new Error("A PDD-supported model provider credential is required for local mode or fallback");
 
   const source = await fs.readFile(runnerSourcePath);
   return {
     apiKey: required("TENKI_API_KEY"),
     sharedSecret: required("PDD_RUNNER_SHARED_SECRET"),
     callbackOrigin,
+    executionMode,
+    localFallbackEnabled,
+    jwtToken,
+    refreshToken,
     providerKeys,
     source,
     releaseId: releaseId(source),
@@ -183,9 +195,10 @@ async function writeState(route, session, deployedAt = session.metadata.deployed
   return state;
 }
 
-function healthIsAttested(payload) {
+function healthIsAttested(payload, expectedMode = process.env.PDD_EXECUTION_MODE?.trim() || "cloud") {
   return payload?.status === "ok"
     && payload.pddVersion === pddVersion
+    && payload.executionMode === expectedMode
     && Array.isArray(payload.executionProfileSchemaVersions)
     && payload.executionProfileSchemaVersions.includes(1)
     && payload.executionProfileSchemaVersions.includes(2);
@@ -330,8 +343,12 @@ async function provisionRunner(client, config) {
       ["CLOSESPAN_CALLBACK_ORIGIN", config.callbackOrigin],
       ["PDD_MODEL", process.env.PDD_MODEL?.trim() ?? ""],
       ["PDD_RUNNER_CONCURRENCY", process.env.PDD_RUNNER_CONCURRENCY?.trim() || "2"],
-      ["PDD_FORCE_LOCAL", "1"],
-      ["PDD_CLOUD_RUN", "false"],
+      ["PDD_EXECUTION_MODE", config.executionMode],
+      ["PDD_CLOUD_FALLBACK_ENABLED", String(config.localFallbackEnabled)],
+      ["PDD_JWT_TOKEN", config.jwtToken ?? ""],
+      ["PDD_REFRESH_TOKEN", config.refreshToken ?? ""],
+      ["PDD_CLOUD_TIMEOUT", process.env.PDD_CLOUD_TIMEOUT?.trim() || "240"],
+      ["PYTHON_KEYRING_BACKEND", "keyrings.alt.file.PlaintextKeyring"],
       ...config.providerKeys,
     ]);
     await run(

@@ -8,6 +8,8 @@ upload.env.me
 *.tsbuildinfo
 __pycache__/
 *.py[cod]
+.pdd/
+litellm_cache.sqlite/
 .DS_Store
 .vercel
 .ski/
