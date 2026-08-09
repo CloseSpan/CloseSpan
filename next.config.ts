@@ -34,7 +34,7 @@ const nextConfig: NextConfig = {
           {
             key: "Permissions-Policy",
             value:
-              "camera=*, microphone=*, display-capture=(self), geolocation=(), payment=(), usb=()",
+              'camera=(self "chrome-extension://kbbdabhdfibnancpjfhlkhafgdilcnji"), microphone=(self "chrome-extension://kbbdabhdfibnancpjfhlkhafgdilcnji"), display-capture=(self), geolocation=(), payment=(), usb=()',
           },
           ...(isProduction ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }] : []),
         ],
