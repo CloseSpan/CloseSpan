@@ -444,8 +444,11 @@ try {
 
     for (const [id, name, arr, tier, customerSince, churnRisk] of accounts) {
       await client.query(
-        `INSERT INTO accounts(id,org_id,name,arr,tier,customer_since,churn_risk)
-         VALUES($1,$2,$3,$4,$5,$6,$7)`,
+        `INSERT INTO accounts(
+           id,org_id,name,arr,tier,customer_since,churn_risk,
+           origin,arr_source,arr_source_priority,
+           profile_source,profile_source_priority,customer_since_known
+         ) VALUES($1,$2,$3,$4,$5,$6,$7,'demo','demo',10,'demo',10,true)`,
         [id, orgId, name, arr, tier, customerSince, churnRisk],
       );
     }
@@ -464,9 +467,9 @@ try {
       await client.query(
         `INSERT INTO feedback_items(
            id,org_id,source,customer_name,account_tier,arr,type,severity,redacted,
-           environment,confidence,observed_at,quote,created_at,updated_at
-         ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14)`,
-        [item.id, orgId, item.source, item.customer, item.tier, item.arr, item.type, item.severity, item.redacted, item.environment, item.confidence, item.observedAt.toISOString(), item.quote, item.observedAt],
+           environment,confidence,observed_at,quote,created_at,updated_at,account_id
+         ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14,$15)`,
+        [item.id, orgId, item.source, item.customer, item.tier, item.arr, item.type, item.severity, item.redacted, item.environment, item.confidence, item.observedAt.toISOString(), item.quote, item.observedAt, item.accountId],
       );
       if (item.problemId) {
         const problem = problems.find((candidate) => candidate.id === item.problemId);

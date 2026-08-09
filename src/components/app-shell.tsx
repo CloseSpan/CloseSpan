@@ -1,10 +1,16 @@
-import { Bell, LogOut, Search, UserRound } from "lucide-react";
+import {
+  Bell,
+  LogOut,
+  Search,
+  UserRound,
+} from "lucide-react";
 import Link from "next/link";
 import { signOutCurrentUser } from "@/app/auth-actions";
 import type { WorkspaceUser } from "@/lib/auth-user";
 import { getWorkspaceDemoGuide } from "@/lib/demo-guide-repository";
 import { workspacePersistenceMode } from "@/lib/workspace-persistence";
 import { CloseSpan3DLogo } from "./closespan-3d-logo";
+import { AccountMenuNavigation } from "./account-menu-navigation";
 import { GuidedDemo } from "./guided-demo";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { MobileNavigation, Sidebar } from "./sidebar";
@@ -26,7 +32,13 @@ function initials(name: string): string {
   );
 }
 
-function AccountMenu({ user }: { user: WorkspaceUser }) {
+function AccountMenu({
+  user,
+  showWaitlistAdmin,
+}: {
+  user: WorkspaceUser;
+  showWaitlistAdmin: boolean;
+}) {
   return (
     <UserMenu
       label={`Open account menu for ${user.name}`}
@@ -40,6 +52,7 @@ function AccountMenu({ user }: { user: WorkspaceUser }) {
         </span>
       </div>
       <span className="user-role">{user.role}</span>
+      <AccountMenuNavigation showWaitlistAdmin={showWaitlistAdmin} />
       <ThemeToggle />
       <form action={signOutCurrentUser}>
         <button type="submit">
@@ -90,7 +103,7 @@ export async function AppShell({
               <Link className="btn" href="/settings#ai">
                 AI settings
               </Link>
-              <AccountMenu user={user} />
+              <AccountMenu user={user} showWaitlistAdmin={showWaitlistAdmin} />
             </div>
           </header>
           <div
@@ -115,7 +128,6 @@ export async function AppShell({
         activeOrganizationId={user.orgId}
         demoMode={!durableWorkspace || Boolean(demoGuide)}
         canRenameWorkspace={canRenameWorkspace}
-        showWaitlistAdmin={showWaitlistAdmin}
       />
       <main className="main">
         <header className="topbar">
@@ -123,7 +135,6 @@ export async function AppShell({
             organizations={user.organizations}
             activeOrganizationId={user.orgId}
             canRenameWorkspace={canRenameWorkspace}
-            showWaitlistAdmin={showWaitlistAdmin}
           />
           <WorkspaceBreadcrumb />
           <div className="top-actions">
@@ -135,7 +146,7 @@ export async function AppShell({
               <Bell size={15} />
               {unreadNotifications > 0 && <span className="notification-count">{Math.min(unreadNotifications, 99)}</span>}
             </Link>
-            <AccountMenu user={user} />
+            <AccountMenu user={user} showWaitlistAdmin={showWaitlistAdmin} />
           </div>
         </header>
         <div className="content" id="main-content" tabIndex={-1}>

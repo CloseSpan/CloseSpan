@@ -1,63 +1,71 @@
+export const WORKSPACE_NAVIGATION_GROUPS = [
+  { id: "overview", label: null },
+  { id: "workflow", label: "Workflow" },
+] as const;
+
 export const WORKSPACE_NAVIGATION = [
   {
     id: "overview",
     label: "Overview",
     section: "Executive overview",
     href: "/overview",
-  },
-  {
-    id: "feedback",
-    label: "Feedback inbox",
-    section: "Feedback inbox",
-    href: "/feedback",
-  },
-  {
-    id: "problems",
-    label: "Product problems",
-    section: "Product problems",
-    href: "/problems",
-  },
-  {
-    id: "prioritization",
-    label: "Prioritization",
-    section: "Prioritization",
-    href: "/prioritization",
-  },
-  {
-    id: "investigations",
-    label: "Investigations",
-    section: "AI investigations",
-    href: "/investigations",
-  },
-  {
-    id: "approvals",
-    label: "Approvals",
-    section: "Approval center",
-    href: "/approvals",
-  },
-  {
-    id: "follow-up",
-    label: "Follow-up",
-    section: "Customer follow-up",
-    href: "/follow-up",
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    section: "Integrations",
-    href: "/integrations",
+    group: "overview",
   },
   {
     id: "customers",
     label: "Customers",
     section: "Customers",
     href: "/customers",
+    group: "overview",
   },
   {
-    id: "settings",
-    label: "Settings",
-    section: "Settings & governance",
-    href: "/settings",
+    id: "feedback",
+    label: "Feedback inbox",
+    section: "Feedback inbox",
+    href: "/feedback",
+    group: "workflow",
+  },
+  {
+    id: "problems",
+    label: "Product problems",
+    section: "Product problems",
+    href: "/problems",
+    group: "workflow",
+  },
+  {
+    id: "prioritization",
+    label: "Prioritization",
+    section: "Prioritization",
+    href: "/prioritization",
+    group: "workflow",
+  },
+  {
+    id: "investigations",
+    label: "Investigations",
+    section: "AI investigations",
+    href: "/investigations",
+    group: "workflow",
+  },
+  {
+    id: "approvals",
+    label: "Approvals",
+    section: "Approval center",
+    href: "/approvals",
+    group: "workflow",
+  },
+  {
+    id: "agent-runs",
+    label: "Agent runs & verification",
+    section: "Agent runs & verification",
+    href: "/agent-runs",
+    group: "workflow",
+  },
+  {
+    id: "follow-up",
+    label: "Follow-up",
+    section: "Customer follow-up",
+    href: "/follow-up",
+    group: "workflow",
   },
 ] as const;
 
@@ -74,11 +82,6 @@ export function workspaceRouteIndex(pathname: string): number | null {
     ({ href }) => normalized === href || normalized.startsWith(`${href}/`),
   );
   if (directIndex >= 0) return directIndex;
-
-  // Agent-run detail pages are part of the reviewed approval workflow.
-  if (normalized === "/agent-runs" || normalized.startsWith("/agent-runs/")) {
-    return WORKSPACE_NAVIGATION.findIndex(({ id }) => id === "approvals");
-  }
 
   return null;
 }
@@ -107,10 +110,16 @@ export function workspaceRouteDirection(
 
 export function workspaceSection(pathname: string): string {
   const normalized = pathnameOnly(pathname);
-  if (normalized === "/admin/waitlist") return "Waitlist users";
-  if (normalized === "/agent-runs" || normalized.startsWith("/agent-runs/")) {
-    return "Agent run results";
+  if (normalized === "/settings" || normalized.startsWith("/settings/")) {
+    return "Settings & governance";
   }
+  if (
+    normalized === "/integrations" ||
+    normalized.startsWith("/integrations/")
+  ) {
+    return "Integrations";
+  }
+  if (normalized === "/admin/waitlist") return "Waitlist users";
   return (
     WORKSPACE_NAVIGATION.find(
       ({ href }) => normalized === href || normalized.startsWith(`${href}/`),

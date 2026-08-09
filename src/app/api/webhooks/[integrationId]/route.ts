@@ -8,10 +8,54 @@ import {
 } from "@/lib/integration-repository";
 import { HttpError, noStoreHeaders } from "@/lib/request-security";
 
+const maximumCustomerSinceYear = new Date().getUTCFullYear() + 1;
+const deliveryHeaderNames = [
+  "x-closespan-delivery-id",
+  "x-feelow-delivery-id",
+] as const;
+
+function resolveDeliveryId(request: NextRequest, payloadId?: string): string {
+  for (const headerName of deliveryHeaderNames) {
+    const headerValue = request.headers.get(headerName);
+    if (headerValue === null || headerValue.trim().length === 0) continue;
+
+    const normalized = headerValue.trim();
+    if (normalized.length > 256 || !/^[\x21-\x7e]+$/.test(normalized)) {
+      throw new HttpError(
+        400,
+        `${headerName} must be a visible ASCII identifier no longer than 256 characters`,
+      );
+    }
+    return normalized;
+  }
+
+  if (payloadId) return payloadId;
+  throw new HttpError(
+    400,
+    "A stable delivery header or webhook payload id is required",
+  );
+}
+
 const payloadSchema = z
   .object({
     id: z.string().trim().min(1).max(128).optional(),
+    customerId: z.string().trim().min(1).max(512).optional(),
     customer: z.string().trim().max(160).optional(),
+    customerDomain: z.string().trim().min(1).max(255).optional(),
+    customerSince: z
+      .number()
+      .int()
+      .min(1900)
+      .max(maximumCustomerSinceYear)
+      .optional(),
+    churnRisk: z
+      .enum(["Unknown", "Low", "Medium", "Elevated", "High"])
+      .optional(),
+    sourceUpdatedAt: z
+      .string()
+      .trim()
+      .datetime({ offset: true })
+      .optional(),
     quote: z.string().trim().min(1).max(4000),
     type: z.string().trim().max(64).optional(),
     severity: z.string().trim().max(32).optional(),
@@ -19,7 +63,36 @@ const payloadSchema = z
     accountTier: z.string().trim().max(32).optional(),
     arr: z.number().int().min(0).max(1_000_000_000).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((payload, context) => {
+    if (payload.customerId && !payload.customer) {
+      context.addIssue({
+        code: "custom",
+        path: ["customer"],
+        message: "customer is required when customerId is provided",
+      });
+    }
+    if (payload.customerId && !payload.sourceUpdatedAt) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceUpdatedAt"],
+        message: "sourceUpdatedAt is required when customerId is provided",
+      });
+    }
+    if (
+      !payload.customerId &&
+      (payload.customerDomain !== undefined ||
+        payload.customerSince !== undefined ||
+        payload.churnRisk !== undefined ||
+        payload.sourceUpdatedAt !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["customerId"],
+        message: "customerId is required for customer account metadata",
+      });
+    }
+  });
 
 export async function POST(
   request: NextRequest,
@@ -45,12 +118,6 @@ export async function POST(
       throw new HttpError(401, "Invalid webhook signature");
     }
 
-    const deliveryId =
-      request.headers.get("x-closespan-delivery-id") ||
-      request.headers.get("x-feelow-delivery-id") ||
-      request.headers.get("x-request-id") ||
-      `delivery_${Date.now()}`;
-
     const parsed = payloadSchema.safeParse(JSON.parse(body));
     if (!parsed.success) {
       throw new HttpError(
@@ -58,6 +125,7 @@ export async function POST(
         parsed.error.issues[0]?.message ?? "Invalid webhook payload",
       );
     }
+    const deliveryId = resolveDeliveryId(request, parsed.data.id);
 
     const result = await ingestWebhookFeedback(
       integration.orgId,

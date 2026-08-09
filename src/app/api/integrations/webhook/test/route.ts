@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
         severity: "Medium",
         environment: "setup-hub",
       },
+      { materializeCustomer: false },
     );
     return NextResponse.json(
       {

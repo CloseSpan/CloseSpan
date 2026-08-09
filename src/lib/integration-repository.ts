@@ -1,4 +1,5 @@
 import {
+  createHash,
   createHmac,
   randomBytes,
   randomUUID,
@@ -19,6 +20,7 @@ import {
   requirePostgresWorkspace,
   workspacePersistenceMode,
 } from "./workspace-persistence";
+import { resolveOrCreateExternalAccount } from "./customer-account-repository";
 
 export interface WorkspaceSetupStatus {
   feedbackConnected: boolean;
@@ -411,7 +413,12 @@ export async function markGithubPendingSetup(
 
 export interface WebhookFeedbackPayload {
   id?: string;
+  customerId?: string;
   customer?: string;
+  customerDomain?: string;
+  customerSince?: number;
+  churnRisk?: string;
+  sourceUpdatedAt?: string;
   quote: string;
   type?: string;
   severity?: string;
@@ -425,11 +432,36 @@ export async function ingestWebhookFeedback(
   integrationId: string,
   deliveryId: string,
   payload: WebhookFeedbackPayload,
-): Promise<{ feedbackId: string; created: boolean }> {
+  options: { materializeCustomer?: boolean } = {},
+): Promise<{ feedbackId: string; created: boolean; accountId: string | null }> {
   requirePostgresWorkspace(orgId, "Webhook feedback ingestion");
+  const customerId = payload.customerId?.trim() || null;
+  const customerName = payload.customer?.trim() || null;
+  if (customerId && !customerName) {
+    throw new Error("customer is required when customerId is provided");
+  }
+  if (
+    !customerId &&
+    (payload.customerDomain !== undefined ||
+      payload.customerSince !== undefined ||
+      payload.churnRisk !== undefined ||
+      payload.sourceUpdatedAt !== undefined)
+  ) {
+    throw new Error("customerId is required for customer account metadata");
+  }
+  if (
+    options.materializeCustomer !== false &&
+    customerId &&
+    !payload.sourceUpdatedAt
+  ) {
+    throw new Error("sourceUpdatedAt is required for customer account updates");
+  }
   const pool = databasePool();
-  const feedbackId = payload.id?.trim() || `fb_${randomBytes(8).toString("hex")}`;
   const externalId = payload.id?.trim() || deliveryId;
+  const feedbackId = `fb_webhook_${createHash("sha256")
+    .update(JSON.stringify([orgId, integrationId, "direct", externalId]))
+    .digest("hex")
+    .slice(0, 32)}`;
   const payloadHash = createHmac("sha256", deliveryId)
     .update(JSON.stringify(payload))
     .digest("hex");
@@ -444,31 +476,132 @@ export async function ingestWebhookFeedback(
       [orgId, integrationId, deliveryId, payloadHash],
     );
     if (delivery.rowCount === 0) {
-      await client.query("ROLLBACK");
-      const existing = await pool.query<{ id: string }>(
-        `SELECT id FROM feedback_items
+      const recordedDelivery = await client.query<{ payload_hash: string }>(
+        `SELECT payload_hash FROM webhook_deliveries
+          WHERE org_id=$1 AND integration_id=$2 AND provider_delivery_id=$3
+          LIMIT 1`,
+        [orgId, integrationId, deliveryId],
+      );
+      if (recordedDelivery.rows[0]?.payload_hash !== payloadHash) {
+        throw new Error(
+          "Webhook delivery identifier was reused with a different payload",
+        );
+      }
+      const existing = await client.query<{
+        id: string;
+        account_id: string | null;
+      }>(
+        `SELECT id,account_id FROM feedback_items
           WHERE org_id=$1 AND integration_id=$2
             AND source_namespace='direct' AND external_id=$3
           LIMIT 1`,
         [orgId, integrationId, externalId],
       );
+      if (!existing.rows[0]) {
+        throw new Error(
+          "Webhook delivery was already recorded for a different external event",
+        );
+      }
+      await client.query("ROLLBACK");
       return {
-        feedbackId: existing.rows[0]?.id ?? feedbackId,
+        feedbackId: existing.rows[0].id,
         created: false,
+        accountId: existing.rows[0].account_id,
       };
     }
-    await client.query(
+    let accountId: string | null = null;
+    if (
+      options.materializeCustomer !== false &&
+      customerId &&
+      customerName
+    ) {
+      const sourceUpdatedAt = new Date(payload.sourceUpdatedAt!);
+      if (!Number.isFinite(sourceUpdatedAt.getTime())) {
+        throw new Error("sourceUpdatedAt must be a valid timestamp");
+      }
+      const resolved = await resolveOrCreateExternalAccount(client, {
+        orgId,
+        integrationId,
+        sourceNamespace: "direct",
+        externalAccountId: customerId,
+        name: customerName,
+        domain: payload.customerDomain,
+        tier: payload.accountTier,
+        arr: payload.arr,
+        sourceAuthority: "webhook",
+        revenueAuthority: payload.arr === undefined ? undefined : "webhook",
+        customerSince: payload.customerSince,
+        churnRisk: payload.churnRisk,
+        sourceUpdatedAt,
+      });
+      accountId = resolved.accountId;
+    }
+    const existingFeedback = await client.query<{
+      id: string;
+      account_id: string | null;
+    }>(
+      `SELECT id,account_id FROM feedback_items
+        WHERE org_id=$1 AND integration_id=$2
+          AND source_namespace='direct' AND external_id=$3
+        FOR UPDATE`,
+      [orgId, integrationId, externalId],
+    );
+    if (existingFeedback.rows[0]) {
+      const updated = await client.query<{ account_id: string | null }>(
+        `UPDATE feedback_items SET
+           customer_name=COALESCE($4,customer_name),
+           account_tier=COALESCE($5,account_tier),
+           arr=COALESCE($6,arr),type=COALESCE($7,type),
+           severity=COALESCE($8,severity),
+           environment=COALESCE($9,environment),quote=$10,
+           account_id=COALESCE($11,account_id),updated_at=now()
+         WHERE org_id=$1 AND integration_id=$2
+           AND source_namespace='direct' AND external_id=$3
+         RETURNING account_id`,
+        [
+          orgId,
+          integrationId,
+          externalId,
+          customerName,
+          payload.accountTier?.trim() || null,
+          payload.arr ?? null,
+          payload.type?.trim() || null,
+          payload.severity?.trim() || null,
+          payload.environment?.trim() || null,
+          payload.quote.trim(),
+          accountId,
+        ],
+      );
+      await client.query(
+        `UPDATE integrations
+            SET last_sync_at=now(), connection_state='Connected'
+          WHERE org_id=$1 AND id=$2`,
+        [orgId, integrationId],
+      );
+      await client.query("COMMIT");
+      return {
+        feedbackId: existingFeedback.rows[0].id,
+        created: false,
+        accountId: updated.rows[0]?.account_id ??
+          accountId ??
+          existingFeedback.rows[0].account_id,
+      };
+    }
+    const inserted = await client.query<{ account_id: string | null }>(
       `INSERT INTO feedback_items(
          id, org_id, source, customer_name, account_tier, arr, type, severity,
          redacted, environment, confidence, observed_at, quote,
-         integration_id, external_id
-       ) VALUES ($1,$2,'Webhook',$3,$4,$5,$6,$7,false,$8,0.75,$9,$10,$11,$12)
-       ON CONFLICT (org_id, id) DO NOTHING`,
+         integration_id, external_id, account_id
+       ) VALUES ($1,$2,'Webhook',$3,$4,$5,$6,$7,false,$8,0.75,$9,$10,$11,$12,$13)
+       ON CONFLICT (org_id, integration_id, source_namespace, external_id)
+         WHERE external_id IS NOT NULL
+       DO NOTHING
+       RETURNING account_id`,
       [
         feedbackId,
         orgId,
         payload.customer?.trim() || "Unknown customer",
-        payload.accountTier ?? "Growth",
+        payload.accountTier ?? "Unknown",
         payload.arr ?? 0,
         payload.type ?? "Bug",
         payload.severity ?? "Medium",
@@ -477,8 +610,36 @@ export async function ingestWebhookFeedback(
         payload.quote.trim(),
         integrationId,
         externalId,
+        accountId,
       ],
     );
+    let response = {
+      feedbackId,
+      created: true,
+      accountId: inserted.rows[0]?.account_id ?? accountId,
+    };
+    if (inserted.rowCount === 0) {
+      const concurrent = await client.query<{
+        id: string;
+        account_id: string | null;
+      }>(
+        `SELECT id,account_id FROM feedback_items
+          WHERE org_id=$1 AND integration_id=$2
+            AND source_namespace='direct' AND external_id=$3
+          LIMIT 1`,
+        [orgId, integrationId, externalId],
+      );
+      if (!concurrent.rows[0]) {
+        throw new Error(
+          "Webhook feedback external identity conflict could not be resolved",
+        );
+      }
+      response = {
+        feedbackId: concurrent.rows[0].id,
+        created: false,
+        accountId: concurrent.rows[0].account_id ?? accountId,
+      };
+    }
     await client.query(
       `UPDATE integrations
           SET last_sync_at=now(), connection_state='Connected'
@@ -486,7 +647,7 @@ export async function ingestWebhookFeedback(
       [orgId, integrationId],
     );
     await client.query("COMMIT");
-    return { feedbackId, created: true };
+    return response;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

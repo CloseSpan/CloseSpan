@@ -111,6 +111,19 @@ export interface AgentRunView {
   independentVerification?: AgentImplementationReport["independentVerification"];
 }
 
+export interface AgentRunSummaryView {
+  id: string;
+  problemId: string;
+  problemTitle: string;
+  status: AgentRunView["status"];
+  repository: string | null;
+  branchName: string;
+  pullRequestUrl: string | null;
+  queuedAt: string;
+  completedAt: string | null;
+  independentVerificationStatus: "passed" | "failed" | null;
+}
+
 export interface AgentTestResult {
   command: string;
   status: "passed" | "failed" | "skipped";
@@ -537,6 +550,81 @@ export async function getAgentRunById(orgId: string, runId: string): Promise<{ p
   if (!problem.rows[0]) return null;
   const run = await readRun(databasePool(), orgId, problem.rows[0].problem_id, runId);
   return run ? { problemId: problem.rows[0].problem_id, run } : null;
+}
+
+export async function listAgentRuns(
+  orgId: string,
+): Promise<AgentRunSummaryView[]> {
+  if (workspacePersistenceMode(orgId) === "memory") {
+    return [...memoryWorkflows.entries()]
+      .filter(([key, workflow]) => key.startsWith(`${orgId}:`) && workflow.run)
+      .map(([key, workflow]) => {
+        const run = workflow.run as AgentRunView;
+        const problemId = key.slice(orgId.length + 1);
+        return {
+          id: run.id,
+          problemId,
+          problemTitle:
+            problemId === primaryProblem.id
+              ? primaryProblem.title
+              : `Product problem ${problemId}`,
+          status: run.status,
+          repository: workflow.specification.repository || null,
+          branchName: run.branchName,
+          pullRequestUrl: run.pullRequestUrl,
+          queuedAt: run.queuedAt,
+          completedAt: run.completedAt,
+          independentVerificationStatus:
+            run.independentVerification?.status ?? null,
+        } satisfies AgentRunSummaryView;
+      })
+      .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt));
+  }
+
+  const result = await databasePool().query<{
+    id: string;
+    problem_id: string;
+    problem_title: string;
+    status: AgentRunView["status"];
+    repository: string;
+    branch_name: string;
+    pull_request_url: string | null;
+    queued_at: Date;
+    completed_at: Date | null;
+    implementation_report: AgentImplementationReport | null;
+  }>(
+    `SELECT run.id,
+            run.problem_id,
+            problem.title AS problem_title,
+            run.status,
+            run.repository,
+            run.branch_name,
+            run.pull_request_url,
+            run.queued_at,
+            run.completed_at,
+            run.implementation_report
+       FROM agent_runs run
+       JOIN product_problems problem
+         ON problem.org_id=run.org_id AND problem.id=run.problem_id
+      WHERE run.org_id=$1
+      ORDER BY run.queued_at DESC,run.id DESC
+      LIMIT 100`,
+    [orgId],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    problemId: row.problem_id,
+    problemTitle: row.problem_title,
+    status: row.status,
+    repository: row.repository,
+    branchName: row.branch_name,
+    pullRequestUrl: row.pull_request_url,
+    queuedAt: row.queued_at.toISOString(),
+    completedAt: row.completed_at?.toISOString() ?? null,
+    independentVerificationStatus:
+      row.implementation_report?.independentVerification?.status ?? null,
+  }));
 }
 
 async function postgresWorkflow(orgId: string, problemId: string): Promise<EngineeringWorkflowView> {

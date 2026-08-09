@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -50,8 +51,20 @@ import { IntegrationCopilot } from "./integration-copilot";
 import { IntegrationSuggestionsView } from "./integration-suggestions-view";
 import {
   formatTrend,
+  THEME_RANGE_OPTIONS,
   type OverviewAnalytics,
+  type ThemeRange,
 } from "@/lib/overview-analytics";
+import {
+  PROBLEM_TABLE_TRENDS,
+  countActiveProblemTableFilterColumns,
+  countActiveProblemTableFiltersByColumn,
+  createEmptyProblemTableFilters,
+  filterProblems,
+  type ProblemTableFilterColumn,
+  type ProblemTableFilters,
+  type ProblemTableTrend,
+} from "@/lib/problem-table-filters";
 import { isPipedreamConnectorId } from "@/lib/pipedream-connectors";
 import {
   isFeedbackSourceIntegration,
@@ -207,7 +220,20 @@ export function OverviewScreen({
   firstName: string;
   organizationName: string;
 }) {
-  const { metrics, themes, problems } = analytics;
+  const { metrics, problems } = analytics;
+  const [themeRange, setThemeRange] = useState<ThemeRange>("7d");
+  const themes = analytics.themeRanges?.[themeRange] ?? analytics.themes;
+  const activeThemeRange = THEME_RANGE_OPTIONS.find(
+    ({ value }) => value === themeRange,
+  ) ?? THEME_RANGE_OPTIONS.find(({ value }) => value === "30d")!;
+  const currentThemePeriod =
+    activeThemeRange.value === "7d"
+      ? "the last week"
+      : `the last ${activeThemeRange.label}`;
+  const previousThemePeriod =
+    activeThemeRange.value === "7d"
+      ? "the preceding week"
+      : `the preceding ${activeThemeRange.label}`;
   const empty =
     analytics.feedbackTotal === 0 &&
     themes.length === 0 &&
@@ -271,34 +297,61 @@ export function OverviewScreen({
       </div>
       <div className="dashboard-grid section-gap">
         <FeedbackVolumeChart analytics={analytics} />
-        <section className="card">
-          <div className="card-head">
-            <h2>Emerging themes</h2>
-            <span className="badge brand">
-              <Sparkles size={12} /> AI grouped
-            </span>
-          </div>
-          <div className="card-body">
-            {themes.length ? (
-              themes.map((theme) => (
-                <div className="rank-row" key={theme.name}>
-                  <div>
-                    <strong>{theme.name}</strong>
-                    <p className="subtle">{theme.currentSignals} signals</p>
-                  </div>
-                  <span
-                    className="badge"
-                    title={`${theme.currentSignals} signals this period versus ${theme.previousSignals} previously`}
-                  >
-                    {formatTrend(theme.trend)}
+        <div className="overview-themes-slot">
+          <section className="card overview-themes-card">
+            <div className="card-head overview-themes-head">
+              <div className="overview-themes-title-row">
+                <div className="overview-themes-heading">
+                  <h2>{themeRange === "6m" ? "Theme trends" : "Emerging themes"}</h2>
+                  <span className="overview-themes-ai-note">
+                    AI grouped
                   </span>
                 </div>
-              ))
-            ) : (
-              <p className="subtle">No themes have been detected yet.</p>
-            )}
-          </div>
-        </section>
+                <CustomSelect
+                  className="overview-theme-range-filter"
+                  ariaLabel="Filter themes by comparison period"
+                  leadingIcon={<Filter aria-hidden="true" size={15} />}
+                  value={themeRange}
+                  onValueChange={(value) => setThemeRange(value as ThemeRange)}
+                  options={THEME_RANGE_OPTIONS}
+                />
+              </div>
+            </div>
+            <div
+              className="card-body overview-themes-scroll"
+              data-empty={themes.length === 0 ? "true" : "false"}
+              role="region"
+              aria-label={`${themeRange === "6m" ? "Theme trends" : "Emerging themes"} for ${currentThemePeriod}`}
+              aria-live="polite"
+              tabIndex={themes.length > 4 ? 0 : undefined}
+            >
+              {themes.length ? (
+                themes.map((theme) => (
+                  <div className="rank-row" key={theme.name}>
+                    <div>
+                      <strong>{theme.name}</strong>
+                      <p className="subtle">{theme.currentSignals} signals</p>
+                    </div>
+                    <span
+                      className="badge"
+                      title={`${theme.currentSignals} signals in ${currentThemePeriod} versus ${theme.previousSignals} in ${previousThemePeriod}`}
+                    >
+                      {formatTrend(theme.trend)}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="overview-themes-empty" role="status">
+                  <strong>No themes in {currentThemePeriod}</strong>
+                  <p className="subtle">
+                    Reviewed feedback has not added signals to a grouped theme
+                    during this period.
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
       </div>
       <section className="card section-gap">
         <div className="card-head">
@@ -659,6 +712,7 @@ export function FeedbackScreen({
           <Search size={15} />
           <span className="sr-only">Search feedback</span>
           <input
+            className="neumorphic-composite-field"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search customer feedback…"
@@ -678,45 +732,54 @@ export function FeedbackScreen({
           type="button"
           className="btn"
           aria-expanded={advanced}
+          aria-controls="feedback-advanced-filters"
           onClick={() => setAdvanced((value) => !value)}
         >
           <Filter size={14} /> More filters
         </button>
       </div>
-      {advanced && (
-        <div className="filter-panel">
-          <div className="filter-field">
-            <span>Severity</span>
-            <CustomSelect
-              ariaLabel="Filter by severity"
-              value={severity}
-              onValueChange={setSeverity}
-              options={["All", "Critical", "High", "Medium", "Low"]}
-            />
+      <div
+        id="feedback-advanced-filters"
+        className="feedback-filter-region"
+        data-open={advanced ? "true" : "false"}
+        aria-hidden={!advanced}
+        inert={!advanced}
+      >
+        <div className="feedback-filter-region-inner">
+          <div className="filter-panel">
+            <div className="filter-field">
+              <span>Severity</span>
+              <CustomSelect
+                ariaLabel="Filter by severity"
+                value={severity}
+                onValueChange={setSeverity}
+                options={["All", "Critical", "High", "Medium", "Low"]}
+              />
+            </div>
+            <div className="filter-field">
+              <span>Customer tier</span>
+              <CustomSelect
+                ariaLabel="Filter by customer tier"
+                value={tier}
+                onValueChange={setTier}
+                options={["All", "Enterprise", "Growth", "Starter", "Unknown"]}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setQuery("");
+                setSource("All");
+                setSeverity("All");
+                setTier("All");
+              }}
+            >
+              Clear filters
+            </button>
           </div>
-          <div className="filter-field">
-            <span>Customer tier</span>
-            <CustomSelect
-              ariaLabel="Filter by customer tier"
-              value={tier}
-              onValueChange={setTier}
-              options={["All", "Enterprise", "Growth", "Starter"]}
-            />
-          </div>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              setQuery("");
-              setSource("All");
-              setSeverity("All");
-              setTier("All");
-            }}
-          >
-            Clear filters
-          </button>
         </div>
-      )}
+      </div>
       {notice && (
         <p
           className={`toast ${notice.kind}`}
@@ -1277,6 +1340,369 @@ function RevenueCell({
   );
 }
 
+const PROBLEM_FILTER_LABELS: Record<ProblemTableFilterColumn, string> = {
+  title: "Product problem",
+  signals: "Signals",
+  revenue: "Revenue",
+  severity: "Severity",
+  trend: "Trend",
+  confidence: "Confidence",
+  stage: "Stage",
+};
+
+const PROBLEM_TREND_LABELS: Record<ProblemTableTrend, string> = {
+  new: "New",
+  rising: "Rising",
+  flat: "Flat",
+  falling: "Falling",
+};
+
+const PREFERRED_SEVERITY_ORDER = ["Critical", "High", "Medium", "Low"];
+const PREFERRED_STAGE_ORDER = [
+  "Detected",
+  "Needs review",
+  "Approved",
+  "Planned",
+  "In progress",
+  "Released",
+  "Verified",
+  "Closed",
+];
+
+function orderedProblemFilterValues(
+  values: string[],
+  preferredOrder: string[],
+): string[] {
+  const uniqueValues = Array.from(new Set(values));
+  const knownValues = preferredOrder.filter((value) =>
+    uniqueValues.includes(value),
+  );
+  const customValues = uniqueValues
+    .filter((value) => !preferredOrder.includes(value))
+    .sort((left, right) => left.localeCompare(right));
+  return [...knownValues, ...customValues];
+}
+
+function toggleProblemFilterValue<T extends string>(
+  values: readonly T[],
+  value: T,
+): T[] {
+  return values.includes(value)
+    ? values.filter((candidate) => candidate !== value)
+    : [...values, value];
+}
+
+function clearProblemFilterColumn(
+  filters: ProblemTableFilters,
+  column: ProblemTableFilterColumn,
+): ProblemTableFilters {
+  switch (column) {
+    case "title":
+      return { ...filters, title: "" };
+    case "signals":
+      return { ...filters, signalsMin: "", signalsMax: "" };
+    case "revenue":
+      return { ...filters, revenueMin: "", revenueMax: "" };
+    case "severity":
+      return { ...filters, severities: [] };
+    case "trend":
+      return { ...filters, trends: [] };
+    case "confidence":
+      return { ...filters, confidenceMin: "", confidenceMax: "" };
+    case "stage":
+      return { ...filters, stages: [] };
+  }
+}
+
+function ProblemColumnFilterPopover({
+  column,
+  filters,
+  filterCount,
+  severityOptions,
+  stageOptions,
+  dialogId,
+  position,
+  panelRef,
+  onFiltersChange,
+  onClear,
+  onClose,
+}: {
+  column: ProblemTableFilterColumn;
+  filters: ProblemTableFilters;
+  filterCount: number;
+  severityOptions: string[];
+  stageOptions: string[];
+  dialogId: string;
+  position: { left: number; top: number; maxHeight: number } | null;
+  panelRef: React.RefObject<HTMLDivElement | null>;
+  onFiltersChange: (filters: ProblemTableFilters) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const headingId = `${dialogId}-heading`;
+  const label = PROBLEM_FILTER_LABELS[column];
+  const numberValue = (value: ProblemTableFilters["signalsMin"]) =>
+    value === null || value === undefined ? "" : String(value);
+
+  return (
+    <div
+      ref={panelRef}
+      id={dialogId}
+      className="problem-column-filter-popover"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={headingId}
+      style={{
+        left: position?.left ?? 0,
+        top: position?.top ?? 0,
+        maxHeight: position ? `${position.maxHeight}px` : undefined,
+        visibility: position ? "visible" : "hidden",
+      }}
+    >
+      <div className="problem-column-filter-popover-head">
+        <div>
+          <span>Filter column</span>
+          <strong id={headingId}>{label}</strong>
+        </div>
+        <button
+          type="button"
+          className="problem-column-filter-close"
+          aria-label={`Close ${label} filter`}
+          onClick={onClose}
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="problem-column-filter-popover-body">
+        {column === "title" && (
+          <label className="problem-column-filter-field">
+            <span>Problem contains</span>
+            <input
+              data-autofocus="true"
+              type="search"
+              value={filters.title}
+              placeholder="Search problem titles"
+              onChange={(event) =>
+                onFiltersChange({ ...filters, title: event.target.value })
+              }
+            />
+          </label>
+        )}
+
+        {column === "signals" && (
+          <div className="problem-column-filter-range">
+            <label className="problem-column-filter-field">
+              <span>Minimum signals</span>
+              <input
+                data-autofocus="true"
+                type="number"
+                min="0"
+                inputMode="numeric"
+                value={numberValue(filters.signalsMin)}
+                placeholder="0"
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    signalsMin: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="problem-column-filter-field">
+              <span>Maximum signals</span>
+              <input
+                type="number"
+                min="0"
+                inputMode="numeric"
+                value={numberValue(filters.signalsMax)}
+                placeholder="Any"
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    signalsMax: event.target.value,
+                  })
+                }
+              />
+            </label>
+          </div>
+        )}
+
+        {column === "revenue" && (
+          <div className="problem-column-filter-range">
+            <label className="problem-column-filter-field">
+              <span>Minimum ARR ($k)</span>
+              <input
+                data-autofocus="true"
+                type="number"
+                min="0"
+                inputMode="decimal"
+                value={numberValue(filters.revenueMin)}
+                placeholder="0"
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    revenueMin: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="problem-column-filter-field">
+              <span>Maximum ARR ($k)</span>
+              <input
+                type="number"
+                min="0"
+                inputMode="decimal"
+                value={numberValue(filters.revenueMax)}
+                placeholder="Any"
+                onChange={(event) =>
+                  onFiltersChange({
+                    ...filters,
+                    revenueMax: event.target.value,
+                  })
+                }
+              />
+            </label>
+          </div>
+        )}
+
+        {column === "severity" && (
+          <fieldset className="problem-column-filter-options">
+            <legend>Include severity</legend>
+            {severityOptions.map((severity, index) => (
+              <label key={severity}>
+                <input
+                  data-autofocus={index === 0 ? "true" : undefined}
+                  type="checkbox"
+                  checked={filters.severities.includes(severity)}
+                  onChange={() =>
+                    onFiltersChange({
+                      ...filters,
+                      severities: toggleProblemFilterValue(
+                        filters.severities,
+                        severity,
+                      ),
+                    })
+                  }
+                />
+                <span>{severity}</span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+
+        {column === "trend" && (
+          <fieldset className="problem-column-filter-options">
+            <legend>Include trend</legend>
+            {PROBLEM_TABLE_TRENDS.map((trend, index) => (
+              <label key={trend}>
+                <input
+                  data-autofocus={index === 0 ? "true" : undefined}
+                  type="checkbox"
+                  checked={filters.trends.includes(trend)}
+                  onChange={() =>
+                    onFiltersChange({
+                      ...filters,
+                      trends: toggleProblemFilterValue(filters.trends, trend),
+                    })
+                  }
+                />
+                <span>{PROBLEM_TREND_LABELS[trend]}</span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+
+        {column === "confidence" && (
+          <div className="problem-column-filter-range">
+            <label className="problem-column-filter-field">
+              <span>Minimum confidence</span>
+              <div className="problem-column-filter-affix">
+                <input
+                  data-autofocus="true"
+                  type="number"
+                  min="0"
+                  max="100"
+                  inputMode="numeric"
+                  value={numberValue(filters.confidenceMin)}
+                  placeholder="0"
+                  onChange={(event) =>
+                    onFiltersChange({
+                      ...filters,
+                      confidenceMin: event.target.value,
+                    })
+                  }
+                />
+                <span aria-hidden="true">%</span>
+              </div>
+            </label>
+            <label className="problem-column-filter-field">
+              <span>Maximum confidence</span>
+              <div className="problem-column-filter-affix">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  inputMode="numeric"
+                  value={numberValue(filters.confidenceMax)}
+                  placeholder="100"
+                  onChange={(event) =>
+                    onFiltersChange({
+                      ...filters,
+                      confidenceMax: event.target.value,
+                    })
+                  }
+                />
+                <span aria-hidden="true">%</span>
+              </div>
+            </label>
+          </div>
+        )}
+
+        {column === "stage" && (
+          <fieldset className="problem-column-filter-options">
+            <legend>Include stage</legend>
+            {stageOptions.map((stage, index) => (
+              <label key={stage}>
+                <input
+                  data-autofocus={index === 0 ? "true" : undefined}
+                  type="checkbox"
+                  checked={filters.stages.includes(stage)}
+                  onChange={() =>
+                    onFiltersChange({
+                      ...filters,
+                      stages: toggleProblemFilterValue(filters.stages, stage),
+                    })
+                  }
+                />
+                <span>{stage}</span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+      </div>
+
+      <div className="problem-column-filter-popover-actions">
+        <button
+          type="button"
+          className="problem-column-filter-clear"
+          disabled={filterCount === 0}
+          onClick={onClear}
+        >
+          Clear this filter
+        </button>
+        <button
+          type="button"
+          className="problem-column-filter-done"
+          onClick={onClose}
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ProblemTable({
   problems,
   view,
@@ -1284,6 +1710,136 @@ function ProblemTable({
   problems: OverviewAnalytics["problems"];
   view: "problems" | "classification";
 }) {
+  const filterIdPrefix = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRefs = useRef<
+    Partial<Record<ProblemTableFilterColumn, HTMLButtonElement | null>>
+  >({});
+  const [filters, setFilters] = useState<ProblemTableFilters>(() =>
+    createEmptyProblemTableFilters(),
+  );
+  const [openFilter, setOpenFilter] =
+    useState<ProblemTableFilterColumn | null>(null);
+  const [filterPosition, setFilterPosition] = useState<{
+    left: number;
+    top: number;
+    maxHeight: number;
+  } | null>(null);
+  const isClassification = view === "classification";
+  const filteredProblems = useMemo(
+    () => (isClassification ? problems : filterProblems(problems, filters)),
+    [filters, isClassification, problems],
+  );
+  const filterCounts = useMemo(
+    () => countActiveProblemTableFiltersByColumn(filters),
+    [filters],
+  );
+  const activeFilterColumns = useMemo(
+    () => countActiveProblemTableFilterColumns(filters),
+    [filters],
+  );
+  const severityOptions = useMemo(
+    () =>
+      orderedProblemFilterValues(
+        [
+          ...problems.map((problem) => problem.severity),
+          ...filters.severities,
+        ],
+        PREFERRED_SEVERITY_ORDER,
+      ),
+    [filters.severities, problems],
+  );
+  const stageOptions = useMemo(
+    () =>
+      orderedProblemFilterValues(
+        [...problems.map((problem) => problem.stage), ...filters.stages],
+        PREFERRED_STAGE_ORDER,
+      ),
+    [filters.stages, problems],
+  );
+
+  useLayoutEffect(() => {
+    if (!openFilter) return;
+
+    const updatePosition = () => {
+      const trigger = triggerRefs.current[openFilter];
+      const panel = panelRef.current;
+      if (!trigger || !panel) return;
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const visualViewport = window.visualViewport;
+      const viewportLeft = visualViewport?.offsetLeft ?? 0;
+      const viewportTop = visualViewport?.offsetTop ?? 0;
+      const viewportWidth = visualViewport?.width ?? window.innerWidth;
+      const viewportHeight = visualViewport?.height ?? window.innerHeight;
+      const viewportRight = viewportLeft + viewportWidth;
+      const viewportBottom = viewportTop + viewportHeight;
+      const viewportGutter = 12;
+      const popoverGap = 8;
+      const maxHeight = Math.max(0, viewportHeight - viewportGutter * 2);
+      const visiblePanelHeight = Math.min(panelRect.height, maxHeight);
+      const preferredLeft = triggerRect.left;
+      const left = Math.min(
+        Math.max(viewportLeft + viewportGutter, preferredLeft),
+        viewportRight - panelRect.width - viewportGutter,
+      );
+      const below = triggerRect.bottom + popoverGap;
+      const top =
+        below + visiblePanelHeight <= viewportBottom - viewportGutter
+          ? below
+          : Math.max(
+              viewportTop + viewportGutter,
+              triggerRect.top - visiblePanelHeight - popoverGap,
+            );
+
+      setFilterPosition({ left, top, maxHeight });
+    };
+
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        !triggerRefs.current[openFilter]?.contains(target) &&
+        !panelRef.current?.contains(target)
+      ) {
+        setOpenFilter(null);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenFilter(null);
+        triggerRefs.current[openFilter]?.focus();
+      }
+    };
+
+    updatePosition();
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    window.visualViewport?.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("scroll", updatePosition);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.visualViewport?.removeEventListener("resize", updatePosition);
+      window.visualViewport?.removeEventListener("scroll", updatePosition);
+    };
+  }, [openFilter]);
+
+  useEffect(() => {
+    if (!openFilter) return;
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current
+        ?.querySelector<HTMLElement>("[data-autofocus='true']")
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [openFilter]);
+
   if (problems.length === 0) {
     return (
       <div className="empty">
@@ -1292,90 +1848,192 @@ function ProblemTable({
       </div>
     );
   }
-  const isClassification = view === "classification";
+
+  const closeOpenFilter = () => {
+    const trigger = openFilter ? triggerRefs.current[openFilter] : null;
+    setOpenFilter(null);
+    window.requestAnimationFrame(() => trigger?.focus());
+  };
+  const clearAllFilters = () =>
+    setFilters(createEmptyProblemTableFilters());
+  const dialogId = openFilter
+    ? `${filterIdPrefix}-problem-filter-${openFilter}`
+    : "";
+  const renderFilterHeader = (
+    column: ProblemTableFilterColumn,
+    label = PROBLEM_FILTER_LABELS[column],
+  ) => {
+    const count = filterCounts[column];
+    const isOpen = openFilter === column;
+    return (
+      <th scope="col">
+        <button
+          ref={(node) => {
+            triggerRefs.current[column] = node;
+          }}
+          type="button"
+          className="problem-column-filter-trigger"
+          data-active={count > 0 ? "true" : undefined}
+          aria-label={`Filter by ${label}${count > 0 ? `, ${count} active` : ""}`}
+          aria-controls={`${filterIdPrefix}-problem-filter-${column}`}
+          aria-expanded={isOpen}
+          aria-haspopup="dialog"
+          onClick={() => {
+            setFilterPosition(null);
+            setOpenFilter((current) =>
+              current === column ? null : column,
+            );
+          }}
+        >
+          <span>{label}</span>
+          <Filter size={13} aria-hidden="true" />
+          {count > 0 && (
+            <span className="problem-column-filter-count" aria-hidden="true">
+              {count}
+            </span>
+          )}
+        </button>
+      </th>
+    );
+  };
+
   return (
-    <div className="table-wrap problem-table-wrap">
-      <table className="problem-table">
-        <caption className="sr-only">
-          {isClassification
-            ? "Product problem classification"
-            : "Product problem prioritization metrics"}
-        </caption>
-        <thead>
-          <tr>
-            <th>Product problem</th>
-            {isClassification ? (
-              <>
-                <th>Product area</th>
-                <th>Feedback type</th>
-                <th>Severity</th>
-                <th>Confidence</th>
-              </>
-            ) : (
-              <>
-                <th>Signals</th>
-                <th>Revenue</th>
-                <th>Severity</th>
-                <th>Trend</th>
-                <th>Confidence</th>
-                <th>Stage</th>
-              </>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {problems.map((problem) => (
-            <tr key={problem.id}>
-              <td>
-                <Link className="row-link" href={`/problems/${problem.id}`}>
-                  <FitText as="strong" minFontSize={11} maxLines={2}>
-                    {problem.title}
-                  </FitText>
-                </Link>
-              </td>
+    <div className="problem-table-region">
+      {!isClassification && activeFilterColumns > 0 && (
+        <div className="problem-table-filter-summary" role="status" aria-live="polite">
+          <span>
+            Showing <strong>{filteredProblems.length}</strong> of {problems.length}
+            {" "}problems · {activeFilterColumns} filtered {activeFilterColumns === 1 ? "column" : "columns"}
+          </span>
+          <button type="button" onClick={clearAllFilters}>
+            Clear all
+          </button>
+        </div>
+      )}
+      <div className="table-wrap problem-table-wrap">
+        <table className="problem-table">
+          <caption className="sr-only">
+            {isClassification
+              ? "Product problem classification"
+              : "Product problem prioritization metrics"}
+          </caption>
+          <thead>
+            <tr>
+              {isClassification ? (
+                <th scope="col">Product problem</th>
+              ) : (
+                renderFilterHeader("title")
+              )}
               {isClassification ? (
                 <>
-                  <td><span className="problem-taxonomy">{problem.productArea}</span></td>
-                  <td><span className="problem-taxonomy">{problem.type}</span></td>
-                  <td>
-                    <span className={`badge ${problem.severity.toLowerCase()}`}>
-                      {problem.severity}
-                    </span>
-                  </td>
-                  <td>{problem.confidence}%</td>
+                  <th scope="col">Product area</th>
+                  <th scope="col">Feedback type</th>
+                  <th scope="col">Severity</th>
+                  <th scope="col">Confidence</th>
                 </>
               ) : (
                 <>
-                  <td>{problem.count}</td>
-                  <td>
-                    <RevenueCell
-                      problemId={problem.id}
-                      problemTitle={problem.title}
-                      revenue={problem.revenue}
-                      accounts={problem.accounts}
-                    />
-                  </td>
-                  <td>
-                    <span className={`badge ${problem.severity.toLowerCase()}`}>
-                      {problem.severity}
-                    </span>
-                  </td>
-                  <td
-                    className="trend"
-                    title={`${problem.currentSignals} signals this period versus ${problem.previousSignals} previously`}
-                  >
-                    {formatTrend(problem.trend)}
-                  </td>
-                  <td>{problem.confidence}%</td>
-                  <td>
-                    <span className="badge brand">{problem.stage}</span>
-                  </td>
+                  {renderFilterHeader("signals")}
+                  {renderFilterHeader("revenue")}
+                  {renderFilterHeader("severity")}
+                  {renderFilterHeader("trend")}
+                  {renderFilterHeader("confidence")}
+                  {renderFilterHeader("stage")}
                 </>
               )}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filteredProblems.length > 0 ? (
+              filteredProblems.map((problem) => (
+                <tr key={problem.id}>
+                  <td>
+                    <Link className="row-link" href={`/problems/${problem.id}`}>
+                      <FitText as="strong" minFontSize={11} maxLines={2}>
+                        {problem.title}
+                      </FitText>
+                    </Link>
+                  </td>
+                  {isClassification ? (
+                    <>
+                      <td><span className="problem-taxonomy">{problem.productArea}</span></td>
+                      <td><span className="problem-taxonomy">{problem.type}</span></td>
+                      <td>
+                        <span className={`badge ${problem.severity.toLowerCase()}`}>
+                          {problem.severity}
+                        </span>
+                      </td>
+                      <td>{problem.confidence}%</td>
+                    </>
+                  ) : (
+                    <>
+                      <td>{problem.count}</td>
+                      <td>
+                        <RevenueCell
+                          problemId={problem.id}
+                          problemTitle={problem.title}
+                          revenue={problem.revenue}
+                          accounts={problem.accounts}
+                        />
+                      </td>
+                      <td>
+                        <span className={`badge ${problem.severity.toLowerCase()}`}>
+                          {problem.severity}
+                        </span>
+                      </td>
+                      <td
+                        className="trend"
+                        title={`${problem.currentSignals} signals this period versus ${problem.previousSignals} previously`}
+                      >
+                        {formatTrend(problem.trend)}
+                      </td>
+                      <td>{problem.confidence}%</td>
+                      <td>
+                        <span className="badge brand">{problem.stage}</span>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="problem-table-filter-empty-cell" colSpan={7}>
+                  <div className="problem-table-filter-empty">
+                    <strong>No problems match these filters</strong>
+                    <p>Adjust a column filter or clear them to show the ranked list.</p>
+                    <button type="button" onClick={clearAllFilters}>
+                      Clear all filters
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {!isClassification &&
+        openFilter &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <ProblemColumnFilterPopover
+            column={openFilter}
+            filters={filters}
+            filterCount={filterCounts[openFilter]}
+            severityOptions={severityOptions}
+            stageOptions={stageOptions}
+            dialogId={dialogId}
+            position={filterPosition}
+            panelRef={panelRef}
+            onFiltersChange={setFilters}
+            onClear={() =>
+              setFilters((current) =>
+                clearProblemFilterColumn(current, openFilter),
+              )
+            }
+            onClose={closeOpenFilter}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
@@ -2899,12 +3557,25 @@ export function CustomersScreen({ customers }: { customers: CustomerView[] }) {
               <tr key={customer.id}>
                 <td>
                   <strong>{customer.name}</strong>
-                  <small>Customer since {customer.customerSince}</small>
+                  <small>
+                    {customer.customerSinceKnown
+                      ? `Customer since ${customer.customerSince}`
+                      : "Customer since not available"}
+                    {customer.origin === "demo"
+                      ? " · Demo account"
+                      : customer.sourceNames.length > 0
+                        ? ` · Imported from ${customer.sourceNames.join(", ")}`
+                        : " · Manually managed"}
+                  </small>
                 </td>
                 <td>
                   <span className="badge">{customer.tier}</span>
                 </td>
-                <td>{money(customer.arr)}</td>
+                <td>
+                  {customer.arrSource === "unknown"
+                    ? <span className="subtle">Not available</span>
+                    : money(customer.arr)}
+                </td>
                 <td>{customer.signals}</td>
                 <td>{customer.openProblems}</td>
                 <td>

@@ -13,10 +13,10 @@ UPDATE product_problems SET impact_factors='[
  {"key":"engineeringEffort","label":"Effort","value":62,"weight":5,"evidence":"Likely isolated worker and storage change"}
 ]'::jsonb WHERE org_id='org_northstar' AND id='prob_export';
 
-INSERT INTO feedback_items(id,org_id,source,customer_name,account_tier,arr,type,severity,redacted,environment,confidence,observed_at,quote) VALUES
-('fb_004','org_northstar','Survey','Luma Systems','Growth',124000,'Feature request','Low',false,'Web · v4.18.1',0.84,'Yesterday, 11:30','Please let us save a filtered dashboard view for our weekly review.'),
-('fb_005','org_northstar','Email','Orbit Works','Growth',54000,'Usability','Medium',true,'Safari 17 · macOS · v4.18.2',0.71,'Mon, 14:22','I cannot tell whether inviting a teammate succeeded.')
-ON CONFLICT (org_id,id) DO UPDATE SET customer_name=excluded.customer_name,arr=excluded.arr,confidence=excluded.confidence,updated_at=now();
+INSERT INTO feedback_items(id,org_id,source,customer_name,account_tier,arr,type,severity,redacted,environment,confidence,observed_at,quote,account_id) VALUES
+('fb_004','org_northstar','Survey','Luma Systems','Growth',124000,'Feature request','Low',false,'Web · v4.18.1',0.84,'Yesterday, 11:30','Please let us save a filtered dashboard view for our weekly review.','acct_luma'),
+('fb_005','org_northstar','Email','Orbit Works','Growth',54000,'Usability','Medium',true,'Safari 17 · macOS · v4.18.2',0.71,'Mon, 14:22','I cannot tell whether inviting a teammate succeeded.','acct_orbit')
+ON CONFLICT (org_id,id) DO UPDATE SET customer_name=excluded.customer_name,arr=excluded.arr,confidence=excluded.confidence,account_id=excluded.account_id,updated_at=now();
 INSERT INTO feedback_cluster_memberships(org_id,problem_id,feedback_id,similarity,explanation) VALUES
 ('org_northstar','prob_filters','fb_004',0.84,'Saved filtered dashboard view request'),('org_northstar','prob_invites','fb_005',0.71,'Invite confirmation usability issue') ON CONFLICT DO NOTHING;
 

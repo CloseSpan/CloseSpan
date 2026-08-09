@@ -13,7 +13,7 @@ export interface EvidenceRef {
 
 export interface FeedbackItem extends EvidenceRef {
   orgId: string;
-  accountTier: "Enterprise" | "Growth" | "Starter";
+  accountTier: "Enterprise" | "Growth" | "Starter" | "Unknown";
   arr: number;
   type: FeedbackType;
   severity: Severity;

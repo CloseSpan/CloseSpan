@@ -14,6 +14,22 @@ export interface FeedbackWeekDescriptor {
   label: string;
 }
 
+export const THEME_RANGE_OPTIONS = [
+  { value: "7d", label: "Last week", days: 7 },
+  { value: "14d", label: "2 weeks", days: 14 },
+  { value: "30d", label: "30 days", days: 30 },
+  { value: "90d", label: "90 days", days: 90 },
+  { value: "6m", label: "6 months", days: 180 },
+] as const;
+
+export type ThemeRange = (typeof THEME_RANGE_OPTIONS)[number]["value"];
+export interface ThemeAnalyticsRecord {
+  name: string;
+  currentSignals: number;
+  previousSignals: number;
+  trend: number | null;
+}
+
 export const OVERVIEW_WEEK_BUCKETS = 8;
 const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1_000;
 const MONTH_NAMES = [
@@ -85,7 +101,9 @@ export interface OverviewAnalytics {
     averageResolutionDays: number;
     resolutionImprovementDays: number;
   };
-  themes: Array<{ name: string; currentSignals: number; previousSignals: number; trend: number | null }>;
+  /** The 30-day default, retained for older clients and serialized fixtures. */
+  themes: ThemeAnalyticsRecord[];
+  themeRanges?: Record<ThemeRange, ThemeAnalyticsRecord[]>;
   problems: Array<ProblemAnalyticsRecord & { count: number; revenue: number; confidence: number; trend: number | null }>;
   feedbackTotal: number;
 }
@@ -107,6 +125,13 @@ export function createEmptyOverviewAnalytics(): OverviewAnalytics {
       resolutionImprovementDays: 0,
     },
     themes: [],
+    themeRanges: {
+      "7d": [],
+      "14d": [],
+      "30d": [],
+      "90d": [],
+      "6m": [],
+    },
     problems: [],
   };
 }
@@ -140,6 +165,19 @@ const themeRecords = [
   { name: "Team onboarding", currentSignals: 17, previousSignals: 18 },
 ];
 
+function buildDemoThemeRange(factor: number): ThemeAnalyticsRecord[] {
+  return themeRecords.map((theme) => {
+    const currentSignals = Math.max(1, Math.round(theme.currentSignals * factor));
+    const previousSignals = Math.max(1, Math.round(theme.previousSignals * factor));
+    return {
+      name: theme.name,
+      currentSignals,
+      previousSignals,
+      trend: percentageChange(currentSignals, previousSignals),
+    };
+  });
+}
+
 const resolutionRecords = { currentDays: [6.2, 7.9, 11.1], previousDays: [9.1, 9.6, 10.1] };
 
 export function percentageChange(current: number, previous: number): number | null {
@@ -163,6 +201,13 @@ export function calculateOverviewAnalytics(
   const uniqueAccounts = new Map(problemRecords.flatMap((problem) => problem.accounts).map((account) => [account.accountId, account]));
   const currentResolution = average(resolutionRecords.currentDays);
   const previousResolution = average(resolutionRecords.previousDays);
+  const themeRanges: Record<ThemeRange, ThemeAnalyticsRecord[]> = {
+    "7d": buildDemoThemeRange(0.25),
+    "14d": buildDemoThemeRange(0.5),
+    "30d": buildDemoThemeRange(1),
+    "90d": buildDemoThemeRange(2.4),
+    "6m": buildDemoThemeRange(4.8),
+  };
   return {
     feedbackSeries: { "All sources": allSources, Intercom: [...weeklySignals.Intercom], Zendesk: [...weeklySignals.Zendesk], Slack: [...weeklySignals.Slack], Surveys: [...weeklySignals.Surveys] },
     feedbackWeeks: buildFeedbackWeekDescriptors(referenceDate),
@@ -177,7 +222,8 @@ export function calculateOverviewAnalytics(
       averageResolutionDays: Number(currentResolution.toFixed(1)),
       resolutionImprovementDays: Number((previousResolution - currentResolution).toFixed(1)),
     },
-    themes: themeRecords.map((theme) => ({ ...theme, trend: percentageChange(theme.currentSignals, theme.previousSignals) })),
+    themes: themeRanges["30d"],
+    themeRanges,
     problems: problemRecords.map((problem) => ({
       ...problem,
       count: problem.currentSignals,

@@ -526,6 +526,7 @@ export function IntegrationCopilot({
           </label>
           <input
             id="integration-copilot-input"
+            className="neumorphic-composite-field"
             value={draft}
             maxLength={600}
             onChange={(event) => setDraft(event.target.value)}

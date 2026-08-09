@@ -36,6 +36,15 @@ describe("overview analytics", () => {
       analytics.feedbackSeries["All sources"].length,
     );
     expect(analytics.feedbackWeeks.at(-1)?.shortLabel).toBe("Jul 20–26");
+    expect(analytics.themeRanges?.["7d"][0].currentSignals).toBeLessThan(
+      analytics.themeRanges?.["14d"][0].currentSignals ?? 0,
+    );
+    expect(analytics.themeRanges?.["14d"][0].currentSignals).toBeLessThan(
+      analytics.themeRanges?.["30d"][0].currentSignals ?? 0,
+    );
+    expect(analytics.themeRanges?.["6m"][0].currentSignals).toBeGreaterThan(
+      analytics.themeRanges?.["90d"][0].currentSignals ?? 0,
+    );
   });
 
   it("keeps empty analytics compatible with the date-range chart contract", () => {
@@ -43,5 +52,6 @@ describe("overview analytics", () => {
 
     expect(analytics.feedbackSeries).toEqual({ "All sources": [] });
     expect(analytics.feedbackWeeks).toEqual([]);
+    expect(analytics.themeRanges).toHaveProperty("7d", []);
   });
 });

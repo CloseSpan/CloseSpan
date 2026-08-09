@@ -9,9 +9,12 @@ import {
   overviewAnalytics,
   percentageChange,
   startOfUtcWeek,
+  THEME_RANGE_OPTIONS,
   type AccountImpactRecord,
   type FeedbackWeekDescriptor,
   type OverviewAnalytics,
+  type ThemeAnalyticsRecord,
+  type ThemeRange,
 } from "./overview-analytics";
 
 export { OVERVIEW_WEEK_BUCKETS } from "./overview-analytics";
@@ -43,6 +46,7 @@ export interface FeedbackEventRow {
 }
 
 const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1_000;
+const DAY_IN_MS = 24 * 60 * 60 * 1_000;
 
 function safeEventDate(
   row: Pick<FeedbackEventRow, "observed_at" | "created_at">,
@@ -134,10 +138,72 @@ export function buildReviewedThemeRows(
     .slice(0, 6);
 }
 
+/**
+ * Compares a rolling period with the immediately preceding period of equal
+ * length. Themes without a current-period signal are omitted because they are
+ * declining history rather than emerging activity.
+ */
+export function buildReviewedThemeRowsForRange(
+  rows: ThemeEventRow[],
+  rangeDays: number,
+  referenceDate = new Date(),
+): ThemeRow[] {
+  if (!Number.isInteger(rangeDays) || rangeDays < 1) {
+    throw new RangeError("Theme range must be a positive whole number of days.");
+  }
+
+  const periodEnd = referenceDate.getTime();
+  const currentStart = periodEnd - rangeDays * DAY_IN_MS;
+  const previousStart = currentStart - rangeDays * DAY_IN_MS;
+  const counts = new Map<string, { current: number; previous: number }>();
+
+  for (const row of rows) {
+    const theme = row.theme.trim() || "Uncategorized";
+    const occurredAt = safeEventDate(row)?.getTime();
+    if (
+      occurredAt === undefined ||
+      occurredAt < previousStart ||
+      occurredAt > periodEnd
+    ) {
+      continue;
+    }
+
+    const value = counts.get(theme) ?? { current: 0, previous: 0 };
+    if (occurredAt >= currentStart) value.current += 1;
+    else value.previous += 1;
+    counts.set(theme, value);
+  }
+
+  return [...counts.entries()]
+    .map(([theme, value]) => ({
+      theme,
+      current_signals: value.current,
+      previous_signals: value.previous,
+    }))
+    .filter((row) => row.current_signals > 0)
+    .sort(
+      (left, right) =>
+        right.current_signals - left.current_signals ||
+        right.previous_signals - left.previous_signals ||
+        left.theme.localeCompare(right.theme),
+    )
+    .slice(0, 6);
+}
+
+function serializeThemes(rows: ThemeRow[]): ThemeAnalyticsRecord[] {
+  return rows.map((row) => ({
+    name: row.theme,
+    currentSignals: row.current_signals,
+    previousSignals: row.previous_signals,
+    trend: percentageChange(row.current_signals, row.previous_signals),
+  }));
+}
+
 export function buildOverviewAnalytics(input: {
   weeklyRows: WeeklyRow[];
   feedbackWeeks: FeedbackWeekDescriptor[];
   themeRows: ThemeRow[];
+  themeRowsByRange?: Record<ThemeRange, ThemeRow[]>;
   problemRows: ProblemRow[];
   resolutionRows: ResolutionRow[];
   feedbackCount?: FeedbackCountRow;
@@ -146,6 +212,7 @@ export function buildOverviewAnalytics(input: {
     weeklyRows,
     feedbackWeeks,
     themeRows,
+    themeRowsByRange,
     problemRows,
     resolutionRows,
     feedbackCount = { total: 0, awaiting_analysis: 0 },
@@ -216,6 +283,15 @@ export function buildOverviewAnalytics(input: {
     (total, value) => total + value,
     0,
   );
+  const themes = serializeThemes(themeRows);
+  const themeRanges = themeRowsByRange
+    ? Object.fromEntries(
+        THEME_RANGE_OPTIONS.map(({ value }) => [
+          value,
+          serializeThemes(themeRowsByRange[value]),
+        ]),
+      ) as Record<ThemeRange, ThemeAnalyticsRecord[]>
+    : undefined;
   return {
     feedbackSeries,
     feedbackWeeks,
@@ -228,7 +304,8 @@ export function buildOverviewAnalytics(input: {
       affectedRevenue: [...uniqueAccounts.values()].reduce((total, account) => total + account.arr, 0), affectedAccounts: uniqueAccounts.size,
       averageResolutionDays: Number(currentResolution.toFixed(1)), resolutionImprovementDays: Number((previousResolution - currentResolution).toFixed(1)),
     },
-    themes: themeRows.map((row) => ({ name: row.theme, currentSignals: row.current_signals, previousSignals: row.previous_signals, trend: percentageChange(row.current_signals, row.previous_signals) })),
+    themes,
+    themeRanges,
     problems,
   };
 }
@@ -303,10 +380,21 @@ export async function getOverviewAnalytics(orgId: string): Promise<OverviewAnaly
       ))::int awaiting_analysis
       FROM feedback_items WHERE org_id=$1`, [orgId]),
   ]);
+  const themeRowsByRange = Object.fromEntries(
+    THEME_RANGE_OPTIONS.map(({ value, days }) => [
+      value,
+      buildReviewedThemeRowsForRange(
+        themeEventsResult.rows,
+        days,
+        referenceDate,
+      ),
+    ]),
+  ) as Record<ThemeRange, ThemeRow[]>;
   return buildOverviewAnalytics({
     weeklyRows: buildFeedbackWeeklyRows(feedbackEventsResult.rows, referenceDate),
     feedbackWeeks: buildFeedbackWeekDescriptors(referenceDate),
-    themeRows: buildReviewedThemeRows(themeEventsResult.rows, referenceDate),
+    themeRows: themeRowsByRange["30d"],
+    themeRowsByRange,
     problemRows: problemResult.rows,
     resolutionRows: resolutionResult.rows,
     feedbackCount: feedbackCountResult.rows[0],

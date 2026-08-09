@@ -14,14 +14,14 @@ describe("workspace navigation", () => {
   });
 
   it("maps nested routes to their owning navigation item", () => {
-    expect(workspaceRouteIndex("/problems/problem_123")).toBe(2);
-    expect(workspaceRouteIndex("/agent-runs/run_123")).toBe(5);
+    expect(workspaceRouteIndex("/problems/problem_123")).toBe(3);
+    expect(workspaceRouteIndex("/agent-runs/run_123")).toBe(7);
     expect(workspaceRouteIndex("/unknown")).toBeNull();
   });
 
   it("derives vertical motion from sidebar order", () => {
     expect(workspaceRouteDirection("/overview", "/approvals")).toBe("forward");
-    expect(workspaceRouteDirection("/settings", "/problems")).toBe("backward");
+    expect(workspaceRouteDirection("/follow-up", "/problems")).toBe("backward");
     expect(workspaceRouteDirection("/problems", "/problems/problem_123")).toBe(
       "forward",
     );
@@ -39,6 +39,17 @@ describe("workspace navigation", () => {
 
   it("provides stable breadcrumb labels", () => {
     expect(workspaceSection("/problems/problem_123")).toBe("Product problems");
-    expect(workspaceSection("/agent-runs/run_123")).toBe("Agent run results");
+    expect(workspaceSection("/agent-runs/run_123")).toBe(
+      "Agent runs & verification",
+    );
+    expect(workspaceSection("/settings")).toBe("Settings & governance");
+    expect(workspaceSection("/integrations")).toBe("Integrations");
+    expect(workspaceSection("/admin/waitlist")).toBe("Waitlist users");
+  });
+
+  it("keeps account and administration routes outside the workflow order", () => {
+    expect(workspaceRouteIndex("/settings")).toBeNull();
+    expect(workspaceRouteIndex("/integrations")).toBeNull();
+    expect(workspaceRouteIndex("/admin/waitlist")).toBeNull();
   });
 });

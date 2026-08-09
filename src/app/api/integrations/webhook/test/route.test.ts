@@ -61,6 +61,13 @@ describe("webhook setup test route", () => {
       "https://closespan.example/api/webhooks/whk_alpha_opaque",
     );
     expect(body.webhookUrl).not.toContain("/int_webhook");
+    expect(repository.ingest).toHaveBeenCalledWith(
+      "org_alpha",
+      "int_webhook",
+      expect.stringMatching(/^setup_test_/),
+      expect.objectContaining({ customer: "Test customer" }),
+      { materializeCustomer: false },
+    );
   });
 
   it("omits the URL when no persisted public endpoint is available", async () => {

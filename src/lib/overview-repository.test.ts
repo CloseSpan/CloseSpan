@@ -4,6 +4,7 @@ import {
   buildFeedbackWeeklyRows,
   buildOverviewAnalytics,
   buildReviewedThemeRows,
+  buildReviewedThemeRowsForRange,
   OVERVIEW_WEEK_BUCKETS,
 } from "./overview-repository";
 
@@ -164,5 +165,51 @@ describe("overview repository analytics", () => {
       { theme: "Checkout", current_signals: 1, previous_signals: 1 },
       { theme: "Permissions", current_signals: 1, previous_signals: 0 },
     ]);
+  });
+
+  it("compares rolling theme periods and omits themes with no current signals", () => {
+    const rows = buildReviewedThemeRowsForRange(
+      [
+        {
+          theme: "Checkout",
+          observed_at: "2026-07-20T12:00:00.000Z",
+          created_at: "2026-07-20T12:00:00.000Z",
+        },
+        {
+          theme: "Checkout",
+          observed_at: "2026-06-15T12:00:00.000Z",
+          created_at: "2026-06-15T12:00:00.000Z",
+        },
+        {
+          theme: "Permissions",
+          observed_at: "invalid",
+          created_at: "2026-07-10T12:00:00.000Z",
+        },
+        {
+          theme: "Previous only",
+          observed_at: "2026-06-20T12:00:00.000Z",
+          created_at: "2026-06-20T12:00:00.000Z",
+        },
+        {
+          theme: "Future",
+          observed_at: "2026-08-02T12:00:00.000Z",
+          created_at: "2026-08-02T12:00:00.000Z",
+        },
+      ],
+      30,
+      new Date("2026-08-01T00:00:00.000Z"),
+    );
+
+    expect(rows).toEqual([
+      { theme: "Checkout", current_signals: 1, previous_signals: 1 },
+      { theme: "Permissions", current_signals: 1, previous_signals: 0 },
+    ]);
+  });
+
+  it("rejects invalid rolling theme ranges", () => {
+    expect(() => buildReviewedThemeRowsForRange([], 0)).toThrow(
+      "Theme range must be a positive whole number of days.",
+    );
+    expect(() => buildReviewedThemeRowsForRange([], 2.5)).toThrow(RangeError);
   });
 });

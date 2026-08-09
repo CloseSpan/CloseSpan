@@ -4,12 +4,20 @@ INSERT INTO product_problems(id,org_id,title,statement,summary,stage,severity,co
 ('prob_invites','org_northstar','Team invite confirmation is unclear','Invite completion lacks a clear confirmation state.','Administrators are uncertain whether team invitations were sent.','Planned','Low',0.78,'Platform experience','Core Product',24,'acme/web-app','[]','[]')
 ON CONFLICT (org_id,id) DO UPDATE SET title=excluded.title,stage=excluded.stage,severity=excluded.severity,confidence=excluded.confidence,updated_at=now();
 
-INSERT INTO accounts(id,org_id,name,arr) VALUES
-('acct_northstar','org_northstar','Northstar Labs',184000),('acct_acme','org_northstar','Acme Health',142000),('acct_atlas','org_northstar','Atlas Cloud',68000),
-('acct_luma','org_northstar','Luma Systems',124000),('acct_nova','org_northstar','Nova Commerce',92000),
-('acct_apex','org_northstar','Apex Financial',220000),('acct_meridian','org_northstar','Meridian AI',168000),('acct_harbor','org_northstar','Harbor Security',126000),('acct_vertex','org_northstar','Vertex Systems',98000),
-('acct_orbit','org_northstar','Orbit Works',54000),('acct_pulse','org_northstar','Pulse Studio',44000)
-ON CONFLICT (org_id,id) DO UPDATE SET name=excluded.name,arr=excluded.arr,updated_at=now();
+INSERT INTO accounts(id,org_id,name,arr,origin,arr_source,arr_source_priority,profile_source,profile_source_priority) VALUES
+('acct_northstar','org_northstar','Northstar Labs',184000,'demo','demo',10,'demo',10),('acct_acme','org_northstar','Acme Health',142000,'demo','demo',10,'demo',10),('acct_atlas','org_northstar','Atlas Cloud',68000,'demo','demo',10,'demo',10),
+('acct_luma','org_northstar','Luma Systems',124000,'demo','demo',10,'demo',10),('acct_nova','org_northstar','Nova Commerce',92000,'demo','demo',10,'demo',10),
+('acct_apex','org_northstar','Apex Financial',220000,'demo','demo',10,'demo',10),('acct_meridian','org_northstar','Meridian AI',168000,'demo','demo',10,'demo',10),('acct_harbor','org_northstar','Harbor Security',126000,'demo','demo',10,'demo',10),('acct_vertex','org_northstar','Vertex Systems',98000,'demo','demo',10,'demo',10),
+('acct_orbit','org_northstar','Orbit Works',54000,'demo','demo',10,'demo',10),('acct_pulse','org_northstar','Pulse Studio',44000,'demo','demo',10,'demo',10)
+ON CONFLICT (org_id,id) DO UPDATE SET name=excluded.name,arr=excluded.arr,origin=excluded.origin,arr_source=excluded.arr_source,arr_source_priority=excluded.arr_source_priority,profile_source=excluded.profile_source,profile_source_priority=excluded.profile_source_priority,updated_at=now();
+
+UPDATE feedback_items feedback
+SET account_id=account.id
+FROM accounts account
+WHERE feedback.org_id=account.org_id
+  AND feedback.customer_name=account.name
+  AND feedback.org_id='org_northstar'
+  AND feedback.account_id IS NULL;
 
 INSERT INTO problem_account_impacts(org_id,problem_id,account_id) VALUES
 ('org_northstar','prob_export','acct_northstar'),('org_northstar','prob_export','acct_acme'),('org_northstar','prob_export','acct_atlas'),

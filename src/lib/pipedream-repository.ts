@@ -21,9 +21,24 @@ export interface PipedreamConnection {
   lastImportStatus: "Running" | "Succeeded" | "Failed" | null;
   lastImportCount: number;
   lastImportError: string | null;
+  importCursor: string | null;
+}
+
+export interface PipedreamImportClaim {
+  importCursor: string | null;
+  leaseToken: string;
 }
 
 const memory = new Map<string, PipedreamConnection[]>();
+const memoryImportGenerations = new Map<string, bigint>();
+
+function memoryImportKey(input: {
+  orgId: string;
+  integrationId: PipedreamConnectorId;
+  accountId: string;
+}): string {
+  return `${input.orgId}\u0000${input.integrationId}\u0000${input.accountId}`;
+}
 
 async function refreshIntegrationConnectionState(
   client: PoolClient,
@@ -76,14 +91,30 @@ export async function savePipedreamAccount(input: {
     lastImportStatus: null,
     lastImportCount: 0,
     lastImportError: null,
+    importCursor: null,
   };
   if (workspacePersistenceMode(input.orgId) !== "postgres") {
     const items = memory.get(input.orgId) ?? [];
+    const existing = items.find(
+      (item) =>
+        item.integrationId === connection.integrationId &&
+        item.accountId === connection.accountId,
+    );
+    const saved = existing
+      ? {
+          ...connection,
+          lastImportAt: existing.lastImportAt,
+          lastImportStatus: existing.lastImportStatus,
+          lastImportCount: existing.lastImportCount,
+          lastImportError: existing.lastImportError,
+          importCursor: existing.importCursor,
+        }
+      : connection;
     memory.set(input.orgId, [
       ...items.filter((item) => item.accountId !== connection.accountId),
-      connection,
+      saved,
     ]);
-    return connection;
+    return saved;
   }
   await transaction(async (client) => {
     await client.query(
@@ -124,9 +155,10 @@ export async function listPipedreamConnections(
     last_import_status: PipedreamConnection["lastImportStatus"];
     last_import_count: number;
     last_import_error: string | null;
+    import_cursor: string | null;
   }>(`SELECT integration_id,account_id,app_slug,account_name,state,healthy,
              authorized_scopes,last_import_at,last_import_status,
-             last_import_count,last_import_error
+             last_import_count,last_import_error,import_cursor
         FROM pipedream_connections WHERE org_id=$1 AND state<>'Disconnected'
        ORDER BY updated_at DESC`,[orgId]);
   return result.rows.map((row) => ({
@@ -137,7 +169,66 @@ export async function listPipedreamConnections(
     lastImportStatus: row.last_import_status,
     lastImportCount: row.last_import_count ?? 0,
     lastImportError: row.last_import_error,
+    importCursor: row.import_cursor,
   }));
+}
+
+export async function updatePipedreamImportCursor(
+  client: PoolClient | null,
+  input: {
+    orgId: string;
+    integrationId: PipedreamConnectorId;
+    accountId: string;
+    cursor: string;
+    leaseToken: string;
+  },
+): Promise<void> {
+  if (workspacePersistenceMode(input.orgId) !== "postgres") {
+    const items = memory.get(input.orgId) ?? [];
+    const target = items.find(
+      (item) =>
+        item.integrationId === input.integrationId &&
+        item.accountId === input.accountId,
+    );
+    if (
+      !target ||
+      target.state === "Disconnected" ||
+      target.lastImportStatus !== "Running" ||
+      memoryImportGenerations.get(memoryImportKey(input))?.toString() !==
+        input.leaseToken
+    ) {
+      throw new Error("stale_import_lease");
+    }
+    memory.set(
+      input.orgId,
+      items.map((item) => item === target
+        ? { ...item, importCursor: input.cursor }
+        : item),
+    );
+    return;
+  }
+  if (!client) {
+    throw new Error("pipedream_cursor_transaction_required");
+  }
+  const updated = await client.query(
+    `UPDATE pipedream_connections
+        SET import_cursor=$4,updated_at=now()
+      WHERE org_id=$1 AND integration_id=$2 AND account_id=$3
+        AND state<>'Disconnected'
+        AND last_import_status='Running'
+        AND import_generation=$5::bigint
+      RETURNING id`,
+    [
+      input.orgId,
+      input.integrationId,
+      input.accountId,
+      input.cursor,
+      input.leaseToken,
+    ],
+  );
+  if (!updated.rowCount) {
+    throw new Error("stale_import_lease");
+  }
 }
 
 export async function reconcilePipedreamAccounts(input: {
@@ -186,54 +277,108 @@ export async function updatePipedreamImportState(input: {
   orgId: string;
   integrationId: PipedreamConnectorId;
   accountId: string;
-  status: "Running" | "Succeeded" | "Failed";
+  status: "Succeeded" | "Failed";
+  leaseToken: string;
   count?: number;
   safeError?: string | null;
 }): Promise<void> {
   if (workspacePersistenceMode(input.orgId) !== "postgres") {
     const items = memory.get(input.orgId) ?? [];
-    memory.set(input.orgId, items.map((item) =>
-      item.integrationId === input.integrationId && item.accountId === input.accountId
-        ? { ...item, lastImportAt: input.status === "Running" ? item.lastImportAt : new Date().toISOString(), lastImportStatus: input.status, lastImportCount: input.count ?? item.lastImportCount, lastImportError: input.safeError ?? null }
-        : item,
-    ));
+    const target = items.find(
+      (item) =>
+        item.integrationId === input.integrationId &&
+        item.accountId === input.accountId,
+    );
+    if (
+      !target ||
+      target.lastImportStatus !== "Running" ||
+      memoryImportGenerations.get(memoryImportKey(input))?.toString() !==
+        input.leaseToken
+    ) {
+      throw new Error("stale_import_lease");
+    }
+    memory.set(
+      input.orgId,
+      items.map((item) => item === target
+        ? {
+            ...item,
+            lastImportAt: new Date().toISOString(),
+            lastImportStatus: input.status,
+            lastImportCount: input.count ?? item.lastImportCount,
+            lastImportError: input.safeError ?? null,
+          }
+        : item),
+    );
     return;
   }
-  await databasePool().query(
+  const updated = await databasePool().query(
     `UPDATE pipedream_connections
         SET last_import_status=$4,
-            last_import_at=CASE WHEN $4='Running' THEN last_import_at ELSE now() END,
+            last_import_at=now(),
             last_import_count=COALESCE($5,last_import_count),
-            last_import_error=$6,updated_at=now()
+            last_import_error=$6,import_claimed_at=NULL,updated_at=now()
       WHERE org_id=$1 AND integration_id=$2 AND account_id=$3
-        AND state<>'Disconnected'`,
-    [input.orgId,input.integrationId,input.accountId,input.status,input.count ?? null,input.safeError ?? null],
+        AND state<>'Disconnected'
+        AND last_import_status='Running'
+        AND import_generation=$7::bigint
+      RETURNING id`,
+    [
+      input.orgId,
+      input.integrationId,
+      input.accountId,
+      input.status,
+      input.count ?? null,
+      input.safeError ?? null,
+      input.leaseToken,
+    ],
   );
+  if (!updated.rowCount) {
+    throw new Error("stale_import_lease");
+  }
 }
 
 export async function claimPipedreamImport(input: {
   orgId: string;
   integrationId: PipedreamConnectorId;
   accountId: string;
-}): Promise<boolean> {
+}): Promise<PipedreamImportClaim | null> {
   if (workspacePersistenceMode(input.orgId) !== "postgres") {
     const items = memory.get(input.orgId) ?? [];
     const target = items.find((item) => item.integrationId === input.integrationId && item.accountId === input.accountId);
-    if (!target || target.lastImportStatus === "Running") return false;
-    memory.set(input.orgId, items.map((item) => item === target ? { ...item, lastImportStatus: "Running", lastImportError: null } : item));
-    return true;
+    if (!target || target.lastImportStatus === "Running") return null;
+    const key = memoryImportKey(input);
+    const generation = (memoryImportGenerations.get(key) ?? 0n) + 1n;
+    const leaseToken = generation.toString();
+    memoryImportGenerations.set(key, generation);
+    memory.set(input.orgId, items.map((item) => item === target
+      ? {
+          ...item,
+          lastImportStatus: "Running",
+          lastImportError: null,
+        }
+      : item));
+    return { importCursor: target.importCursor, leaseToken };
   }
-  const result = await databasePool().query(
+  const result = await databasePool().query<{
+    import_cursor: string | null;
+    lease_token: string;
+  }>(
     `UPDATE pipedream_connections
-        SET last_import_status='Running',last_import_error=NULL,updated_at=now()
+        SET last_import_status='Running',last_import_error=NULL,
+            import_generation=import_generation + 1,
+            import_claimed_at=now(),updated_at=now()
       WHERE org_id=$1 AND integration_id=$2 AND account_id=$3
         AND state='Connected'
         AND (last_import_status IS DISTINCT FROM 'Running'
-             OR updated_at < now() - interval '5 minutes')
-      RETURNING id`,
+             OR import_claimed_at IS NULL
+             OR import_claimed_at < now() - interval '5 minutes')
+      RETURNING import_cursor,import_generation::text AS lease_token`,
     [input.orgId,input.integrationId,input.accountId],
   );
-  return Boolean(result.rowCount);
+  const claim = result.rows[0];
+  return claim
+    ? { importCursor: claim.import_cursor, leaseToken: claim.lease_token }
+    : null;
 }
 
 export async function getPipedreamConnection(
@@ -278,5 +423,8 @@ export async function disconnectPipedreamAccount(input: {
 }
 
 export function resetPipedreamMemoryState(): void {
-  if (process.env.NODE_ENV === "test") memory.clear();
+  if (process.env.NODE_ENV === "test") {
+    memory.clear();
+    memoryImportGenerations.clear();
+  }
 }
