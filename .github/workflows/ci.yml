@@ -15,7 +15,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://feedbackflow:feedbackflow_ci@localhost:5432/feedbackflow
       DATABASE_SSL: "false"
-      PERSISTENCE_MODE: postgres
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -38,9 +37,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:migrate
+        env:
+          PERSISTENCE_MODE: postgres
       - run: npm run db:seed
+        env:
+          PERSISTENCE_MODE: postgres
       - run: npm run db:verify
+        env:
+          PERSISTENCE_MODE: postgres
       - run: npm run lint
       - run: npm test
+        env:
+          PERSISTENCE_MODE: memory
       - run: npm run build
+        env:
+          PERSISTENCE_MODE: memory
       - run: npm run typecheck
