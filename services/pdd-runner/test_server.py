@@ -4,6 +4,8 @@ import io
 import json
 import os
 import pathlib
+import subprocess
+import tempfile
 import unittest
 from subprocess import CompletedProcess, TimeoutExpired
 from unittest import mock
@@ -105,6 +107,18 @@ def job(config=None):
     }
 
 
+def prompt_evaluation():
+    return {
+        "schemaVersion": 1,
+        "requestId": "66666666-6666-4666-8666-666666666666",
+        "promptHash": "c" * 64,
+        "userStory": "As an analyst, I want a complete export, so that reporting succeeds.",
+        "implementationPrompt": "Make large exports complete and verifiable.",
+        "pddVersion": "0.0.309",
+        "budgetUsd": 0.25,
+    }
+
+
 class PddJobV2ValidationTest(unittest.TestCase):
     def setUp(self):
         self.version = mock.patch.object(server, "PDD_CLI_VERSION", "0.0.309")
@@ -115,6 +129,42 @@ class PddJobV2ValidationTest(unittest.TestCase):
 
     def test_accepts_signed_job_with_execution_profile_schema_v1(self):
         self.assertEqual(server.validate_job(job())["schemaVersion"], 2)
+
+    def test_accepts_bounded_prompt_evaluation(self):
+        value = server.validate_prompt_evaluation({
+            "schemaVersion": 1,
+            "requestId": "66666666-6666-4666-8666-666666666666",
+            "promptHash": "c" * 64,
+            "userStory": "As an analyst, I want a complete export, so that reporting succeeds.",
+            "implementationPrompt": "Make large exports complete and verifiable.",
+            "pddVersion": "0.0.309",
+            "budgetUsd": 0.25,
+        })
+        self.assertEqual(value["budgetUsd"], 0.25)
+
+    def test_parses_actionable_story_detection(self):
+        verdict, changes = server.parse_story_detection(json.dumps({
+            "schema_version": "pdd.detect.stories.v1",
+            "outcome": "STORY_FAILURE",
+            "results": [{
+                "verdict": "FAIL",
+                "changes": [{
+                    "prompt_name": "suggested.prompt",
+                    "change_instructions": "Require the downloaded CSV to contain every expected row.",
+                }],
+            }],
+        }))
+        self.assertEqual(verdict, "Needs revision")
+        self.assertEqual(changes, ["Require the downloaded CSV to contain every expected row."])
+
+    def test_surfaces_story_detection_infrastructure_failure(self):
+        with self.assertRaisesRegex(RuntimeError, "provider:UNAVAILABLE"):
+            server.parse_story_detection(json.dumps({
+                "schema_version": "pdd.detect.stories.v1",
+                "outcome": "INFRASTRUCTURE_ERROR",
+                "results": [],
+                "stop_reason": "provider:UNAVAILABLE",
+            }))
 
     def test_accepts_execution_profile_schema_v2_with_runtime_capabilities(self):
         value = server.validate_job(job(profile_config_v2()))
@@ -379,6 +429,7 @@ class PddHandlerV2ValidationTest(unittest.TestCase):
     def setUp(self):
         server.ACTIVE_JOBS = 0
         server.QUEUED_JOBS = 0
+        server.PROMPT_EVALUATIONS.clear()
         self.secret = b"handler-test-secret"
         self.shared_secret = mock.patch.object(server, "SHARED_SECRET", self.secret)
         self.callback = mock.patch.object(
@@ -394,6 +445,7 @@ class PddHandlerV2ValidationTest(unittest.TestCase):
     def tearDown(self):
         server.ACTIVE_JOBS = 0
         server.QUEUED_JOBS = 0
+        server.PROMPT_EVALUATIONS.clear()
         self.execute.stop()
         self.version.stop()
         self.callback.stop()
@@ -475,11 +527,116 @@ class PddHandlerV2ValidationTest(unittest.TestCase):
         self.assertEqual(status, 400)
         self.execute_mock.assert_not_called()
 
+    def signed_post(self, path, payload, *, immediate=False):
+        body = json.dumps(payload, separators=(",", ":")).encode()
+        signature = hmac.new(self.secret, body, hashlib.sha256).hexdigest()
+        handler = self.handler(
+            path=path,
+            body=body,
+            headers={
+                "content-type": "application/json",
+                "content-length": str(len(body)),
+                "x-closespan-signature": signature,
+            },
+        )
+
+        class ControlledThread:
+            def __init__(self, *, target, args, daemon):
+                self.target = target
+                self.args = args
+
+            def start(self):
+                if immediate:
+                    self.target(*self.args)
+
+        with mock.patch.object(server.threading, "Thread", ControlledThread):
+            handler.do_POST()
+        if handler.send_error.called:
+            return handler.send_error.call_args.args[0], handler.wfile.getvalue()
+        return handler.send_response.call_args.args[0], handler.wfile.getvalue()
+
+    def test_prompt_evaluation_is_accepted_without_waiting_for_pdd(self):
+        payload = prompt_evaluation()
+        status, body = self.signed_post("/prompt-evaluations", payload)
+        self.assertEqual(status, 202)
+        self.assertEqual(json.loads(body), {
+            "schemaVersion": 1,
+            "accepted": True,
+            "requestId": payload["requestId"],
+            "promptHash": payload["promptHash"],
+            "status": "Queued",
+        })
+        self.assertEqual(
+            server.prompt_evaluation_status(
+                payload["requestId"], payload["promptHash"],
+            )["status"],
+            "Queued",
+        )
+
+    def test_prompt_evaluation_status_returns_pending_and_complete(self):
+        payload = prompt_evaluation()
+        self.assertTrue(server.register_prompt_evaluation(payload))
+        status_payload = {
+            "schemaVersion": 1,
+            "requestId": payload["requestId"],
+            "promptHash": payload["promptHash"],
+        }
+        status, body = self.signed_post(
+            "/prompt-evaluations/status", status_payload,
+        )
+        self.assertEqual(status, 202)
+        self.assertEqual(json.loads(body)["status"], "Queued")
+
+        result = {
+            "schemaVersion": 1,
+            "requestId": payload["requestId"],
+            "promptHash": payload["promptHash"],
+            "verdict": "Passed",
+            "changes": [],
+            "pddVersion": "0.0.309",
+            "executionMode": "cloud",
+            "model": None,
+            "costUsd": 0.01,
+        }
+        server.update_prompt_evaluation(
+            payload["requestId"], status="Complete", result=result,
+        )
+        status, body = self.signed_post(
+            "/prompt-evaluations/status", status_payload,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), result)
+
+    def test_prompt_evaluation_status_fails_closed_on_hash_mismatch(self):
+        payload = prompt_evaluation()
+        self.assertTrue(server.register_prompt_evaluation(payload))
+        status, _ = self.signed_post("/prompt-evaluations/status", {
+            "schemaVersion": 1,
+            "requestId": payload["requestId"],
+            "promptHash": "f" * 64,
+        })
+        self.assertEqual(status, 404)
+
+    def test_prompt_evaluation_status_returns_bounded_failure(self):
+        payload = prompt_evaluation()
+        self.assertTrue(server.register_prompt_evaluation(payload))
+        server.update_prompt_evaluation(
+            payload["requestId"], status="Failed", error="contract failed",
+        )
+        status, body = self.signed_post("/prompt-evaluations/status", {
+            "schemaVersion": 1,
+            "requestId": payload["requestId"],
+            "promptHash": payload["promptHash"],
+        })
+        self.assertEqual(status, 502)
+        self.assertEqual(json.loads(body), {"error": "contract failed"})
+
 
 class PddExecutionModeTests(unittest.TestCase):
     def test_cloud_environment_uses_pddc_and_strips_direct_provider_keys(self):
         with (
             mock.patch.object(server, "PDD_REFRESH_TOKEN", "durable-refresh-token"),
+            mock.patch.object(server, "PDD_JWT_TOKEN", "signed-token"),
             mock.patch.dict(
                 os.environ,
                 {
@@ -502,6 +659,24 @@ class PddExecutionModeTests(unittest.TestCase):
         self.assertNotIn("PDD_JWT_TOKEN", environment)
         self.assertNotIn("OPENAI_API_KEY", environment)
         self.assertNotIn("ANTHROPIC_API_KEY", environment)
+
+    def test_cloud_environment_uses_keyring_refresh_when_no_jwt_is_injected(self):
+        with (
+            mock.patch.object(server, "PDD_REFRESH_TOKEN", "durable-refresh-token"),
+            mock.patch.object(server, "PDD_JWT_TOKEN", ""),
+            mock.patch.dict(
+                os.environ,
+                {
+                    "PDD_JWT_TOKEN": "stale-token",
+                    "PDD_REFRESH_TOKEN": "durable-refresh-token",
+                },
+                clear=False,
+            ),
+        ):
+            environment = server.pdd_environment("cloud", 0.25)
+
+        self.assertNotIn("PDD_REFRESH_TOKEN", environment)
+        self.assertNotIn("PDD_JWT_TOKEN", environment)
 
     def test_local_environment_is_explicit_and_keeps_provider_keys(self):
         with mock.patch.dict(
@@ -537,6 +712,143 @@ class PddExecutionModeTests(unittest.TestCase):
         )
 
         self.assertIn("--local", command)
+
+    def test_prompt_review_uses_pdd_contract_generation_before_detection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "prompts").mkdir()
+            (root / "user_stories").mkdir()
+            (root / "requested-outcome.md").write_text(
+                "# Requested outcome\n\nAs a user, I want complete exports.\n",
+                encoding="utf-8",
+            )
+            (root / "prompts" / "suggested.prompt").write_text(
+                "Correct large exports.", encoding="utf-8",
+            )
+            costs = root / "costs.csv"
+            calls = []
+
+            def fake_run(command, **kwargs):
+                calls.append((command, kwargs))
+                if command[-3:] == ["auth", "status", "--verify"]:
+                    return subprocess.CompletedProcess(command, 0, "Authenticated", "")
+                if "story" in command:
+                    story = root / "user_stories" / "story__complete_large_exports.md"
+                    contract = root / "user_stories" / "contracts" / "complete_large_exports.contract.md"
+                    contract.parent.mkdir(parents=True)
+                    story.write_text("# User Story: Requested outcome\n", encoding="utf-8")
+                    contract.write_text("# Contract: Requested outcome\n", encoding="utf-8")
+                    return subprocess.CompletedProcess(command, 0, "generated", "")
+                return subprocess.CompletedProcess(
+                    command,
+                    1,
+                    json.dumps({
+                        "schema_version": "pdd.detect.stories.v1",
+                        "outcome": "STORY_FAILURE",
+                        "results": [{
+                            "verdict": "FAIL",
+                            "changes": [{
+                                "change_instructions": "Require every exported row.",
+                            }],
+                        }],
+                    }),
+                    "",
+                )
+
+            with mock.patch.object(server.subprocess, "run", side_effect=fake_run):
+                detection = server.run_prompt_evaluation_pipeline(
+                    root=root, mode="cloud", budget_usd=0.25, costs=costs,
+                )
+
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(calls[0][0], ["pdd", "auth", "status", "--verify"])
+        self.assertEqual(calls[1][0][calls[1][0].index("story"):][:2], ["story", "add"])
+        self.assertIn("detect", calls[2][0])
+        self.assertEqual(json.loads(detection.stdout)["outcome"], "STORY_FAILURE")
+        self.assertEqual(calls[1][1]["env"]["PDD_COMMAND_MAX_COST_USD"], "0.175000")
+        self.assertEqual(calls[2][1]["env"]["PDD_COMMAND_MAX_COST_USD"], "0.075000")
+
+    def test_prompt_review_rejects_unpaired_contract_artifacts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            stories = root / "user_stories"
+            contracts = stories / "contracts"
+            contracts.mkdir(parents=True)
+            (stories / "story__expected.md").write_text("# Story\n", encoding="utf-8")
+            (contracts / "different.contract.md").write_text("# Contract\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "inconsistent"):
+                server.prompt_evaluation_artifacts(root)
+
+    def test_prompt_review_maps_expired_cloud_authentication(self):
+        process = subprocess.CompletedProcess(
+            ["pdd"], 1, "Authentication expired", "Token expired",
+        )
+
+        error = server.pdd_prompt_stage_error("contract-generation", process)
+
+        self.assertEqual(str(error), "PDD Cloud authentication could not be refreshed")
+
+    def test_prompt_review_does_not_misclassify_generic_cost_text_as_budget(self):
+        process = subprocess.CompletedProcess(
+            ["pdd"], 1, "Cost tracking enabled", "Contract generation failed",
+        )
+
+        error = server.pdd_prompt_stage_error("contract-generation", process)
+
+        self.assertEqual(str(error), "PDD could not complete the contract-generation stage")
+
+    def test_cloud_authentication_is_verified_before_an_unattended_run(self):
+        with mock.patch.object(
+            server.subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess(["pdd"], 0, "Authenticated", ""),
+        ) as run:
+            server.verify_pdd_cloud_authentication(mode="cloud", budget_usd=0.25)
+
+        self.assertEqual(run.call_args.args[0], ["pdd", "auth", "status", "--verify"])
+        self.assertNotIn("PDD_JWT_TOKEN", run.call_args.kwargs["env"])
+
+    def test_cloud_authentication_failure_stops_before_evaluation(self):
+        with mock.patch.object(
+            server.subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess(
+                ["pdd"], 1, "Authentication expired", "Token expired",
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "authentication could not be refreshed"):
+                server.verify_pdd_cloud_authentication(mode="cloud", budget_usd=0.25)
+
+    def test_prompt_review_fails_closed_when_pdd_omits_contract(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "user_stories").mkdir()
+            (root / "requested-outcome.md").write_text("# Outcome\n", encoding="utf-8")
+            with mock.patch.object(
+                server.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(["pdd"], 0, "generated", ""),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "required prompt-evaluation contract"):
+                    server.run_prompt_evaluation_pipeline(
+                        root=root,
+                        mode="cloud",
+                        budget_usd=0.25,
+                        costs=root / "costs.csv",
+                    )
+
+    def test_story_generation_command_uses_official_pdd_story_flow(self):
+        command = server.pdd_story_command(
+            mode="cloud",
+            costs=pathlib.Path("costs.csv"),
+            issue=pathlib.Path("requested-outcome.md"),
+        )
+
+        self.assertNotIn("--local", command)
+        self.assertEqual(command[command.index("story"):command.index("story") + 2], ["story", "add"])
+        self.assertIn("requested-outcome.md", command)
+        self.assertIn("prompts/suggested.prompt", command)
 
 
 if __name__ == "__main__":

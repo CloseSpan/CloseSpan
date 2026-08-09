@@ -30,7 +30,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     );
 
     expect(markup).toContain("Suggested prompt required");
-    expect(markup).toContain("before any repository access or sandbox execution");
+    expect(markup).toContain("No repository or Tenki VM runs here");
     expect(markup).not.toContain("Repository execution context");
     expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>.*Suggested prompt required/s);
   });

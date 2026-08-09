@@ -6,7 +6,10 @@ import { z } from "zod";
 import type { AiRuntimeConfiguration } from "./ai-config";
 import { evaluateUserStoryPromptMatch } from "./user-story-prompt-test";
 
-export const PROMPT_ALIGNMENT_EVALUATOR_VERSION = "prompt-alignment-v1";
+// This version identifies the signed gate consumed by repository-native PDD
+// generation. The verdict now comes from PDD story detection; the configured
+// model is used only to draft an optional replacement prompt.
+export const PROMPT_ALIGNMENT_EVALUATOR_VERSION = "pdd-story-detect-v1";
 
 const acceptanceScenarioSchema = z.object({
   title: z.string().trim().min(1).max(160),

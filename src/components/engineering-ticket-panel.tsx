@@ -7,7 +7,7 @@ import type {
   EngineeringWorkflowView,
   UserStoryPromptTestView,
 } from "@/lib/engineering-workflow-repository";
-import type { PromptAlignmentEvaluation } from "@/lib/prompt-alignment-evaluation";
+import type { PddPromptReview } from "@/lib/pdd-prompt-review";
 import { userStoryInputIssue } from "@/lib/user-story-prompt-test";
 import { RepositoryMatchReview } from "./repository-match-review";
 
@@ -45,18 +45,13 @@ export function EngineeringTicketPanel({
     initialWorkflow.specification?.userStory ?? "",
   );
   const [storyTest, setStoryTest] = useState<UserStoryPromptTestView>();
-  const [promptEvaluation, setPromptEvaluation] = useState<
-    PromptAlignmentEvaluation & {
-      provider: string;
-      model: string;
-      promptHash: string;
-      alignmentReceipt: string | null;
-    }
-  >();
+  const [promptEvaluation, setPromptEvaluation] = useState<PddPromptReview>();
   const [busy, setBusy] = useState(false);
   const [pddBusy, setPddBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const [revisionBusy, setRevisionBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const [pddProfileReady, setPddProfileReady] = useState(false);
 
   useEffect(() => {
@@ -96,17 +91,13 @@ export function EngineeringTicketPanel({
     }
     setBusy(true);
     setError(undefined);
+    setNotice(undefined);
     setStoryTest(undefined);
     setPromptEvaluation(undefined);
     try {
       const result = await request<{
         workflow: EngineeringWorkflowView;
-        promptEvaluation: PromptAlignmentEvaluation & {
-          provider: string;
-          model: string;
-          promptHash: string;
-          alignmentReceipt: string | null;
-        };
+        promptEvaluation: PddPromptReview;
       }>(
         `/api/problems/${problemId}/engineering/test-story`,
         orgId,
@@ -122,6 +113,32 @@ export function EngineeringTicketPanel({
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function applyImprovedPrompt() {
+    if (!promptEvaluation?.suggestedRevision || !promptEvaluation.revisionReceipt) return;
+    setRevisionBusy(true);
+    setError(undefined);
+    try {
+      const result = await request<{ workflow: EngineeringWorkflowView }>(
+        `/api/problems/${problemId}/engineering/apply-pdd-revision`,
+        orgId,
+        {
+          userStory: userStory.trim(),
+          currentPromptHash: promptEvaluation.promptHash,
+          revisedPrompt: promptEvaluation.suggestedRevision,
+          revisionReceipt: promptEvaluation.revisionReceipt,
+        },
+      );
+      setWorkflow(result.workflow);
+      setPromptEvaluation(undefined);
+      setStoryTest(undefined);
+      setNotice("Improved prompt applied. Test it with PDD again before approval.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The improved prompt could not be applied.");
+    } finally {
+      setRevisionBusy(false);
     }
   }
 
@@ -182,17 +199,17 @@ export function EngineeringTicketPanel({
   const canTestPrompt = Boolean(workflow.prompt) || Boolean(
     workflow.specification && workflow.readiness.ready,
   );
-  const promptAligned = promptEvaluation?.verdict === "Aligned";
+  const promptAligned = promptEvaluation?.verdict === "Passed";
   const displayedPromptStatus = promptEvaluation?.verdict ?? promptStatus;
 
   return (
     <section className="card section-gap" id="engineering-ticket">
       <div className="card-head">
         <div>
-          <h2>Test the implementation prompt</h2>
+          <h2>Improve the suggested prompt</h2>
           <p className="subtle">
-            Compare the agent&apos;s suggested prompt with your user story before any
-            repository access or sandbox execution.
+            PDD compares the agent&apos;s prompt with your user story and identifies
+            what to change. No repository or Tenki VM runs here.
           </p>
         </div>
         <span
@@ -227,6 +244,7 @@ export function EngineeringTicketPanel({
               setStoryTest(undefined);
               setPromptEvaluation(undefined);
               setError(undefined);
+              setNotice(undefined);
             }}
           />
         </label>
@@ -245,7 +263,7 @@ export function EngineeringTicketPanel({
             {busy
               ? "Testing…"
               : canTestPrompt
-                ? "Test suggested prompt"
+                ? "Test with PDD"
                 : "Suggested prompt required"}
           </button>
         </div>
@@ -257,48 +275,45 @@ export function EngineeringTicketPanel({
           >
             <div className="callout-title">
               {promptAligned ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-              {promptEvaluation.verdict} · {promptEvaluation.score}%
+              {promptAligned
+                ? "PDD passed"
+                : `PDD found ${promptEvaluation.changes.length} ${promptEvaluation.changes.length === 1 ? "change" : "changes"}`}
             </div>
             <p>{promptEvaluation.summary}</p>
-            {promptEvaluation.strengths.length > 0 && (
+            {promptEvaluation.changes.length > 0 && (
               <>
-                <strong>What is covered</strong>
+                <strong>Change these</strong>
                 <ul className="evidence-list">
-                  {promptEvaluation.strengths.map((strength) => (
-                    <li key={strength}>{strength}</li>
-                  ))}
+                  {promptEvaluation.changes.slice(0, 3).map((change) => <li key={change}>{change}</li>)}
                 </ul>
               </>
             )}
-            {promptEvaluation.gaps.length > 0 && (
-              <>
-                <strong>Gaps to resolve</strong>
-                <ul className="evidence-list">
-                  {promptEvaluation.gaps.map((gap) => <li key={gap}>{gap}</li>)}
-                </ul>
-              </>
+            {promptEvaluation.suggestedRevision && (
+              <div className="top-actions">
+                <button type="button" className="btn primary" disabled={revisionBusy} onClick={applyImprovedPrompt}>
+                  <CheckCircle2 size={14} />
+                  {revisionBusy ? "Applying…" : "Apply improved prompt"}
+                </button>
+                <button type="button" className="btn secondary" disabled={busy || revisionBusy} onClick={testAgainstPrompt}>
+                  Test again
+                </button>
+              </div>
             )}
             <details>
-              <summary>Acceptance scenarios</summary>
-              <ul className="evidence-list">
-                {promptEvaluation.acceptanceScenarios.map((scenario) => (
-                  <li key={`${scenario.title}-${scenario.then}`}>
-                    <strong>{scenario.title}</strong> — Given {scenario.given}; when {scenario.when}; then {scenario.then}.
-                  </li>
-                ))}
-              </ul>
+              <summary>Technical details</summary>
+              <p className="subtle">
+                PDD {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "PDD Cloud" : "local fallback"}
+                {promptEvaluation.model ? ` · ${promptEvaluation.model}` : ""}
+                {promptEvaluation.costUsd !== null ? ` · $${promptEvaluation.costUsd.toFixed(4)}` : ""}
+              </p>
             </details>
-            {promptEvaluation.suggestedRevision && (
-              <details>
-                <summary>Suggested prompt revision</summary>
-                <pre className="prompt-evaluation-revision">
-                  {promptEvaluation.suggestedRevision}
-                </pre>
-              </details>
-            )}
-            <p className="subtle">
-              Evaluated by {promptEvaluation.provider} · {promptEvaluation.model}. No repository or Tenki session was used.
-            </p>
+          </div>
+        )}
+
+        {notice && (
+          <div className="callout success" role="status">
+            <div className="callout-title"><CheckCircle2 size={14} />Prompt updated</div>
+            <p>{notice}</p>
           </div>
         )}
 

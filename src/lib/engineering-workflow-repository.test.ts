@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ORG_ID, primaryProblem } from "./seed";
 import {
+  applyPddPromptRevision,
   approveImplementationRun,
   getEngineeringWorkflow,
   rejectImplementationApproval,
@@ -112,6 +113,34 @@ describe("approval-bound engineering workflow", () => {
     expect(repeated.workflow.prompt?.id).toBe(first.workflow.prompt?.id);
     expect(repeated.workflow.prompt?.revision).toBe(1);
     expect(repeated.workflow.approval?.id).toBe(first.workflow.approval?.id);
+  });
+
+  it("applies a PDD-guided prompt as a new immutable revision", async () => {
+    const initial = await getEngineeringWorkflow(ORG_ID, primaryProblem.id);
+    const generated = await generatePddAcceptanceContract(
+      ORG_ID,
+      primaryProblem.id,
+      initial.specification!.userStory,
+      actor,
+    );
+    await rejectImplementationApproval(
+      ORG_ID,
+      generated.workflow.approval!.id,
+      actor,
+    );
+    const current = await getEngineeringWorkflow(ORG_ID, primaryProblem.id);
+    const revised = `${current.prompt!.content}\n\n## PDD-required outcome\n- The CSV contains every expected row.`;
+
+    const result = await applyPddPromptRevision(ORG_ID, primaryProblem.id, {
+      currentPromptHash: current.prompt!.contentHash,
+      revisedPrompt: revised,
+    }, actor);
+
+    expect(result.prompt).toMatchObject({ revision: 2, status: "Ready", content: revised });
+    await expect(applyPddPromptRevision(ORG_ID, primaryProblem.id, {
+      currentPromptHash: current.prompt!.contentHash,
+      revisedPrompt: `${revised}\n- Preserve headers.`,
+    }, actor)).rejects.toThrow("changed; test it again");
   });
 
   it("rejects a vague story without changing prompt state", async () => {

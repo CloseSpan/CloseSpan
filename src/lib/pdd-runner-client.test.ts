@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dispatchPddVerification, probePddRunner } from "./pdd-runner-client";
+import {
+  dispatchPddVerification,
+  evaluatePromptWithPdd,
+  probePddRunner,
+} from "./pdd-runner-client";
 
 vi.mock("./github-agent-publisher", () => ({
   createRepositoryArchiveUrl: vi.fn().mockResolvedValue("https://codeload.github.com/acme/app/tar.gz/abc"),
@@ -73,5 +77,73 @@ describe("probePddRunner", () => {
       executionProfileSnapshot: {} as never,
     })).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("evaluatePromptWithPdd", () => {
+  beforeEach(() => {
+    vi.stubEnv("PDD_RUNNER_URL", "https://pdd.example");
+    vi.stubEnv("PDD_RUNNER_SHARED_SECRET", "shared-secret");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("submits asynchronously and polls for the final PDD verdict", async () => {
+    let calls = 0;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      calls += 1;
+      const payload = JSON.parse(String(init?.body)) as {
+        requestId: string;
+        promptHash: string;
+      };
+      if (calls === 1) {
+        return new Response(JSON.stringify({
+          schemaVersion: 1,
+          accepted: true,
+          requestId: payload.requestId,
+          promptHash: payload.promptHash,
+          status: "Queued",
+        }), { status: 202, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        schemaVersion: 1,
+        requestId: payload.requestId,
+        promptHash: payload.promptHash,
+        verdict: "Needs revision",
+        changes: ["Describe the corrected user-visible outcome."],
+        pddVersion: "0.0.309",
+        executionMode: "cloud",
+        model: "pdd-cloud",
+        costUsd: 0.02,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    await expect(evaluatePromptWithPdd({
+      promptHash: "a".repeat(64),
+      userStory: "As a user, I want complete exports, so that I can analyze my data.",
+      implementationPrompt: "Correct large CSV exports and prove the observable outcome.",
+      pddVersion: "0.0.309",
+    })).resolves.toMatchObject({
+      verdict: "Needs revision",
+      executionMode: "cloud",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("https://pdd.example/prompt-evaluations/status");
+  });
+
+  it("surfaces the runner's actionable failure instead of a generic HTTP error", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      error: "PDD could not derive a test contract from the user story",
+    }), { status: 502, headers: { "content-type": "application/json" } }));
+
+    await expect(evaluatePromptWithPdd({
+      promptHash: "b".repeat(64),
+      userStory: "As a user, I want complete exports, so that I can analyze my data.",
+      implementationPrompt: "Correct large CSV exports.",
+      pddVersion: "0.0.309",
+    })).rejects.toThrow("PDD could not derive a test contract from the user story");
   });
 });

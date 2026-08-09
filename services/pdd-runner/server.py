@@ -19,6 +19,7 @@ import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -49,6 +50,10 @@ PDD_JWT_TOKEN = os.environ.get("PDD_JWT_TOKEN", "").strip()
 PDD_REFRESH_TOKEN = os.environ.get("PDD_REFRESH_TOKEN", "").strip()
 CALLBACK_ORIGIN = os.environ.get("CLOSESPAN_CALLBACK_ORIGIN", "").strip().rstrip("/")
 PDD_CLI_VERSION: str | None = None
+PROMPT_EVALUATION_LOCK = threading.Lock()
+PROMPT_EVALUATIONS: dict[str, dict] = {}
+MAX_PROMPT_EVALUATIONS = 256
+PROMPT_EVALUATION_RETENTION_SECONDS = 3_600
 PDD_VERSION_TOKEN = re.compile(
     r"(?<![0-9A-Za-z.])v?(\d{1,4}\.\d{1,4}\.\d{1,4})(?![0-9A-Za-z.])"
 )
@@ -668,8 +673,12 @@ def pdd_environment(mode: str, budget_usd: float) -> dict[str, str]:
         environment.pop("PDD_FORCE_LOCAL", None)
         environment.pop("PDD_REFRESH_TOKEN", None)
         if PDD_REFRESH_TOKEN:
-            # A stale injected JWT would bypass the durable refresh credential.
+            # Startup persists the refresh credential in PDD's keyring. Prefer
+            # that durable credential so an injected one-hour JWT cannot pin an
+            # unattended runner to an expired access token.
             environment.pop("PDD_JWT_TOKEN", None)
+        elif PDD_JWT_TOKEN:
+            environment["PDD_JWT_TOKEN"] = PDD_JWT_TOKEN
         environment["PDD_CLOUD_RUN"] = "true"
         # Prevent the PDD CLI from silently switching to a directly billed model
         # provider. CloseSpan owns the fallback decision and reports it explicitly.
@@ -713,10 +722,301 @@ def pdd_command(
     return command
 
 
+def validate_prompt_evaluation(value: object) -> dict:
+    if not isinstance(value, dict) or set(value) != {
+        "schemaVersion", "requestId", "promptHash", "userStory",
+        "implementationPrompt", "pddVersion", "budgetUsd",
+    }:
+        raise ValueError("PDD prompt evaluation payload is invalid")
+    if value["schemaVersion"] != 1:
+        raise ValueError("PDD prompt evaluation schema is unsupported")
+    if not valid_uuid(value["requestId"]):
+        raise ValueError("PDD prompt evaluation request ID is invalid")
+    if not isinstance(value["promptHash"], str) or not re.fullmatch(r"[a-f0-9]{64}", value["promptHash"]):
+        raise ValueError("PDD prompt evaluation hash is invalid")
+    for field, limit in (("userStory", 8_000), ("implementationPrompt", 64_000)):
+        item = value[field]
+        if not isinstance(item, str) or not item.strip() or len(item.encode()) > limit:
+            raise ValueError(f"PDD prompt evaluation {field} is invalid")
+        if "\x00" in item:
+            raise ValueError(f"PDD prompt evaluation {field} is invalid")
+        value[field] = item.strip()
+    if value["pddVersion"] != PDD_CLI_VERSION:
+        raise ValueError("PDD prompt evaluation version does not match the runner")
+    budget = value["budgetUsd"]
+    if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not 0 < float(budget) <= 5:
+        raise ValueError("PDD prompt evaluation budget is invalid")
+    value["budgetUsd"] = float(budget)
+    return value
+
+
+def validate_prompt_evaluation_status(value: object) -> dict:
+    if not isinstance(value, dict) or set(value) != {
+        "schemaVersion", "requestId", "promptHash",
+    }:
+        raise ValueError("PDD prompt evaluation status payload is invalid")
+    if value["schemaVersion"] != 1 or not valid_uuid(value["requestId"]):
+        raise ValueError("PDD prompt evaluation status payload is invalid")
+    if not isinstance(value["promptHash"], str) or not re.fullmatch(
+        r"[a-f0-9]{64}", value["promptHash"]
+    ):
+        raise ValueError("PDD prompt evaluation status payload is invalid")
+    return value
+
+
+def prune_prompt_evaluations(now: float) -> None:
+    expired = [
+        request_id for request_id, record in PROMPT_EVALUATIONS.items()
+        if record["status"] in {"Complete", "Failed"}
+        and now - record["updatedAt"] >= PROMPT_EVALUATION_RETENTION_SECONDS
+    ]
+    for request_id in expired:
+        PROMPT_EVALUATIONS.pop(request_id, None)
+    if len(PROMPT_EVALUATIONS) < MAX_PROMPT_EVALUATIONS:
+        return
+    terminal = sorted(
+        (
+            (record["updatedAt"], request_id)
+            for request_id, record in PROMPT_EVALUATIONS.items()
+            if record["status"] in {"Complete", "Failed"}
+        ),
+    )
+    for _, request_id in terminal:
+        PROMPT_EVALUATIONS.pop(request_id, None)
+        if len(PROMPT_EVALUATIONS) < MAX_PROMPT_EVALUATIONS:
+            break
+
+
+def register_prompt_evaluation(job: dict) -> bool:
+    now = time.monotonic()
+    with PROMPT_EVALUATION_LOCK:
+        prune_prompt_evaluations(now)
+        existing = PROMPT_EVALUATIONS.get(job["requestId"])
+        if existing:
+            return existing["promptHash"] == job["promptHash"]
+        if len(PROMPT_EVALUATIONS) >= MAX_PROMPT_EVALUATIONS:
+            return False
+        PROMPT_EVALUATIONS[job["requestId"]] = {
+            "promptHash": job["promptHash"],
+            "status": "Queued",
+            "updatedAt": now,
+        }
+        return True
+
+
+def prompt_evaluation_status(request_id: str, prompt_hash: str) -> dict | None:
+    with PROMPT_EVALUATION_LOCK:
+        record = PROMPT_EVALUATIONS.get(request_id)
+        if not record or record["promptHash"] != prompt_hash:
+            return None
+        return dict(record)
+
+
+def update_prompt_evaluation(request_id: str, **values: object) -> None:
+    with PROMPT_EVALUATION_LOCK:
+        record = PROMPT_EVALUATIONS.get(request_id)
+        if not record:
+            return
+        record.update(values)
+        record["updatedAt"] = time.monotonic()
+
+
+def pdd_detect_command(*, mode: str, costs: pathlib.Path) -> list[str]:
+    command = ["pdd"]
+    if mode == "local":
+        command.append("--local")
+    command.extend([
+        "--force", "--quiet", "--no-core-dump", "--output-cost", str(costs),
+        "detect", "--stories", "--stories-dir", "user_stories",
+        "--prompts-dir", "prompts", "--json", "--read-only", "--non-interactive",
+    ])
+    return command
+
+
+def pdd_story_command(
+    *, mode: str, costs: pathlib.Path, issue: pathlib.Path,
+) -> list[str]:
+    """Build the official PDD command that derives a contract from the PM story."""
+    command = ["pdd"]
+    if mode == "local":
+        command.append("--local")
+    command.extend([
+        "--force", "--quiet", "--no-core-dump", "--output-cost", str(costs),
+        "story", "add", issue.as_posix(), "--title", "Requested outcome",
+        "--prompt", "prompts/suggested.prompt", "--stories-dir", "user_stories",
+        "--prompts-dir", "prompts",
+    ])
+    return command
+
+
+def prompt_evaluation_artifacts(root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+    """Return the one complete story/contract pair authored for an evaluation."""
+    stories_root = root / "user_stories"
+    story_files = sorted(
+        path for path in stories_root.rglob("story__*.md")
+        if path.is_file() and not path.is_symlink()
+    )
+    contract_files = sorted(
+        path for path in (stories_root / "contracts").rglob("*.contract.md")
+        if path.is_file() and not path.is_symlink()
+    )
+    if len(story_files) != 1 or len(contract_files) != 1:
+        raise RuntimeError("PDD did not produce the required prompt-evaluation contract")
+    story = story_files[0]
+    slug = story.name.removeprefix("story__").removesuffix(".md")
+    expected_contract = story.parent / "contracts" / f"{slug}.contract.md"
+    if contract_files[0] != expected_contract:
+        raise RuntimeError("PDD produced an inconsistent prompt-evaluation contract")
+    for artifact in (story, expected_contract):
+        size = artifact.stat().st_size
+        if size <= 0 or size > MAX_OUTPUT_BYTES:
+            raise RuntimeError("PDD produced an invalid prompt-evaluation contract")
+    return story, expected_contract
+
+
+def pdd_prompt_stage_error(
+    stage: str, process: subprocess.CompletedProcess[str],
+) -> RuntimeError:
+    """Map PDD CLI diagnostics to a safe, actionable runner error."""
+    details = " ".join(
+        part for part in (process.stdout, process.stderr) if isinstance(part, str)
+    ).lower()
+    if "authentication" in details or "token expired" in details:
+        return RuntimeError("PDD Cloud authentication could not be refreshed")
+    if any(phrase in details for phrase in (
+        "budget exceeded", "cost limit", "maximum cost", "max cost",
+        "exceeded the configured", "insufficient pddc",
+    )):
+        return RuntimeError("PDD Cloud could not complete prompt evaluation within its budget")
+    if "no models" in details or "model" in details and "unavailable" in details:
+        return RuntimeError("PDD Cloud could not select an evaluation model")
+    return RuntimeError(f"PDD could not complete the {stage} stage")
+
+
+def verify_pdd_cloud_authentication(*, mode: str, budget_usd: float) -> None:
+    """Proactively refresh PDD Cloud auth before an unattended command."""
+    if mode != "cloud":
+        return
+    process = subprocess.run(
+        ["pdd", "auth", "status", "--verify"],
+        env=pdd_environment(mode, budget_usd), capture_output=True, text=True,
+        timeout=60, check=False,
+    )
+    if process.returncode != 0:
+        raise pdd_prompt_stage_error("authentication", process)
+
+
+def run_prompt_evaluation_pipeline(
+    *, root: pathlib.Path, mode: str, budget_usd: float, costs: pathlib.Path,
+) -> subprocess.CompletedProcess[str]:
+    """Generate PDD's independent contract, then evaluate the suggested prompt."""
+    issue = root / "requested-outcome.md"
+    contract_budget = round(budget_usd * 0.7, 6)
+    detection_budget = round(budget_usd - contract_budget, 6)
+    verify_pdd_cloud_authentication(mode=mode, budget_usd=contract_budget)
+    generation = subprocess.run(
+        pdd_story_command(mode=mode, costs=costs, issue=issue), cwd=root,
+        env=pdd_environment(mode, contract_budget), capture_output=True,
+        text=True, timeout=RUN_TIMEOUT_SECONDS, check=False,
+    )
+    if generation.returncode != 0:
+        raise pdd_prompt_stage_error("contract-generation", generation)
+
+    prompt_evaluation_artifacts(root)
+
+    detection = subprocess.run(
+        pdd_detect_command(mode=mode, costs=costs), cwd=root,
+        env=pdd_environment(mode, detection_budget), capture_output=True,
+        text=True, timeout=RUN_TIMEOUT_SECONDS, check=False,
+    )
+    if detection.returncode not in {0, 1}:
+        raise pdd_prompt_stage_error("prompt-detection", detection)
+    return detection
+
+
+def parse_story_detection(output: str) -> tuple[str, list[str]]:
+    try:
+        document = json.loads(output.strip())
+    except (TypeError, json.JSONDecodeError) as error:
+        raise RuntimeError("PDD returned an invalid prompt-evaluation result") from error
+    if not isinstance(document, dict) or document.get("schema_version") != "pdd.detect.stories.v1":
+        raise RuntimeError("PDD returned an unsupported prompt-evaluation result")
+    outcome = document.get("outcome")
+    results = document.get("results")
+    if outcome not in {"PASS", "STORY_FAILURE"}:
+        stop_reason = document.get("stop_reason")
+        suffix = f" ({stop_reason})" if isinstance(stop_reason, str) and stop_reason else ""
+        raise RuntimeError(f"PDD could not complete prompt evaluation{suffix}")
+    if not isinstance(results, list):
+        raise RuntimeError("PDD returned malformed prompt-evaluation results")
+    changes: list[str] = []
+    for result in results[:20]:
+        if not isinstance(result, dict):
+            continue
+        for change in result.get("changes") or []:
+            if not isinstance(change, dict):
+                continue
+            instruction = change.get("change_instructions") or change.get("instruction")
+            if isinstance(instruction, str):
+                compact = " ".join(instruction.split()).strip()
+                if compact and compact not in changes:
+                    changes.append(compact[:500])
+    if outcome == "STORY_FAILURE" and not changes:
+        changes.append("Revise the implementation prompt so it explicitly delivers the user story's observable outcome.")
+    return ("Passed" if outcome == "PASS" else "Needs revision"), changes[:8]
+
+
+def evaluate_prompt_with_pdd(request: dict) -> dict:
+    with tempfile.TemporaryDirectory(prefix="closespan-pdd-evaluate-") as temporary:
+        root = pathlib.Path(temporary)
+        prompts = root / "prompts"
+        stories = root / "user_stories"
+        prompts.mkdir()
+        stories.mkdir()
+        (prompts / "suggested.prompt").write_text(request["implementationPrompt"], encoding="utf-8")
+        (root / "requested-outcome.md").write_text(
+            "# Requested outcome\n\n" + request["userStory"] + "\n",
+            encoding="utf-8",
+        )
+        costs = root / "pdd-costs.csv"
+        mode = PDD_EXECUTION_MODE
+        try:
+            process = run_prompt_evaluation_pipeline(
+                root=root, mode=mode, budget_usd=request["budgetUsd"], costs=costs,
+            )
+        except RuntimeError:
+            if mode != "cloud" or not PDD_CLOUD_FALLBACK_ENABLED:
+                raise
+            costs.unlink(missing_ok=True)
+            for artifact in stories.rglob("*"):
+                if artifact.is_file():
+                    artifact.unlink()
+            mode = "local"
+            process = run_prompt_evaluation_pipeline(
+                root=root, mode=mode, budget_usd=request["budgetUsd"], costs=costs,
+            )
+        verdict, changes = parse_story_detection(process.stdout)
+        cost, model = cost_report(costs)
+        if cost is not None and cost > request["budgetUsd"]:
+            raise RuntimeError("PDD prompt evaluation exceeded its review budget")
+        return {
+            "schemaVersion": 1,
+            "requestId": request["requestId"],
+            "promptHash": request["promptHash"],
+            "verdict": verdict,
+            "changes": changes,
+            "pddVersion": PDD_CLI_VERSION,
+            "executionMode": mode,
+            "model": model,
+            "costUsd": cost,
+        }
+
+
 def run_pdd(
     *, root: pathlib.Path, mode: str, budget_usd: float, costs: pathlib.Path,
     language: str, output: str, prompt: pathlib.Path, target: pathlib.Path,
 ) -> subprocess.CompletedProcess[str]:
+    verify_pdd_cloud_authentication(mode=mode, budget_usd=budget_usd)
     return subprocess.run(
         pdd_command(
             mode=mode, costs=costs, language=language, output=output,
@@ -832,6 +1132,23 @@ def execute_reserved(job: dict) -> None:
             finish_job()
 
 
+def execute_prompt_evaluation_reserved(job: dict) -> None:
+    with RUN_SLOTS:
+        begin_reserved_job()
+        update_prompt_evaluation(job["requestId"], status="Running")
+        try:
+            result = evaluate_prompt_with_pdd(job)
+            update_prompt_evaluation(
+                job["requestId"], status="Complete", result=result,
+            )
+        except Exception as error:
+            update_prompt_evaluation(
+                job["requestId"], status="Failed", error=str(error)[:1_000],
+            )
+        finally:
+            finish_job()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "CloseSpanPDD/1"
 
@@ -846,7 +1163,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self) -> None:
-        if self.path != "/verifications" or not SHARED_SECRET:
+        if self.path not in {
+            "/verifications", "/prompt-evaluations", "/prompt-evaluations/status",
+        } or not SHARED_SECRET:
             self.send_error(404)
             return
         length = int(self.headers.get("content-length", "0"))
@@ -859,14 +1178,76 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(401)
             return
         try:
-            job = validate_job(json.loads(body))
+            decoded = json.loads(body)
+            if self.path == "/prompt-evaluations":
+                job = validate_prompt_evaluation(decoded)
+            elif self.path == "/prompt-evaluations/status":
+                job = validate_prompt_evaluation_status(decoded)
+            else:
+                job = validate_job(decoded)
         except (ValueError, json.JSONDecodeError):
             self.send_error(400)
+            return
+        if self.path == "/prompt-evaluations/status":
+            record = prompt_evaluation_status(job["requestId"], job["promptHash"])
+            if record is None:
+                self.send_error(404)
+                return
+            if record["status"] == "Complete":
+                status = 200
+                response = record["result"]
+            elif record["status"] == "Failed":
+                status = 502
+                response = {"error": record.get("error", "PDD prompt evaluation failed")}
+            else:
+                status = 202
+                response = {
+                    "schemaVersion": 1,
+                    "requestId": job["requestId"],
+                    "promptHash": job["promptHash"],
+                    "status": record["status"],
+                }
+            payload = json.dumps(response, separators=(",", ":")).encode()
+            self.send_response(status)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
             return
         if not reserve_job():
             self.send_response(429)
             self.send_header("retry-after", "10")
             self.end_headers()
+            return
+        if self.path == "/prompt-evaluations":
+            if not register_prompt_evaluation(job):
+                cancel_reserved_job()
+                self.send_response(409)
+                self.end_headers()
+                return
+            try:
+                threading.Thread(
+                    target=execute_prompt_evaluation_reserved, args=(job,), daemon=True,
+                ).start()
+            except Exception:
+                cancel_reserved_job()
+                update_prompt_evaluation(
+                    job["requestId"], status="Failed",
+                    error="PDD prompt evaluation could not start",
+                )
+                raise
+            payload = json.dumps({
+                "schemaVersion": 1,
+                "accepted": True,
+                "requestId": job["requestId"],
+                "promptHash": job["promptHash"],
+                "status": "Queued",
+            }, separators=(",", ":")).encode()
+            self.send_response(202)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
             return
         try:
             threading.Thread(target=execute_reserved, args=(job,), daemon=True).start()

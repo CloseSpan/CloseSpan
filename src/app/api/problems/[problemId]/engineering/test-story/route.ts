@@ -5,7 +5,10 @@ import {
 import { getAiRuntimeConfiguration } from "@/lib/ai-config";
 import { evaluatePromptAlignment } from "@/lib/prompt-alignment-evaluation";
 import { createPromptAlignmentReceipt } from "@/lib/prompt-alignment-receipt";
-import { sha256 } from "@/lib/pdd-verification";
+import { PDD_CLI_VERSION, sha256 } from "@/lib/pdd-verification";
+import { evaluatePromptWithPdd } from "@/lib/pdd-runner-client";
+import { pddPromptReviewSchema } from "@/lib/pdd-prompt-review";
+import { createPddPromptRevisionReceipt } from "@/lib/pdd-prompt-revision-receipt";
 import {
   authorizeMutation,
   errorResponse,
@@ -13,6 +16,7 @@ import {
 } from "@/lib/request-security";
 
 const MAX_BODY_BYTES = 8_192;
+export const maxDuration = 300;
 
 export async function POST(
   request: NextRequest,
@@ -54,14 +58,14 @@ export async function POST(
       userStory,
       context,
     );
-    const configuration = await getAiRuntimeConfiguration(context.orgId);
-    const evaluation = await evaluatePromptAlignment({
-      configuration,
+    const evaluation = await evaluatePromptWithPdd({
+      promptHash: promptContext.promptHash,
       userStory: promptContext.userStory,
       implementationPrompt: promptContext.implementationPrompt,
+      pddVersion: PDD_CLI_VERSION,
     });
     const alignmentReceipt =
-      evaluation.verdict === "Aligned"
+      evaluation.verdict === "Passed"
         ? createPromptAlignmentReceipt({
             orgId: context.orgId,
             problemId,
@@ -71,14 +75,53 @@ export async function POST(
             ),
           })
         : null;
+    let suggestedRevision: string | null = null;
+    if (evaluation.verdict === "Needs revision") {
+      const deterministicRevision = [
+        promptContext.implementationPrompt.trim(),
+        "",
+        "## PDD-required outcomes",
+        ...evaluation.changes.map((change) => `- ${change}`),
+        "",
+        `Product-manager user story: ${promptContext.userStory}`,
+      ].join("\n");
+      suggestedRevision = deterministicRevision;
+      try {
+        const configuration = await getAiRuntimeConfiguration(context.orgId);
+        if (configuration.apiKey) {
+          const revision = await evaluatePromptAlignment({
+            configuration,
+            userStory: promptContext.userStory,
+            implementationPrompt: deterministicRevision,
+          });
+          suggestedRevision = revision.suggestedRevision ?? deterministicRevision;
+        }
+      } catch {
+        // PDD owns the verdict and required changes. A model-assisted rewrite
+        // is optional, so provider downtime must not discard a valid PDD review.
+      }
+    }
+    const promptEvaluation = pddPromptReviewSchema.parse({
+      ...evaluation,
+      summary: evaluation.verdict === "Passed"
+        ? "The suggested prompt covers the outcome in your user story."
+        : `PDD found ${evaluation.changes.length} ${evaluation.changes.length === 1 ? "change" : "changes"} to make before approval.`,
+      suggestedRevision,
+      alignmentReceipt,
+      revisionReceipt: suggestedRevision
+        ? createPddPromptRevisionReceipt({
+            orgId: context.orgId,
+            problemId,
+            promptHash: promptContext.promptHash,
+            revisionHash: sha256(suggestedRevision),
+            storyHash: sha256(promptContext.userStory.replace(/\s+/g, " ").trim()),
+          })
+        : null,
+    });
     return NextResponse.json(
       {
         workflow: promptContext.workflow,
-        promptEvaluation: {
-          ...evaluation,
-          promptHash: promptContext.promptHash,
-          alignmentReceipt,
-        },
+        promptEvaluation,
       },
       { headers: noStoreHeaders },
     );

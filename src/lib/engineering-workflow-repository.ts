@@ -1124,6 +1124,73 @@ export async function getPromptAlignmentContext(
   };
 }
 
+export async function applyPddPromptRevision(
+  orgId: string,
+  problemId: string,
+  input: { currentPromptHash: string; revisedPrompt: string },
+  actor: ActorContext,
+): Promise<EngineeringWorkflowView> {
+  const revisedPrompt = input.revisedPrompt.trim();
+  if (!revisedPrompt || revisedPrompt.length > 64_000) {
+    throw new EngineeringWorkflowError("The PDD prompt revision is invalid", 400);
+  }
+  const revisedHash = hashImplementationPrompt(revisedPrompt);
+  if (workspacePersistenceMode(orgId) === "memory") {
+    const current = memoryWorkflow(orgId, problemId);
+    if (!current.prompt || current.prompt.contentHash !== input.currentPromptHash) {
+      throw new EngineeringWorkflowError("The suggested prompt changed; test it again", 409);
+    }
+    current.prompt = {
+      ...current.prompt,
+      id: randomUUID(),
+      revision: current.prompt.revision + 1,
+      status: "Ready",
+      content: revisedPrompt,
+      contentHash: revisedHash,
+      createdAt: new Date().toISOString(),
+    };
+    return getEngineeringWorkflow(orgId, problemId);
+  }
+  await transaction(async (client) => {
+    const result = await client.query<{
+      id: string; specification_id: string; specification_revision: number; revision: number;
+      status: string; repository: string; base_branch: string; base_sha: string;
+      artifact_path: string; structured_snapshot: unknown; content_hash: string;
+    }>(
+      `SELECT id,specification_id,specification_revision,revision,status,repository,
+              base_branch,base_sha,artifact_path,structured_snapshot,content_hash
+         FROM implementation_prompts
+        WHERE org_id=$1 AND problem_id=$2 AND status <> 'Superseded'
+        ORDER BY revision DESC LIMIT 1 FOR UPDATE`,
+      [orgId, problemId],
+    );
+    const current = result.rows[0];
+    if (!current || current.content_hash !== input.currentPromptHash) {
+      throw new EngineeringWorkflowError("The suggested prompt changed; test it again", 409);
+    }
+    if (current.status === "Approved") {
+      throw new EngineeringWorkflowError("An approved prompt cannot be revised", 409);
+    }
+    const revision = current.revision + 1;
+    await client.query(
+      "UPDATE implementation_prompts SET status='Superseded' WHERE org_id=$1 AND problem_id=$2 AND status <> 'Superseded'",
+      [orgId, problemId],
+    );
+    await client.query(
+      `INSERT INTO implementation_prompts(
+        id,org_id,problem_id,specification_id,specification_revision,revision,status,
+        repository,base_branch,base_sha,artifact_path,structured_snapshot,rendered_content,content_hash,created_by
+      ) VALUES($1,$2,$3,$4,$5,$6,'Ready',$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [randomUUID(), orgId, problemId, current.specification_id,
+        current.specification_revision, revision, current.repository,
+        current.base_branch, current.base_sha, current.artifact_path,
+        JSON.stringify(current.structured_snapshot), revisedPrompt, revisedHash, actor.actorId],
+    );
+    await audit(client, orgId, actor, `Applied PDD-guided implementation prompt revision ${revision} with SHA-256 ${revisedHash}`, "ImplementationPrompt", problemId);
+  });
+  return getEngineeringWorkflow(orgId, problemId);
+}
+
 export async function generatePddAcceptanceContract(
   orgId: string,
   problemId: string,
