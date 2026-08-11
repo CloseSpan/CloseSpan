@@ -325,20 +325,54 @@ export async function deleteOrganization(
   if (workspacePersistenceMode(input.orgId) !== "postgres")
     throw new Error("PostgreSQL persistence is required to delete organizations");
 
-  const result = await databasePool().query(
-    `DELETE FROM organizations AS organization
-      WHERE organization.id=$1
-        AND EXISTS (
-          SELECT 1
-            FROM workspace_members AS member
-           WHERE member.org_id=organization.id
-             AND member.id=$2
-             AND member.role='Admin'
-        )
-      RETURNING organization.id`,
-    [input.orgId, input.actorMemberId],
-  );
+  await transaction(async (client) => {
+    const organization = await client.query<{
+      id: string;
+      name: string;
+    }>(
+      `SELECT organization.id,organization.name
+         FROM organizations AS organization
+         JOIN workspace_members AS member
+           ON member.org_id=organization.id
+          AND member.id=$2
+          AND member.role='Admin'
+        WHERE organization.id=$1
+        FOR UPDATE OF organization`,
+      [input.orgId, input.actorMemberId],
+    );
+    const tombstone = organization.rows[0];
+    if (!tombstone)
+      throw new Error(
+        "Organization was not found or administrator access was revoked",
+      );
 
-  if (!result.rowCount)
-    throw new Error("Organization was not found or administrator access was revoked");
+    await client.query(
+      `INSERT INTO deleted_organizations(
+         organization_id,organization_name
+       ) VALUES($1,$2)`,
+      [tombstone.id, tombstone.name],
+    );
+
+    // Deliveries intentionally use ON DELETE SET NULL for global webhook
+    // deduplication. Remove tenant-only deliveries, but preserve a shared
+    // installation's global delivery when another organization references it.
+    await client.query(
+      `DELETE FROM github_webhook_deliveries AS delivery
+        WHERE delivery.org_id=$1
+          AND NOT EXISTS (
+            SELECT 1
+              FROM github_webhook_delivery_workspaces AS workspace
+             WHERE workspace.delivery_id=delivery.delivery_id
+               AND workspace.org_id<>$1
+          )`,
+      [input.orgId],
+    );
+
+    const deleted = await client.query(
+      "DELETE FROM organizations WHERE id=$1 RETURNING id",
+      [input.orgId],
+    );
+    if (!deleted.rowCount)
+      throw new Error("Organization could not be deleted");
+  });
 }

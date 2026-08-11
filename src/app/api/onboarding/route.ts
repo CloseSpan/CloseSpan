@@ -91,6 +91,7 @@ export async function GET(request: NextRequest) {
         suggestedReplies: guidance.suggestedReplies,
         workspaceStatus,
         organizationName: context.organizationName,
+        userEmail: context.actorEmail,
       },
       { headers: noStoreHeaders },
     );

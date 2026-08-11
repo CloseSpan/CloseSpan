@@ -124,7 +124,13 @@ export async function authorizeRead(
 ): Promise<
   Pick<
     RequestContext,
-    "orgId" | "organizationName" | "actorId" | "actorName" | "role" | "traceId"
+    | "orgId"
+    | "organizationName"
+    | "actorId"
+    | "actorName"
+    | "actorEmail"
+    | "role"
+    | "traceId"
   >
 > {
   const user = await authenticatedUser(request);
@@ -134,6 +140,7 @@ export async function authorizeRead(
     organizationName: user.organizationName,
     actorId: user.id,
     actorName: user.name,
+    actorEmail: user.email,
     role: user.role,
     traceId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
   };

@@ -118,6 +118,56 @@ describe("discoverFeedbackSourcesFromProduct", () => {
 });
 
 describe("runOnboardingTurn product-first", () => {
+  it("redirects unrelated requests without changing onboarding data", async () => {
+    const state = connectorState();
+    const turn = await runOnboardingTurn({
+      orgId: "org_test",
+      firstName: "Sam",
+      organizationName: "CloseSpan",
+      state,
+      userMessage: "Tell me a joke about penguins",
+      workspaceStatus: {
+        ...emptyWorkspaceStatus,
+        connectedIntegrationIds: ["int_github"],
+        githubConnected: true,
+      },
+    });
+
+    expect(turn.assistantMessage).toBe(
+      "I can help connect feedback sources, manage GitHub setup, or explain this onboarding flow. What would you like to connect?",
+    );
+    expect(turn.phase).toBe(state.phase);
+    expect(turn.productProfile).toEqual(state.productProfile);
+    expect(turn.recommendedConnectors).toEqual(state.recommendedConnectors);
+    expect(turn.suggestedReplies).toEqual([
+      "Connect a recommended source",
+      "Show connected sources",
+      "Continue onboarding",
+    ]);
+  });
+
+  it("does not mistake an unrelated question for a company description", async () => {
+    const state = defaultOnboardingState();
+    const turn = await runOnboardingTurn({
+      orgId: "org_test",
+      firstName: "Sam",
+      organizationName: "CloseSpan",
+      state,
+      userMessage: "What is the capital of France?",
+      workspaceStatus: emptyWorkspaceStatus,
+    });
+
+    expect(turn.assistantMessage).toContain(
+      "I can help connect feedback sources",
+    );
+    expect(turn.productProfile).toEqual(state.productProfile);
+    expect(turn.recommendedConnectors).toEqual([]);
+    expect(turn.suggestedReplies).toEqual([
+      "Send company website",
+      "We don't have a website yet",
+    ]);
+  });
+
   it("keeps GitHub as the only next-step message until it is connected", async () => {
     const turn = await runOnboardingTurn({
       orgId: "org_test",

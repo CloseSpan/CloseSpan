@@ -18,6 +18,7 @@ vi.mock("./workspace-persistence", () => ({
 
 import {
   connectGithubInstallation,
+  revokeGithubInstallationsForDeletedOrganization,
   setGithubWorkspaceRepositoryBindings,
   syncGithubInstallationRecords,
 } from "./github-installation-repository";
@@ -142,5 +143,58 @@ describe("GitHub installation persistence", () => {
     await expect(
       connectGithubInstallation("attempt-1", "org-1", actor, installation),
     ).rejects.toThrow("expired or was already used");
+  });
+
+  it("uninstalls GitHub when the deleted organization owns the final binding", async () => {
+    database.pool.query.mockResolvedValue({
+      rows: [{ installation_id: "150109806", exclusive: true }],
+      rowCount: 1,
+    });
+    const deleteInstallation = vi.fn().mockResolvedValue({ status: 204 });
+    const createAppClient = vi.fn().mockResolvedValue({
+      rest: { apps: { deleteInstallation } },
+    });
+
+    await revokeGithubInstallationsForDeletedOrganization("org-1", {
+      createAppClient,
+    });
+
+    expect(deleteInstallation).toHaveBeenCalledWith({
+      installation_id: 150109806,
+    });
+  });
+
+  it("preserves a GitHub installation used by another organization", async () => {
+    database.pool.query.mockResolvedValue({
+      rows: [{ installation_id: "150109806", exclusive: false }],
+      rowCount: 1,
+    });
+    const createAppClient = vi.fn();
+
+    await revokeGithubInstallationsForDeletedOrganization("org-1", {
+      createAppClient,
+    });
+
+    expect(createAppClient).not.toHaveBeenCalled();
+    expect(database.pool.query).toHaveBeenCalledWith(
+      expect.stringMatching(/other\.org_id<>\$1[\s\S]*other\.workspace_connected=true/),
+      ["org-1"],
+    );
+  });
+
+  it("treats an already removed GitHub installation as successfully revoked", async () => {
+    database.pool.query.mockResolvedValue({
+      rows: [{ installation_id: "150109806", exclusive: true }],
+      rowCount: 1,
+    });
+    const deleteInstallation = vi.fn().mockRejectedValue({ status: 404 });
+
+    await expect(
+      revokeGithubInstallationsForDeletedOrganization("org-1", {
+        createAppClient: vi.fn().mockResolvedValue({
+          rest: { apps: { deleteInstallation } },
+        }),
+      }),
+    ).resolves.toBeUndefined();
   });
 });

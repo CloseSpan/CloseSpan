@@ -18,6 +18,7 @@ import {
 } from "@/lib/organization-repository";
 import { workspacePersistenceMode } from "@/lib/workspace-persistence";
 import { addDefaultHttpsScheme } from "@/lib/product-url";
+import { revokeGithubInstallationsForDeletedOrganization } from "@/lib/github-installation-repository";
 
 export interface OrganizationActionState {
   error: string | null;
@@ -235,6 +236,7 @@ export async function deleteOrganizationAction(
   }
 
   try {
+    await revokeGithubInstallationsForDeletedOrganization(user.orgId);
     await deleteOrganization({
       orgId: user.orgId,
       actorMemberId: user.id,

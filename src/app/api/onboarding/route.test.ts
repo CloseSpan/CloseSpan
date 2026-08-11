@@ -164,6 +164,7 @@ describe("onboarding route workspace reconciliation", () => {
     expect(body.workspaceStatus.connectedIntegrationIds).toEqual([
       "int_zendesk",
     ]);
+    expect(body.userEmail).toBe("sam@example.com");
   });
 
   it("discovers and persists the product URL saved during organization creation", async () => {

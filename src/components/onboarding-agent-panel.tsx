@@ -12,6 +12,7 @@ import {
   Copy,
   ExternalLink,
   LoaderCircle,
+  Mail,
   PlugZap,
   Sparkles,
 } from "lucide-react";
@@ -39,6 +40,34 @@ const STARTER_CHIPS = [
 const FRIENDLY_ERROR =
   "Something went wrong. Please try again in a moment.";
 
+const SUPPORT_EMAIL = "support@closespan.com";
+const SUPPORT_REQUEST_PATTERN =
+  /^(?:contact|email|message|talk to|speak to|connect (?:me )?(?:to|with))\s+(?:the\s+)?support(?:\s+team)?[.!]?$/i;
+const REPLY_EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+type SupportFlowStep =
+  | "idle"
+  | "email"
+  | "subject"
+  | "message"
+  | "review"
+  | "sent";
+
+interface SupportFlowState {
+  step: SupportFlowStep;
+  replyEmail: string;
+  subject: string;
+  message: string;
+}
+
+const COMPANY_CONFIRMATION_PROGRESS = [
+  "Reviewing confirmed company details",
+  "Analyzing product and customer context",
+  "Identifying likely feedback sources",
+  "Preparing connector recommendations",
+  "Waiting for product discovery to finish",
+] as const;
+
 interface OnboardingActivityMessage {
   id: string;
   role: "assistant" | "user";
@@ -52,6 +81,52 @@ function OperationsManagerAvatar() {
     <span className="delphi-message-avatar" aria-hidden="true">
       <Sparkles size={18} />
     </span>
+  );
+}
+
+function CompanyConfirmationProgress({
+  reducedMotion,
+}: {
+  reducedMotion: boolean | null;
+}) {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    if (step >= COMPANY_CONFIRMATION_PROGRESS.length - 1) return;
+    const timer = window.setTimeout(
+      () => setStep((current) => current + 1),
+      2_600,
+    );
+    return () => window.clearTimeout(timer);
+  }, [step]);
+
+  const message = COMPANY_CONFIRMATION_PROGRESS[step];
+
+  return (
+    <motion.div
+      className="delphi-company-confirmation-progress"
+      role="status"
+      aria-live="polite"
+      initial={reducedMotion ? false : { opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <Sparkles size={14} aria-hidden="true" />
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          className="delphi-company-confirmation-progress-text"
+          data-text={message}
+          key={message}
+          initial={reducedMotion ? false : { opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -3 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {message}
+        </motion.span>
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -158,6 +233,33 @@ async function workspaceSetupFetch(
   return (await response.json()) as WorkspaceSetupStatus;
 }
 
+async function sendSupportRequest(
+  orgId: string,
+  payload: { replyEmail: string; subject: string; message: string },
+) {
+  const response = await fetch("/api/onboarding/support", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-org-id": orgId,
+      "idempotency-key": crypto.randomUUID(),
+      "x-request-id": crypto.randomUUID(),
+    },
+    body: JSON.stringify(payload),
+  });
+  const result = (await response.json().catch(() => ({}))) as {
+    error?: unknown;
+    sent?: unknown;
+  };
+  if (!response.ok || result.sent !== true) {
+    throw new Error(
+      typeof result.error === "string"
+        ? result.error
+        : "Support email is temporarily unavailable.",
+    );
+  }
+}
+
 async function onboardingActionFetch(
   orgId: string,
   action: "continue" | "confirm_company" | "restart_company",
@@ -192,6 +294,7 @@ export function OnboardingAgentPanel({
   const [actions, setActions] = useState<OnboardingAction[]>([]);
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>(STARTER_CHIPS);
   const [draft, setDraft] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
@@ -212,6 +315,12 @@ export function OnboardingAgentPanel({
   const [syncRefreshKeys, setSyncRefreshKeys] = useState<
     Record<string, number>
   >({});
+  const [supportFlow, setSupportFlow] = useState<SupportFlowState>({
+    step: "idle",
+    replyEmail: "",
+    subject: "",
+    message: "",
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -222,10 +331,12 @@ export function OnboardingAgentPanel({
           suggestedActions?: OnboardingAction[];
           suggestedReplies?: string[];
           organizationName?: string;
+          userEmail?: string;
         };
         setState(next);
         setActions(next.suggestedActions ?? []);
         setSuggestedReplies(next.suggestedReplies ?? []);
+        setLoginEmail(next.userEmail?.trim() ?? "");
       })
       .catch(() => {
         if (!cancelled) setError(FRIENDLY_ERROR);
@@ -300,6 +411,7 @@ export function OnboardingAgentPanel({
   );
   const hasSavedCompanyUrl = Boolean(state?.productProfile.productUrl?.trim());
   const githubConnected = setupStatus.githubConnected;
+  const githubRepositoryCount = setupStatus.github?.repositoryCount ?? 0;
   const githubFailureIsResolved = resolvedConnectorFailure({
     provider: "GitHub",
     connected: githubConnected,
@@ -317,22 +429,41 @@ export function OnboardingAgentPanel({
         : [];
     }
     let replacedGreeting = false;
-    return state.messages.map((message) => {
+    const normalizedMessages = state.messages.map((message) => {
       if (message.role !== "assistant" || replacedGreeting) return message;
       replacedGreeting = true;
       return { ...message, content: "Hey, How's it going!" };
-    }).map((message, index) =>
-      hasProductBrief &&
-      !githubConnected &&
-      index > 0 &&
-      message.role === "assistant"
-        ? {
-            ...message,
-            content:
-              "Connect GitHub first so you can choose the repositories CloseSpan may test and use for approved PRs.",
-          }
-        : message,
-    );
+    });
+    return normalizedMessages
+      .filter((message, index) => {
+        if (
+          !hasProductBrief ||
+          !githubConnected ||
+          index === 0 ||
+          message.role !== "assistant"
+        ) {
+          return true;
+        }
+        const followsConfirmation =
+          normalizedMessages[index - 1]?.role === "user" &&
+          normalizedMessages[index - 1]?.content.startsWith("Confirmed ");
+        if (followsConfirmation) return true;
+        return !/(feedback source|intercom|posthog|custom webhook)/i.test(
+          message.content,
+        );
+      })
+      .map((message, index) =>
+        hasProductBrief &&
+        !githubConnected &&
+        index > 0 &&
+        message.role === "assistant"
+          ? {
+              ...message,
+              content:
+                "Connect GitHub first so CloseSpan can test the right repository and open approved PRs.",
+            }
+          : message,
+      );
   }, [githubConnected, hasCompanyCandidate, hasProductBrief, state]);
   const feedbackConnectors = useMemo(
     () =>
@@ -354,6 +485,36 @@ export function OnboardingAgentPanel({
   const visibleSuggestedReplies = githubFailureIsResolved
     ? []
     : suggestedReplies;
+  const supportFlowActive =
+    supportFlow.step === "email" ||
+    supportFlow.step === "subject" ||
+    supportFlow.step === "message" ||
+    supportFlow.step === "review";
+  const supportSubjectIsOptional = supportFlow.step === "subject";
+  const composerHasRequiredValue =
+    supportSubjectIsOptional || Boolean(draft.trim());
+  const composerPlaceholder =
+    supportFlow.step === "email"
+      ? "Enter your reply email..."
+      : supportFlow.step === "subject"
+        ? "Add a subject (optional)..."
+        : supportFlow.step === "message"
+          ? "Type your message to support..."
+          : hasCompanyCandidate
+            ? "Or send a different company URL..."
+            : hasProductBrief
+              ? "Ask to connect a source..."
+              : hasSavedCompanyUrl
+                ? "Send another URL or describe your company..."
+                : "Enter company URL...";
+  const composerLabel =
+    supportFlow.step === "email"
+      ? "Reply email"
+      : supportFlow.step === "subject"
+        ? "Support message subject"
+        : supportFlow.step === "message"
+          ? "Support message"
+          : "Onboarding message";
   const showStarters = useMemo(
     () =>
       Boolean(
@@ -388,8 +549,159 @@ export function OnboardingAgentPanel({
     }
   }
 
+  function startSupportFlow() {
+    if (busy) return;
+    setSupportFlow({
+      step: "email",
+      replyEmail: loginEmail,
+      subject: "",
+      message: "",
+    });
+    setDraft(loginEmail);
+    setError(null);
+    setSuggestedReplies([]);
+    recordActivityExchange(
+      "Contact support",
+      "Contact support",
+      loginEmail
+        ? "Confirm or change the email support should reply to."
+        : "What email should support reply to?",
+    );
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function cancelSupportFlow() {
+    setSupportFlow({
+      step: "idle",
+      replyEmail: "",
+      subject: "",
+      message: "",
+    });
+    setDraft("");
+    setError(null);
+    recordActivityExchange(
+      "Cancel support message",
+      "Support message canceled",
+      "You can continue connecting sources here.",
+    );
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  async function submitSupportStep(raw: string) {
+    const value = raw.trim();
+    if (supportFlow.step === "email") {
+      if (!REPLY_EMAIL_PATTERN.test(value) || value.length > 254) {
+        setError("Enter a valid reply email.");
+        return;
+      }
+      setSupportFlow((current) => ({
+        ...current,
+        step: "subject",
+        replyEmail: value,
+      }));
+      setDraft("");
+      setError(null);
+      recordActivityExchange(
+        value,
+        "Reply email saved",
+        "Add a subject, or skip this step.",
+      );
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+    if (supportFlow.step === "subject") {
+      if (value.length > 160) {
+        setError("Keep the subject under 160 characters.");
+        return;
+      }
+      setSupportFlow((current) => ({
+        ...current,
+        step: "message",
+        subject: value,
+      }));
+      setDraft("");
+      setError(null);
+      recordActivityExchange(
+        value || "Skip subject",
+        value ? "Subject saved" : "No subject added",
+        "What would you like support to help with?",
+      );
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+    if (supportFlow.step !== "message") return;
+    if (!value) {
+      setError("Enter a message for support.");
+      return;
+    }
+    if (value.length > 5_000) {
+      setError("Keep the support message under 5,000 characters.");
+      return;
+    }
+    setSupportFlow((current) => ({
+      ...current,
+      step: "review",
+      message: value,
+    }));
+    setDraft("");
+    setError(null);
+    recordActivityExchange(
+      value,
+      "Review your message",
+      `Check the details, then send it to ${SUPPORT_EMAIL}.`,
+    );
+  }
+
+  function editSupportMessage() {
+    if (busy || supportFlow.step !== "review") return;
+    setSupportFlow((current) => ({ ...current, step: "message" }));
+    setDraft(supportFlow.message);
+    setError(null);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  async function sendReviewedSupportMessage() {
+    if (busy || supportFlow.step !== "review") return;
+    setBusy("support");
+    setError(null);
+    try {
+      await sendSupportRequest(orgId, {
+        replyEmail: supportFlow.replyEmail,
+        subject: supportFlow.subject,
+        message: supportFlow.message,
+      });
+      setSupportFlow((current) => ({ ...current, step: "sent" }));
+      recordActivityExchange(
+        "Send to support",
+        "Message sent",
+        `Support received your message at ${SUPPORT_EMAIL}. Replies will go to ${supportFlow.replyEmail}.`,
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Support email is temporarily unavailable.",
+      );
+    } finally {
+      setBusy(null);
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (
+      supportFlow.step === "email" ||
+      supportFlow.step === "subject" ||
+      supportFlow.step === "message"
+    ) {
+      await submitSupportStep(draft);
+      return;
+    }
+    if (SUPPORT_REQUEST_PATTERN.test(draft.trim())) {
+      startSupportFlow();
+      return;
+    }
     await sendMessage(draft);
   }
 
@@ -675,21 +987,55 @@ export function OnboardingAgentPanel({
               );
             })
           )}
-          {state && githubFailureIsResolved && (
+          {state && showSourceStage && (
+            <motion.section
+              className="delphi-github-connected"
+              aria-labelledby="github-connected-title"
+              role="status"
+              layout
+              initial={
+                prefersReducedMotion
+                  ? false
+                  : { opacity: 0, y: 12, scale: 0.992 }
+              }
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <span className="delphi-github-connected-icon" aria-hidden="true">
+                <IntegrationProviderIcon
+                  integrationId="int_github"
+                  size={24}
+                  compact
+                />
+              </span>
+              <div className="delphi-github-connected-copy">
+                <h2 id="github-connected-title">GitHub connected</h2>
+                <p>
+                  {githubRepositoryCount > 0
+                    ? `${githubRepositoryCount} ${githubRepositoryCount === 1 ? "repository is" : "repositories are"} ready for approved runs.`
+                    : "Selected repositories are ready for approved runs."}
+                </p>
+              </div>
+              <Link className="btn" href="/integrations?focus=int_github">
+                Manage repositories
+              </Link>
+            </motion.section>
+          )}
+          {state && showSourceStage && (
             <motion.div
               className="delphi-message-row assistant"
-              role="status"
               layout
               initial={prefersReducedMotion ? false : { opacity: 0, x: -18, y: 8 }}
               animate={{ opacity: 1, x: 0, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
             >
-              <span className="delphi-message-sender">Operations Manager · Updated</span>
+              <span className="delphi-message-sender">Operations Manager</span>
               <div className="delphi-message-body">
                 <OperationsManagerAvatar />
-                <div className="delphi-bubble assistant resolved">
-                  <p>GitHub connected. Connect a feedback source.</p>
+                <div className="delphi-bubble assistant">
+                  <p>Next, connect one feedback source.</p>
                 </div>
               </div>
             </motion.div>
@@ -757,8 +1103,8 @@ export function OnboardingAgentPanel({
         <p className="sr-only" aria-live="polite" aria-atomic="true">
           {busy === "chat"
             ? "The Operations Manager is preparing a response."
-            : githubFailureIsResolved
-              ? "GitHub connected. Connect a feedback source."
+            : showSourceStage
+              ? "GitHub is connected. Next, connect one feedback source."
             : state?.messages.at(-1)?.role === "assistant"
               ? state.messages.at(-1)?.content
               : ""}
@@ -834,6 +1180,13 @@ export function OnboardingAgentPanel({
                 {busy === "confirm_company" ? "Confirming..." : "Confirm company"}
               </button>
             </div>
+            <AnimatePresence initial={false}>
+              {busy === "confirm_company" && (
+                <CompanyConfirmationProgress
+                  reducedMotion={prefersReducedMotion}
+                />
+              )}
+            </AnimatePresence>
           </motion.section>
         )}
 
@@ -878,7 +1231,7 @@ export function OnboardingAgentPanel({
           </motion.section>
         )}
 
-        {state && showSourceStage && (
+        {state && showSourceStage && setupStatus.feedbackConnected && (
           <motion.div
             className="delphi-message-row assistant delphi-product-message delphi-confirmation-reveal reveal-product"
             layout
@@ -920,6 +1273,16 @@ export function OnboardingAgentPanel({
               <div>
                 <strong>Connect feedback</strong>
                 <p>Choose one source.</p>
+              </div>
+              <div className="delphi-sync-source-icons" aria-hidden="true">
+                {feedbackConnectors.slice(0, 4).map((connector) => (
+                  <IntegrationProviderIcon
+                    key={connector.integrationId}
+                    integrationId={connector.integrationId}
+                    size={18}
+                    compact
+                  />
+                ))}
               </div>
             </div>
             <div className="delphi-sync-grid">
@@ -1079,16 +1442,23 @@ export function OnboardingAgentPanel({
           </motion.section>
         )}
 
-        {showComposer && (showStarters || visibleSuggestedReplies.length > 0) && (
+        {showComposer &&
+          supportFlow.step !== "review" &&
+          (supportFlowActive ||
+            showStarters ||
+            visibleSuggestedReplies.length > 0 ||
+            supportFlow.step === "idle" ||
+            supportFlow.step === "sent") && (
           <motion.div
             className="delphi-chips"
-            aria-label="Suggested replies"
+            aria-label={supportFlowActive ? "Support message actions" : "Suggested replies"}
             layout
             initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
           >
-            {(showStarters ? STARTER_CHIPS : visibleSuggestedReplies).map((chip) => (
+            {!supportFlowActive &&
+              (showStarters ? STARTER_CHIPS : visibleSuggestedReplies).map((chip) => (
               <motion.button
                 key={chip}
                 type="button"
@@ -1100,7 +1470,107 @@ export function OnboardingAgentPanel({
                 {chip}
               </motion.button>
             ))}
+            {!supportFlowActive && (
+              <motion.button
+                type="button"
+                className="delphi-chip delphi-support-chip"
+                disabled={Boolean(busy)}
+                onClick={startSupportFlow}
+                whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
+              >
+                <Mail size={16} aria-hidden="true" />
+                Contact support
+              </motion.button>
+            )}
+            {supportFlow.step === "subject" && (
+              <motion.button
+                type="button"
+                className="delphi-chip"
+                disabled={Boolean(busy)}
+                onClick={() => void submitSupportStep("")}
+                whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
+              >
+                Skip subject
+              </motion.button>
+            )}
+            {supportFlowActive && (
+              <motion.button
+                type="button"
+                className="delphi-chip"
+                disabled={Boolean(busy)}
+                onClick={cancelSupportFlow}
+                whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
+              >
+                Cancel
+              </motion.button>
+            )}
           </motion.div>
+        )}
+
+        {showComposer && supportFlow.step === "review" && (
+          <motion.section
+            className="delphi-support-review"
+            aria-labelledby="support-review-title"
+            layout
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="delphi-support-review-heading">
+              <span className="delphi-support-review-icon" aria-hidden="true">
+                <Mail size={20} />
+              </span>
+              <div>
+                <h2 id="support-review-title">Send to support</h2>
+                <p>{SUPPORT_EMAIL}</p>
+              </div>
+            </div>
+            <dl className="delphi-support-review-details">
+              <div>
+                <dt>Reply email</dt>
+                <dd>{supportFlow.replyEmail}</dd>
+              </div>
+              <div>
+                <dt>Subject</dt>
+                <dd>{supportFlow.subject || "No subject"}</dd>
+              </div>
+              <div>
+                <dt>Message</dt>
+                <dd>{supportFlow.message}</dd>
+              </div>
+            </dl>
+            <div className="delphi-support-review-actions">
+              <button
+                className="btn"
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={editSupportMessage}
+              >
+                Edit message
+              </button>
+              <button
+                className="btn"
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={cancelSupportFlow}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={busy === "support"}
+                onClick={() => void sendReviewedSupportMessage()}
+              >
+                {busy === "support" ? (
+                  <LoaderCircle size={18} className="spin" aria-hidden="true" />
+                ) : (
+                  <Mail size={18} aria-hidden="true" />
+                )}
+                {busy === "support" ? "Sending..." : "Send to support"}
+              </button>
+            </div>
+          </motion.section>
         )}
 
         {(webhookUrl || webhookSecret) && (
@@ -1146,46 +1616,90 @@ export function OnboardingAgentPanel({
           </motion.div>
         )}
 
-        {showComposer && <motion.form
-          className="delphi-composer"
-          onSubmit={onSubmit}
-          layout
-          initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.36, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <input
-            className="neumorphic-composite-field"
-            ref={inputRef}
-            type="text"
-            value={draft}
-            aria-label="Describe your product"
-            placeholder={
-              hasCompanyCandidate
-                ? "Or send a different company URL..."
-                : hasProductBrief
-                  ? "Ask to connect a source..."
-                : hasSavedCompanyUrl
-                  ? "Send another URL or describe your company..."
-                  : "Enter company URL..."
-            }
-            onChange={(event) => setDraft(event.target.value)}
-            disabled={busy === "chat"}
-          />
-          <motion.button
-            className="delphi-send"
-            type="submit"
-            disabled={!draft.trim() || busy === "chat"}
-            aria-label="Send message"
-            whileTap={
-              prefersReducedMotion || !draft.trim() || busy === "chat"
-                ? undefined
-                : { scale: 0.94 }
-            }
-          >
-            <ArrowUp size={18} aria-hidden="true" />
-          </motion.button>
-        </motion.form>}
+        <AnimatePresence initial={false}>
+          {showComposer && supportFlow.step !== "review" && (
+            <motion.form
+              key="onboarding-composer"
+              className="delphi-composer"
+              onSubmit={onSubmit}
+              layout="position"
+              initial={
+                prefersReducedMotion
+                  ? false
+                  : {
+                      opacity: 0,
+                      y: 18,
+                      scaleY: 0.88,
+                      filter: "blur(8px)",
+                      clipPath: "inset(0 0 42% 0 round 18px)",
+                    }
+              }
+              animate={{
+                opacity: 1,
+                y: 0,
+                scaleY: 1,
+                filter: "blur(0px)",
+                clipPath: "inset(0 0 0% 0 round 18px)",
+              }}
+              exit={
+                prefersReducedMotion
+                  ? undefined
+                  : {
+                      opacity: 0,
+                      y: 8,
+                      scaleY: 0.96,
+                      filter: "blur(4px)",
+                      clipPath: "inset(0 0 28% 0 round 18px)",
+                    }
+              }
+              transition={{
+                duration: prefersReducedMotion ? 0 : 0.58,
+                delay: prefersReducedMotion ? 0 : 0.14,
+                ease: [0.16, 1, 0.3, 1],
+              }}
+            >
+              <input
+                className="neumorphic-composite-field"
+                ref={inputRef}
+                type={supportFlow.step === "email" ? "email" : "text"}
+                value={draft}
+                aria-label={composerLabel}
+                placeholder={composerPlaceholder}
+                maxLength={
+                  supportFlow.step === "message"
+                    ? 5_000
+                    : supportFlow.step === "subject"
+                      ? 160
+                      : undefined
+                }
+                onChange={(event) => setDraft(event.target.value)}
+                disabled={busy === "chat" || busy === "support"}
+              />
+              <motion.button
+                className="delphi-send"
+                type="submit"
+                disabled={
+                  !composerHasRequiredValue ||
+                  busy === "chat" ||
+                  busy === "support"
+                }
+                aria-label={
+                  busy === "support" ? "Sending support message" : "Send message"
+                }
+                whileTap={
+                  prefersReducedMotion ||
+                  !composerHasRequiredValue ||
+                  busy === "chat" ||
+                  busy === "support"
+                    ? undefined
+                    : { scale: 0.94 }
+                }
+              >
+                <ArrowUp size={18} aria-hidden="true" />
+              </motion.button>
+            </motion.form>
+          )}
+        </AnimatePresence>
         </div>
       </motion.div>
     </motion.section>

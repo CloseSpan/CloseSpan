@@ -754,6 +754,71 @@ export function initialSuggestedReplies(): string[] {
   return ["We don't have a website yet"];
 }
 
+const ONBOARDING_SCOPE_REDIRECT =
+  "I can help connect feedback sources, manage GitHub setup, or explain this onboarding flow. What would you like to connect?";
+
+function isOnboardingRelatedMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return false;
+  if (extractCompanyUrl(message)) return true;
+  if (/\b(?:don't|do not|no)\b.{0,24}\b(?:website|site|url)\b/i.test(message)) {
+    return true;
+  }
+  if (
+    connectorCatalogForAgent.some(
+      (connector) =>
+        normalized.includes(connector.provider.toLowerCase()) ||
+        normalized.includes(connector.id.replace(/^int_/, "").replaceAll("_", " ")),
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(connect|connected|connection|disconnect|integration|connector|source|feedback|import|sync|webhook|github|repository|repo|pull request|\bpr\b|oauth|authorization|approve|setup|onboarding|recommend|recommended|choose|picked|continue|skip|next|retry|failed|failure|error|stuck)\b/i.test(
+      message,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(product|company|business|customer|customers|user|users|audience|b2b|b2c|saas|software|platform|service|website|mobile|ios|android|enterprise|startup|support|review|reviews|analytics|developer|developers|engineering|app|application)\b/i.test(
+      message,
+    )
+  ) {
+    return true;
+  }
+  return /^(?:help|what can you do|what does this do|explain this|why these|show connected (?:apps|sources))\??$/i.test(
+    normalized,
+  );
+}
+
+function offTopicOnboardingTurn(input: {
+  state: OnboardingState;
+  workspaceStatus: OnboardingWorkspaceConnectionStatus;
+}): OnboardingTurnResult {
+  const recommendedConnectors = availableRecommendations(
+    input.state.recommendedConnectors,
+  );
+  return {
+    assistantMessage: ONBOARDING_SCOPE_REDIRECT,
+    phase: input.state.phase,
+    productProfile: input.state.productProfile,
+    recommendedConnectors,
+    suggestedActions: buildSuggestedActions(
+      recommendedConnectors,
+      connectedIds(input.workspaceStatus),
+      input.workspaceStatus.aiConfigured,
+    ),
+    suggestedReplies: input.state.productProfile.companyProfileConfirmed
+      ? [
+          "Connect a recommended source",
+          "Show connected sources",
+          "Continue onboarding",
+        ]
+      : ["Send company website", "We don't have a website yet"],
+  };
+}
+
 function looksLikeProductBrief(message: string): boolean {
   const lower = message.toLowerCase();
   const mentionsToolOnly =
@@ -783,6 +848,13 @@ export async function runOnboardingTurn(input: {
       suggestedActions: [],
       suggestedReplies: initialSuggestedReplies(),
     };
+  }
+
+  if (!isOnboardingRelatedMessage(trimmed)) {
+    return offTopicOnboardingTurn({
+      state: input.state,
+      workspaceStatus: input.workspaceStatus,
+    });
   }
 
   if (!input.state.productProfile.companyProfileConfirmed) {

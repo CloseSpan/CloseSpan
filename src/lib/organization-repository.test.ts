@@ -286,24 +286,48 @@ describe("organization repository", () => {
   });
 
   it("deletes only an organization owned by the authorized administrator", async () => {
-    database.pool.query.mockResolvedValue({
-      rows: [{ id: "org_northstar" }],
-      rowCount: 1,
-    });
+    database.client.query
+      .mockResolvedValueOnce({
+        rows: [{ id: "org_northstar", name: "Northstar" }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 3 })
+      .mockResolvedValueOnce({
+        rows: [{ id: "org_northstar" }],
+        rowCount: 1,
+      });
 
     await deleteOrganization({
       orgId: "org_northstar",
       actorMemberId: "member_admin",
     });
 
-    expect(database.pool.query).toHaveBeenCalledWith(
-      expect.stringMatching(/DELETE FROM organizations[\s\S]*workspace_members[\s\S]*member\.role='Admin'/),
+    expect(database.transaction).toHaveBeenCalledTimes(1);
+    expect(database.client.query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringMatching(/SELECT organization\.id,organization\.name[\s\S]*member\.role='Admin'[\s\S]*FOR UPDATE/),
       ["org_northstar", "member_admin"],
+    );
+    expect(database.client.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("INSERT INTO deleted_organizations"),
+      ["org_northstar", "Northstar"],
+    );
+    expect(database.client.query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringMatching(/DELETE FROM github_webhook_deliveries[\s\S]*github_webhook_delivery_workspaces[\s\S]*workspace\.org_id<>\$1/),
+      ["org_northstar"],
+    );
+    expect(database.client.query).toHaveBeenNthCalledWith(
+      4,
+      "DELETE FROM organizations WHERE id=$1 RETURNING id",
+      ["org_northstar"],
     );
   });
 
   it("rejects deletion when administrator access is missing or revoked", async () => {
-    database.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    database.client.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     await expect(
       deleteOrganization({
@@ -313,6 +337,27 @@ describe("organization repository", () => {
     ).rejects.toThrow(
       "Organization was not found or administrator access was revoked",
     );
+    expect(database.client.query).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not leave a tombstone behind when tenant deletion fails", async () => {
+    database.client.query
+      .mockResolvedValueOnce({
+        rows: [{ id: "org_northstar", name: "Northstar" }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 2 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await expect(
+      deleteOrganization({
+        orgId: "org_northstar",
+        actorMemberId: "member_admin",
+      }),
+    ).rejects.toThrow("Organization could not be deleted");
+
+    expect(database.transaction).toHaveBeenCalledTimes(1);
   });
 
   it("requires PostgreSQL persistence for deletion", async () => {
@@ -326,6 +371,6 @@ describe("organization repository", () => {
     ).rejects.toThrow(
       "PostgreSQL persistence is required to delete organizations",
     );
-    expect(database.pool.query).not.toHaveBeenCalled();
+    expect(database.transaction).not.toHaveBeenCalled();
   });
 });

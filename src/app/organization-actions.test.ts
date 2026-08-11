@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   requireWorkspaceUser: vi.fn(),
   createOrganization: vi.fn(),
   deleteOrganization: vi.fn(),
+  revokeGithubInstallations: vi.fn(),
   renameOrganization: vi.fn(),
   persistenceMode: "postgres" as "memory" | "postgres",
 }));
@@ -27,6 +28,10 @@ vi.mock("@/lib/organization-repository", () => ({
 }));
 vi.mock("@/lib/workspace-persistence", () => ({
   workspacePersistenceMode: () => mocks.persistenceMode,
+}));
+vi.mock("@/lib/github-installation-repository", () => ({
+  revokeGithubInstallationsForDeletedOrganization:
+    mocks.revokeGithubInstallations,
 }));
 
 import {
@@ -165,6 +170,7 @@ describe("deleteOrganizationAction", () => {
     mocks.persistenceMode = "postgres";
     mocks.requireWorkspaceUser.mockReset().mockResolvedValue(adminUser);
     mocks.deleteOrganization.mockReset().mockResolvedValue(undefined);
+    mocks.revokeGithubInstallations.mockReset().mockResolvedValue(undefined);
     mocks.cookies.mockReset().mockResolvedValue(cookieStore);
     cookieStore.set.mockReset();
     cookieStore.delete.mockReset();
@@ -183,6 +189,10 @@ describe("deleteOrganizationAction", () => {
       orgId: "org_current",
       actorMemberId: "member_admin",
     });
+    expect(mocks.revokeGithubInstallations).toHaveBeenCalledWith("org_current");
+    expect(
+      mocks.revokeGithubInstallations.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.deleteOrganization.mock.invocationCallOrder[0]);
     expect(cookieStore.set).toHaveBeenCalledWith(
       "active_org",
       "org_other",
@@ -266,6 +276,25 @@ describe("deleteOrganizationAction", () => {
       error: "The organization could not be deleted right now. Please try again.",
     });
     expect(result.error).not.toContain("database details");
+    expect(cookieStore.set).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("does not delete local data when GitHub revocation fails", async () => {
+    mocks.revokeGithubInstallations.mockRejectedValue(
+      new Error("GitHub unavailable"),
+    );
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await deleteOrganizationAction(
+      { error: null },
+      deleteForm("Current workspace"),
+    );
+
+    expect(result).toEqual({
+      error: "The organization could not be deleted right now. Please try again.",
+    });
+    expect(mocks.deleteOrganization).not.toHaveBeenCalled();
     expect(cookieStore.set).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { databasePool, transaction } from "./db";
 import {
+  createGithubAppClient,
+  parseGithubInstallationId,
   verifyGithubInstallation,
   type VerifiedGithubInstallation,
 } from "./github-app-auth";
@@ -28,6 +30,68 @@ export interface GithubAppInstallationRecord {
 export interface GithubInstallationSyncOptions {
   preserveWorkspaceRepositoryBindings?: boolean;
   workspaceRepositories?: readonly string[];
+}
+
+interface GithubInstallationDeletionClient {
+  rest: {
+    apps: {
+      deleteInstallation(input: { installation_id: number }): Promise<unknown>;
+    };
+  };
+}
+
+function githubErrorStatus(error: unknown): number | null {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+  return null;
+}
+
+export async function revokeGithubInstallationsForDeletedOrganization(
+  orgId: string,
+  dependencies: {
+    createAppClient?: () => Promise<GithubInstallationDeletionClient>;
+  } = {},
+): Promise<void> {
+  requirePostgresWorkspace(orgId, "GitHub organization deletion");
+  const result = await databasePool().query<{
+    installation_id: string;
+    exclusive: boolean;
+  }>(
+    `SELECT DISTINCT installation.installation_id::text,
+            NOT EXISTS (
+              SELECT 1
+                FROM github_app_installations AS other
+               WHERE other.installation_id=installation.installation_id
+                 AND other.org_id<>$1
+                 AND other.workspace_connected=true
+            ) AS exclusive
+       FROM github_app_installations AS installation
+      WHERE installation.org_id=$1`,
+    [orgId],
+  );
+
+  const exclusiveInstallationIds = result.rows
+    .filter((installation) => installation.exclusive)
+    .map((installation) => installation.installation_id);
+  if (exclusiveInstallationIds.length === 0) return;
+
+  const client = await (dependencies.createAppClient ?? createGithubAppClient)();
+  for (const installationId of exclusiveInstallationIds) {
+    try {
+      await client.rest.apps.deleteInstallation({
+        installation_id: parseGithubInstallationId(installationId),
+      });
+    } catch (error) {
+      // A missing installation is already fully revoked at GitHub.
+      if (githubErrorStatus(error) !== 404) throw error;
+    }
+  }
 }
 
 export async function syncGithubInstallationRecords(
