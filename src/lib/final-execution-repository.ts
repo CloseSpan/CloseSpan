@@ -3,7 +3,13 @@ import type { Octokit } from "@octokit/rest";
 import type { Pool, PoolClient } from "pg";
 import { createGithubInstallationClient } from "./github-app-auth";
 import { databasePool, transaction } from "./db";
-import type { UiVerificationBaseline } from "./release-verification-plan";
+import {
+  assessReleaseVerificationScope,
+  hashReleaseVerificationPlan,
+  type ReleaseVerificationPlan,
+  type ReleaseVerificationScopeAssessment,
+  type UiVerificationBaseline,
+} from "./release-verification-plan";
 
 export type FinalExecutionApprovalStatus =
   | "Pending"
@@ -34,6 +40,14 @@ export interface FinalExecutionApprovalView {
   autoDeployOnMerge: boolean;
   rollbackPlan: string | null;
   uiBaseline: { planHash: string; captureCount: number } | null;
+  releaseVerification: {
+    planHash: string;
+    backendChecks: number;
+    frontendJourneys: number;
+    backendRequired: boolean;
+    frontendRequired: boolean;
+    scopeAssessment: ReleaseVerificationScopeAssessment;
+  } | null;
   changedFiles: string[];
   testSummary: { passed: number; failed: number; skipped: number };
   acceptanceSummary: { passed: number; unresolved: number };
@@ -59,6 +73,28 @@ export class FinalExecutionError extends Error {
   }
 }
 
+export function finalExecutionScopeAllowsApproval(evidenceSnapshot: unknown): boolean {
+  if (!evidenceSnapshot || typeof evidenceSnapshot !== "object") return true;
+  const snapshot = evidenceSnapshot as {
+    releaseVerificationScope?: { compatible?: unknown };
+    releaseVerificationPlan?: ReleaseVerificationPlan;
+    changedFiles?: unknown;
+  };
+  if (snapshot.releaseVerificationScope?.compatible === false) return false;
+  if (snapshot.releaseVerificationScope?.compatible === true) return true;
+  if (!snapshot.releaseVerificationPlan) return true;
+  try {
+    return assessReleaseVerificationScope(
+      snapshot.releaseVerificationPlan,
+      Array.isArray(snapshot.changedFiles)
+        ? snapshot.changedFiles.filter((path): path is string => typeof path === "string")
+        : [],
+    ).compatible;
+  } catch {
+    return false;
+  }
+}
+
 interface CreateFinalExecutionApprovalInput {
   orgId: string;
   problemId: string;
@@ -79,6 +115,7 @@ interface CreateFinalExecutionApprovalInput {
   autoDeployOnMerge?: boolean;
   rollbackPlan?: string | null;
   uiBaseline?: UiVerificationBaseline | null;
+  releaseVerificationPlan?: ReleaseVerificationPlan;
 }
 
 interface FinalApprovalRow {
@@ -102,6 +139,8 @@ interface FinalApprovalRow {
     criteria?: Array<{ status?: string }>;
     remainingRisks?: string[];
     uiBaseline?: UiVerificationBaseline | null;
+    releaseVerificationPlan?: ReleaseVerificationPlan;
+    releaseVerificationScope?: ReleaseVerificationScopeAssessment;
   } | null;
   changed_files: string[];
   test_results: Array<{ status?: string }>;
@@ -138,6 +177,20 @@ function summary(row: FinalApprovalRow): FinalExecutionApprovalView {
     rollbackPlan: row.rollback_plan,
     uiBaseline: snapshot.uiBaseline
       ? { planHash: snapshot.uiBaseline.planHash, captureCount: snapshot.uiBaseline.captures.length }
+      : null,
+    releaseVerification: snapshot.releaseVerificationPlan
+      ? {
+          planHash: hashReleaseVerificationPlan(snapshot.releaseVerificationPlan),
+          backendChecks: snapshot.releaseVerificationPlan.backend.checks.length,
+          frontendJourneys: snapshot.releaseVerificationPlan.frontend.journeys.length,
+          backendRequired: snapshot.releaseVerificationPlan.requirements.backend === "required",
+          frontendRequired: snapshot.releaseVerificationPlan.requirements.frontend === "required",
+          scopeAssessment: snapshot.releaseVerificationScope
+            ?? assessReleaseVerificationScope(
+              snapshot.releaseVerificationPlan,
+              Array.isArray(snapshot.changedFiles) ? snapshot.changedFiles : [],
+            ),
+        }
       : null,
     changedFiles: Array.isArray(snapshot.changedFiles) ? snapshot.changedFiles : Array.isArray(row.changed_files) ? row.changed_files : [],
     testSummary: {
@@ -217,6 +270,10 @@ export async function createFinalExecutionApproval(
   input: CreateFinalExecutionApprovalInput,
 ): Promise<string> {
   const approvalId = `apr_final_${randomUUID().replaceAll("-", "")}`;
+  const changedFiles = input.changedFiles ?? [];
+  const releaseVerificationScope = input.releaseVerificationPlan
+    ? assessReleaseVerificationScope(input.releaseVerificationPlan, changedFiles)
+    : null;
   const result = await client.query<{ id: string }>(
     `INSERT INTO approval_requests(
        id,org_id,problem_id,recommendation_id,action,reason,confidence,systems,
@@ -252,7 +309,7 @@ export async function createFinalExecutionApproval(
       input.headSha,
       input.targetEnvironment ?? null,
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         agentRunId: input.runId,
         promptRevisionId: input.promptRevisionId,
         promptHash: input.promptHash ?? null,
@@ -261,7 +318,7 @@ export async function createFinalExecutionApproval(
         pullRequestNumber: input.pullRequestNumber,
         pullRequestUrl: input.pullRequestUrl,
         headSha: input.headSha,
-        changedFiles: input.changedFiles ?? [],
+        changedFiles,
         tests: input.tests ?? [],
         criteria: input.criteria ?? [],
         remainingRisks: input.remainingRisks ?? [],
@@ -269,6 +326,8 @@ export async function createFinalExecutionApproval(
         uiBaseline: input.uiBaseline
           ? { ...input.uiBaseline, headSha: input.headSha }
           : null,
+        releaseVerificationPlan: input.releaseVerificationPlan ?? null,
+        releaseVerificationScope,
         targetEnvironment: input.targetEnvironment ?? null,
         rollbackPlan: input.rollbackPlan ?? null,
         capturedAt: new Date().toISOString(),
@@ -356,6 +415,9 @@ interface ApprovalCandidate {
   run_status: string;
   implementation_commit_sha: string;
   verification_status: string | null;
+  evidence_snapshot: {
+    releaseVerificationScope?: ReleaseVerificationScopeAssessment;
+  } | null;
   attempt_id: string | null;
   attempt_status: FinalExecutionAttemptStatus | null;
 }
@@ -368,6 +430,7 @@ async function loadCandidate(orgId: string, approvalId: string): Promise<Approva
             allowlist.installation_id::text,run.status AS run_status,
             run.implementation_commit_sha,
             run.implementation_report->'independentVerification'->>'status' AS verification_status,
+            approval.evidence_snapshot,
             attempt.id AS attempt_id,attempt.status AS attempt_status
        FROM approval_requests approval
        JOIN agent_runs run
@@ -409,6 +472,12 @@ export async function approveFinalExecution(
     || candidate.verification_status !== "passed"
   ) {
     throw new FinalExecutionError("The agent run is no longer ready for final execution", 409);
+  }
+  if (!finalExecutionScopeAllowsApproval(candidate.evidence_snapshot)) {
+    throw new FinalExecutionError(
+      "Final execution is locked because the PR changed a production surface outside the approved PDD verification contract",
+      409,
+    );
   }
 
   const attemptId = retryingApprovedMerge && candidate.attempt_id

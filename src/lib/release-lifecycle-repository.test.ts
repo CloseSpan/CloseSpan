@@ -99,10 +99,62 @@ describe("event-driven release lifecycle", () => {
     await completePostReleaseVerification("org-1", "job-1", {
       status: "Passed",
       evidence: "Production export included all expected rows and passed the smoke test.",
+      result: {
+        schemaVersion: 2,
+        backend: { required: true, status: "Passed", checks: [{ passed: true }] },
+        frontend: { required: true, status: "Passed", checks: [{ passed: true }] },
+      },
     });
     expect(database.client.query.mock.calls.some(([statement]) =>
       sql(statement).includes("SET stage='Verified'"))).toBe(true);
     expect(database.client.query.mock.calls.some(([statement]) =>
       sql(statement).includes("INSERT INTO engineering_release_verifications"))).toBe(true);
+  });
+
+  it("does not move Released to Verified when a required production section failed", async () => {
+    database.client.query.mockImplementation(async (statement: unknown) => {
+      const normalized = sql(statement);
+      if (normalized.includes("UPDATE post_release_verification_jobs"))
+        return { rows: [{ problem_id: "problem-1", environment: "production", status: "Failed" }], rowCount: 1 };
+      if (normalized.includes("SELECT id,revision FROM engineering_ticket_specifications"))
+        return { rows: [{ id: "spec-1", revision: 3 }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+    await completePostReleaseVerification("org-1", "job-1", {
+      status: "Passed",
+      evidence: "Top-level callback claimed success.",
+      result: {
+        schemaVersion: 2,
+        backend: { required: true, status: "Passed", checks: [{ passed: true }] },
+        frontend: { required: true, status: "Failed", checks: [{ passed: false }] },
+      },
+    });
+    expect(database.client.query.mock.calls.some(([statement]) =>
+      sql(statement).includes("SET stage='Verified'"))).toBe(false);
+    const update = database.client.query.mock.calls.find(([statement]) =>
+      sql(statement).includes("UPDATE post_release_verification_jobs"));
+    expect(update?.[1]?.[2]).toBe("Failed");
+  });
+
+  it("accepts a duplicate callback after the durable job is already terminal", async () => {
+    database.client.query.mockImplementation(async (statement: unknown) => {
+      const normalized = sql(statement);
+      if (normalized.includes("UPDATE post_release_verification_jobs"))
+        return { rows: [], rowCount: 0 };
+      if (normalized.includes("SELECT status FROM post_release_verification_jobs"))
+        return { rows: [{ status: "Passed" }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(completePostReleaseVerification("org-1", "job-1", {
+      status: "Passed",
+      evidence: "Repeated delivery.",
+      result: {
+        schemaVersion: 2,
+        backend: { required: true, status: "Passed", checks: [{ passed: true }] },
+        frontend: { required: true, status: "Passed", checks: [{ passed: true }] },
+      },
+    })).resolves.toBeUndefined();
+    expect(database.client.query.mock.calls.some(([statement]) =>
+      sql(statement).includes("INSERT INTO engineering_release_verifications"))).toBe(false);
   });
 });

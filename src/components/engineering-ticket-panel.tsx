@@ -675,16 +675,36 @@ export function EngineeringTicketPanel({
               Production verification {workflow.releaseEvidence.status.toLowerCase()}
             </div>
             <p className="subtle">{workflow.releaseEvidence.evidence}</p>
-            {workflow.releaseEvidence.uiVerification ? (
+            {workflow.releaseEvidence.productionVerification ? (
               <>
-                <p className="subtle">
-                  {workflow.releaseEvidence.uiVerification.passedChecks} of {workflow.releaseEvidence.uiVerification.totalChecks} checks passed · {workflow.releaseEvidence.environment}
-                </p>
+                <div className="release-verification-sections" role="list" aria-label="Production verification sections">
+                  {([
+                    ["Backend", workflow.releaseEvidence.productionVerification.backend],
+                    ["Frontend", workflow.releaseEvidence.productionVerification.frontend],
+                  ] as const).map(([label, section]) => (
+                    <div className="release-verification-section" role="listitem" key={label}>
+                      <span>
+                        {section.status === "Passed" ? (
+                          <CheckCircle2 size={14} aria-hidden="true" />
+                        ) : section.status === "Failed" ? (
+                          <AlertCircle size={14} aria-hidden="true" />
+                        ) : (
+                          <ShieldCheck size={14} aria-hidden="true" />
+                        )}
+                        <strong>{label}</strong>
+                      </span>
+                      <span className="subtle">
+                        {section.status} · {section.passedChecks} of {section.totalChecks} checks passed
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="subtle">Environment: {workflow.releaseEvidence.environment}</p>
                 <div className="top-actions">
-                  {workflow.releaseEvidence.uiVerification.captures.map((capture) => (
+                  {workflow.releaseEvidence.productionVerification.captures.map((capture) => (
                     <a
                       className="btn secondary"
-                      href={`/api/release-verifications/${workflow.releaseEvidence!.uiVerification!.jobId}/artifacts/${encodeURIComponent(capture.key)}`}
+                      href={`/api/release-verifications/${workflow.releaseEvidence!.productionVerification!.jobId}/artifacts/${encodeURIComponent(capture.key)}`}
                       target="_blank"
                       rel="noreferrer"
                       key={capture.key}

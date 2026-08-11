@@ -143,7 +143,7 @@ export const engineeringTicketSpecificationSchema = z
     baseSha: z.string().trim().regex(/^[a-fA-F0-9]{40}$/),
   })
   .superRefine((value, context) => {
-    if (/```closespan-ui-verification/i.test(value.releaseVerification)) {
+    if (/```closespan-(?:release|ui)-verification/i.test(value.releaseVerification)) {
       try {
         parseReleaseVerificationPlan(value.releaseVerification);
       } catch {

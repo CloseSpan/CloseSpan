@@ -79,8 +79,14 @@ describe("release verifier executor boundary", () => {
     lifecycle.getJob.mockReset().mockResolvedValue(fullJob);
     verifier.execute.mockReset().mockResolvedValue({
       status: "Passed",
-      evidence: "Production UI matched.",
-      result: { schemaVersion: 1, captures: [], checks: [] },
+      evidence: "Production backend and frontend matched.",
+      result: {
+        schemaVersion: 2,
+        backend: { required: true, status: "Passed", checks: [] },
+        frontend: { required: true, status: "Passed", checks: [], captures: [] },
+        captures: [],
+        checks: [],
+      },
     });
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
   });
@@ -101,7 +107,13 @@ describe("release verifier executor boundary", () => {
     const signature = createHmac("sha256", executorSecret).update(body).digest("hex");
     const response = await POST(request(signature));
     expect(response.status).toBe(200);
-    expect(verifier.execute).toHaveBeenCalledWith(fullJob, expect.any(Object));
+    expect(verifier.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: fullJob.jobId,
+        plan: expect.objectContaining({ schemaVersion: 2, kind: "combined" }),
+      }),
+      expect.objectContaining({ storageState: undefined, syntheticBearerToken: undefined }),
+    );
     expect(fetch).toHaveBeenCalledWith(fullJob.callbackUrl, expect.objectContaining({
       method: "POST",
       headers: expect.objectContaining({ authorization: `Bearer ${callbackSecret}` }),
@@ -116,5 +128,18 @@ describe("release verifier executor boundary", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ duplicate: true });
     expect(verifier.execute).not.toHaveBeenCalled();
+  });
+
+  it("delivers the synthetic bearer only through the Tenki execution environment", async () => {
+    vi.stubEnv("RELEASE_VERIFIER_SYNTHETIC_BEARER_TOKEN", "synthetic-test-token");
+    const body = JSON.stringify(dispatch);
+    const signature = createHmac("sha256", executorSecret).update(body).digest("hex");
+    const response = await POST(request(signature));
+    expect(response.status).toBe(200);
+    expect(verifier.execute).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ syntheticBearerToken: "synthetic-test-token" }),
+    );
+    expect(lifecycle.getJob.mock.calls.flat().join(" ")).not.toContain("synthetic-test-token");
   });
 });

@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
     );
     const verification = await executeTenkiReleaseVerification(job, {
       storageState: process.env.RELEASE_VERIFIER_STORAGE_STATE_JSON?.trim(),
+      syntheticBearerToken: process.env.RELEASE_VERIFIER_SYNTHETIC_BEARER_TOKEN?.trim(),
     });
     const response = await fetch(job.callbackUrl, {
       method: "POST",

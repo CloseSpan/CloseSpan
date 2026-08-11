@@ -1,6 +1,10 @@
 import type { Octokit } from "@octokit/rest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mergeApprovedPullRequest } from "./final-execution-repository";
+import {
+  finalExecutionScopeAllowsApproval,
+  mergeApprovedPullRequest,
+} from "./final-execution-repository";
+import { parseReleaseVerificationPlan, releaseVerificationPlanSchema } from "./release-verification-plan";
 
 const github = {
   get: vi.fn(),
@@ -103,5 +107,24 @@ describe("final pull request execution", () => {
 
     await expect(mergeApprovedPullRequest("123", input, { createClient: client }))
       .rejects.toThrow("Required status check is pending");
+  });
+
+  it("blocks only an explicit incompatible verification-scope assessment", () => {
+    expect(finalExecutionScopeAllowsApproval(null)).toBe(true);
+    expect(finalExecutionScopeAllowsApproval({ schemaVersion: 1 })).toBe(true);
+    expect(finalExecutionScopeAllowsApproval({
+      releaseVerificationScope: { compatible: true },
+    })).toBe(true);
+    expect(finalExecutionScopeAllowsApproval({
+      releaseVerificationScope: { compatible: false },
+    })).toBe(false);
+    const frontendOnly = releaseVerificationPlanSchema.parse({
+      ...parseReleaseVerificationPlan("default"),
+      requirements: { backend: "not_required", frontend: "required" },
+    });
+    expect(finalExecutionScopeAllowsApproval({
+      releaseVerificationPlan: frontendOnly,
+      changedFiles: ["src/app/api/orders/route.ts"],
+    })).toBe(false);
   });
 });

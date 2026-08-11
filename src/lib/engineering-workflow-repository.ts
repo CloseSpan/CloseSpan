@@ -56,6 +56,7 @@ import {
   readFinalExecutionApproval,
   type FinalExecutionApprovalView,
 } from "./final-execution-repository";
+import { parseReleaseVerificationPlan } from "./release-verification-plan";
 
 export interface ImplementationPromptView {
   id: string;
@@ -172,10 +173,10 @@ export interface ReleaseVerificationEvidence {
   specificationRevision: number;
   verifiedBy: string;
   verifiedAt: string;
-  uiVerification?: {
+  productionVerification?: {
     jobId: string;
-    passedChecks: number;
-    totalChecks: number;
+    backend: { status: "Passed" | "Failed" | "Not required"; passedChecks: number; totalChecks: number };
+    frontend: { status: "Passed" | "Failed" | "Not required"; passedChecks: number; totalChecks: number };
     captures: Array<{ key: string; viewport: string }>;
   } | null;
 }
@@ -755,8 +756,18 @@ async function readReleaseEvidence(database: Pool | PoolClient, orgId: string, p
     specification_revision: number; verified_by: string; verified_at: Date;
     job_id: string | null;
     verification_result: {
+      schemaVersion?: number;
       checks?: Array<{ passed?: boolean }>;
       captures?: Array<{ key?: string; viewport?: { name?: string }; screenshotBase64?: string | null }>;
+      backend?: {
+        status?: "Passed" | "Failed" | "Not required";
+        checks?: Array<{ passed?: boolean }>;
+      };
+      frontend?: {
+        status?: "Passed" | "Failed" | "Not required";
+        checks?: Array<{ passed?: boolean }>;
+        captures?: Array<{ key?: string; viewport?: { name?: string }; screenshotBase64?: string | null }>;
+      };
     } | null;
   }>(`SELECT verification.id,verification.status,verification.environment,
               verification.evidence,verification.specification_revision,
@@ -777,15 +788,31 @@ async function readReleaseEvidence(database: Pool | PoolClient, orgId: string, p
     id: row.id, status: row.status, environment: row.environment, evidence: row.evidence,
     specificationRevision: row.specification_revision, verifiedBy: row.verified_by,
     verifiedAt: row.verified_at.toISOString(),
-    uiVerification: row.job_id && row.verification_result
-      ? {
-          jobId: row.job_id,
-          passedChecks: (row.verification_result.checks ?? []).filter((check) => check.passed).length,
-          totalChecks: (row.verification_result.checks ?? []).length,
-          captures: (row.verification_result.captures ?? [])
+    productionVerification: row.job_id && row.verification_result
+      ? (() => {
+          const backendChecks = row.verification_result.backend?.checks ?? [];
+          const frontendChecks = row.verification_result.frontend?.checks
+            ?? row.verification_result.checks ?? [];
+          const captures = row.verification_result.frontend?.captures
+            ?? row.verification_result.captures ?? [];
+          return {
+            jobId: row.job_id,
+            backend: {
+              status: row.verification_result.backend?.status ?? "Not required",
+              passedChecks: backendChecks.filter((check) => check.passed).length,
+              totalChecks: backendChecks.length,
+            },
+            frontend: {
+              status: row.verification_result.frontend?.status
+                ?? (row.status === "Passed" ? "Passed" : "Failed"),
+              passedChecks: frontendChecks.filter((check) => check.passed).length,
+              totalChecks: frontendChecks.length,
+            },
+            captures: captures
             .filter((capture) => capture.key && capture.screenshotBase64)
             .map((capture) => ({ key: capture.key!, viewport: capture.viewport?.name ?? "viewport" })),
-        }
+          };
+        })()
       : null,
   } : null;
 }
@@ -2117,6 +2144,9 @@ export async function completeAgentRun(
         remainingRisks: report.remainingRisks,
         independentVerification: report.independentVerification,
         uiBaseline: report.uiBaseline ?? null,
+        releaseVerificationPlan: parseReleaseVerificationPlan(
+          context.promptSnapshot.ticket.releaseVerification,
+        ),
         promptHash: context.promptHash,
         targetEnvironment: process.env.DEFAULT_DEPLOYMENT_ENVIRONMENT?.trim() || null,
         autoDeployOnMerge: process.env.AUTO_DEPLOY_ON_MERGE === "true",

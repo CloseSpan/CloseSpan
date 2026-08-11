@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { executeTenkiReleaseVerification } from "./tenki-release-verifier";
-import { hashReleaseVerificationPlan } from "./release-verification-plan";
+import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
+import {
+  executeTenkiReleaseVerification,
+  TENKI_RELEASE_VERIFIER_RUNNER_SOURCE,
+} from "./tenki-release-verifier";
+import {
+  hashReleaseVerificationPlan,
+  releaseVerificationPlanSchema,
+} from "./release-verification-plan";
 
 const plan = {
   schemaVersion: 1 as const,
@@ -35,6 +42,16 @@ const capture = {
   accessibilityViolations: [],
   assertionFailures: [],
 };
+const backendCheck = {
+  id: "application-health",
+  name: "Application and database health",
+  method: "GET" as const,
+  path: "/api/health",
+  statusCode: 200,
+  durationMs: 42,
+  passed: true,
+  failures: [],
+};
 const job = {
   schemaVersion: 1 as const,
   jobId: "11111111-1111-4111-8111-111111111111",
@@ -62,6 +79,14 @@ const job = {
 describe("Tenki production UI verifier", () => {
   afterEach(() => vi.unstubAllEnvs());
 
+  it("keeps the generated Tenki runner syntactically valid", () => {
+    const diagnostics = transpileModule(TENKI_RELEASE_VERIFIER_RUNNER_SOURCE, {
+      compilerOptions: { allowJs: true, target: ScriptTarget.ES2022, module: ModuleKind.ESNext },
+      reportDiagnostics: true,
+    }).diagnostics ?? [];
+    expect(diagnostics.filter((diagnostic) => diagnostic.category === 1)).toEqual([]);
+  });
+
   it("runs in a fresh outbound-only VM and passes a matching approved layout", async () => {
     vi.stubEnv("TENKI_API_KEY", "tenki-test-key");
     vi.stubEnv("TENKI_RELEASE_VERIFIER_IMAGE", "registry.example/release-verifier@sha256:abc");
@@ -69,9 +94,9 @@ describe("Tenki production UI verifier", () => {
     const session = {
       inboundEnabled: false,
       outboundEnabled: true,
-      writeFile: vi.fn(async () => undefined),
+      writeFile: vi.fn<(path: string, content: string) => Promise<void>>().mockResolvedValue(undefined),
       exec: vi.fn(async () => ({ exitCode: 0, stderr: new Uint8Array() })),
-      readFile: vi.fn(async () => new TextEncoder().encode(JSON.stringify({ captures: [capture] }))),
+      readFile: vi.fn(async () => new TextEncoder().encode(JSON.stringify({ backendChecks: [backendCheck], captures: [capture] }))),
       close: vi.fn(async () => undefined),
     };
     const client = {
@@ -82,6 +107,8 @@ describe("Tenki production UI verifier", () => {
       createClient: () => client as never,
     });
     expect(result.status).toBe("Passed");
+    expect(result.result.backend.status).toBe("Passed");
+    expect(result.result.frontend.status).toBe("Passed");
     expect(client.createAndWait).toHaveBeenCalledWith(expect.objectContaining({
       allowInbound: false,
       allowOutbound: true,
@@ -107,7 +134,7 @@ describe("Tenki production UI verifier", () => {
       outboundEnabled: true,
       writeFile: vi.fn(async () => undefined),
       exec: vi.fn(async () => ({ exitCode: 0, stderr: new Uint8Array() })),
-      readFile: vi.fn(async () => new TextEncoder().encode(JSON.stringify({ captures: [shifted] }))),
+      readFile: vi.fn(async () => new TextEncoder().encode(JSON.stringify({ backendChecks: [backendCheck], captures: [shifted] }))),
       close: vi.fn(async () => undefined),
     };
     const result = await executeTenkiReleaseVerification(job, {
@@ -115,5 +142,93 @@ describe("Tenki production UI verifier", () => {
     });
     expect(result.status).toBe("Failed");
     expect(result.evidence).toContain("approved-layout");
+  });
+
+  it("fails the combined decision when backend verification fails but frontend passes", async () => {
+    vi.stubEnv("TENKI_API_KEY", "tenki-test-key");
+    vi.stubEnv("TENKI_RELEASE_VERIFIER_IMAGE", "registry.example/release-verifier@sha256:abc");
+    vi.stubEnv("RELEASE_VERIFIER_ALLOWED_HOSTS", "app.example.com");
+    const failedBackend = {
+      ...backendCheck,
+      statusCode: 503,
+      passed: false,
+      failures: ["Expected HTTP 200 but received 503"],
+    };
+    const session = {
+      inboundEnabled: false,
+      outboundEnabled: true,
+      writeFile: vi.fn(async () => undefined),
+      exec: vi.fn(async () => ({ exitCode: 0, stderr: new Uint8Array() })),
+      readFile: vi.fn(async () => new TextEncoder().encode(JSON.stringify({ backendChecks: [failedBackend], captures: [capture] }))),
+      close: vi.fn(async () => undefined),
+    };
+    const result = await executeTenkiReleaseVerification(job, {
+      createClient: () => ({ createAndWait: async () => session, close: vi.fn() }) as never,
+    });
+    expect(result.status).toBe("Failed");
+    expect(result.result.backend.status).toBe("Failed");
+    expect(result.result.frontend.status).toBe("Passed");
+    expect(result.evidence).toContain("backend:application-health");
+  });
+
+  it("injects synthetic credentials into the process environment without writing them into the job file", async () => {
+    vi.stubEnv("TENKI_API_KEY", "tenki-test-key");
+    vi.stubEnv("TENKI_RELEASE_VERIFIER_IMAGE", "registry.example/release-verifier@sha256:abc");
+    vi.stubEnv("RELEASE_VERIFIER_ALLOWED_HOSTS", "app.example.com");
+    const syntheticPlan = releaseVerificationPlanSchema.parse(plan);
+    syntheticPlan.backend.checks[0]!.authProfile = "production-synthetic";
+    const syntheticJob = {
+      ...job,
+      plan: syntheticPlan,
+      baseline: {
+        ...job.baseline,
+        planHash: hashReleaseVerificationPlan(syntheticPlan),
+      },
+    };
+    const session = {
+      inboundEnabled: false,
+      outboundEnabled: true,
+      writeFile: vi.fn<(path: string, content: string) => Promise<void>>().mockResolvedValue(undefined),
+      exec: vi.fn(async () => ({ exitCode: 0, stderr: new Uint8Array() })),
+      readFile: vi.fn(async () => new TextEncoder().encode(JSON.stringify({ backendChecks: [backendCheck], captures: [capture] }))),
+      close: vi.fn(async () => undefined),
+    };
+    const result = await executeTenkiReleaseVerification(syntheticJob, {
+      syntheticBearerToken: "synthetic-production-token",
+      createClient: () => ({ createAndWait: async () => session, close: vi.fn() }) as never,
+    });
+    expect(result.status).toBe("Passed");
+    expect(session.exec).toHaveBeenCalledWith("node", expect.objectContaining({
+      env: expect.objectContaining({ CLOSESPAN_RELEASE_SYNTHETIC_BEARER: "synthetic-production-token" }),
+    }));
+    const serializedJob = String(session.writeFile.mock.calls.find(([path]) => String(path).endsWith("job.json"))?.[1]);
+    expect(serializedJob).not.toContain("synthetic-production-token");
+  });
+
+  it("records a bounded backend timeout as an independent backend failure", async () => {
+    vi.stubEnv("TENKI_API_KEY", "tenki-test-key");
+    vi.stubEnv("TENKI_RELEASE_VERIFIER_IMAGE", "registry.example/release-verifier@sha256:abc");
+    vi.stubEnv("RELEASE_VERIFIER_ALLOWED_HOSTS", "app.example.com");
+    const timeout = {
+      ...backendCheck,
+      statusCode: null,
+      durationMs: 5_001,
+      passed: false,
+      failures: ["Backend request timed out"],
+    };
+    const session = {
+      inboundEnabled: false,
+      outboundEnabled: true,
+      writeFile: vi.fn(async () => undefined),
+      exec: vi.fn(async () => ({ exitCode: 0, stderr: new Uint8Array() })),
+      readFile: vi.fn(async () => new TextEncoder().encode(JSON.stringify({ backendChecks: [timeout], captures: [capture] }))),
+      close: vi.fn(async () => undefined),
+    };
+    const result = await executeTenkiReleaseVerification(job, {
+      createClient: () => ({ createAndWait: async () => session, close: vi.fn() }) as never,
+    });
+    expect(result.status).toBe("Failed");
+    expect(result.result.backend.status).toBe("Failed");
+    expect(result.evidence).toContain("Backend request timed out");
   });
 });

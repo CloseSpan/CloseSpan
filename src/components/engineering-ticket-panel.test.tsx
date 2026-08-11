@@ -144,4 +144,35 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("View prompt under test");
     expect(markup).toContain("This is the exact prompt PDD will compare");
   });
+
+  it("shows backend and frontend production verification independently", () => {
+    const markup = renderToStaticMarkup(
+      <EngineeringTicketPanel
+        orgId="org_demo"
+        problemId="prob_demo_export"
+        initialWorkflow={workflow({
+          releaseEvidence: {
+            id: "verification-1",
+            status: "Passed",
+            environment: "production",
+            evidence: "Both required sections passed.",
+            specificationRevision: 3,
+            verifiedBy: "automated_release_verifier",
+            verifiedAt: "2026-08-11T00:00:00.000Z",
+            productionVerification: {
+              jobId: "job-1",
+              backend: { status: "Passed", passedChecks: 2, totalChecks: 2 },
+              frontend: { status: "Passed", passedChecks: 5, totalChecks: 5 },
+              captures: [{ key: "home:desktop", viewport: "desktop" }],
+            },
+          },
+        })}
+      />,
+    );
+    expect(markup).toContain("Backend");
+    expect(markup).toContain("2 of 2 checks passed");
+    expect(markup).toContain("Frontend");
+    expect(markup).toContain("5 of 5 checks passed");
+    expect(markup).toContain("desktop screenshot");
+  });
 });

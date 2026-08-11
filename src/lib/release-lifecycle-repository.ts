@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { databasePool, transaction } from "./db";
 import {
+  combinedReleaseVerificationPassed,
   parseReleaseVerificationPlan,
+  releaseVerificationPlanSchema,
+  type ReleaseVerificationPlan,
   type UiVerificationBaseline,
 } from "./release-verification-plan";
 
@@ -54,7 +57,10 @@ export async function recordGithubDeploymentStatus(
     agent_run_id: string;
     problem_id: string;
     release_verification: string;
-    evidence_snapshot: { uiBaseline?: UiVerificationBaseline | null } | null;
+    evidence_snapshot: {
+      uiBaseline?: UiVerificationBaseline | null;
+      releaseVerificationPlan?: ReleaseVerificationPlan | null;
+    } | null;
   }>(
     `SELECT attempt.agent_run_id,run.problem_id,specification.release_verification,
             approval.evidence_snapshot
@@ -91,7 +97,9 @@ export async function recordGithubDeploymentStatus(
 
   if (status === "Succeeded") {
     const targetUrl = text(payload.deployment_status?.target_url);
-    const verificationPlan = parseReleaseVerificationPlan(run.release_verification);
+    const verificationPlan = run.evidence_snapshot?.releaseVerificationPlan
+      ? releaseVerificationPlanSchema.parse(run.evidence_snapshot.releaseVerificationPlan)
+      : parseReleaseVerificationPlan(run.release_verification);
     await client.query(
       `UPDATE product_problems SET stage='Released',updated_at=now()
         WHERE org_id=$1 AND id=$2
@@ -136,6 +144,11 @@ export async function completePostReleaseVerification(
   input: { status: "Passed" | "Failed"; evidence: string; result?: unknown },
 ): Promise<void> {
   if (!input.evidence.trim()) throw new Error("Verification evidence is required");
+  const combinedPassed = combinedReleaseVerificationPassed(input.result);
+  const status = input.status === "Passed" && !combinedPassed ? "Failed" : input.status;
+  const evidence = input.status === "Passed" && !combinedPassed
+    ? "Combined production verification evidence was incomplete or one required section did not pass."
+    : input.evidence.trim().slice(0, 10_000);
   await transaction(async (client) => {
     const job = await client.query<{
       problem_id: string;
@@ -148,11 +161,18 @@ export async function completePostReleaseVerification(
               completed_at=now()
         WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running')
         RETURNING problem_id,environment,status`,
-      [orgId, jobId, input.status, input.evidence.trim().slice(0, 10_000),
+      [orgId, jobId, status, evidence,
         JSON.stringify(input.result ?? null)],
     );
     const row = job.rows[0];
-    if (!row) throw new Error("Release verification job is no longer pending");
+    if (!row) {
+      const existing = await client.query<{ status: string }>(
+        `SELECT status FROM post_release_verification_jobs WHERE org_id=$1 AND id=$2`,
+        [orgId, jobId],
+      );
+      if (["Passed", "Failed"].includes(existing.rows[0]?.status ?? "")) return;
+      throw new Error("Release verification job is no longer pending");
+    }
     const specification = await client.query<{ id: string; revision: number }>(
       `SELECT id,revision FROM engineering_ticket_specifications
         WHERE org_id=$1 AND problem_id=$2 FOR UPDATE`,
@@ -166,9 +186,9 @@ export async function completePostReleaseVerification(
          environment,evidence,verified_by
        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'automated_release_verifier')`,
       [randomUUID(), orgId, row.problem_id, spec.id, spec.revision,
-        input.status, row.environment, input.evidence.trim().slice(0, 10_000)],
+        status, row.environment, evidence],
     );
-    if (input.status === "Passed") {
+    if (status === "Passed") {
       await client.query(
         `UPDATE product_problems SET stage='Verified',updated_at=now()
           WHERE org_id=$1 AND id=$2 AND stage='Released'`,
@@ -184,7 +204,7 @@ export async function completePostReleaseVerification(
       `INSERT INTO audit_events(
          id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
        ) VALUES($1,$2,'release_verifier','Release verifier',$3,'ProductProblem',$4,$5)`,
-      [randomUUID(), orgId, `Post-release verification ${input.status.toLowerCase()} in ${row.environment}`,
+      [randomUUID(), orgId, `Post-release verification ${status.toLowerCase()} in ${row.environment}`,
         row.problem_id, `release-verification:${jobId}`],
     );
   });

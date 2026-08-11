@@ -2062,6 +2062,49 @@ input[type="radio"] {
   color: var(--text);
 }
 
+.app-shell .release-verification-sections {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.app-shell .release-verification-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .release-verification-section > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.app-shell .release-verification-section > .subtle {
+  min-width: 0;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .app-shell .release-verification-section {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .app-shell .release-verification-section > .subtle {
+    text-align: start;
+  }
+}
+
 .badge.high,
 .badge.critical,
 .toast.error,

@@ -3158,6 +3158,28 @@ export function ApprovalsScreen({
                       label="Verification"
                       value={`${finalApproval.testSummary.passed} tests passed · ${finalApproval.acceptanceSummary.passed} acceptance checks passed`}
                     />
+                    {finalApproval.releaseVerification ? (
+                      <>
+                        <Fact
+                          icon={<ShieldCheck />}
+                          label="Production verification contract"
+                          value={`${finalApproval.releaseVerification.backendChecks} backend check${finalApproval.releaseVerification.backendChecks === 1 ? "" : "s"} · ${finalApproval.releaseVerification.frontendJourneys} frontend journey${finalApproval.releaseVerification.frontendJourneys === 1 ? "" : "s"} · ${finalApproval.releaseVerification.planHash.slice(0, 8)}`}
+                        />
+                        <Fact
+                          icon={<GitBranch />}
+                          label="PR scope classification"
+                          value={(() => {
+                            const assessment = finalApproval.releaseVerification.scopeAssessment;
+                            const observed = [
+                              assessment.observed.backend ? "backend" : null,
+                              assessment.observed.frontend ? "frontend" : null,
+                              assessment.observed.unknown ? "unknown" : null,
+                            ].filter(Boolean).join(" + ") || "non-production files only";
+                            return `${observed} · ${assessment.compatible ? "matches approved contract" : "contract revision required"}`;
+                          })()}
+                        />
+                      </>
+                    ) : null}
                     {finalApproval.uiBaseline ? (
                       <Fact
                         icon={<MonitorCheck />}
@@ -3189,6 +3211,20 @@ export function ApprovalsScreen({
                       />
                     ) : null}
                   </div>
+                  {finalApproval.releaseVerification?.scopeAssessment.compatible === false ? (
+                    <div className="callout warning" role="alert">
+                      <div className="callout-title">Verification scope changed</div>
+                      <p>
+                        This PR touches a production surface outside the approved PDD contract.
+                        Final execution is locked until the PDD is revised and a new agent run is reviewed.
+                      </p>
+                      <ul>
+                        {finalApproval.releaseVerification.scopeAssessment.mismatches.map((mismatch) => (
+                          <li key={mismatch}>{mismatch}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   <div className="callout warning final-execution-lock">
                     <div className="callout-title">
                       Approval applies only to {finalApproval.headSha.slice(0, 8)}
@@ -3208,19 +3244,26 @@ export function ApprovalsScreen({
                       >
                         {busy === selectedItem?.key ? "Recording…" : "Reject merge"}
                       </button>
-                      <button
-                        type="button"
-                        className="btn primary"
-                        disabled={busy !== null}
-                        onClick={() => decideFinalExecution("approve")}
-                      >
-                        {busy === selectedItem?.key
-                          ? "Queueing execution…"
-                          : finalApproval.executionAction === "deploy"
-                            ? "Approve production deployment"
-                            : "Approve and merge PR"}
-                        {busy !== selectedItem?.key ? <Check size={14} /> : null}
-                      </button>
+                      {finalApproval.releaseVerification?.scopeAssessment.compatible === false ? (
+                        <Link className="btn primary" href={`/problems/${finalApproval.problemId}`}>
+                          Revise PDD contract
+                          <ChevronRight size={14} />
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn primary"
+                          disabled={busy !== null}
+                          onClick={() => decideFinalExecution("approve")}
+                        >
+                          {busy === selectedItem?.key
+                            ? "Queueing execution…"
+                            : finalApproval.executionAction === "deploy"
+                              ? "Approve production deployment"
+                              : "Approve and merge PR"}
+                          {busy !== selectedItem?.key ? <Check size={14} /> : null}
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="approval-result-actions">

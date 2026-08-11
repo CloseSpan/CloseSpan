@@ -26,6 +26,25 @@ const workflow: EngineeringWorkflowView = {
     autoDeployOnMerge: false,
     rollbackPlan: null,
     uiBaseline: null,
+    releaseVerification: {
+      planHash: "b".repeat(64),
+      backendChecks: 1,
+      frontendJourneys: 2,
+      backendRequired: true,
+      frontendRequired: true,
+      scopeAssessment: {
+        schemaVersion: 1,
+        compatible: true,
+        declared: { backend: true, frontend: true },
+        observed: { backend: true, frontend: false, unknown: true },
+        recommended: { backend: true, frontend: true },
+        files: [
+          { path: "src/export.ts", surface: "unknown" },
+          { path: "src/export.test.ts", surface: "neutral" },
+        ],
+        mismatches: [],
+      },
+    },
     changedFiles: ["src/export.ts", "src/export.test.ts"],
     testSummary: { passed: 4, failed: 0, skipped: 0 },
     acceptanceSummary: { passed: 2, unresolved: 0 },
@@ -51,10 +70,53 @@ describe("Approval Center final execution", () => {
     expect(markup).toContain("Approve and merge PR");
     expect(markup).toContain("Approval applies only to aaaaaaaa");
     expect(markup).toContain("4 tests passed · 2 acceptance checks passed");
+    expect(markup).toContain("1 backend check · 2 frontend journeys · bbbbbbbb");
+    expect(markup).toContain("backend + unknown · matches approved contract");
     expect(markup).toContain("does not mark the problem released");
     expect(markup).not.toContain("External action");
     expect(markup).not.toContain("Customer follow-up drafts");
     expect(markup).not.toContain("Customer communication");
+  });
+
+  it("locks merge approval when changed files exceed the sealed PDD scope", () => {
+    const blockedWorkflow: EngineeringWorkflowView = {
+      ...workflow,
+      finalApproval: workflow.finalApproval
+        ? {
+            ...workflow.finalApproval,
+            releaseVerification: workflow.finalApproval.releaseVerification
+              ? {
+                  ...workflow.finalApproval.releaseVerification,
+                  backendRequired: false,
+                  scopeAssessment: {
+                    schemaVersion: 1,
+                    compatible: false,
+                    declared: { backend: false, frontend: true },
+                    observed: { backend: true, frontend: true, unknown: false },
+                    recommended: { backend: true, frontend: true },
+                    files: [{ path: "src/app/api/export/route.ts", surface: "backend" }],
+                    mismatches: [
+                      "The PR contains backend or shared changes, but backend production verification is not approved in the PDD contract.",
+                    ],
+                  },
+                }
+              : null,
+          }
+        : null,
+    };
+    const markup = renderToStaticMarkup(
+      <ApprovalsScreen
+        problem={null}
+        problemTitles={{ prob_export: "Large CSV exports produce empty files" }}
+        initialEngineeringWorkflows={[blockedWorkflow]}
+        orgId="org_1"
+      />,
+    );
+
+    expect(markup).toContain("Verification scope changed");
+    expect(markup).toContain("contract revision required");
+    expect(markup).toContain("Revise PDD contract");
+    expect(markup).not.toContain("Approve and merge PR");
   });
 
   it("defines the center as the two execution gates when no request exists", () => {
