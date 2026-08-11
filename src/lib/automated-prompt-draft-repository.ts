@@ -53,6 +53,7 @@ export interface AutomatedPromptDraftResult {
 
 export interface PromptDraftReadiness {
   problemId: string;
+  investigationId: string | null;
   investigationConfidence: number | null;
   requiredConfidence: number;
   evidenceCount: number;
@@ -350,6 +351,7 @@ export async function readPromptDraftReadiness(
       && Math.min(primaryProblem.confidence, investigationConfidence ?? 0) >= policy.minimumConfidence;
     return {
       problemId,
+      investigationId: hasInvestigation ? recommendation.id : null,
       investigationConfidence,
       requiredConfidence: policy.minimumConfidence,
       evidenceCount,
@@ -372,6 +374,7 @@ export async function readPromptDraftReadiness(
     bug_count: number;
     feature_count: number;
     investigation_confidence: number | null;
+    investigation_id: string | null;
     has_existing_workflow: boolean;
     repository_ready: boolean;
   }>(
@@ -379,6 +382,7 @@ export async function readPromptDraftReadiness(
             count(membership.feedback_id)::int AS evidence_count,
             count(*) FILTER (WHERE feedback.type IN ('Bug','Incident'))::int AS bug_count,
             count(*) FILTER (WHERE feedback.type='Feature request')::int AS feature_count,
+            investigation.id AS investigation_id,
             investigation.confidence AS investigation_confidence,
             (
               EXISTS (SELECT 1 FROM engineering_ticket_specifications specification
@@ -415,7 +419,7 @@ export async function readPromptDraftReadiness(
        LEFT JOIN feedback_items feedback
          ON feedback.org_id=membership.org_id AND feedback.id=membership.feedback_id
        LEFT JOIN LATERAL (
-         SELECT candidate.confidence
+         SELECT candidate.id,candidate.confidence
            FROM investigations candidate
           WHERE candidate.org_id=problem.org_id AND candidate.problem_id=problem.id
           ORDER BY candidate.updated_at DESC,candidate.id LIMIT 1
@@ -428,6 +432,7 @@ export async function readPromptDraftReadiness(
   if (!row) {
     return {
       problemId,
+      investigationId: null,
       investigationConfidence: null,
       requiredConfidence: policy.minimumConfidence,
       evidenceCount: 0,
@@ -455,6 +460,7 @@ export async function readPromptDraftReadiness(
   const canGenerate = assessment.eligible && row.repository_ready;
   return {
     problemId,
+    investigationId: row.investigation_id,
     investigationConfidence: row.investigation_confidence,
     requiredConfidence: policy.minimumConfidence,
     evidenceCount: row.evidence_count,

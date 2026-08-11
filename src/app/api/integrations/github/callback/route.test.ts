@@ -53,9 +53,17 @@ const verified = {
   repositories: [{ repository: "acme/api", defaultBranch: "main", private: true }],
 };
 
-function request(includeCookie = true) {
+function request(
+  includeCookie = true,
+  returnTo: "/integrations" | "/onboarding" = "/integrations",
+) {
   const expiresAt = new Date(Date.now() + 60_000);
-  const token = createGithubInstallStateToken(attemptId, expiresAt, secret);
+  const token = createGithubInstallStateToken(
+    attemptId,
+    expiresAt,
+    returnTo,
+    secret,
+  );
   return new NextRequest(
     "https://closespan.com/api/integrations/github/callback?installation_id=150109806&setup_action=install",
     { headers: includeCookie ? { cookie: `${GITHUB_INSTALL_STATE_COOKIE}=${token}` } : {} },
@@ -96,6 +104,14 @@ describe("GitHub installation callback", () => {
     expect(location.searchParams.get("github")).toBe("error");
     expect(location.searchParams.get("reason")).toBe("invalid_callback");
     expect(github.verify).not.toHaveBeenCalled();
+  });
+
+  it("returns onboarding-initiated installations to onboarding", async () => {
+    const response = await GET(request(true, "/onboarding"));
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.pathname).toBe("/onboarding");
+    expect(location.searchParams.get("github")).toBe("connected");
+    expect(location.searchParams.has("focus")).toBe(false);
   });
 
   it("limits automatic metadata detection to two repositories at a time", async () => {

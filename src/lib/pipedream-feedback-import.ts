@@ -12,6 +12,7 @@ import {
 } from "./pipedream-repository";
 import { workspacePersistenceMode } from "./workspace-persistence";
 import { resolveOrCreateExternalAccount } from "./customer-account-repository";
+import { hasExplicitMalfunctionSignal } from "./feedback-classification";
 
 const SUPPORTED_MANUAL_IMPORTS = new Set<PipedreamConnectorId>(["int_zendesk"]);
 const MAX_PAGES = 5;
@@ -104,6 +105,7 @@ function zendeskSourceInstance(value: unknown): string | null {
 function zendeskType(ticket: Record<string, unknown>, quote: string): FeedbackType {
   const text = `${cleanText(ticket.type, 80) ?? ""} ${quote}`.toLowerCase();
   if (/\b(outage|incident|unavailable|downtime)\b/.test(text)) return "Incident";
+  if (hasExplicitMalfunctionSignal(text)) return "Bug";
   if (/\b(feature|enhancement|request|wish|idea)\b/.test(text)) return "Feature request";
   if (/\b(confus|difficult|hard to use|usability|ux)\b/.test(text)) return "Usability";
   if (/\b(bug|error|broken|crash|fail(?:s|ed|ing)?|incorrect)\b/.test(text)) return "Bug";

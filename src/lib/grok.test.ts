@@ -37,4 +37,49 @@ describe("AI provider feedback intelligence boundary", () => {
     expect(() => validateAiAnalysisForTest({ analyses: [analysis] }, ["fb_001", "fb_002"], ["prob_export"]))
       .toThrow("every requested feedback ID exactly once");
   });
+
+  it("corrects explicit malfunction reports that the model labels as questions", () => {
+    const [guarded] = validateAiAnalysisForTest(
+      {
+        analyses: [{
+          ...analysis,
+          classification: "Question",
+          redactedSummary: "The Post Context input is reported as nonfunctional.",
+          proposedProblemId: null,
+          classificationClarity: 0.55,
+          ambiguityPenalty: 0.4,
+        }],
+      },
+      ["fb_001"],
+      [],
+      [{
+        id: "fb_001",
+        source: "Slack",
+        accountTier: "Unknown",
+        environment: "Slack #closespan-feedback",
+        quote: "Post Context input doesn't work at all",
+      }],
+    );
+
+    expect(guarded.classification).toBe("Bug");
+    expect(guarded.classificationClarity).toBeGreaterThanOrEqual(0.92);
+    expect(guarded.rationale).toContain("Explicit malfunction language");
+  });
+
+  it("does not turn ordinary product questions into bugs", () => {
+    const [guarded] = validateAiAnalysisForTest(
+      { analyses: [{ ...analysis, classification: "Question" }] },
+      ["fb_001"],
+      ["prob_export"],
+      [{
+        id: "fb_001",
+        source: "Slack",
+        accountTier: "Unknown",
+        environment: "Slack #closespan-feedback",
+        quote: "How does the Post Context input work?",
+      }],
+    );
+
+    expect(guarded.classification).toBe("Question");
+  });
 });

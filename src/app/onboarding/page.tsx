@@ -7,16 +7,27 @@ import { getOnboardingState } from "@/lib/onboarding-repository";
 
 export const dynamic = "force-dynamic";
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ github?: string | string[] }>;
+}) {
   const user = await requireWorkspaceUser();
-  const [setup, onboarding] = await Promise.all([
+  const [setup, onboarding, params] = await Promise.all([
     getWorkspaceSetupStatus(user.orgId),
     getOnboardingState(user.orgId),
+    searchParams,
   ]);
+  const githubCallback = Array.isArray(params.github)
+    ? params.github[0]
+    : params.github;
+  const returningFromGithub =
+    githubCallback === "connected" || githubCallback === "error";
   const showOnboarding =
-    onboarding.phase !== "complete" &&
-    !setup.setupComplete &&
-    setup.feedbackCount === 0;
+    returningFromGithub ||
+    (onboarding.phase !== "complete" &&
+      !setup.setupComplete &&
+      setup.feedbackCount === 0);
 
   if (!showOnboarding) redirect("/overview");
 

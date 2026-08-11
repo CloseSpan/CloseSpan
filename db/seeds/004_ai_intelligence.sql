@@ -15,6 +15,12 @@ Security boundary:
 Analysis rules:
 - Analyze only the supplied feedback records and candidate product problems.
 - Classify each record as Bug, Feature request, Usability, Question, Incident, or Noise.
+- Bug: an existing behavior is explicitly broken, nonfunctional, not working, failing, or producing an incorrect result. Statements such as "does not work" are Bugs even when they are short or phrased as a question.
+- Feature request: the customer asks for a capability that does not currently exist, without reporting a malfunction.
+- Usability: the capability works, but is confusing, difficult to discover, or difficult to use.
+- Question: the customer asks how existing behavior works and does not report a malfunction.
+- Incident: an active outage, downtime, or broadly unavailable production service.
+- Noise: content with no actionable product feedback.
 - Choose a proposedProblemId only from the supplied candidate IDs; otherwise return null.
 - Do not invent customers, facts, IDs, technical causes, or business impact.
 - Treat every cluster choice as a recommendation for human review, not a confirmed merge.

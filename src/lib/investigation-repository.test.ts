@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const database = vi.hoisted(() => ({ query: vi.fn() }));
 const workspace = vi.hoisted(() => ({ mode: "postgres" }));
 
-vi.mock("./db", () => ({ databasePool: () => database }));
+vi.mock("./db", () => ({
+  databasePool: () => database,
+  transaction: (work: (client: typeof database) => unknown) => work(database),
+}));
 vi.mock("./workspace-persistence", () => ({
   workspacePersistenceMode: () => workspace.mode,
 }));
 
 import {
+  createAutomatedInvestigationForProblem,
   isCustomerVisibleInvestigationTitle,
   listWorkspaceInvestigations,
   mapInvestigationWorkspaceRow,
@@ -76,6 +80,53 @@ describe("investigation workspace repository", () => {
     expect(database.query).toHaveBeenCalledWith(
       expect.stringContaining("WHERE investigation.org_id=$1"),
       ["org-1"],
+    );
+  });
+
+  it("creates one evidence-bound investigation for an imported bug", async () => {
+    database.query.mockImplementation(async (query: string) => {
+      if (query.includes("FROM product_problems problem")) {
+        return {
+          rows: [{
+            id: "prob-1",
+            title: "Post context input does not work",
+            statement: "The input does not accept submitted context.",
+            summary: "A customer reports a broken input.",
+            confidence: 0.65,
+            product_area: "Post context",
+            suspected_files: [],
+            evidence_count: 1,
+            feedback_types: ["Bug"],
+            feedback_quotes: ["Post Context input doesn't work"],
+          }],
+        };
+      }
+      if (query.includes("INSERT INTO investigations")) {
+        return { rows: [{ id: "inv-created" }] };
+      }
+      return { rows: [] };
+    });
+
+    await expect(
+      createAutomatedInvestigationForProblem("org-1", "prob-1"),
+    ).resolves.toMatchObject({
+      created: true,
+      problemId: "prob-1",
+      confidence: 0.65,
+    });
+    expect(database.query).toHaveBeenCalledWith(
+      expect.stringContaining("feedback.type IN ('Bug','Incident','Feature request')"),
+      ["org-1", "prob-1"],
+    );
+    expect(database.query).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO investigations"),
+      expect.arrayContaining([
+        expect.any(String),
+        "org-1",
+        "prob-1",
+        "Post context investigation",
+        expect.stringContaining("root cause is not yet confirmed"),
+      ]),
     );
   });
 });

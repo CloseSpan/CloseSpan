@@ -1,8 +1,27 @@
 "use client";
 
-export default function WorkspaceError({ reset }: { reset: () => void }) {
+import { useEffect } from "react";
+
+export default function WorkspaceError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    console.error("Workspace route failed to render", {
+      digest: error.digest,
+      message: error.message,
+    });
+  }, [error]);
+
   return (
-    <section className="card workspace-route-error" role="alert">
+    <section
+      className="card workspace-route-error"
+      role="alert"
+      aria-live="assertive"
+    >
       <div className="card-body detail-stack">
         <h1>This page could not load</h1>
         <p className="subtle">

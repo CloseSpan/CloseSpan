@@ -163,6 +163,7 @@ function NavigationLinks({
                     return (
                       <Link
                         href={href}
+                        prefetch={false}
                         className={active ? "active" : ""}
                         aria-current={active ? "page" : undefined}
                         aria-label={label}
@@ -191,6 +192,7 @@ function NavigationLinks({
                     return (
                       <Link
                         href={href}
+                        prefetch={false}
                         className={active ? "active" : ""}
                         aria-current={active ? "page" : undefined}
                         aria-label={label}
@@ -226,7 +228,12 @@ export function Sidebar({
 }) {
   return (
     <aside className="sidebar">
-      <Link className="brand" href="/overview" aria-label="CloseSpan overview">
+      <Link
+        className="brand"
+        href="/overview"
+        prefetch={false}
+        aria-label="CloseSpan overview"
+      >
         <CloseSpan3DLogo size="sm" />
       </Link>
       <nav className="nav" aria-label="Primary navigation">

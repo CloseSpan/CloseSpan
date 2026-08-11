@@ -22,7 +22,10 @@ export async function triggerWorkflowAutomation(
       Authorization: `Bearer ${env.CRON_SECRET}`,
       "User-Agent": "CloseSpan-Workflow-Scheduler/1.0",
     },
-    redirect: "error",
+    // Cloudflare Workers only supports `follow` and `manual`. Keep redirects
+    // visible so a misconfigured application origin fails instead of silently
+    // following to a login or unrelated host.
+    redirect: "manual",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 

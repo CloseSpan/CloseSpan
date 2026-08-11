@@ -198,7 +198,11 @@ async function onboardingFetch(
   return payload;
 }
 
-async function integrationFetch(path: string, orgId: string) {
+async function integrationFetch(
+  path: string,
+  orgId: string,
+  body?: Record<string, unknown>,
+) {
   const response = await fetch(path, {
     method: "POST",
     headers: {
@@ -207,6 +211,7 @@ async function integrationFetch(path: string, orgId: string) {
       "idempotency-key": crypto.randomUUID(),
       "x-request-id": crypto.randomUUID(),
     },
+    body: body ? JSON.stringify(body) : undefined,
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -853,12 +858,14 @@ export function OnboardingAgentPanel({
         );
       }
       if (action.type === "connect_github") {
-        const result = await integrationFetch("/api/integrations/github", orgId);
-        window.open(result.installUrl as string, "_blank", "noopener,noreferrer");
+        const result = await integrationFetch("/api/integrations/github", orgId, {
+          returnTo: "/onboarding",
+        });
+        window.location.assign(result.installUrl as string);
         recordActivityExchange(
           "Select GitHub repositories",
           "Select repositories",
-          "Choose repositories, then return here.",
+          "Choose repositories. You’ll return here automatically.",
         );
       }
       router.refresh();

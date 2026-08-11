@@ -10,6 +10,7 @@ import { analyzeFeedbackWithProvider } from "./ai-provider";
 import { databasePool, transaction } from "./db";
 import { reviewLatestFeedbackAnalysis } from "./feedback-review-repository";
 import { redactUntrustedText } from "./redaction";
+import { hasExplicitMalfunctionSignal } from "./feedback-classification";
 import {
   createPublicSlackChannel,
   findPublicSlackChannel,
@@ -423,21 +424,25 @@ export async function syncSlackIntake(orgId: string): Promise<{
         const fileText = summary.files.length
           ? ` · ${summary.files.length} attachment${summary.files.length === 1 ? "" : "s"}`
           : "";
+        const feedbackType = hasExplicitMalfunctionSignal(summary.text)
+          ? "Bug"
+          : "Question";
         await client.query(
           `INSERT INTO feedback_items(
              id,org_id,source,customer_name,account_tier,arr,type,severity,
              redacted,environment,confidence,observed_at,quote,integration_id,
              source_namespace,external_id
-           ) VALUES($1,$2,'Slack',$3,'Unknown',0,'Question','Medium',true,$4,
-                    0.60,$5,$6,'int_slack',$7,$8)
+           ) VALUES($1,$2,'Slack',$3,'Unknown',0,$4,'Medium',true,$5,
+                    0.60,$6,$7,'int_slack',$8,$9)
            ON CONFLICT(org_id,integration_id,source_namespace,external_id)
              WHERE external_id IS NOT NULL
-           DO UPDATE SET quote=excluded.quote,environment=excluded.environment,
+           DO UPDATE SET type=excluded.type,quote=excluded.quote,environment=excluded.environment,
              observed_at=excluded.observed_at,updated_at=now()`,
           [
             id,
             orgId,
             summary.authorId ? `Slack member ${summary.authorId}` : "Slack contributor",
+            feedbackType,
             `Slack #${connection.channel_name}${reactionText}${fileText}`,
             new Date(timestampNumber(candidate.root.ts) * 1_000).toISOString(),
             summary.text,

@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const repository = vi.hoisted(() => ({ review: vi.fn() }));
+const repository = vi.hoisted(() => ({ review: vi.fn(), investigate: vi.fn() }));
 
 vi.mock("@/lib/feedback-review-repository", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/feedback-review-repository")>();
   return { ...original, reviewLatestFeedbackAnalysis: repository.review };
 });
+
+vi.mock("@/lib/investigation-repository", () => ({
+  createAutomatedInvestigationForProblem: repository.investigate,
+}));
 
 import { FeedbackReviewConflictError } from "@/lib/feedback-review-repository";
 import { POST } from "./route";
@@ -45,6 +49,13 @@ describe("AI feedback review route", () => {
       createdProblem: true,
       replayed: false,
     });
+    repository.investigate.mockReset().mockResolvedValue({
+      created: true,
+      problemId: "problem_1",
+      investigationId: "investigation_1",
+      confidence: 0.75,
+      reason: "Created an evidence-bound investigation.",
+    });
   });
 
   it("approves the latest analysis in the authenticated workspace", async () => {
@@ -61,6 +72,10 @@ describe("AI feedback review route", () => {
       problemId: "problem_existing",
       context: expect.objectContaining({ idempotencyKey: "review_approve_001" }),
     }));
+    expect(repository.investigate).toHaveBeenCalledWith(
+      "org_northstar",
+      "problem_1",
+    );
   });
 
   it("allows contributors to reject without a target problem", async () => {
@@ -73,6 +88,7 @@ describe("AI feedback review route", () => {
       decision: "reject",
       problemId: undefined,
     }));
+    expect(repository.investigate).not.toHaveBeenCalled();
   });
 
   it("rejects malformed decisions and target problems on rejection", async () => {

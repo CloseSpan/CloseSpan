@@ -5,6 +5,7 @@ import { zodResponseFormat, zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { AiRuntimeConfiguration } from "./ai-config";
 import { redactUntrustedText } from "./redaction";
+import { hasExplicitMalfunctionSignal } from "./feedback-classification";
 
 export { redactUntrustedText } from "./redaction";
 
@@ -108,6 +109,7 @@ function validateModelOutput(
   parsed: z.infer<typeof feedbackAnalysisSchema>,
   requestedIds: string[],
   candidateProblemIds: string[],
+  feedback: AiFeedbackInput[] = [],
 ): AiAnalysisResult["analyses"] {
   const returnedIds = parsed.analyses.map((analysis) => analysis.feedbackId);
   if (new Set(returnedIds).size !== returnedIds.length)
@@ -130,22 +132,40 @@ function validateModelOutput(
         "The model returned a product problem outside the allowed candidate set",
       );
   }
-  return parsed.analyses.map((analysis) => ({
-    ...analysis,
-    classificationConfidence: classificationConfidence(analysis),
-    clusterConfidence: clusterConfidence(analysis),
-  }));
+  const feedbackById = new Map(feedback.map((item) => [item.id, item.quote]));
+  return parsed.analyses.map((analysis) => {
+    const explicitMalfunction = hasExplicitMalfunctionSignal(
+      feedbackById.get(analysis.feedbackId) ?? "",
+    );
+    const guarded = explicitMalfunction
+      && ["Question", "Usability", "Noise"].includes(analysis.classification)
+      ? {
+          ...analysis,
+          classification: "Bug" as const,
+          classificationClarity: Math.max(analysis.classificationClarity, 0.92),
+          ambiguityPenalty: Math.min(analysis.ambiguityPenalty, 0.08),
+          rationale: `Explicit malfunction language establishes a bug report. ${analysis.rationale}`.slice(0, 800),
+        }
+      : analysis;
+    return {
+      ...guarded,
+      classificationConfidence: classificationConfidence(guarded),
+      clusterConfidence: clusterConfidence(guarded),
+    };
+  });
 }
 
 export function validateAiAnalysisForTest(
   value: unknown,
   requestedIds: string[],
   candidateProblemIds: string[],
+  feedback: AiFeedbackInput[] = [],
 ): AiAnalysisResult["analyses"] {
   return validateModelOutput(
     feedbackAnalysisSchema.parse(value),
     requestedIds,
     candidateProblemIds,
+    feedback,
   );
 }
 
@@ -319,6 +339,7 @@ export async function analyzeFeedbackWithProvider(input: {
       response.parsed,
       payload.feedback.map((item) => item.feedbackId),
       input.candidates.map((item) => item.id),
+      input.feedback,
     ),
   };
 }

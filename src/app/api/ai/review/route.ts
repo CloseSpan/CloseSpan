@@ -11,6 +11,7 @@ import {
   HttpError,
   noStoreHeaders,
 } from "@/lib/request-security";
+import { createAutomatedInvestigationForProblem } from "@/lib/investigation-repository";
 
 export const runtime = "nodejs";
 
@@ -37,8 +38,7 @@ export async function POST(request: NextRequest) {
         400,
         "Choose valid feedback and approve or reject its latest analysis",
       );
-    return NextResponse.json(
-      await reviewLatestFeedbackAnalysis({
+    const result = await reviewLatestFeedbackAnalysis({
         orgId: context.orgId,
         feedbackId: parsed.data.feedbackId,
         decision: parsed.data.decision,
@@ -46,7 +46,21 @@ export async function POST(request: NextRequest) {
           ? parsed.data.problemId
           : undefined,
         context,
-      }),
+      });
+    const investigation = parsed.data.decision === "approve" && result.problem
+      ? await createAutomatedInvestigationForProblem(
+          context.orgId,
+          result.problem.id,
+        ).catch((error: unknown) => {
+          console.error("[feedback-analysis:investigation]", {
+            errorType: error instanceof Error ? error.name : "UnknownError",
+            problemId: result.problem?.id,
+          });
+          return undefined;
+        })
+      : undefined;
+    return NextResponse.json(
+      { ...result, investigation },
       { headers: noStoreHeaders },
     );
   } catch (error) {

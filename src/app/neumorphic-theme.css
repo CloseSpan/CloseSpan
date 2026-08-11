@@ -3467,7 +3467,40 @@ pre.code-block {
   display: inline-grid;
   grid-template-areas: "state";
   min-width: 142px;
+  height: var(--control-height);
   overflow: hidden;
+}
+
+.app-shell .feedback-analyze-button {
+  height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  line-height: 1;
+}
+
+.app-shell .feedback-analyze-button svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+.app-shell .feedback-pull-source-select {
+  min-width: min(240px, 100%);
+}
+
+.app-shell .feedback-pull-source-select .custom-select-trigger {
+  min-height: var(--control-height);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+@media (max-width: 640px) {
+  .app-shell .page-title-actions:has(.feedback-pull-source-select),
+  .app-shell .feedback-pull-source-select,
+  .app-shell .page-title-actions:has(.feedback-pull-source-select) .feedback-pull-button {
+    width: 100%;
+  }
 }
 
 .app-shell .feedback-pull-button-state {
@@ -3476,6 +3509,7 @@ pre.code-block {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
+  line-height: 1;
   transition:
     opacity var(--duration-normal) var(--ease-standard),
     transform var(--duration-normal) var(--ease-standard);
@@ -4245,10 +4279,26 @@ pre.code-block {
   box-shadow: var(--shadow-inset-sm);
 }
 
-.integration-copilot-working[open] {
+.app-shell .integration-copilot-working[open] {
+  border: 0;
   border-radius: var(--radius-md);
   background: var(--surface-pressed);
+  color: var(--text);
   box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .integration-copilot-working[open] > summary,
+.app-shell .integration-copilot-working[open] .integration-copilot-working-state {
+  color: var(--text-strong);
+}
+
+.app-shell .integration-copilot-working[open] .integration-copilot-working-body {
+  border-color: var(--border-strong);
+  color: var(--text-muted);
+}
+
+.app-shell .integration-copilot-working[open] :is(summary svg, dd svg) {
+  color: var(--accent);
 }
 
 .app-shell .integration-suggestion-section[open] > summary {
@@ -9571,10 +9621,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   .shell-immersive
     .organization-switcher.compact
     .organization-switcher-control.rename-enabled {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--control-height);
-    align-items: center;
-    gap: var(--space-2);
+    position: relative;
   }
 
   .shell-immersive
@@ -9582,13 +9629,14 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
     .organization-switcher-control.rename-enabled
     details {
     min-width: 0;
+    width: 100%;
   }
 
   .shell-immersive
     .organization-switcher.compact
     .organization-switcher-control.rename-enabled
     .organization-switcher-trigger {
-    grid-template-columns: 30px minmax(0, 1fr) 16px;
+    grid-template-columns: 30px minmax(0, 1fr) 28px 16px;
   }
 
   .shell-immersive
@@ -9596,18 +9644,23 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
     .organization-switcher-control.rename-enabled
     .organization-switcher-trigger
     > svg {
-    grid-column: 3;
+    grid-column: 4;
   }
 
   .shell-immersive .organization-switcher.compact .organization-rename-trigger {
-    position: static;
-    width: var(--control-height);
-    min-width: var(--control-height);
-    height: var(--control-height);
-    min-height: var(--control-height);
+    position: absolute;
+    z-index: 3;
+    top: 50%;
+    right: 34px;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
     margin: 0;
-    border-radius: var(--radius-md);
-    transform: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    box-shadow: none;
+    transform: translateY(-50%);
   }
 
   .shell-immersive
@@ -9616,7 +9669,9 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   .shell-immersive
     .organization-switcher.compact
     .organization-rename-trigger:active:not(:disabled) {
-    transform: none;
+    background: var(--surface-hover);
+    box-shadow: var(--shadow-inset-sm);
+    transform: translateY(-50%);
   }
 }
 
@@ -10490,6 +10545,55 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   box-shadow: none;
 }
 
+/* Keep both possible onboarding scroll owners in the CloseSpan palette.
+ * Chromium normally scrolls the conversation stage, while browser zoom and
+ * short viewports can expose the document scrollbar instead. */
+html:has(.shell-immersive),
+body:has(.shell-immersive) {
+  scrollbar-color: var(--accent-fill) var(--surface-pressed);
+  scrollbar-width: thin;
+}
+
+html:has(.shell-immersive)::-webkit-scrollbar,
+body:has(.shell-immersive)::-webkit-scrollbar {
+  width: 14px;
+  background: var(--surface-pressed);
+}
+
+html:has(.shell-immersive)::-webkit-scrollbar-track,
+body:has(.shell-immersive)::-webkit-scrollbar-track {
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+html:has(.shell-immersive)::-webkit-scrollbar-thumb,
+body:has(.shell-immersive)::-webkit-scrollbar-thumb {
+  min-height: 56px;
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--accent-fill);
+  background-clip: padding-box;
+  box-shadow: var(--shadow-progress-fill);
+}
+
+html:has(.shell-immersive)::-webkit-scrollbar-thumb:hover,
+body:has(.shell-immersive)::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-fill-hover);
+  background-clip: padding-box;
+}
+
+html:has(.shell-immersive)::-webkit-scrollbar-thumb:active,
+body:has(.shell-immersive)::-webkit-scrollbar-thumb:active {
+  background: var(--accent-fill-active);
+  background-clip: padding-box;
+}
+
+html:has(.shell-immersive)::-webkit-scrollbar-corner,
+body:has(.shell-immersive)::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .shell-immersive .delphi-stage::-webkit-scrollbar {
   width: 14px;
   background: transparent;
@@ -10886,6 +10990,27 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 
 .app-shell .prompt-readiness-threshold strong {
   color: var(--accent);
+}
+
+.app-shell .prompt-readiness-callout {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.app-shell .prompt-readiness-callout .callout-title,
+.app-shell .prompt-readiness-callout > p {
+  margin: 0;
+}
+
+.app-shell .prompt-readiness-actions {
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 720px) {
+  .app-shell .prompt-readiness-actions .btn {
+    flex: 1 1 220px;
+  }
 }
 
 .app-shell .prompt-version-card,

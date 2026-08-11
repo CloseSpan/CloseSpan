@@ -33,6 +33,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const context = await authorizeAdminMutation(request);
+    const body = (await request.json().catch(() => null)) as {
+      returnTo?: unknown;
+    } | null;
+    const returnTo = body?.returnTo === "/onboarding"
+      ? "/onboarding"
+      : "/integrations";
     const attempt = await markGithubPendingSetup(context.orgId, context.actorId);
     const response = NextResponse.json(
       { installUrl: attempt.installUrl, expiresAt: attempt.expiresAt.toISOString() },
@@ -40,7 +46,11 @@ export async function POST(request: NextRequest) {
     );
     response.cookies.set(
       GITHUB_INSTALL_STATE_COOKIE,
-      createGithubInstallStateToken(attempt.attemptId, attempt.expiresAt),
+      createGithubInstallStateToken(
+        attempt.attemptId,
+        attempt.expiresAt,
+        returnTo,
+      ),
       {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",

@@ -8,6 +8,7 @@ interface GithubInstallStatePayload {
   version: 1;
   attemptId: string;
   expiresAt: string;
+  returnTo: "/integrations" | "/onboarding";
 }
 
 function stateSecret(explicit?: string): string {
@@ -29,12 +30,14 @@ function signature(payload: string, secret?: string): string {
 export function createGithubInstallStateToken(
   attemptId: string,
   expiresAt: Date,
+  returnTo: GithubInstallStatePayload["returnTo"] = "/integrations",
   secret?: string,
 ): string {
   const payload: GithubInstallStatePayload = {
     version: 1,
     attemptId,
     expiresAt: expiresAt.toISOString(),
+    returnTo,
   };
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   return `${encoded}.${signature(encoded, secret)}`;
@@ -61,11 +64,16 @@ export function verifyGithubInstallStateToken(
   if (
     payload.version !== 1 ||
     !/^[0-9a-f-]{36}$/i.test(payload.attemptId) ||
-    !Number.isFinite(Date.parse(payload.expiresAt))
+    !Number.isFinite(Date.parse(payload.expiresAt)) ||
+    (payload.returnTo !== undefined &&
+      !["/integrations", "/onboarding"].includes(payload.returnTo))
   ) {
     throw new HttpError(400, "Invalid GitHub installation state");
   }
   if (Date.parse(payload.expiresAt) <= now.getTime())
     throw new HttpError(410, "GitHub installation request expired");
-  return payload;
+  return {
+    ...payload,
+    returnTo: payload.returnTo ?? "/integrations",
+  };
 }

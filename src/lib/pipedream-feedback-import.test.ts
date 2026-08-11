@@ -146,6 +146,16 @@ describe("Zendesk customer import", () => {
     });
   });
 
+  it("classifies explicit nonfunctional reports as bugs", () => {
+    const normalized = normalizeZendeskTicket(ticket({
+      subject: "Post Context input",
+      description: "The Post Context input doesn't work at all",
+      priority: "normal",
+    }));
+
+    expect(normalized?.type).toBe("Bug");
+  });
+
   it("fetches organization details once and links every ticket for that organization", async () => {
     state.proxyGet.mockImplementation(async (request: { url: string }) => {
       if (request.url === "/api/v2/incremental/tickets/cursor.json") {

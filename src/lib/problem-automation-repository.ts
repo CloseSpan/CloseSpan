@@ -16,6 +16,10 @@ import {
   type AutomatedPromptDraftResult,
 } from "./automated-prompt-draft-repository";
 import { deliverPromptReviewEmails, type PromptReviewEmailDeliveryResult } from "./prompt-review-email";
+import {
+  createNextAutomatedInvestigation,
+  type AutomatedInvestigationResult,
+} from "./investigation-repository";
 
 export interface StageEvidence {
   hasFeedback: boolean;
@@ -39,6 +43,7 @@ export interface AutomationTickResult {
   fromStage: Stage | null;
   toStage: Stage | null;
   reason: string;
+  investigation?: AutomatedInvestigationResult;
   promptDraft?: AutomatedPromptDraftResult;
   emailDelivery?: PromptReviewEmailDeliveryResult;
 }
@@ -372,13 +377,14 @@ async function runPostgresTick(orgId: string): Promise<AutomationTickResult> {
 export async function runProblemAutomationTick(
   orgId: string,
 ): Promise<AutomationTickResult> {
+  const investigation = await createNextAutomatedInvestigation(orgId);
   const promptDraft = await createNextAutomatedPromptDraft(orgId);
   const stageResult = workspacePersistenceMode(orgId) === "memory"
     ? runMemoryTick(orgId)
     : runPostgresTick(orgId);
   const completedStage = await stageResult;
   const emailDelivery = await deliverPromptReviewEmails(orgId);
-  return { ...completedStage, promptDraft, emailDelivery };
+  return { ...completedStage, investigation, promptDraft, emailDelivery };
 }
 
 export async function runProblemAutomationForAllOrganizations(): Promise<

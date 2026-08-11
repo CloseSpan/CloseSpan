@@ -13,11 +13,14 @@ import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-
 
 function workspaceRedirect(
   request: NextRequest,
+  returnTo: "/integrations" | "/onboarding",
   parameters: Record<string, string>,
 ): NextResponse {
-  const target = new URL("/integrations", request.nextUrl.origin);
-  target.searchParams.set("view", "connections");
-  target.searchParams.set("focus", "int_github");
+  const target = new URL(returnTo, request.nextUrl.origin);
+  if (returnTo === "/integrations") {
+    target.searchParams.set("view", "connections");
+    target.searchParams.set("focus", "int_github");
+  }
   for (const [key, value] of Object.entries(parameters))
     target.searchParams.set(key, value);
   const response = NextResponse.redirect(target, 303);
@@ -76,11 +79,13 @@ async function detectInstallationRepositories(input: {
 }
 
 export async function GET(request: NextRequest) {
+  let returnTo: "/integrations" | "/onboarding" = "/integrations";
   try {
     const context = await authorizeAdminRead(request);
     const installationId = request.nextUrl.searchParams.get("installation_id") ?? "";
     const stateToken = request.cookies.get(GITHUB_INSTALL_STATE_COOKIE)?.value ?? "";
     const state = verifyGithubInstallStateToken(stateToken);
+    returnTo = state.returnTo;
     await requireGithubInstallAttempt(state.attemptId, context.orgId, context.actorId);
     const installation = await verifyGithubInstallation(installationId);
     const result = await connectGithubInstallation(
@@ -97,12 +102,12 @@ export async function GET(request: NextRequest) {
         repositories: installation.repositories,
       });
     });
-    return workspaceRedirect(request, {
+    return workspaceRedirect(request, returnTo, {
       github: "connected",
       repositories: String(result.repositoryCount),
     });
   } catch (error) {
-    return workspaceRedirect(request, {
+    return workspaceRedirect(request, returnTo, {
       github: "error",
       reason: callbackErrorCode(error),
     });

@@ -451,12 +451,19 @@ export function FeedbackScreen({
   providerLabel,
   initialAnalyses = [],
   problemOptions = [],
+  connectedPullSources = [],
 }: {
   feedbackItems: FeedbackItem[];
   orgId: string;
   providerLabel: string;
   initialAnalyses?: FeedbackAnalysisView[];
   problemOptions?: Array<{ id: string; title: string; stage: string }>;
+  connectedPullSources?: Array<{
+    integrationId: string;
+    provider: string;
+    accountCount: number;
+    manualPullAvailable: boolean;
+  }>;
 }) {
   const reduceMotion = useReducedMotion();
   const [query, setQuery] = useState("");
@@ -473,6 +480,7 @@ export function FeedbackScreen({
   const [busy, setBusy] = useState(false);
   const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
   const [pullingFeedback, setPullingFeedback] = useState(false);
+  const [selectedPullSource, setSelectedPullSource] = useState("__all__");
   const [analyses, setAnalyses] =
     useState<FeedbackAnalysisView[]>(initialAnalyses);
   const [reviewProblemByFeedback, setReviewProblemByFeedback] = useState<
@@ -648,6 +656,7 @@ export function FeedbackScreen({
         reviewStatus?: "Approved" | "Rejected";
         problem?: { id: string; title: string; stage: string } | null;
         createdProblem?: boolean;
+        investigation?: { created: boolean; investigationId: string | null };
       };
       if (!response.ok || !payload.reviewStatus)
         throw new Error(payload.error || "This review could not be saved.");
@@ -667,7 +676,7 @@ export function FeedbackScreen({
         kind: "success",
         text:
           decision === "approve"
-            ? `${payload.createdProblem ? "Created" : "Linked"} product problem “${payload.problem?.title ?? "Needs review"}”. The overview and problem board now use this reviewed feedback.`
+            ? `${payload.createdProblem ? "Created" : "Linked"} product problem “${payload.problem?.title ?? "Needs review"}”.${payload.investigation ? " Its investigation is ready for review." : " The workflow will continue automatically."}`
             : "AI proposal rejected. The feedback remains in the inbox and unclustered.",
       });
       router.refresh();
@@ -685,7 +694,7 @@ export function FeedbackScreen({
     setPullingFeedback(true);
     setNotice(null);
     try {
-      const response = await fetch("/api/integrations/pipedream/pull", {
+      const response = await fetch("/api/integrations/pull", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -693,25 +702,51 @@ export function FeedbackScreen({
           "idempotency-key": crypto.randomUUID(),
           "x-request-id": crypto.randomUUID(),
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          ...(selectedPullSource !== "__all__"
+            ? { integrationIds: [selectedPullSource] }
+            : connectedPullSources.length === 1
+              ? { integrationIds: [connectedPullSources[0].integrationId] }
+              : {}),
+        }),
       });
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
         failed?: number;
-        results?: Array<{ fetched: number; created: number; updated: number }>;
+        results?: Array<{
+          provider: string;
+          status: "succeeded" | "failed" | "unsupported";
+          fetched: number;
+          created: number;
+          updated: number;
+          analyzed: number;
+          clustered: number;
+          message?: string;
+        }>;
       };
       if (!response.ok) throw new Error(payload.error || "Feedback could not be pulled.");
-      const totals = (payload.results ?? []).reduce(
-        (sum, result) => ({
-          fetched: sum.fetched + result.fetched,
-          created: sum.created + result.created,
-          updated: sum.updated + result.updated,
-        }),
-        { fetched: 0, created: 0, updated: 0 },
+      const results = payload.results ?? [];
+      const completed = results.filter((result) => result.status === "succeeded");
+      const sourceSummary = completed.map(
+        (result) =>
+          `${result.provider}: ${result.created} new, ${result.updated} updated`,
       );
+      const analyzed = completed.reduce((sum, result) => sum + result.analyzed, 0);
+      const clustered = completed.reduce((sum, result) => sum + result.clustered, 0);
+      const issues = results
+        .filter((result) => result.status !== "succeeded")
+        .map((result) => result.message)
+        .filter((message): message is string => Boolean(message));
+      const summary = [
+        sourceSummary.length ? `Checked ${sourceSummary.join("; ")}.` : "",
+        analyzed || clustered
+          ? `${analyzed} signal${analyzed === 1 ? "" : "s"} analyzed; ${clustered} problem${clustered === 1 ? "" : "s"} clustered.`
+          : "",
+        ...issues,
+      ].filter(Boolean).join(" ");
       setNotice({
         kind: payload.failed ? "error" : "success",
-        text: `Pull complete: ${totals.created} new, ${totals.updated} updated (${totals.fetched} fetched).${payload.failed ? ` ${payload.failed} account failed and can be retried from Integrations.` : ""}`,
+        text: summary || "Connected sources were checked. No new feedback was found.",
       });
       router.refresh();
     } catch (error) {
@@ -720,22 +755,56 @@ export function FeedbackScreen({
       setPullingFeedback(false);
     }
   }
+  const hasSourceChoice = connectedPullSources.length > 1;
+  const pullButtonLabel = hasSourceChoice
+    ? "Pull selected"
+    : connectedPullSources.length === 1
+      ? `Pull ${connectedPullSources[0].provider}`
+      : "Pull connected sources";
+  function pullControls(primary = false) {
+    return (
+      <>
+        {hasSourceChoice && (
+          <CustomSelect
+            ariaLabel="Choose feedback source to pull"
+            className="feedback-pull-source-select"
+            disabled={pullingFeedback}
+            value={selectedPullSource}
+            onValueChange={setSelectedPullSource}
+            options={[
+              { label: "All connected sources", value: "__all__" },
+              ...connectedPullSources.map((source) => ({
+                label: `${source.provider}${source.accountCount > 1 ? ` (${source.accountCount} accounts)` : ""}${source.manualPullAvailable ? "" : " · unavailable"}`,
+                value: source.integrationId,
+              })),
+            ]}
+          />
+        )}
+        <button
+          type="button"
+          className={`btn${primary ? " primary" : ""} feedback-pull-button`}
+          data-pulling={pullingFeedback ? "true" : "false"}
+          aria-label={pullingFeedback ? "Pulling selected feedback sources" : pullButtonLabel}
+          disabled={pullingFeedback}
+          onClick={() => void pullFeedback()}
+        >
+          <span className="feedback-pull-button-state feedback-pull-button-idle" aria-hidden={pullingFeedback}>
+            <RefreshCw size={14} /> {pullButtonLabel}
+          </span>
+          <span className="feedback-pull-button-state feedback-pull-button-progress" aria-hidden={!pullingFeedback}>
+            <RefreshCw className="spin" size={14} /> Pulling…
+          </span>
+        </button>
+      </>
+    );
+  }
   if (feedbackItems.length === 0) {
     return (
       <>
         <PageTitle
           title="Unified feedback inbox"
           description="Review normalized customer signals across every connected source."
-          action={
-            <button type="button" className="btn primary feedback-pull-button" data-pulling={pullingFeedback ? "true" : "false"} aria-label={pullingFeedback ? "Pulling feedback" : "Pull feedback now"} disabled={pullingFeedback} onClick={() => void pullFeedback()}>
-              <span className="feedback-pull-button-state feedback-pull-button-idle" aria-hidden={pullingFeedback}>
-                <RefreshCw size={14} /> Pull feedback now
-              </span>
-              <span className="feedback-pull-button-state feedback-pull-button-progress" aria-hidden={!pullingFeedback}>
-                <RefreshCw className="spin" size={14} /> Pulling feedback…
-              </span>
-            </button>
-          }
+          action={pullControls(true)}
         />
         {notice && <p className={`toast ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>{notice.text}</p>}
         <EmptyWorkspaceState
@@ -753,15 +822,8 @@ export function FeedbackScreen({
         title="Unified feedback inbox"
         description="Review normalized customer signals across every connected source."
         action={<div className="page-title-actions">
-          <button type="button" className="btn feedback-pull-button" data-pulling={pullingFeedback ? "true" : "false"} aria-label={pullingFeedback ? "Pulling feedback" : "Pull feedback"} disabled={pullingFeedback} onClick={() => void pullFeedback()}>
-            <span className="feedback-pull-button-state feedback-pull-button-idle" aria-hidden={pullingFeedback}>
-              <RefreshCw size={14} /> Pull feedback
-            </span>
-            <span className="feedback-pull-button-state feedback-pull-button-progress" aria-hidden={!pullingFeedback}>
-              <RefreshCw className="spin" size={14} /> Pulling…
-            </span>
-          </button>
-          <button type="button" className="btn primary" disabled={!selected.length || busy} onClick={() => void classify()}>
+          {pullControls()}
+          <button type="button" className="btn primary feedback-analyze-button" disabled={!selected.length || busy} onClick={() => void classify()}>
             <Sparkles size={14} /> {busy ? "Analyzing…" : `Analyze with ${providerLabel} ${selected.length || ""}`}
           </button>
         </div>}
@@ -4612,6 +4674,7 @@ export function GenericProblemScreen({
 }) {
   const router = useRouter();
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [startingInvestigation, setStartingInvestigation] = useState(false);
   const [promptActionError, setPromptActionError] = useState<string>();
 
   async function generateSuggestedPrompt() {
@@ -4636,11 +4699,43 @@ export function GenericProblemScreen({
     }
   }
 
+  async function startInvestigation() {
+    setStartingInvestigation(true);
+    setPromptActionError(undefined);
+    try {
+      const response = await fetch(`/api/problems/${problem.id}/investigation`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": crypto.randomUUID(),
+          "x-request-id": crypto.randomUUID(),
+        },
+      });
+      const payload = await response.json() as {
+        error?: string;
+        result?: { investigationId?: string | null };
+      };
+      if (!response.ok && response.status !== 409) {
+        throw new Error(payload.error ?? "The investigation could not be started.");
+      }
+      router.refresh();
+    } catch (cause) {
+      setPromptActionError(cause instanceof Error ? cause.message : "The investigation could not be started.");
+    } finally {
+      setStartingInvestigation(false);
+    }
+  }
+
   const investigationPercent = promptDraftReadiness.investigationConfidence === null
     ? null
     : Math.round(promptDraftReadiness.investigationConfidence * 100);
   const requiredPercent = Math.round(promptDraftReadiness.requiredConfidence * 100);
   const needsInvestigationReview = investigationPercent === null || investigationPercent < requiredPercent;
+  const promptBlockedReason = needsInvestigationReview
+    ? investigationPercent === null
+      ? `Complete the investigation and reach ${requiredPercent}% confidence before generating a prompt.`
+      : `Investigation confidence is ${investigationPercent}%. Reach ${requiredPercent}% before generating a prompt.`
+    : promptDraftReadiness.reason;
 
   return (
     <>
@@ -4678,32 +4773,50 @@ export function GenericProblemScreen({
                 <span>Required for prompt drafting</span>
               </div>
             </div>
-            <div className={`callout ${promptDraftReadiness.canGenerate ? "success" : "warning"}`}>
+            <div className={`callout prompt-readiness-callout ${promptDraftReadiness.canGenerate ? "success" : "warning"}`}>
               <div className="callout-title">
                 {promptDraftReadiness.canGenerate
                   ? "Ready to create a suggested prompt"
                   : needsInvestigationReview
-                    ? "Investigation needs more evidence"
+                    ? "Investigation required"
                     : "Prompt context needs review"}
               </div>
-              <p className="subtle">
-                {promptDraftReadiness.reason}
+              <p className="subtle" id="prompt-generation-status">
+                {promptBlockedReason}
               </p>
-              <div className="top-actions">
+              <div className="top-actions prompt-readiness-actions">
+                {!promptDraftReadiness.canGenerate && (
+                  investigationPercent === null ? (
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={startingInvestigation}
+                      onClick={startInvestigation}
+                    >
+                      {startingInvestigation ? "Starting investigation…" : "Start investigation"}
+                    </button>
+                  ) : (
+                    <Link
+                      className="btn primary"
+                      href={needsInvestigationReview && promptDraftReadiness.investigationId
+                        ? `/investigations/${encodeURIComponent(promptDraftReadiness.investigationId)}`
+                        : "/settings#execution-profiles"}
+                    >
+                      {needsInvestigationReview ? "Review investigation" : "Review prompt context"}
+                    </Link>
+                  )
+                )}
                 <button
                   type="button"
-                  className="btn primary"
+                  className={promptDraftReadiness.canGenerate ? "btn primary" : "btn secondary"}
                   disabled={!promptDraftReadiness.canGenerate || generatingPrompt}
                   onClick={generateSuggestedPrompt}
+                  aria-describedby={!promptDraftReadiness.canGenerate ? "prompt-generation-status" : undefined}
+                  title={!promptDraftReadiness.canGenerate ? promptBlockedReason : undefined}
                 >
                   <Sparkles size={16} />
                   {generatingPrompt ? "Generating…" : "Generate suggested prompt"}
                 </button>
-                {!promptDraftReadiness.canGenerate && (
-                  <Link className="btn secondary" href={needsInvestigationReview ? "/investigations" : "/settings#execution-profiles"}>
-                    {needsInvestigationReview ? "Review investigation" : "Review prompt context"}
-                  </Link>
-                )}
               </div>
             </div>
             {promptActionError && <p className="toast error" role="alert">{promptActionError}</p>}

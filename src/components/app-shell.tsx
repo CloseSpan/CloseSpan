@@ -89,6 +89,7 @@ export async function AppShell({
             <Link
               className="immersive-brand"
               href="/overview"
+              prefetch={false}
               aria-label="CloseSpan overview"
             >
               <CloseSpan3DLogo size="sm" />
@@ -100,9 +101,6 @@ export async function AppShell({
                 canRenameWorkspace={canRenameWorkspace}
                 variant="topbar"
               />
-              <Link className="btn" href="/settings#ai">
-                AI settings
-              </Link>
               <AccountMenu user={user} showWaitlistAdmin={showWaitlistAdmin} />
             </div>
           </header>
@@ -138,11 +136,20 @@ export async function AppShell({
           />
           <WorkspaceBreadcrumb />
           <div className="top-actions">
-            <Link className="btn search-action" href="/feedback">
+            <Link
+              className="btn search-action"
+              href="/feedback"
+              prefetch={false}
+            >
               <Search size={15} />
               <span>Search feedback</span>
             </Link>
-            <Link className="btn icon-btn notification-button" href="/notifications" aria-label={`Open notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}>
+            <Link
+              className="btn icon-btn notification-button"
+              href="/notifications"
+              prefetch={false}
+              aria-label={`Open notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}
+            >
               <Bell size={15} />
               {unreadNotifications > 0 && <span className="notification-count">{Math.min(unreadNotifications, 99)}</span>}
             </Link>

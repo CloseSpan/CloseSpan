@@ -32,8 +32,12 @@ const context = {
   traceId: "trace-1",
 };
 
-function request(method: string) {
-  return new NextRequest("https://closespan.com/api/integrations/github", { method });
+function request(method: string, body?: unknown) {
+  return new NextRequest("https://closespan.com/api/integrations/github", {
+    method,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+  });
 }
 
 describe("GitHub integration API", () => {
@@ -59,6 +63,19 @@ describe("GitHub integration API", () => {
     await expect(response.json()).resolves.toMatchObject({
       installUrl: "https://github.com/apps/closespan/installations/new",
     });
+  });
+
+  it("stores the onboarding return path in signed callback state", async () => {
+    const response = await POST(request("POST", { returnTo: "/onboarding" }));
+    const setCookie = response.headers.get("set-cookie") ?? "";
+    const encodedCookie = setCookie.match(/closespan_github_install=([^;]+)/)?.[1];
+    expect(encodedCookie).toBeTruthy();
+    const { verifyGithubInstallStateToken } = await import(
+      "@/lib/github-installation-state"
+    );
+    expect(verifyGithubInstallStateToken(encodedCookie ?? "").returnTo).toBe(
+      "/onboarding",
+    );
   });
 
   it("lists tenant-scoped installations and repositories", async () => {
