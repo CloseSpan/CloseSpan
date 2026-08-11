@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CloseSpan — 3-slide deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #141925;
+      --ink-soft: #3d4658;
+      --muted: #6a7386;
+      --paper: #f0f2f9;
+      --panel: #ffffff;
+      --accent: #5146e5;
+      --accent-deep: #3f35c3;
+      --line: rgba(20, 25, 37, 0.1);
+      --glow: rgba(81, 70, 229, 0.16);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Source Sans 3", system-ui, sans-serif;
+      background: #0e121b;
+      color: var(--ink);
+      min-height: 100vh;
+    }
+
+    .deck {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      padding: 2rem;
+      align-items: center;
+    }
+
+    .slide {
+      width: min(1120px, 100%);
+      aspect-ratio: 16 / 9;
+      border-radius: 18px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    }
+
+    .slide-label {
+      width: min(1120px, 100%);
+      color: #9aa3b5;
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: -1.4rem;
+    }
+
+    /* —— Slide shells —— */
+    .placeholder {
+      background:
+        radial-gradient(ellipse 70% 60% at 15% 20%, rgba(81, 70, 229, 0.18), transparent 55%),
+        radial-gradient(ellipse 50% 50% at 90% 80%, rgba(81, 70, 229, 0.1), transparent 50%),
+        linear-gradient(160deg, #161c2a 0%, #0f1420 100%);
+      color: #e8ebf4;
+      display: grid;
+      place-items: center;
+      padding: 3rem;
+      text-align: center;
+    }
+
+    .placeholder h2 {
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 650;
+      font-size: clamp(2rem, 4vw, 3rem);
+      margin-bottom: 0.75rem;
+    }
+
+    .placeholder p {
+      color: #9aa3b5;
+      font-size: 1.1rem;
+      max-width: 28rem;
+      line-height: 1.5;
+    }
+
+    .placeholder .slot {
+      margin-top: 1.75rem;
+      border: 1px dashed rgba(232, 235, 244, 0.28);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      color: #c5cbe0;
+      font-size: 0.95rem;
+    }
+
+    /* —— Product slide —— */
+    .product {
+      background:
+        radial-gradient(ellipse 55% 45% at 0% 0%, var(--glow), transparent 60%),
+        radial-gradient(ellipse 40% 50% at 100% 100%, rgba(81, 70, 229, 0.08), transparent 55%),
+        linear-gradient(165deg, #f5f6fb 0%, var(--paper) 48%, #e8ebf6 100%);
+      padding: clamp(1.75rem, 3.5vw, 2.75rem) clamp(2rem, 4vw, 3.25rem);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: clamp(1rem, 2.2vw, 1.6rem);
+    }
+
+    .product-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .brand {
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 650;
+      font-size: clamp(1.75rem, 3.2vw, 2.35rem);
+      letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+
+    .brand span {
+      color: var(--accent);
+    }
+
+    .eyebrow {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .product-main {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: clamp(1.25rem, 3vw, 2.25rem);
+      align-items: center;
+      min-height: 0;
+    }
+
+    .headline {
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 650;
+      font-size: clamp(1.65rem, 3.1vw, 2.45rem);
+      line-height: 1.12;
+      letter-spacing: -0.025em;
+      color: var(--ink);
+      max-width: 14ch;
+    }
+
+    .support {
+      margin-top: 0.9rem;
+      font-size: clamp(0.95rem, 1.45vw, 1.12rem);
+      line-height: 1.45;
+      color: var(--ink-soft);
+      max-width: 34ch;
+    }
+
+    .loop {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 0.9rem 1rem;
+    }
+
+    .loop-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 1.6rem 1fr;
+      gap: 0.55rem;
+      align-items: baseline;
+      padding: 0.35rem 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .step:first-of-type { border-top: 0; }
+
+    .step-num {
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 650;
+      font-size: 0.95rem;
+      color: var(--accent);
+    }
+
+    .step strong {
+      display: block;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .step span {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    .product-foot {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 0.65rem;
+      align-items: center;
+      padding-top: 0.15rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .chip {
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--ink-soft);
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.28rem 0.7rem;
+    }
+
+    .chip.accent {
+      color: var(--accent-deep);
+      background: rgba(81, 70, 229, 0.1);
+      border-color: rgba(81, 70, 229, 0.22);
+    }
+
+    @media print {
+      body { background: white; }
+      .deck { padding: 0; gap: 0; }
+      .slide-label { display: none; }
+      .slide {
+        box-shadow: none;
+        border-radius: 0;
+        page-break-after: always;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <p class="slide-label">Slide 1 — Team (you fill in)</p>
+    <section class="slide placeholder" aria-label="Team">
+      <div>
+        <h2>Team</h2>
+        <p>Drop founder photos, titles, and one-line backgrounds here.</p>
+        <div class="slot">Placeholder — add your team content</div>
+      </div>
+    </section>
+
+    <p class="slide-label">Slide 2 — Product</p>
+    <section class="slide product" aria-label="Product">
+      <div class="product-top">
+        <div class="brand">Close<span>Span</span></div>
+        <div class="eyebrow">Feedback-to-fix ops</div>
+      </div>
+
+      <div class="product-main">
+        <div>
+          <h1 class="headline">Resolve the defects customers feel before they become churn.</h1>
+          <p class="support">
+            CloseSpan turns support feedback into prioritized product problems,
+            engineering-ready evidence, approved actions, and verified fixes —
+            then closes the loop with affected accounts.
+          </p>
+        </div>
+
+        <div class="loop">
+          <div class="loop-title">Must-win workflow</div>
+          <div class="step">
+            <div class="step-num">01</div>
+            <div><strong>Cluster</strong><span>Group related tickets across Zendesk / Intercom</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num">02</div>
+            <div><strong>Prioritize</strong><span>Attach account, ARR, and renewal impact</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num">03</div>
+            <div><strong>Approve</strong><span>Human gate before any external write</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num">04</div>
+            <div><strong>Ship &amp; verify</strong><span>Evidence pack → eng work → confirm the fix landed</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num">05</div>
+            <div><strong>Follow up</strong><span>Close conversations with the accounts that reported it</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="product-foot">
+        <span class="chip accent">Mid-market B2B SaaS</span>
+        <span class="chip">Support + Product Ops</span>
+        <span class="chip">Sits above Zendesk · Intercom · GitHub · Linear</span>
+      </div>
+    </section>
+
+    <p class="slide-label">Slide 3 — Demo (you embed)</p>
+    <section class="slide placeholder" aria-label="Demo">
+      <div>
+        <h2>Demo</h2>
+        <p>Embed your walkthrough video here (Loom / MP4 / YouTube).</p>
+        <div class="slot">
+          &lt;!-- replace with iframe or &lt;video&gt; --&gt;<br />
+          e.g. &lt;iframe src="YOUR_LOOM_URL" …&gt;&lt;/iframe&gt;
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

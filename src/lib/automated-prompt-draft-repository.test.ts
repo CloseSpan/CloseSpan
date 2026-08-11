@@ -34,6 +34,16 @@ describe("automatic engineering prompt drafts", () => {
     );
   });
 
+  it("keeps direct product-manager generation available in manual drafting mode", async () => {
+    const source = await readFile(
+      path.join(process.cwd(), "src/lib/automated-prompt-draft-repository.ts"),
+      "utf8",
+    );
+    expect(source).toContain('const directDraftPolicy: PromptDraftPolicy = { ...policy, mode: "automatic" };');
+    expect(source).toContain("await nextPostgresCandidate(orgId, policy, problemId)");
+    expect(source).toContain("return createForCandidate(orgId, directDraftPolicy, candidate)");
+  });
+
   it("builds a test-ready bug specification when repository context is available", () => {
     const draft = buildAutomatedEngineeringDraft({
       kind: "Bug",
@@ -50,7 +60,20 @@ describe("automatic engineering prompt drafts", () => {
     });
     expect(ticketReadiness(draft)).toEqual({ ready: true, issues: [] });
     expect(draft.userStory).toMatch(/^As a product user, I want /);
+    expect(draft.userStory).toContain("so that affected customers can complete the workflow reliably");
+    expect(draft.userStory).not.toContain("so that enterprise reporting cannot complete reliably");
     expect(draft.nonGoals).toContain("Automatic merge or deployment.");
+    expect(draft.expectedBehavior).toContain("users receive the complete expected result");
+    expect(draft.acceptanceCriteria[0]).toMatchObject({
+      id: "AC-1",
+      measurable: true,
+    });
+    expect(draft.acceptanceCriteria[0]?.statement).toContain("user-visible");
+    expect(draft.qualityExpectations).toContain(
+      "Passing commands, creating an issue, or opening a pull request is not proof of success without the requested user-visible outcome.",
+    );
+    expect(draft.qualityExpectations.some((item) => item.includes("as a hypothesis"))).toBe(true);
+    expect(draft.releaseVerification).toContain("corrected user-visible behavior");
   });
 
   it("leaves an unbound draft non-executable until repository context is complete", () => {

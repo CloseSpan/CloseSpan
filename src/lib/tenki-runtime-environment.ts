@@ -124,7 +124,12 @@ process.stdin.on("end", async () => {
     const origin = "http://127.0.0.1:" + spec.port;
     const websocketOrigin = "ws://127.0.0.1:" + spec.port;
     browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ serviceWorkers: "block" });
+    const context = await browser.newContext({
+      serviceWorkers: "block",
+      viewport: spec.viewport || { width: 1280, height: 720 },
+      reducedMotion: "reduce",
+      colorScheme: "dark",
+    });
     if (typeof context.routeWebSocket !== "function") {
       throw new Error("Playwright WebSocket routing is unavailable");
     }
@@ -147,6 +152,15 @@ process.stdin.on("end", async () => {
       server.onClose(() => websocket.close());
     });
     const page = await context.newPage();
+    const consoleErrors = [];
+    const pageErrors = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && consoleErrors.length < 50)
+        consoleErrors.push(message.text().slice(0, 1000));
+    });
+    page.on("pageerror", (error) => {
+      if (pageErrors.length < 50) pageErrors.push(error.message.slice(0, 1000));
+    });
     await page.route("**/*", async (route) => {
       try {
         const target = new URL(route.request().url());
@@ -169,6 +183,70 @@ process.stdin.on("end", async () => {
         await page.locator(action.selector).press(action.key, { timeout: spec.timeoutMs });
       }
     }
+    const assertionFailures = [];
+    for (const assertion of spec.assertions || []) {
+      try {
+        if (assertion.type === "visible") {
+          if (!await page.locator(assertion.selector).first().isVisible()) throw new Error("is not visible");
+        } else if (assertion.type === "hidden") {
+          if (await page.locator(assertion.selector).first().isVisible()) throw new Error("is visible");
+        } else if (assertion.type === "text") {
+          const content = await page.locator(assertion.selector).first().innerText();
+          if (!content.includes(assertion.value)) throw new Error("does not contain expected text");
+        } else if (assertion.type === "url") {
+          if (!page.url().includes(assertion.value)) throw new Error("URL does not match");
+        } else if (assertion.type === "count") {
+          const count = await page.locator(assertion.selector).count();
+          if (count !== assertion.value) throw new Error("count does not match");
+        }
+      } catch (error) {
+        assertionFailures.push((assertion.type + ": " + (assertion.selector || assertion.value) + " " + (error.message || "failed")).slice(0, 1000));
+      }
+    }
+    const accessibilityViolations = await page.evaluate((accessibility) => {
+      const failures = [];
+      if (accessibility.requireImageAlt) {
+        for (const image of document.querySelectorAll("img")) {
+          if (!image.hasAttribute("alt")) failures.push("Image is missing alt text");
+        }
+      }
+      if (accessibility.requireControlNames) {
+        for (const control of document.querySelectorAll("button,a[href],[role=button]")) {
+          const name = control.getAttribute("aria-label") || control.textContent || control.getAttribute("title") || "";
+          if (!name.trim()) failures.push("Interactive control is missing an accessible name");
+        }
+      }
+      if (accessibility.requireInputLabels) {
+        for (const input of document.querySelectorAll("input,textarea,select")) {
+          const id = input.getAttribute("id");
+          const labelled = input.getAttribute("aria-label") || input.getAttribute("aria-labelledby") || (id && document.querySelector('label[for="' + CSS.escape(id) + '"]'));
+          if (!labelled) failures.push("Form field is missing a label");
+        }
+      }
+      return failures.slice(0, 100);
+    }, spec.accessibility || {});
+    const layout = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll("body,[data-testid],[id],main,nav,section,article,dialog,h1,h2,h3,button,a[href],input,textarea,select"));
+      const counts = new Map();
+      return candidates.slice(0, 500).map((element) => {
+        const rect = element.getBoundingClientRect();
+        const role = element.getAttribute("role") || element.tagName.toLowerCase();
+        const name = (element.getAttribute("data-testid") || element.id || element.getAttribute("aria-label") || (element.textContent || "").trim().slice(0, 80)).replace(/\s+/g, " ");
+        const base = role + ":" + name;
+        const ordinal = (counts.get(base) || 0) + 1;
+        counts.set(base, ordinal);
+        const style = getComputedStyle(element);
+        return {
+          key: base + ":" + ordinal,
+          text: (element.textContent || "").trim().replace(/\s+/g, " ").slice(0, 200),
+          x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height),
+          visible: style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0,
+        };
+      });
+    });
+    const screenshotBase64 = spec.captureScreenshot
+      ? (await page.screenshot({ type: "png", fullPage: false })).toString("base64")
+      : null;
     const finalUrl = new URL(page.url());
     if (finalUrl.origin !== origin) throw new Error("browser navigation left the configured application");
     const result = {
@@ -177,6 +255,12 @@ process.stdin.on("end", async () => {
       title: (await page.title()).slice(0, 1000),
       text: ((await page.locator("body").innerText()).slice(0, spec.maxBytes)),
       html: ((await page.content()).slice(0, spec.maxBytes)),
+      screenshotBase64,
+      layout,
+      consoleErrors,
+      pageErrors,
+      accessibilityViolations,
+      assertionFailures,
     };
     process.stdout.write(JSON.stringify(result));
   } catch (error) {
@@ -264,6 +348,19 @@ export type TenkiRuntimeBrowserAction =
 export interface TenkiRuntimeBrowserRequest {
   path: string;
   actions?: readonly TenkiRuntimeBrowserAction[];
+  assertions?: readonly (
+    | { type: "visible" | "hidden"; selector: string }
+    | { type: "text"; selector: string; value: string }
+    | { type: "url"; value: string }
+    | { type: "count"; selector: string; value: number }
+  )[];
+  viewport?: { width: number; height: number };
+  captureScreenshot?: boolean;
+  accessibility?: {
+    requireImageAlt: boolean;
+    requireControlNames: boolean;
+    requireInputLabels: boolean;
+  };
 }
 
 export interface TenkiRuntimeBrowserResponse {
@@ -271,6 +368,12 @@ export interface TenkiRuntimeBrowserResponse {
   title: string;
   text: string;
   html: string;
+  screenshotBase64: string | null;
+  layout: Array<{ key: string; text: string; x: number; y: number; width: number; height: number; visible: boolean }>;
+  consoleErrors: string[];
+  pageErrors: string[];
+  accessibilityViolations: string[];
+  assertionFailures: string[];
 }
 
 export interface TenkiRuntimeStatus {
@@ -668,10 +771,24 @@ export class TenkiRuntimeEnvironment {
         throw new Error("Runtime browser keys must be non-empty and no longer than 100 characters");
       }
     }
+    const assertions = [...(request.assertions ?? [])];
+    if (assertions.length > 30) throw new Error("Runtime browser assertions are limited to 30");
+    for (const assertion of assertions) {
+      if ("selector" in assertion && (!assertion.selector.trim() || assertion.selector.length > 500 || /[\r\n\0]/.test(assertion.selector)))
+        throw new Error("Runtime browser assertion selectors are invalid");
+    }
+    const viewport = request.viewport ?? { width: 1280, height: 720 };
+    if (!Number.isSafeInteger(viewport.width) || viewport.width < 320 || viewport.width > 3_840
+      || !Number.isSafeInteger(viewport.height) || viewport.height < 480 || viewport.height > 2_160)
+      throw new Error("Runtime browser viewport is outside the allowed bounds");
     const spec = JSON.stringify({
       port: this.port,
       path,
       actions,
+      assertions,
+      viewport,
+      captureScreenshot: request.captureScreenshot === true,
+      accessibility: request.accessibility ?? {},
       timeoutMs: this.requestTimeoutMs,
       maxBytes: this.maxResponseBytes,
     });
@@ -697,7 +814,13 @@ export class TenkiRuntimeEnvironment {
       );
       throw new Error(`Runtime browser failed: ${failure}`);
     }
-    let response: { ok?: boolean; url?: string; title?: string; text?: string; html?: string };
+    let response: {
+      ok?: boolean; url?: string; title?: string; text?: string; html?: string;
+      screenshotBase64?: string | null;
+      layout?: TenkiRuntimeBrowserResponse["layout"];
+      consoleErrors?: string[]; pageErrors?: string[];
+      accessibilityViolations?: string[]; assertionFailures?: string[];
+    };
     try {
       response = JSON.parse(new TextDecoder().decode(result.stdout)) as typeof response;
     } catch {
@@ -709,6 +832,12 @@ export class TenkiRuntimeEnvironment {
       title: this.redactor.redact(response.title ?? ""),
       text: this.redactor.redact(response.text ?? ""),
       html: this.redactor.redact(response.html ?? ""),
+      screenshotBase64: response.screenshotBase64 ?? null,
+      layout: response.layout ?? [],
+      consoleErrors: (response.consoleErrors ?? []).map((item) => this.redactor.redact(item)),
+      pageErrors: (response.pageErrors ?? []).map((item) => this.redactor.redact(item)),
+      accessibilityViolations: response.accessibilityViolations ?? [],
+      assertionFailures: response.assertionFailures ?? [],
     };
   }
 

@@ -53,6 +53,7 @@ export async function dispatchAgentRun(context: AgentRunExecutionContext): Promi
       testLevel: scenario.testLevel,
       criterionIds: scenario.criterionIds,
     })),
+    releaseVerification: context.promptSnapshot.ticket.releaseVerification,
     expiresAt: context.expiresAt,
     capabilities: context.allowedCapabilities,
     callbackUrl: `${config.callbackBaseUrl}/api/internal/agent-runs/${context.runId}`,

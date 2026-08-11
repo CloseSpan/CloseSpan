@@ -72,6 +72,13 @@ describe("engineering prompt contract", () => {
     expect(first).toContain("**AC-1**");
     expect(first).toContain("### TEST-1");
     expect(first).toContain("<scenario_title>\nLarge export\n</scenario_title>");
+    expect(first).toContain('drafting_guidance: "pdd-alignment-v1"');
+    expect(first).toContain("## Contract: Requested outcome");
+    expect(first).toContain("**Oracle — user-visible proof that the outcome is delivered:**");
+    expect(first).toContain("**Non-oracle — insufficient proof on its own:**");
+    expect(first.indexOf("## Contract: Requested outcome")).toBeLessThan(
+      first.indexOf("## Reproduction"),
+    );
   });
 
   it("keeps untrusted ticket content inside escaped data boundaries", () => {

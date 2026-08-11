@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "closespan-release-verifier",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "secrets": {
+    "required": [
+      "RELEASE_VERIFIER_SHARED_SECRET",
+      "RELEASE_VERIFIER_EXECUTOR_URL",
+      "RELEASE_VERIFIER_EXECUTOR_SHARED_SECRET",
+      "STATUS_PROBE_SECRET"
+    ]
+  },
+  "queues": {
+    "producers": [
+      { "binding": "RELEASE_VERIFICATIONS", "queue": "closespan-release-verifications" }
+    ],
+    "consumers": [
+      {
+        "queue": "closespan-release-verifications",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "max_concurrency": 2,
+        "dead_letter_queue": "closespan-release-verifications-dlq"
+      }
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  }
+}

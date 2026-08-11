@@ -4,6 +4,8 @@ import { runProblemAutomationForAllOrganizations } from "@/lib/problem-automatio
 import { runSlackAutomationForAllOrganizations } from "@/lib/slack-intake";
 import { deliverBillingShadow } from "@/lib/billing-outbox";
 import { noStoreHeaders } from "@/lib/request-security";
+import { processQueuedFinalExecutions } from "@/lib/final-execution-repository";
+import { dispatchQueuedReleaseVerifications } from "@/lib/release-lifecycle-repository";
 
 export const maxDuration = 300;
 const BILLING_DELIVERY_BUDGET_MS = 20_000;
@@ -31,6 +33,8 @@ export async function GET(request: NextRequest) {
     );
   }
   try {
+    const releaseExecutions = await processQueuedFinalExecutions();
+    const releaseVerifications = await dispatchQueuedReleaseVerifications();
     const slack = await runSlackAutomationForAllOrganizations();
     const results = await runProblemAutomationForAllOrganizations();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -55,7 +59,7 @@ export async function GET(request: NextRequest) {
       if (timer) clearTimeout(timer);
     });
     return NextResponse.json(
-      { billing, slack, results },
+      { billing, releaseExecutions, releaseVerifications, slack, results },
       { headers: noStoreHeaders },
     );
   } catch {

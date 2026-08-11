@@ -9,8 +9,15 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { useActionState, useEffect, useId, useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
+import {
+  useActionState,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createPortal, useFormStatus } from "react-dom";
 import {
   createOrganizationAction,
   renameOrganizationAction,
@@ -25,6 +32,10 @@ export interface OrganizationSwitcherItem {
 }
 
 type OrganizationSwitcherVariant = "sidebar" | "mobile" | "topbar";
+
+function subscribeToClientReady(): () => void {
+  return () => {};
+}
 
 function initials(name: string): string {
   return (
@@ -235,6 +246,11 @@ export function OrganizationSwitcher({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const organizationNameRef = useRef<HTMLInputElement>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const clientReady = useSyncExternalStore(
+    subscribeToClientReady,
+    () => true,
+    () => false,
+  );
   const titleId = useId();
   const descriptionId = useId();
   const [createState, createFormAction] = useActionState(
@@ -355,6 +371,15 @@ export function OrganizationSwitcher({
         onClose={() => setRenameOpen(false)}
       />
     ) : null;
+  const dialogLayer = clientReady
+    ? createPortal(
+        <>
+          {createDialog}
+          {renameDialog}
+        </>,
+        document.body,
+      )
+    : null;
 
   if (variant === "mobile") {
     return (
@@ -383,8 +408,7 @@ export function OrganizationSwitcher({
           <Plus size={16} aria-hidden="true" />
           Add organization
         </button>
-        {createDialog}
-        {renameDialog}
+        {dialogLayer}
       </section>
     );
   }
@@ -439,8 +463,7 @@ export function OrganizationSwitcher({
           </button>
         )}
       </div>
-      {createDialog}
-      {renameDialog}
+      {dialogLayer}
     </div>
   );
 }

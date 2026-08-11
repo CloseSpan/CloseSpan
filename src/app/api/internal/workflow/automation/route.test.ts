@@ -20,6 +20,11 @@ const { deliverBilling } = vi.hoisted(() => ({
   })),
 }));
 
+const { processExecutions, dispatchVerifications } = vi.hoisted(() => ({
+  processExecutions: vi.fn(async () => []),
+  dispatchVerifications: vi.fn(async () => ({ dispatched: 0, skipped: true })),
+}));
+
 vi.mock("@/lib/problem-automation-repository", () => ({
   runProblemAutomationForAllOrganizations: runAll,
 }));
@@ -32,6 +37,14 @@ vi.mock("@/lib/billing-outbox", () => ({
   deliverBillingShadow: deliverBilling,
 }));
 
+vi.mock("@/lib/final-execution-repository", () => ({
+  processQueuedFinalExecutions: processExecutions,
+}));
+
+vi.mock("@/lib/release-lifecycle-repository", () => ({
+  dispatchQueuedReleaseVerifications: dispatchVerifications,
+}));
+
 import { GET } from "./route";
 
 describe("workflow automation cron boundary", () => {
@@ -40,6 +53,8 @@ describe("workflow automation cron boundary", () => {
     runAll.mockClear();
     runSlack.mockClear();
     deliverBilling.mockClear();
+    processExecutions.mockClear();
+    dispatchVerifications.mockClear();
   });
 
   it("rejects a missing cron secret", async () => {
@@ -64,6 +79,8 @@ describe("workflow automation cron boundary", () => {
     expect(runSlack).toHaveBeenCalledOnce();
     expect(runAll).toHaveBeenCalledOnce();
     expect(deliverBilling).toHaveBeenCalledOnce();
+    expect(processExecutions).toHaveBeenCalledOnce();
+    expect(dispatchVerifications).toHaveBeenCalledOnce();
   });
 
   it("does not block workflow automation when shadow delivery fails", async () => {

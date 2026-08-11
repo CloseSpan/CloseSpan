@@ -37,6 +37,8 @@ import {
 } from "./tenki-runtime-environment";
 import { runTenkiHostCommand } from "./tenki-host-command";
 import { TenkiLiveReplayWitness } from "./tenki-live-replay-witness";
+import { changedFilesNeedUiVerification, type UiVerificationBaseline } from "./release-verification-plan";
+import { captureTenkiUiBaseline, uiBaselinePassed } from "./tenki-ui-baseline";
 
 const ARCHIVE_LIMIT_BYTES = 80_000_000;
 const CREATE_TIMEOUT_MS = 60_000;
@@ -172,7 +174,7 @@ export interface TenkiVerificationResolvedEnvironment {
 type VerificationRuntime = Pick<
   TenkiRuntimeEnvironment,
   "prepare" | "start" | "request" | "status" | "logs" | "close"
->;
+> & Partial<Pick<TenkiRuntimeEnvironment, "browser">>;
 
 export interface VerificationDependencies {
   apiKey?: string;
@@ -927,6 +929,44 @@ export async function verifyAgentRunWithTenki(
       }
     }
 
+    let verifiedUiBaseline: UiVerificationBaseline | undefined;
+    if (changedFilesNeedUiVerification(report.changedFiles.map((file) => file.path))) {
+      try {
+        if (
+          !applicationProfile
+          || !runtime
+          || typeof runtime.browser !== "function"
+          || runtimeStatus?.healthy !== true
+          || applicationProfile.runtimeTools.browser !== true
+        ) {
+          throw new Error("Independent UI verification requires a healthy browser-enabled runtime");
+        }
+        verifiedUiBaseline = await captureTenkiUiBaseline(
+          { browser: runtime.browser.bind(runtime) },
+          context.promptSnapshot.ticket.releaseVerification,
+        );
+        if (!uiBaselinePassed(verifiedUiBaseline, context.promptSnapshot.ticket.releaseVerification)) {
+          throw new Error("Independent UI assertions, accessibility, or browser-error checks failed");
+        }
+        runtimeInteractions.push({
+          stage: "verification",
+          tool: "browser",
+          target: "approved responsive UI verification plan",
+          status: "passed",
+          evidence: `${verifiedUiBaseline.captures.length} UI baseline captures were independently reproduced in a fresh Tenki session.`,
+        });
+      } catch (error) {
+        passed = false;
+        runtimeInteractions.push({
+          stage: "verification",
+          tool: "browser",
+          target: "approved responsive UI verification plan",
+          status: "failed",
+          evidence: redactor.redact(error instanceof Error ? error.message : "Independent UI verification failed").slice(0, 5_000),
+        });
+      }
+    }
+
     const generatedCommands = new Set(
       (context.generatedTests ?? []).map((generatedTest) => generatedTest.command),
     );
@@ -1025,6 +1065,7 @@ export async function verifyAgentRunWithTenki(
         `Tenki independent verification ${passed ? "passed" : "failed"} in session ${session.id}.`,
       ],
       ...(runtimeEvidence ? { runtimeEvidence } : {}),
+      ...(verifiedUiBaseline ? { uiBaseline: verifiedUiBaseline } : {}),
       independentVerification,
     };
   } catch (error) {

@@ -10,7 +10,9 @@ import {
 import { primaryProblem, recommendation } from "./seed";
 import { workspacePersistenceMode } from "./workspace-persistence";
 import { readPromptDraftPolicy } from "./workspace-settings-repository";
-import { refreshPendingProblemRepositoryMatches } from "./problem-repository-match-repository";
+import {
+  refreshPendingProblemRepositoryMatches,
+} from "./problem-repository-match-repository";
 import {
   assertExecutionProfileNarrowing,
   sanitizeExecutionProfileConfig,
@@ -49,6 +51,19 @@ export interface AutomatedPromptDraftResult {
   reason: string;
 }
 
+export interface PromptDraftReadiness {
+  problemId: string;
+  investigationConfidence: number | null;
+  requiredConfidence: number;
+  evidenceCount: number;
+  requiredEvidence: number;
+  hasInvestigation: boolean;
+  hasExistingWorkflow: boolean;
+  repositoryReady: boolean;
+  canGenerate: boolean;
+  reason: string;
+}
+
 function feedbackKind(row: Pick<DraftCandidateRow, "bug_count" | "feature_count">): PromptDraftCandidateEvidence["kind"] {
   if (row.feature_count > row.bug_count) return "Feature request";
   if (row.bug_count > 0) return "Bug";
@@ -74,19 +89,31 @@ export function buildAutomatedEngineeringDraft(input: {
   evidenceCount: number;
   executionProfileConfig?: unknown;
 }): EngineeringTicketSpecification {
-  const expected = concise(input.proposedAction, `Deliver the reviewed outcome for ${input.title}.`);
-  const outcome = concise(input.summary, `Customers can use ${input.title} without the reported limitation.`);
+  const proposedAction = concise(input.proposedAction, `Investigate and deliver the reviewed outcome for ${input.title}.`);
   const storyGoal = input.kind === "Bug"
     ? `the reported ${input.title.toLowerCase()} behavior to be corrected`
     : `${input.title.toLowerCase()} to be available`;
+  const outcome = input.kind === "Bug"
+    ? "affected customers can complete the workflow reliably and receive the expected result"
+    : "affected users can complete the requested workflow without relying on a manual workaround";
+  const expected = input.kind === "Bug"
+    ? `For the reported scenario, users receive the complete expected result and no longer encounter ${input.title.toLowerCase()}.`
+    : `For the reported scenario, users can complete ${input.title.toLowerCase()} and observe the requested result.`;
   const criteriaSource = input.recommendedTests.length
     ? input.recommendedTests.slice(0, 10)
     : [`The reviewed solution delivers the expected behavior for all ${input.evidenceCount} grouped reports.`];
-  const acceptanceCriteria = criteriaSource.map((statement, index) => ({
-    id: `AC-${index + 1}`,
-    statement: concise(statement, `The expected behavior is verifiably delivered for ${input.title}.`),
-    measurable: true,
-  }));
+  const acceptanceCriteria = [
+    {
+      id: "AC-1",
+      statement: `${expected} The user-visible result is observable through the product interface or its documented public contract.`,
+      measurable: true,
+    },
+    ...criteriaSource.map((statement, index) => ({
+      id: `AC-${index + 2}`,
+      statement: concise(statement, `The expected behavior is verifiably delivered for ${input.title}.`),
+      measurable: true,
+    })),
+  ].slice(0, 30);
   const testScenarios = acceptanceCriteria.map((criterion, index) => ({
     id: `TEST-${index + 1}`,
     title: `Verify ${criterion.id} for ${input.title}`.slice(0, 200),
@@ -124,7 +151,7 @@ export function buildAutomatedEngineeringDraft(input: {
   }
   return {
     implementationState: "Draft specification",
-    userStory: `As a product user, I want ${storyGoal}, so that ${outcome.replace(/[.]$/, "").toLowerCase()}.`,
+    userStory: `As a product user, I want ${storyGoal}, so that ${outcome}.`,
     currentBehavior: concise(input.statement, `${input.title} is not meeting the reported customer need.`),
     expectedBehavior: expected,
     reproductionSteps: [
@@ -133,7 +160,7 @@ export function buildAutomatedEngineeringDraft(input: {
         ? "Reproduce the common failure mode in an isolated test environment."
         : "Exercise the current workflow and confirm the requested capability is absent.",
     ],
-    businessOutcome: outcome,
+    businessOutcome: `${outcome[0]?.toUpperCase()}${outcome.slice(1)}.`,
     acceptanceCriteria,
     testScenarios,
     regressionScenarios: criteriaSource,
@@ -141,9 +168,11 @@ export function buildAutomatedEngineeringDraft(input: {
     qualityExpectations: [
       "Do not copy raw customer content, credentials, or production data into tests or logs.",
       "Keep the implementation inside explicitly permitted paths and preserve existing public contracts unless the specification requires a change.",
+      `Treat the investigation's proposed action as a hypothesis, not a required implementation: ${proposedAction}`,
+      "Passing commands, creating an issue, or opening a pull request is not proof of success without the requested user-visible outcome.",
     ],
     requiredTestLevels: ["integration"],
-    releaseVerification: `After deployment, verify ${input.title} with production-safe synthetic data and confirm the expected telemetry.`,
+    releaseVerification: `After deployment, verify the corrected user-visible behavior for ${input.title} with production-safe synthetic data; confirm the expected complete result, the relevant telemetry, and no regression in the supported baseline.`,
     nonGoals: ["Automatic merge or deployment.", "Changes outside the reviewed problem and permitted paths."],
     permittedPaths: paths,
     requiredCommands,
@@ -183,7 +212,11 @@ function promptEvidence(row: DraftCandidateRow, redactedEvidence: PromptEvidence
   };
 }
 
-async function nextPostgresCandidate(orgId: string, policy: PromptDraftPolicy): Promise<DraftCandidateRow | null> {
+async function nextPostgresCandidate(
+  orgId: string,
+  policy: PromptDraftPolicy,
+  problemId?: string,
+): Promise<DraftCandidateRow | null> {
   const result = await databasePool().query<DraftCandidateRow>(
     `SELECT problem.id,problem.title,problem.statement,problem.summary,problem.severity,
             problem.confidence,problem.product_area,problem.team,problem.suspected_repository,
@@ -271,6 +304,7 @@ async function nextPostgresCandidate(orgId: string, policy: PromptDraftPolicy): 
           LIMIT 1
        ) repository ON true
       WHERE problem.org_id=$1 AND problem.stage <> 'Closed'
+        AND ($6::text IS NULL OR problem.id=$6)
         AND repository.repository IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM engineering_ticket_specifications specification
@@ -293,9 +327,148 @@ async function nextPostgresCandidate(orgId: string, policy: PromptDraftPolicy): 
          )
       ORDER BY problem.confidence DESC,evidence_count DESC,problem.updated_at,problem.id
       LIMIT 25`,
-    [orgId, policy.minimumEvidence, policy.minimumConfidence, policy.bugReports, policy.featureRequests],
+    [orgId, policy.minimumEvidence, policy.minimumConfidence, policy.bugReports, policy.featureRequests, problemId ?? null],
   );
   return result.rows[0] ?? null;
+}
+
+export async function readPromptDraftReadiness(
+  orgId: string,
+  problemId: string,
+): Promise<PromptDraftReadiness> {
+  const policy = await readPromptDraftPolicy(orgId);
+  // A direct product-manager action is allowed in both policy modes. The
+  // workspace mode controls background drafting, not whether a human can ask
+  // for a draft after the same evidence and confidence gates are satisfied.
+  const directDraftPolicy: PromptDraftPolicy = { ...policy, mode: "automatic" };
+  if (workspacePersistenceMode(orgId) === "memory") {
+    const hasInvestigation = problemId === primaryProblem.id;
+    const investigationConfidence = hasInvestigation ? recommendation.confidence : null;
+    const evidenceCount = hasInvestigation ? primaryProblem.feedbackIds.length : 0;
+    const canGenerate = hasInvestigation
+      && evidenceCount >= policy.minimumEvidence
+      && Math.min(primaryProblem.confidence, investigationConfidence ?? 0) >= policy.minimumConfidence;
+    return {
+      problemId,
+      investigationConfidence,
+      requiredConfidence: policy.minimumConfidence,
+      evidenceCount,
+      requiredEvidence: policy.minimumEvidence,
+      hasInvestigation,
+      hasExistingWorkflow: false,
+      repositoryReady: hasInvestigation,
+      canGenerate,
+      reason: canGenerate
+        ? "This problem is ready for a reviewable suggested prompt."
+        : !hasInvestigation
+          ? "An investigation is required before prompt drafting."
+          : `Investigation confidence must reach ${Math.round(policy.minimumConfidence * 100)}%.`,
+    };
+  }
+
+  const result = await databasePool().query<{
+    problem_confidence: number;
+    evidence_count: number;
+    bug_count: number;
+    feature_count: number;
+    investigation_confidence: number | null;
+    has_existing_workflow: boolean;
+    repository_ready: boolean;
+  }>(
+    `SELECT problem.confidence AS problem_confidence,
+            count(membership.feedback_id)::int AS evidence_count,
+            count(*) FILTER (WHERE feedback.type IN ('Bug','Incident'))::int AS bug_count,
+            count(*) FILTER (WHERE feedback.type='Feature request')::int AS feature_count,
+            investigation.confidence AS investigation_confidence,
+            (
+              EXISTS (SELECT 1 FROM engineering_ticket_specifications specification
+                       WHERE specification.org_id=problem.org_id AND specification.problem_id=problem.id)
+              OR EXISTS (SELECT 1 FROM implementation_prompts prompt
+                          WHERE prompt.org_id=problem.org_id AND prompt.problem_id=problem.id)
+            ) AS has_existing_workflow,
+            EXISTS (
+              SELECT 1
+                FROM github_repository_allowlists allowed
+                LEFT JOIN problem_repository_matches match
+                  ON match.org_id=problem.org_id
+                 AND match.problem_id=problem.id
+                 AND match.repository=allowed.repository
+               WHERE allowed.org_id=problem.org_id
+                 AND allowed.active=true
+                 AND coalesce(match.status,'') <> 'Rejected'
+                 AND (
+                   match.status='Confirmed'
+                   OR (match.status='Suggested' AND match.confidence >= 0.68)
+                   OR allowed.repository=problem.suspected_repository
+                   OR (
+                     lower(trim(problem.suspected_repository)) = ANY(
+                       ARRAY['','not yet identified','not identified','unknown','tbd','n/a','none']::text[]
+                     )
+                     AND 1=(SELECT count(*) FROM github_repository_allowlists only_allowed
+                              WHERE only_allowed.org_id=problem.org_id AND only_allowed.active=true)
+                   )
+                 )
+            ) AS repository_ready
+       FROM product_problems problem
+       LEFT JOIN feedback_cluster_memberships membership
+         ON membership.org_id=problem.org_id AND membership.problem_id=problem.id
+       LEFT JOIN feedback_items feedback
+         ON feedback.org_id=membership.org_id AND feedback.id=membership.feedback_id
+       LEFT JOIN LATERAL (
+         SELECT candidate.confidence
+           FROM investigations candidate
+          WHERE candidate.org_id=problem.org_id AND candidate.problem_id=problem.id
+          ORDER BY candidate.updated_at DESC,candidate.id LIMIT 1
+       ) investigation ON true
+      WHERE problem.org_id=$1 AND problem.id=$2
+      GROUP BY problem.org_id,problem.id,investigation.confidence`,
+    [orgId, problemId],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    return {
+      problemId,
+      investigationConfidence: null,
+      requiredConfidence: policy.minimumConfidence,
+      evidenceCount: 0,
+      requiredEvidence: policy.minimumEvidence,
+      hasInvestigation: false,
+      hasExistingWorkflow: false,
+      repositoryReady: false,
+      canGenerate: false,
+      reason: "This product problem was not found.",
+    };
+  }
+  const kind = row.feature_count > row.bug_count
+    ? "Feature request"
+    : row.bug_count > 0
+      ? "Bug"
+      : "Other";
+  const hasInvestigation = row.investigation_confidence !== null;
+  const assessment = assessPromptDraftEligibility(directDraftPolicy, {
+    kind,
+    evidenceCount: row.evidence_count,
+    confidence: Math.min(row.problem_confidence, row.investigation_confidence ?? 0),
+    hasInvestigation,
+    hasExistingWorkflow: row.has_existing_workflow,
+  });
+  const canGenerate = assessment.eligible && row.repository_ready;
+  return {
+    problemId,
+    investigationConfidence: row.investigation_confidence,
+    requiredConfidence: policy.minimumConfidence,
+    evidenceCount: row.evidence_count,
+    requiredEvidence: policy.minimumEvidence,
+    hasInvestigation,
+    hasExistingWorkflow: row.has_existing_workflow,
+    repositoryReady: row.repository_ready,
+    canGenerate,
+    reason: canGenerate
+      ? "This problem is ready for a reviewable suggested prompt."
+      : !row.repository_ready && assessment.eligible
+        ? "Confirm an authorized repository before generating the suggested prompt."
+        : assessment.reason,
+  };
 }
 
 async function createForCandidate(orgId: string, policy: PromptDraftPolicy, row: DraftCandidateRow): Promise<AutomatedPromptDraftResult> {
@@ -406,4 +579,57 @@ export async function createNextAutomatedPromptDraft(orgId: string): Promise<Aut
   if (!candidate)
     return { created: false, problemId: null, promptId: null, reason: "No unstarted grouped problem has enough investigated evidence." };
   return createForCandidate(orgId, policy, candidate);
+}
+
+export async function createAutomatedPromptDraftForProblem(
+  orgId: string,
+  problemId: string,
+): Promise<AutomatedPromptDraftResult> {
+  const policy = await readPromptDraftPolicy(orgId);
+  const directDraftPolicy: PromptDraftPolicy = { ...policy, mode: "automatic" };
+  const readiness = await readPromptDraftReadiness(orgId, problemId);
+  if (!readiness.canGenerate) {
+    return { created: false, problemId, promptId: null, reason: readiness.reason };
+  }
+  if (workspacePersistenceMode(orgId) === "memory") {
+    if (problemId !== primaryProblem.id) {
+      return { created: false, problemId, promptId: null, reason: "This demonstration problem has no investigated prompt context." };
+    }
+    const row: DraftCandidateRow = {
+      id: primaryProblem.id,
+      title: primaryProblem.title,
+      statement: primaryProblem.statement,
+      summary: primaryProblem.summary,
+      severity: primaryProblem.severity,
+      confidence: primaryProblem.confidence,
+      product_area: primaryProblem.productArea,
+      team: primaryProblem.team,
+      suspected_repository: primaryProblem.suspectedRepository,
+      suspected_files: primaryProblem.suspectedFiles,
+      evidence_count: primaryProblem.feedbackIds.length,
+      bug_count: primaryProblem.feedbackIds.length,
+      feature_count: 0,
+      hypothesis: recommendation.hypothesis,
+      investigation_confidence: recommendation.confidence,
+      assumptions: recommendation.assumptions,
+      missing_information: recommendation.missingInformation,
+      proposed_action: recommendation.proposedAction,
+      recommended_tests: recommendation.tests,
+      repository: primaryProblem.suspectedRepository,
+      default_branch: "main",
+      installation_id: null,
+      execution_profile_config: undefined,
+    };
+    return createForCandidate(orgId, directDraftPolicy, row);
+  }
+  const candidate = await nextPostgresCandidate(orgId, policy, problemId);
+  if (!candidate) {
+    return {
+      created: false,
+      problemId,
+      promptId: null,
+      reason: "Prompt prerequisites changed. Refresh the problem and review its investigation and repository binding.",
+    };
+  }
+  return createForCandidate(orgId, directDraftPolicy, candidate);
 }

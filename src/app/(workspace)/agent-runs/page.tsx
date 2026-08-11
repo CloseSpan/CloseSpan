@@ -112,6 +112,14 @@ export default async function AgentRunsPage() {
                       <Link className="text-link" href={`/agent-runs/${run.id}`}>
                         View run
                       </Link>
+                      {run.approvalId ? (
+                        <Link
+                          className="text-link"
+                          href={`/approvals/${run.approvalId}`}
+                        >
+                          View approval
+                        </Link>
+                      ) : null}
                       {run.pullRequestUrl ? (
                         <a
                           className="text-link"

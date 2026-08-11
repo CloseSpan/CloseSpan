@@ -51,6 +51,11 @@ import {
 import {
   getActiveConfirmedProblemRepositoryMatch,
 } from "./problem-repository-match-repository";
+import {
+  createFinalExecutionApproval,
+  readFinalExecutionApproval,
+  type FinalExecutionApprovalView,
+} from "./final-execution-repository";
 
 export interface ImplementationPromptView {
   id: string;
@@ -90,8 +95,17 @@ export interface EngineeringApprovalView {
   allowedCapabilities: string[];
 }
 
+export interface EngineeringApprovalRecordView {
+  approval: EngineeringApprovalView;
+  problemId: string;
+  problemTitle: string;
+  promptRevision: number | null;
+  runId: string | null;
+}
+
 export interface AgentRunView {
   id: string;
+  approvalId?: string;
   status: "Queued" | "Running" | "Tests passed" | "Draft PR opened" | "Failed" | "Cancelled" | "No changes";
   branchName: string;
   changedFiles: string[];
@@ -113,6 +127,7 @@ export interface AgentRunView {
 
 export interface AgentRunSummaryView {
   id: string;
+  approvalId: string | null;
   problemId: string;
   problemTitle: string;
   status: AgentRunView["status"];
@@ -144,6 +159,7 @@ export interface EngineeringWorkflowView {
   prompt: ImplementationPromptView | null;
   verification: PddVerificationView | null;
   approval: EngineeringApprovalView | null;
+  finalApproval: FinalExecutionApprovalView | null;
   run: AgentRunView | null;
   releaseEvidence: ReleaseVerificationEvidence | null;
 }
@@ -156,6 +172,12 @@ export interface ReleaseVerificationEvidence {
   specificationRevision: number;
   verifiedBy: string;
   verifiedAt: string;
+  uiVerification?: {
+    jobId: string;
+    passedChecks: number;
+    totalChecks: number;
+    captures: Array<{ key: string; viewport: string }>;
+  } | null;
 }
 
 export interface UserStoryPromptTestView {
@@ -514,11 +536,11 @@ async function readRun(
   runId?: string,
 ): Promise<AgentRunView | null> {
   const result = await database.query<{
-    id: string; status: AgentRunView["status"]; branch_name: string;
+    id: string; approval_id: string; status: AgentRunView["status"]; branch_name: string;
     changed_files: string[]; test_results: AgentTestResult[]; failure_code: string | null;
     failure_message: string | null; pull_request_url: string | null;
     queued_at: Date; completed_at: Date | null; implementation_report: AgentImplementationReport | null;
-  }>(`SELECT id,status,branch_name,changed_files,test_results,failure_code,
+  }>(`SELECT id,approval_id,status,branch_name,changed_files,test_results,failure_code,
              failure_message,pull_request_url,queued_at,completed_at,implementation_report
         FROM agent_runs WHERE org_id=$1 AND problem_id=$2 AND ($3::uuid IS NULL OR id=$3)
        ORDER BY queued_at DESC,id DESC LIMIT 1`, [orgId, problemId, runId ?? null]);
@@ -530,7 +552,7 @@ async function readRun(
   }>(`SELECT criterion_id,status,evidence,scenario_ids
         FROM agent_run_criterion_results WHERE org_id=$1 AND run_id=$2 ORDER BY criterion_id`, [orgId, row.id]);
   return {
-    id: row.id, status: row.status, branchName: row.branch_name,
+    id: row.id, approvalId: row.approval_id, status: row.status, branchName: row.branch_name,
     changedFiles: row.changed_files, testResults: row.test_results,
     criterionResults: criteria.rows.map((item) => ({ criterionId: item.criterion_id, status: item.status, evidence: item.evidence, scenarioIds: item.scenario_ids })),
     failureCode: row.failure_code, failureMessage: row.failure_message,
@@ -571,6 +593,7 @@ export async function listAgentRuns(
         const problemId = key.slice(orgId.length + 1);
         return {
           id: run.id,
+          approvalId: run.approvalId ?? workflow.approval?.id ?? null,
           problemId,
           problemTitle:
             problemId === primaryProblem.id
@@ -591,6 +614,7 @@ export async function listAgentRuns(
 
   const result = await databasePool().query<{
     id: string;
+    approval_id: string;
     problem_id: string;
     problem_title: string;
     status: AgentRunView["status"];
@@ -602,6 +626,7 @@ export async function listAgentRuns(
     implementation_report: AgentImplementationReport | null;
   }>(
     `SELECT run.id,
+            run.approval_id,
             run.problem_id,
             problem.title AS problem_title,
             run.status,
@@ -622,6 +647,7 @@ export async function listAgentRuns(
 
   return result.rows.map((row) => ({
     id: row.id,
+    approvalId: row.approval_id,
     problemId: row.problem_id,
     problemTitle: row.problem_title,
     status: row.status,
@@ -635,31 +661,132 @@ export async function listAgentRuns(
   }));
 }
 
+export async function getEngineeringApprovalRecord(
+  orgId: string,
+  approvalId: string,
+): Promise<EngineeringApprovalRecordView | null> {
+  if (workspacePersistenceMode(orgId) === "memory") {
+    const pair = [...memoryWorkflows.entries()].find(
+      ([key, workflow]) =>
+        key.startsWith(`${orgId}:`) && workflow.approval?.id === approvalId,
+    );
+    if (!pair?.[1].approval) return null;
+    const problemId = pair[0].slice(orgId.length + 1);
+    return {
+      approval: structuredClone(pair[1].approval),
+      problemId,
+      problemTitle:
+        problemId === primaryProblem.id
+          ? primaryProblem.title
+          : `Product problem ${problemId}`,
+      promptRevision: pair[1].prompt?.revision ?? null,
+      runId: pair[1].run?.id ?? null,
+    };
+  }
+
+  const result = await databasePool().query<{
+    id: string;
+    status: EngineeringApprovalView["status"];
+    expires_at: Date;
+    prompt_hash: string;
+    repository: string;
+    base_branch: string;
+    base_sha: string;
+    allowed_capabilities: string[];
+    problem_id: string;
+    problem_title: string;
+    prompt_revision: number | null;
+    run_id: string | null;
+  }>(
+    `SELECT approval.id,approval.status,approval.expires_at,approval.prompt_hash,
+            approval.repository,approval.base_branch,approval.base_sha,
+            approval.allowed_capabilities,approval.problem_id,
+            problem.title AS problem_title,prompt.revision AS prompt_revision,
+            run.id AS run_id
+       FROM approval_requests approval
+       JOIN product_problems problem
+         ON problem.org_id=approval.org_id AND problem.id=approval.problem_id
+       LEFT JOIN implementation_prompts prompt
+         ON prompt.org_id=approval.org_id AND prompt.id=approval.prompt_revision_id
+       LEFT JOIN agent_runs run
+         ON run.org_id=approval.org_id AND run.approval_id=approval.id
+      WHERE approval.org_id=$1 AND approval.id=$2
+        AND approval.action_type='agent_run'
+      LIMIT 1`,
+    [orgId, approvalId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    approval: {
+      id: row.id,
+      status: row.status,
+      expiresAt: row.expires_at.toISOString(),
+      promptHash: row.prompt_hash,
+      repository: row.repository,
+      baseBranch: row.base_branch,
+      baseSha: row.base_sha,
+      allowedCapabilities: row.allowed_capabilities,
+    },
+    problemId: row.problem_id,
+    problemTitle: row.problem_title,
+    promptRevision: row.prompt_revision,
+    runId: row.run_id,
+  };
+}
+
 async function postgresWorkflow(orgId: string, problemId: string): Promise<EngineeringWorkflowView> {
   const pool = databasePool();
-  const [specification, prompt, verification, approval, run, releaseEvidence] = await Promise.all([
+  const [specification, prompt, verification, approval, finalApproval, run, releaseEvidence] = await Promise.all([
     readSpecification(pool, orgId, problemId),
     readPrompt(pool, orgId, problemId),
     readVerification(pool, orgId, problemId),
     readApproval(pool, orgId, problemId),
+    readFinalExecutionApproval(pool, orgId, problemId),
     readRun(pool, orgId, problemId),
     readReleaseEvidence(pool, orgId, problemId),
   ]);
-  return { problemId, specification, readiness: ticketReadiness(specification), prompt, verification, approval, run, releaseEvidence };
+  return { problemId, specification, readiness: ticketReadiness(specification), prompt, verification, approval, finalApproval, run, releaseEvidence };
 }
 
 async function readReleaseEvidence(database: Pool | PoolClient, orgId: string, problemId: string): Promise<ReleaseVerificationEvidence | null> {
   const result = await database.query<{
     id: string; status: "Passed" | "Failed"; environment: string; evidence: string;
     specification_revision: number; verified_by: string; verified_at: Date;
-  }>(`SELECT id,status,environment,evidence,specification_revision,verified_by,verified_at
-        FROM engineering_release_verifications
-       WHERE org_id=$1 AND problem_id=$2 ORDER BY verified_at DESC,id DESC LIMIT 1`, [orgId, problemId]);
+    job_id: string | null;
+    verification_result: {
+      checks?: Array<{ passed?: boolean }>;
+      captures?: Array<{ key?: string; viewport?: { name?: string }; screenshotBase64?: string | null }>;
+    } | null;
+  }>(`SELECT verification.id,verification.status,verification.environment,
+              verification.evidence,verification.specification_revision,
+              verification.verified_by,verification.verified_at,
+              job.id AS job_id,job.verification_result
+        FROM engineering_release_verifications verification
+        LEFT JOIN LATERAL (
+          SELECT id,verification_result
+            FROM post_release_verification_jobs
+           WHERE org_id=verification.org_id AND problem_id=verification.problem_id
+             AND completed_at IS NOT NULL
+           ORDER BY completed_at DESC,id DESC LIMIT 1
+        ) job ON true
+       WHERE verification.org_id=$1 AND verification.problem_id=$2
+       ORDER BY verification.verified_at DESC,verification.id DESC LIMIT 1`, [orgId, problemId]);
   const row = result.rows[0];
   return row ? {
     id: row.id, status: row.status, environment: row.environment, evidence: row.evidence,
     specificationRevision: row.specification_revision, verifiedBy: row.verified_by,
     verifiedAt: row.verified_at.toISOString(),
+    uiVerification: row.job_id && row.verification_result
+      ? {
+          jobId: row.job_id,
+          passedChecks: (row.verification_result.checks ?? []).filter((check) => check.passed).length,
+          totalChecks: (row.verification_result.checks ?? []).length,
+          captures: (row.verification_result.captures ?? [])
+            .filter((capture) => capture.key && capture.screenshotBase64)
+            .map((capture) => ({ key: capture.key!, viewport: capture.viewport?.name ?? "viewport" })),
+        }
+      : null,
   } : null;
 }
 
@@ -668,6 +795,7 @@ interface MemoryWorkflow {
   prompt: ImplementationPromptView | null;
   verification: PddVerificationView | null;
   approval: EngineeringApprovalView | null;
+  finalApproval: FinalExecutionApprovalView | null;
   run: AgentRunView | null;
   releaseEvidence: ReleaseVerificationEvidence | null;
 }
@@ -687,7 +815,7 @@ function memoryWorkflow(orgId: string, problemId: string): MemoryWorkflow {
   const key = memoryKey(orgId, problemId);
   let current = memoryWorkflows.get(key);
   if (!current) {
-    current = { specification: defaultSpecification(problemId), prompt: null, verification: null, approval: null, run: null, releaseEvidence: null };
+    current = { specification: defaultSpecification(problemId), prompt: null, verification: null, approval: null, finalApproval: null, run: null, releaseEvidence: null };
     memoryWorkflows.set(key, current);
   }
   return current;
@@ -699,6 +827,32 @@ export async function getEngineeringWorkflow(orgId: string, problemId: string): 
     return { problemId, ...structuredClone(current), readiness: ticketReadiness(current.specification) };
   }
   return postgresWorkflow(orgId, problemId);
+}
+
+export async function listEngineeringApprovalWorkflows(
+  orgId: string,
+): Promise<EngineeringWorkflowView[]> {
+  if (workspacePersistenceMode(orgId) === "memory") {
+    return [...memoryWorkflows.entries()]
+      .filter(([key, workflow]) =>
+        key.startsWith(`${orgId}:`) && Boolean(workflow.approval || workflow.finalApproval),
+      )
+      .map(([key, workflow]) => ({
+        problemId: key.slice(orgId.length + 1),
+        ...structuredClone(workflow),
+        readiness: ticketReadiness(workflow.specification),
+      }));
+  }
+  const problems = await databasePool().query<{ problem_id: string }>(
+    `SELECT DISTINCT problem_id
+       FROM approval_requests
+      WHERE org_id=$1 AND action_type IN ('agent_run','final_execution')
+      ORDER BY problem_id`,
+    [orgId],
+  );
+  return Promise.all(
+    problems.rows.map((row) => postgresWorkflow(orgId, row.problem_id)),
+  );
 }
 
 async function assertProblem(client: PoolClient, orgId: string, problemId: string): Promise<void> {
@@ -1635,7 +1789,7 @@ export async function approveImplementationRun(
     prompt.status = "Approved";
     current.specification.implementationState = "Running";
     const runId = randomUUID();
-    current.run = { id: runId, status: "Queued", branchName: branchName(pair[0].split(":").slice(1).join(":"), runId, primaryProblem.title), changedFiles: [], testResults: [], criterionResults: [], failureCode: null, failureMessage: null, pullRequestUrl: null, queuedAt: new Date().toISOString(), completedAt: null };
+    current.run = { id: runId, approvalId, status: "Queued", branchName: branchName(pair[0].split(":").slice(1).join(":"), runId, primaryProblem.title), changedFiles: [], testResults: [], criterionResults: [], failureCode: null, failureMessage: null, pullRequestUrl: null, queuedAt: new Date().toISOString(), completedAt: null };
     return getEngineeringWorkflow(orgId, pair[0].split(":").slice(1).join(":"));
   }
   let problemId = "";
@@ -1945,6 +2099,29 @@ export async function completeAgentRun(
          VALUES($1,$2,$3,$4,$5,$6)`,
         [context.orgId, context.runId, result.criterionId, result.status, result.evidence, JSON.stringify(result.scenarioIds)],
       );
+    }
+    if (publication) {
+      await createFinalExecutionApproval(client, {
+        orgId: context.orgId,
+        problemId: context.problemId,
+        runId: context.runId,
+        promptRevisionId: context.promptId,
+        repository: context.repository,
+        baseBranch: context.baseBranch,
+        pullRequestNumber: publication.pullRequestNumber,
+        pullRequestUrl: publication.pullRequestUrl,
+        headSha: publication.implementationCommitSha,
+        changedFiles: report.changedFiles.map((file) => file.path),
+        tests: report.tests,
+        criteria: report.criteria,
+        remainingRisks: report.remainingRisks,
+        independentVerification: report.independentVerification,
+        uiBaseline: report.uiBaseline ?? null,
+        promptHash: context.promptHash,
+        targetEnvironment: process.env.DEFAULT_DEPLOYMENT_ENVIRONMENT?.trim() || null,
+        autoDeployOnMerge: process.env.AUTO_DEPLOY_ON_MERGE === "true",
+        rollbackPlan: process.env.DEFAULT_ROLLBACK_PLAN?.trim() || null,
+      });
     }
     const implementationState: EngineeringImplementationState = publication
       ? "Draft PR opened"

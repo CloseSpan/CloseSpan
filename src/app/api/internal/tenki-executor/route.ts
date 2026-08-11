@@ -92,6 +92,8 @@ function assertCurrentApproval(job: TenkiAgentJob, context: Awaited<ReturnType<t
     || !sameList(job.requiredCommands, requiredCommands)
     || !sameList(job.permittedPaths, ticket.permittedPaths)
     || !sameGeneratedTests(job.generatedTests, generatedTests)
+    || (job.releaseVerification !== undefined
+      && job.releaseVerification !== ticket.releaseVerification)
     || !sameList(job.capabilities, context.allowedCapabilities)
     || Date.parse(job.expiresAt) !== Date.parse(context.expiresAt)
   ) throw new Error("Queued executor payload no longer matches the approval-bound run");

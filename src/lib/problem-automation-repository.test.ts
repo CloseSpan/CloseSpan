@@ -29,11 +29,18 @@ describe("problem stage automation", () => {
 
   it("requires a human decision only in the approval queue", () => {
     expect(
-      assessAutomatedStage("Approved", {
+      assessAutomatedStage("Needs review", {
         ...noEvidence,
+        hasInvestigation: true,
         hasPendingApproval: true,
       }),
     ).toMatchObject({ nextStage: null, reason: "Waiting for the user decision." });
+    expect(
+      assessAutomatedStage("Needs review", {
+        ...noEvidence,
+        hasApprovedApproval: true,
+      }).nextStage,
+    ).toBe("Approved");
     expect(
       assessAutomatedStage("Approved", {
         ...noEvidence,
@@ -73,17 +80,13 @@ describe("problem stage automation", () => {
     vi.advanceTimersByTime(30_000);
     const second = await runProblemAutomationTick(ORG_ID);
     expect(second).toMatchObject({
-      moved: true,
-      problemId: primaryProblem.id,
-      fromStage: "Needs review",
-      toStage: "Approved",
+      moved: false,
+      reason: "No ticket currently has enough evidence for its next stage.",
     });
     expect((await runProblemAutomationTick(ORG_ID)).moved).toBe(false);
   });
 
   it("resumes automatic progression after the user approves", async () => {
-    await runProblemAutomationTick(ORG_ID);
-    vi.advanceTimersByTime(30_000);
     await runProblemAutomationTick(ORG_ID);
     approveMemoryAction(ORG_ID, {
       actorId: "admin",

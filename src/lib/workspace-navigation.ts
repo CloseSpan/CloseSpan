@@ -48,8 +48,8 @@ export const WORKSPACE_NAVIGATION = [
   },
   {
     id: "approvals",
-    label: "Approvals",
-    section: "Approval center",
+    label: "Action approvals",
+    section: "Action approvals",
     href: "/approvals",
     group: "workflow",
   },

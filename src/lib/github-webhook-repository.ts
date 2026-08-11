@@ -3,8 +3,12 @@ import type { PoolClient } from "pg";
 import { databasePool, transaction } from "./db";
 import { verifyGithubInstallation, type VerifiedGithubInstallation } from "./github-app-auth";
 import { syncGithubInstallationRecords } from "./github-installation-repository";
+import {
+  recordGithubDeploymentStatus,
+  type GithubDeploymentPayload,
+} from "./release-lifecycle-repository";
 
-interface GithubWebhookPayload {
+interface GithubWebhookPayload extends GithubDeploymentPayload {
   action?: unknown;
   installation?: { id?: unknown };
   repository?: { full_name?: unknown };
@@ -13,6 +17,9 @@ interface GithubWebhookPayload {
     html_url?: unknown;
     merged?: unknown;
     draft?: unknown;
+    merge_commit_sha?: unknown;
+    head?: { sha?: unknown };
+    base?: { ref?: unknown };
   };
 }
 
@@ -215,6 +222,25 @@ async function auditPullRequest(
   const runId = run.rows[0]?.id;
   if (!runId) return "ignored_untracked_pull_request";
   const merged = action === "closed" && payload.pull_request?.merged === true;
+  const headSha = payload.pull_request?.head?.sha;
+  if (action === "synchronize" && typeof headSha === "string") {
+    await client.query(
+      `UPDATE approval_requests
+          SET status='Superseded',updated_at=now()
+        WHERE org_id=$1 AND agent_run_id=$2 AND action_type='final_execution'
+          AND status='Pending' AND head_sha<>$3`,
+      [orgId, runId, headSha],
+    );
+  }
+  if (merged) {
+    const mergeSha = payload.pull_request?.merge_commit_sha;
+    await client.query(
+      `UPDATE final_execution_attempts
+          SET status='Succeeded',result_sha=coalesce($3,result_sha),completed_at=coalesce(completed_at,now())
+        WHERE org_id=$1 AND agent_run_id=$2 AND status IN ('Queued','Running')`,
+      [orgId, runId, typeof mergeSha === "string" ? mergeSha : null],
+    );
+  }
   const description = merged ? "merged" : action === "closed" ? "closed without merge" : action.replaceAll("_", " ");
   await client.query(
     `INSERT INTO audit_events(
@@ -268,6 +294,8 @@ async function processWorkspaceEvent(
     return synchronizeInstallation(client, orgId, verified, input.deliveryId);
   if (input.event === "pull_request")
     return auditPullRequest(client, orgId, id, action, input.payload, input.deliveryId);
+  if (input.event === "deployment_status")
+    return recordGithubDeploymentStatus(client, orgId, input.deliveryId, input.payload);
   return "ignored_unhandled_event";
 }
 

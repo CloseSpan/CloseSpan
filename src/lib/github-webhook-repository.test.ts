@@ -192,5 +192,42 @@ describe("GitHub webhook persistence", () => {
       .toBe(true);
     expect(database.client.query.mock.calls.some(([query]) => sql(query).includes("UPDATE agent_runs")))
       .toBe(false);
+    expect(database.client.query.mock.calls.some(([query]) => sql(query).includes("UPDATE final_execution_attempts")))
+      .toBe(true);
+  });
+
+  it("invalidates a pending final approval when GitHub reports a new PR head", async () => {
+    database.pool.query.mockImplementation(async (query: unknown) =>
+      sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
+        ? { rows: [], rowCount: 0 }
+        : sql(query).includes("FROM github_app_installations")
+          ? { rows: [{ org_id: "org-1" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 },
+    );
+    database.client.query.mockImplementation(async (query: unknown) => {
+      if (sql(query).includes("INSERT INTO github_webhook_deliveries"))
+        return { rows: [{ delivery_id: deliveryId }], rowCount: 1 };
+      if (sql(query).includes("FROM agent_runs run"))
+        return { rows: [{ id: "run-1" }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await processGithubWebhook({
+      deliveryId,
+      event: "pull_request",
+      rawBody: '{"action":"synchronize"}',
+      payload: {
+        action: "synchronize",
+        installation: { id: 150109806 },
+        repository: { full_name: "acme/api" },
+        pull_request: { number: 12, head: { sha: "c".repeat(40) } },
+      },
+    });
+
+    expect(result.outcome).toBe("tracked_pull_request_synchronize");
+    const invalidation = database.client.query.mock.calls.find(([query]) =>
+      sql(query).includes("status='Superseded'")
+    );
+    expect(invalidation?.[1]).toEqual(["org-1", "run-1", "c".repeat(40)]);
   });
 });

@@ -119,6 +119,7 @@ const commonJobFields = {
   generatedTests: z.array(generatedTestSchema).max(20).optional(),
   acceptanceCriteria: z.array(criterionSchema).min(1).max(30),
   testScenarios: z.array(scenarioSchema).min(1).max(50),
+  releaseVerification: z.string().max(5_000).optional(),
   callbackUrl: z.string().url().max(2_000),
   expiresAt: z.string().datetime(),
   capabilities: z.array(z.enum(["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"])).min(1).max(4),

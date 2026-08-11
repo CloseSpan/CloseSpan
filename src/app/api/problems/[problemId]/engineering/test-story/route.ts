@@ -8,6 +8,10 @@ import { createPromptAlignmentReceipt } from "@/lib/prompt-alignment-receipt";
 import { PDD_CLI_VERSION, sha256 } from "@/lib/pdd-verification";
 import { evaluatePromptWithPdd } from "@/lib/pdd-runner-client";
 import { pddPromptReviewSchema } from "@/lib/pdd-prompt-review";
+import {
+  readPddPromptTimingSummary,
+  recordPddPromptEvaluationTiming,
+} from "@/lib/pdd-prompt-timing-repository";
 import { createPddPromptRevisionReceipt } from "@/lib/pdd-prompt-revision-receipt";
 import {
   authorizeMutation,
@@ -58,12 +62,24 @@ export async function POST(
       userStory,
       context,
     );
-    const evaluation = await evaluatePromptWithPdd({
-      promptHash: promptContext.promptHash,
-      userStory: promptContext.userStory,
-      implementationPrompt: promptContext.implementationPrompt,
-      pddVersion: PDD_CLI_VERSION,
-    });
+    const timingStartedAt = Date.now();
+    let evaluation;
+    try {
+      evaluation = await evaluatePromptWithPdd({
+        promptHash: promptContext.promptHash,
+        userStory: promptContext.userStory,
+        implementationPrompt: promptContext.implementationPrompt,
+        pddVersion: PDD_CLI_VERSION,
+      });
+    } catch (error) {
+      await recordPddPromptEvaluationTiming({
+        orgId: context.orgId,
+        problemId,
+        status: "Failed",
+        durationMs: Date.now() - timingStartedAt,
+      }).catch(() => undefined);
+      throw error;
+    }
     const alignmentReceipt =
       evaluation.verdict === "Passed"
         ? createPromptAlignmentReceipt({
@@ -118,10 +134,23 @@ export async function POST(
           })
         : null,
     });
+    const durationMs = Date.now() - timingStartedAt;
+    await recordPddPromptEvaluationTiming({
+      orgId: context.orgId,
+      problemId,
+      status: "Succeeded",
+      durationMs,
+    }).catch(() => undefined);
+    const timing = await readPddPromptTimingSummary(context.orgId).catch(() => ({
+      estimatedDurationMs: durationMs,
+      averageDurationMs: durationMs,
+      sampleCount: 1,
+    }));
     return NextResponse.json(
       {
         workflow: promptContext.workflow,
         promptEvaluation,
+        timing: { ...timing, durationMs },
       },
       { headers: noStoreHeaders },
     );

@@ -35,7 +35,7 @@ describe("OverviewScreen theme filter", () => {
     expect(markup).not.toContain("theme-range-switch");
   });
 
-  it("exposes an accessible filter on every high-impact problem column", () => {
+  it("shows a compact attention queue instead of duplicating the problem inventory", () => {
     const markup = renderToStaticMarkup(
       <OverviewScreen
         analytics={calculateOverviewAnalytics(
@@ -46,19 +46,11 @@ describe("OverviewScreen theme filter", () => {
       />,
     );
 
-    for (const column of [
-      "Product problem",
-      "Signals",
-      "Revenue",
-      "Severity",
-      "Trend",
-      "Confidence",
-      "Stage",
-    ]) {
-      expect(markup).toContain(`aria-label="Filter by ${column}"`);
-    }
-    expect(markup).toContain('aria-haspopup="dialog"');
-    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain("Needs attention");
+    expect(markup).toContain("Open problem inventory");
+    expect(markup).toContain('class="overview-attention-list"');
+    expect(markup).not.toContain('class="problem-table"');
+    expect(markup).not.toContain("View board");
   });
 
   it("makes a long theme list keyboard-scrollable", () => {

@@ -53,13 +53,17 @@ export function assessAutomatedStage(
       : { nextStage: null, reason: "Waiting for customer evidence." };
   }
   if (stage === "Needs review") {
+    if (evidence.hasApprovedApproval) {
+      return {
+        nextStage: "Approved",
+        reason: "The user approved the queued agent action.",
+      };
+    }
     return evidence.hasInvestigation && evidence.hasPendingApproval
-      ? { nextStage: "Approved", reason: "The agent assessment is ready for the human approval queue." }
+      ? { nextStage: null, reason: "Waiting for the user decision." }
       : { nextStage: null, reason: "Waiting for an investigation and approval-ready action." };
   }
   if (stage === "Approved") {
-    if (evidence.hasPendingApproval)
-      return { nextStage: null, reason: "Waiting for the user decision." };
     return evidence.hasApprovedApproval
       ? { nextStage: "Planned", reason: "The user approved the queued action." }
       : { nextStage: null, reason: "Waiting for an approved action." };

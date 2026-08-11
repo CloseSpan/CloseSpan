@@ -282,6 +282,12 @@ describe("Tenki runtime environment", () => {
       title: "Account",
       text: "Signed in with [REDACTED]",
       html: "<main>[REDACTED]</main>",
+      screenshotBase64: null,
+      layout: [],
+      assertionFailures: [],
+      consoleErrors: [],
+      pageErrors: [],
+      accessibilityViolations: [],
     });
     expect(run.mock.calls[0]?.[0]).toEqual([
       "bash",

@@ -47,6 +47,11 @@ import {
 } from "./tenki-runtime-environment";
 import { runTenkiHostCommand } from "./tenki-host-command";
 import { TenkiLiveReplayWitness } from "./tenki-live-replay-witness";
+import {
+  changedFilesNeedUiVerification,
+  type UiVerificationBaseline,
+} from "./release-verification-plan";
+import { captureTenkiUiBaseline, uiBaselinePassed } from "./tenki-ui-baseline";
 
 const MAX_ARCHIVE_BYTES = 50_000_000;
 const MAX_CHANGED_BYTES = 5_000_000;
@@ -129,6 +134,7 @@ const commonJobFields = {
   generatedTests: z.array(generatedTestSchema).max(20).optional(),
   acceptanceCriteria: z.array(criterionSchema).min(1).max(30),
   testScenarios: z.array(scenarioSchema).min(1).max(50),
+  releaseVerification: z.string().max(5_000).optional(),
   callbackUrl: z.string().url().max(2_000),
   expiresAt: z.string().datetime(),
   capabilities: z.array(z.enum(["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"])).min(1).max(4),
@@ -599,6 +605,7 @@ async function sha256(content: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+
 
 export function assertRuntimeSecretPublicationSafe(
   path: string,
@@ -1421,9 +1428,28 @@ export async function executeTenkiCodingJob(
       ...agentReport.testFiles,
       ...(job.generatedTests ?? []).map((test) => test.path),
     ])].filter((path) => changedPaths.has(path));
+    const uiVerificationRequired = changedFilesNeedUiVerification([...changedPaths]);
+    let uiBaseline: UiVerificationBaseline | undefined;
+    if (uiVerificationRequired) {
+      if (
+        !applicationRuntime
+        || runtimeStatus?.healthy !== true
+        || runtimeProfile?.runtimeTools.browser !== true
+      ) {
+        throw new Error(
+          "UI changes require a healthy browser-enabled Tenki runtime before final approval",
+        );
+      }
+      uiBaseline = await captureTenkiUiBaseline(
+        applicationRuntime,
+        job.releaseVerification ?? "",
+      );
+    }
+    const uiChecksPassed = uiBaselinePassed(uiBaseline, job.releaseVerification ?? "");
     const successful = allTestsPassed
       && criteria.every((criterion) => criterion.status === "Passed" || criterion.status === "Pending manual")
-      && (!job.testScenarios.some((scenario) => scenario.testLevel !== "manual") || testFiles.length > 0);
+      && (!job.testScenarios.some((scenario) => scenario.testLevel !== "manual") || testFiles.length > 0)
+      && uiChecksPassed;
     return agentImplementationReportSchema.parse({
       schemaVersion: 1,
       runId: job.runId,
@@ -1440,6 +1466,7 @@ export async function executeTenkiCodingJob(
       assumptions: agentReport.assumptions,
       manualVerification: agentReport.manualVerification,
       logs: shell.results.slice(-200).map((entry) => `${entry.command}\n${entry.stdout}\n${entry.stderr}`.slice(-5_000)),
+      ...(uiBaseline ? { uiBaseline } : {}),
       ...(runtimeProfile
         ? {
             runtimeEvidence: {

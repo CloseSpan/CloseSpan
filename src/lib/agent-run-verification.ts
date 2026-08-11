@@ -44,6 +44,39 @@ const runtimeEvidenceSchema = z.object({
   userStoryReplayMode: z.enum(["not_required", "contract", "live_application"]).optional(),
 }).strict();
 
+const uiLayoutNodeSchema = z.object({
+  key: z.string().max(500),
+  text: z.string().max(200),
+  x: z.number().int(),
+  y: z.number().int(),
+  width: z.number().int().nonnegative(),
+  height: z.number().int().nonnegative(),
+  visible: z.boolean(),
+}).strict();
+
+const uiBaselineSchema = z.object({
+  schemaVersion: z.literal(1),
+  planHash: z.string().regex(/^[a-f0-9]{64}$/),
+  headSha: z.string().regex(/^[a-f0-9]{40}$/).nullable(),
+  capturedAt: z.string().datetime(),
+  captures: z.array(z.object({
+    key: z.string().max(200),
+    journeyId: z.string().max(80),
+    viewport: z.object({
+      name: z.string().max(40), width: z.number().int(), height: z.number().int(),
+    }).strict(),
+    url: z.string().max(2_000),
+    title: z.string().max(1_000),
+    screenshotBase64: z.string().max(450_000).nullable(),
+    screenshotSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+    layout: z.array(uiLayoutNodeSchema).max(500),
+    consoleErrors: z.array(z.string().max(1_000)).max(50),
+    pageErrors: z.array(z.string().max(1_000)).max(50),
+    accessibilityViolations: z.array(z.string().max(1_000)).max(100),
+    assertionFailures: z.array(z.string().max(1_000)).max(30),
+  }).strict()).max(120),
+}).strict();
+
 export const agentImplementationReportSchema = z.object({
   schemaVersion: z.literal(1),
   runId: z.string().uuid(),
@@ -61,6 +94,7 @@ export const agentImplementationReportSchema = z.object({
   manualVerification: z.array(z.string().trim().min(1).max(2_000)).max(30),
   logs: z.array(z.string().max(5_000)).max(200),
   runtimeEvidence: runtimeEvidenceSchema.optional(),
+  uiBaseline: uiBaselineSchema.optional(),
   independentVerification: z.object({
     provider: z.literal("Tenki Sandbox"),
     sessionId: z.string().trim().min(1).max(200),

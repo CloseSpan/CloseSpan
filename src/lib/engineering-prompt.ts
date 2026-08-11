@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { userStoryInputIssue } from "./user-story-prompt-test";
+import { parseReleaseVerificationPlan } from "./release-verification-plan";
 
 export const testLevels = [
   "unit",
@@ -87,6 +88,11 @@ export interface ImplementationPromptSnapshot {
   evidence: PromptEvidence;
 }
 
+// This version identifies the reusable prompt-writing guidance learned from
+// accepted PDD revisions. It is intentionally a product-level rule set rather
+// than a copy of any customer's revised prompt.
+export const PDD_DRAFTING_GUIDANCE_VERSION = "pdd-alignment-v1";
+
 const list = z.array(z.string().trim().min(1).max(2_000)).max(50);
 const criterionSchema = z.object({
   id: z.string().regex(/^AC-[1-9][0-9]*$/),
@@ -137,6 +143,17 @@ export const engineeringTicketSpecificationSchema = z
     baseSha: z.string().trim().regex(/^[a-fA-F0-9]{40}$/),
   })
   .superRefine((value, context) => {
+    if (/```closespan-ui-verification/i.test(value.releaseVerification)) {
+      try {
+        parseReleaseVerificationPlan(value.releaseVerification);
+      } catch {
+        context.addIssue({
+          code: "custom",
+          path: ["releaseVerification"],
+          message: "The UI release-verification plan is invalid or exceeds its safety limits",
+        });
+      }
+    }
     const userStoryIssue = userStoryInputIssue(value.userStory);
     if (userStoryIssue) {
       context.addIssue({
@@ -284,6 +301,10 @@ export function renderImplementationPrompt(
       promptValue("then", item.then),
     ].join("\n"))
     .join("\n\n");
+  const contractCovers = ticket.acceptanceCriteria
+    .map((item) => `${item.id}: ${item.statement}`);
+  const contractOracles = ticket.testScenarios
+    .map((item) => `${item.id}: ${item.then}`);
   const quotes = evidence.redactedEvidence.length
     ? evidence.redactedEvidence.map((item, index) => [
       `<redacted_evidence index="${index + 1}">`,
@@ -303,6 +324,7 @@ export function renderImplementationPrompt(
     `base_branch: ${yamlString(ticket.baseBranch)}`,
     `base_sha: ${yamlString(ticket.baseSha.toLowerCase())}`,
     `artifact_path: ${yamlString(metadata.artifactPath)}`,
+    `drafting_guidance: ${yamlString(PDD_DRAFTING_GUIDANCE_VERSION)}`,
     "---",
     "",
     "# CloseSpan implementation ticket",
@@ -326,6 +348,33 @@ export function renderImplementationPrompt(
     promptValue("problem_statement", evidence.statement),
     "",
     promptValue("problem_summary", evidence.summary),
+    "",
+    "## Contract: Requested outcome",
+    "**Covers:**",
+    promptList(contractCovers, "contract_coverage"),
+    "",
+    "**Context:**",
+    promptValue("contract_context", ticket.userStory),
+    promptValue("requested_outcome", `${ticket.expectedBehavior} ${ticket.businessOutcome}`),
+    "",
+    "**Acceptance criteria:**",
+    promptList(ticket.acceptanceCriteria.map((item) => item.statement), "contract_acceptance_criterion"),
+    "",
+    "**Oracle — user-visible proof that the outcome is delivered:**",
+    promptList(contractOracles, "contract_oracle"),
+    "",
+    "**Non-oracle — insufficient proof on its own:**",
+    promptList([
+      "A command exits successfully without proving the requested user-visible result.",
+      "A file, issue, branch, or pull request is created without satisfying the acceptance criteria.",
+      "A suspected implementation mechanism is reproduced without verifying the corrected outcome.",
+    ], "contract_non_oracle"),
+    "",
+    "**Negative cases:**",
+    promptList(ticket.negativeScenarios, "contract_negative_case"),
+    "",
+    "**Non-goals:**",
+    promptList(ticket.nonGoals, "contract_non_goal"),
     "",
     "## Reproduction",
     promptList(ticket.reproductionSteps, "reproduction_step"),
