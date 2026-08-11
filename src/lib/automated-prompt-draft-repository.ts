@@ -425,7 +425,7 @@ export async function readPromptDraftReadiness(
           ORDER BY candidate.updated_at DESC,candidate.id LIMIT 1
        ) investigation ON true
       WHERE problem.org_id=$1 AND problem.id=$2
-      GROUP BY problem.org_id,problem.id,investigation.confidence`,
+      GROUP BY problem.org_id,problem.id,investigation.id,investigation.confidence`,
     [orgId, problemId],
   );
   const row = result.rows[0];

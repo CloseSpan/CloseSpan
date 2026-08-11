@@ -44,6 +44,21 @@ describe("automatic engineering prompt drafts", () => {
     expect(source).toContain("return createForCandidate(orgId, directDraftPolicy, candidate)");
   });
 
+  it("groups prompt readiness by the latest investigation identity", async () => {
+    const source = await readFile(
+      path.join(process.cwd(), "src/lib/automated-prompt-draft-repository.ts"),
+      "utf8",
+    );
+    const readinessQuery = source.slice(
+      source.indexOf("export async function readPromptDraftReadiness"),
+      source.indexOf("const row = result.rows[0]"),
+    );
+
+    expect(readinessQuery).toContain(
+      "GROUP BY problem.org_id,problem.id,investigation.id,investigation.confidence",
+    );
+  });
+
   it("builds a test-ready bug specification when repository context is available", () => {
     const draft = buildAutomatedEngineeringDraft({
       kind: "Bug",
