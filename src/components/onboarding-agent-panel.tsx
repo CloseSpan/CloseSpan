@@ -9,6 +9,7 @@ import {
   ArrowUp,
   Building2,
   Check,
+  CircleAlert,
   Copy,
   ExternalLink,
   LoaderCircle,
@@ -321,6 +322,9 @@ export function OnboardingAgentPanel({
     subject: "",
     message: "",
   });
+  const [supportDeliveryError, setSupportDeliveryError] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -392,10 +396,13 @@ export function OnboardingAgentPanel({
       subtree: true,
       characterData: true,
     });
+    const resizeObserver = new ResizeObserver(followConversation);
+    resizeObserver.observe(stage);
     followConversation();
 
     return () => {
       observer.disconnect();
+      resizeObserver.disconnect();
       window.cancelAnimationFrame(frame);
     };
   }, [busy, prefersReducedMotion]);
@@ -559,6 +566,7 @@ export function OnboardingAgentPanel({
     });
     setDraft(loginEmail);
     setError(null);
+    setSupportDeliveryError(null);
     setSuggestedReplies([]);
     recordActivityExchange(
       "Contact support",
@@ -579,6 +587,7 @@ export function OnboardingAgentPanel({
     });
     setDraft("");
     setError(null);
+    setSupportDeliveryError(null);
     recordActivityExchange(
       "Cancel support message",
       "Support message canceled",
@@ -624,6 +633,7 @@ export function OnboardingAgentPanel({
       recordActivityExchange(
         value || "Skip subject",
         value ? "Subject saved" : "No subject added",
+        "",
         "What would you like support to help with?",
       );
       window.requestAnimationFrame(() => inputRef.current?.focus());
@@ -657,6 +667,7 @@ export function OnboardingAgentPanel({
     setSupportFlow((current) => ({ ...current, step: "message" }));
     setDraft(supportFlow.message);
     setError(null);
+    setSupportDeliveryError(null);
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
@@ -664,23 +675,23 @@ export function OnboardingAgentPanel({
     if (busy || supportFlow.step !== "review") return;
     setBusy("support");
     setError(null);
+    setSupportDeliveryError(null);
     try {
       await sendSupportRequest(orgId, {
         replyEmail: supportFlow.replyEmail,
         subject: supportFlow.subject,
         message: supportFlow.message,
       });
+      setSupportDeliveryError(null);
       setSupportFlow((current) => ({ ...current, step: "sent" }));
       recordActivityExchange(
         "Send to support",
         "Message sent",
-        `Support received your message at ${SUPPORT_EMAIL}. Replies will go to ${supportFlow.replyEmail}.`,
+        `Sent to ${SUPPORT_EMAIL}. Replies will go to ${supportFlow.replyEmail}. You can continue connecting sources while support follows up.`,
       );
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Support email is temporarily unavailable.",
+    } catch {
+      setSupportDeliveryError(
+        "Nothing was sent. Try again now, or continue onboarding and try later.",
       );
     } finally {
       setBusy(null);
@@ -771,13 +782,15 @@ export function OnboardingAgentPanel({
     userAction: string,
     assistantTitle: string,
     assistantMessage: string,
+    assistantFollowUp?: string,
   ) {
     setActivityMessages((previous) => {
-      const lastUser = previous.at(-2);
+      const exchangeLength = assistantFollowUp ? 3 : 2;
+      const lastUser = previous.at(-exchangeLength);
       const lastAssistant = previous.at(-1);
       if (
         lastUser?.content === userAction &&
-        lastAssistant?.content === assistantMessage
+        lastAssistant?.content === (assistantFollowUp ?? assistantMessage)
       ) {
         return previous;
       }
@@ -798,6 +811,16 @@ export function OnboardingAgentPanel({
           content: assistantMessage,
           at,
         },
+        ...(assistantFollowUp
+          ? [
+              {
+                id: `${exchangeId}-assistant-follow-up`,
+                role: "assistant" as const,
+                content: assistantFollowUp,
+                at,
+              },
+            ]
+          : []),
       ];
     });
   }
@@ -1065,7 +1088,7 @@ export function OnboardingAgentPanel({
                 {message.role === "assistant" && <OperationsManagerAvatar />}
                 <div className={`delphi-bubble ${message.role}`}>
                   {message.title && <strong>{message.title}</strong>}
-                  <p>{message.content}</p>
+                  {message.content && <p>{message.content}</p>}
                 </div>
               </div>
               <time
@@ -1539,6 +1562,24 @@ export function OnboardingAgentPanel({
                 <dd>{supportFlow.message}</dd>
               </div>
             </dl>
+            <AnimatePresence initial={false}>
+              {supportDeliveryError && (
+                <motion.div
+                  className="delphi-support-delivery-error"
+                  role="alert"
+                  initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <CircleAlert size={20} aria-hidden="true" />
+                  <div>
+                    <strong>Message not sent</strong>
+                    <p>{supportDeliveryError}</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className="delphi-support-review-actions">
               <button
                 className="btn"
@@ -1567,7 +1608,11 @@ export function OnboardingAgentPanel({
                 ) : (
                   <Mail size={18} aria-hidden="true" />
                 )}
-                {busy === "support" ? "Sending..." : "Send to support"}
+                {busy === "support"
+                  ? "Sending..."
+                  : supportDeliveryError
+                    ? "Try sending again"
+                    : "Send to support"}
               </button>
             </div>
           </motion.section>
@@ -1615,6 +1660,8 @@ export function OnboardingAgentPanel({
             )}
           </motion.div>
         )}
+
+        </div>
 
         <AnimatePresence initial={false}>
           {showComposer && supportFlow.step !== "review" && (
@@ -1700,7 +1747,6 @@ export function OnboardingAgentPanel({
             </motion.form>
           )}
         </AnimatePresence>
-        </div>
       </motion.div>
     </motion.section>
   );

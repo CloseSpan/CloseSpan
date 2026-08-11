@@ -33,6 +33,11 @@ export async function POST(request: NextRequest) {
       actorEmail: context.actorEmail,
     });
     if (!delivery.sent) {
+      console.error("[onboarding-support] delivery failed", {
+        configured: delivery.configured,
+        error: delivery.error ?? "Unknown delivery error",
+        orgId: context.orgId,
+      });
       throw new HttpError(503, "Support email is temporarily unavailable.");
     }
     return NextResponse.json(

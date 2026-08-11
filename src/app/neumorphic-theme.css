@@ -10240,6 +10240,9 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 }
 
 .shell-immersive .delphi-sync {
+  position: static;
+  inset: auto;
+  align-self: start;
   border: 0;
   background: color-mix(
     in srgb,
@@ -10458,6 +10461,8 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
     760px,
     calc(100dvh - 76px - clamp(40px, 8vw, 96px))
   );
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-height: min(560px, calc(100dvh - 100px));
   overflow: hidden;
   border: 0;
@@ -10472,7 +10477,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   min-height: 0;
   align-content: start;
   gap: clamp(24px, 3vw, 40px);
-  padding: clamp(32px, 6vw, 84px) clamp(24px, 7vw, 96px);
+  padding: clamp(32px, 6vw, 84px) clamp(24px, 7vw, 96px) var(--space-6);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -10619,6 +10624,38 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   margin-top: var(--space-5);
 }
 
+.shell-immersive .delphi-support-delivery-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  color: var(--danger-text, #ff9aa8);
+  background: color-mix(in srgb, var(--danger, #ef476f) 9%, var(--surface));
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.shell-immersive .delphi-support-delivery-error > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.shell-immersive .delphi-support-delivery-error strong,
+.shell-immersive .delphi-support-delivery-error p {
+  margin: 0;
+}
+
+.shell-immersive .delphi-support-delivery-error strong {
+  color: var(--text-strong);
+}
+
+.shell-immersive .delphi-support-delivery-error p {
+  margin-top: 3px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .shell-immersive .delphi-chips {
   order: 3;
   justify-content: flex-start;
@@ -10658,16 +10695,29 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 }
 
 .shell-immersive .delphi-composer {
-  order: 4;
-  position: relative;
-  width: calc(100% - 60px);
+  position: sticky;
+  z-index: 6;
+  bottom: 0;
+  width: auto;
   min-height: 68px;
-  margin-top: auto;
-  margin-left: 60px;
+  margin: 0 clamp(24px, 7vw, 96px) clamp(24px, 4vw, 48px)
+    calc(clamp(24px, 7vw, 96px) + 60px);
   padding: 10px 10px 10px 24px;
+  border: 0 !important;
+  outline: 0 !important;
   background: var(--surface-pressed);
-  box-shadow: var(--shadow-inset);
+  box-shadow: var(--shadow-inset) !important;
   transform-origin: center bottom;
+}
+
+.shell-immersive .delphi-composer:focus-within,
+.shell-immersive .delphi-composer:has(
+    input:focus-visible,
+    textarea:focus-visible
+  ) {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: var(--shadow-inset) !important;
 }
 
 .shell-immersive .delphi-workspace-links {
@@ -10701,7 +10751,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 
   .shell-immersive .delphi-stage {
     gap: 24px;
-    padding: 28px 18px;
+    padding: 28px 18px var(--space-5);
   }
 
   .shell-immersive .delphi-stage::-webkit-scrollbar-track {
@@ -10765,9 +10815,9 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   }
 
   .shell-immersive .delphi-composer {
-    width: 100%;
+    width: auto;
     min-height: 60px;
-    margin-left: 0;
+    margin: 0 18px 18px;
   }
 }
 

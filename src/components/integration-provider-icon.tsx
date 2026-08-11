@@ -1,5 +1,4 @@
 import {
-  Apple,
   Bug,
   ChartNoAxesCombined,
   GitBranch,
@@ -23,7 +22,7 @@ const providerIcons: Record<
   int_zendesk: { icon: Headset, tone: "zendesk" },
   int_intercom: { icon: MessageSquareMore, tone: "intercom" },
   int_slack: { icon: Slack, tone: "slack" },
-  int_app_store: { icon: Apple, tone: "apple" },
+  int_app_store: { icon: PlugZap, tone: "apple" },
   int_play_store: { icon: Play, tone: "play-store" },
   int_github: { icon: Github, tone: "github" },
   int_jira: { icon: PanelsTopLeft, tone: "jira" },
@@ -33,6 +32,22 @@ const providerIcons: Record<
 };
 
 const brandMarks: Partial<Record<string, ReactNode>> = {
+  int_app_store: (
+    <svg viewBox="0 0 24 24" role="img" aria-label="Apple App Store">
+      <rect width="24" height="24" rx="5.5" fill="#0D96F6" />
+      <g
+        fill="none"
+        stroke="#fff"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.15"
+      >
+        <path d="m6.2 18.2 6.15-10.65" />
+        <path d="m10.45 4.9 7.35 12.75" />
+        <path d="M5.1 15.05h11.75" />
+      </g>
+    </svg>
+  ),
   int_slack: (
     <svg viewBox="0 0 24 24" role="img" aria-label="Slack">
       <rect x="3" y="9.5" width="8" height="5" rx="2.5" fill="#36C5F0" />

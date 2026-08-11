@@ -22,6 +22,8 @@ function request(body: unknown) {
 }
 
 describe("onboarding support route", () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
   beforeEach(() => {
     dependencies.authorize.mockReset().mockResolvedValue({
       orgId: "org-1",
@@ -71,7 +73,11 @@ describe("onboarding support route", () => {
   });
 
   it("returns a recoverable error when delivery is unavailable", async () => {
-    dependencies.send.mockResolvedValue({ configured: false, sent: false });
+    dependencies.send.mockResolvedValue({
+      configured: true,
+      sent: false,
+      error: "Unauthorized",
+    });
     const response = await POST(
       request({
         replyEmail: "customer@example.com",
@@ -83,5 +89,13 @@ describe("onboarding support route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Support email is temporarily unavailable.",
     });
+    expect(consoleError).toHaveBeenCalledWith(
+      "[onboarding-support] delivery failed",
+      {
+        configured: true,
+        error: "Unauthorized",
+        orgId: "org-1",
+      },
+    );
   });
 });
