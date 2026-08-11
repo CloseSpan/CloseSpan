@@ -45,6 +45,11 @@ export interface RenamedOrganization {
   organizationName: string;
 }
 
+export interface DeleteOrganizationInput {
+  orgId: string;
+  actorMemberId: string;
+}
+
 const defaultPriorityWeights = {
   frequency: 20,
   severity: 20,
@@ -312,4 +317,28 @@ export async function renameOrganization(
     organizationId: input.orgId,
     organizationName,
   };
+}
+
+export async function deleteOrganization(
+  input: DeleteOrganizationInput,
+): Promise<void> {
+  if (workspacePersistenceMode(input.orgId) !== "postgres")
+    throw new Error("PostgreSQL persistence is required to delete organizations");
+
+  const result = await databasePool().query(
+    `DELETE FROM organizations AS organization
+      WHERE organization.id=$1
+        AND EXISTS (
+          SELECT 1
+            FROM workspace_members AS member
+           WHERE member.org_id=organization.id
+             AND member.id=$2
+             AND member.role='Admin'
+        )
+      RETURNING organization.id`,
+    [input.orgId, input.actorMemberId],
+  );
+
+  if (!result.rowCount)
+    throw new Error("Organization was not found or administrator access was revoked");
 }

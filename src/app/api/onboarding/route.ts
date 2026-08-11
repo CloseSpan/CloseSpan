@@ -4,6 +4,7 @@ import {
   appendMessage,
   bootstrapOnboardingState,
   confirmCompanyProfileTurn,
+  initializeOnboardingState,
   onboardingGuidanceForWorkspace,
   runOnboardingTurn,
   type OnboardingWorkspaceConnectionStatus,
@@ -69,8 +70,12 @@ export async function GET(request: NextRequest) {
       getOnboardingState(context.orgId),
       getWorkspaceSetupStatus(context.orgId),
     ]);
-    const state = bootstrapOnboardingState(firstName, storedState);
-    if (state.messages.length === 1 && state.messages[0]?.role === "assistant") {
+    const state = await initializeOnboardingState({
+      orgId: context.orgId,
+      firstName,
+      existing: storedState,
+    });
+    if (storedState.messages.length === 0 && state.messages.length > 0) {
       await saveOnboardingState(context.orgId, state);
     }
     const workspaceStatus = workspaceConnectionStatus(setup);
@@ -213,12 +218,17 @@ export async function PATCH(request: NextRequest) {
         state: existing,
         workspaceStatus: workspaceConnectionStatus(setup),
       });
+      const messagesWithConfirmation = appendMessage(
+        existing.messages,
+        "user",
+        `Confirmed ${existing.productProfile.productName.trim()}`,
+      );
       const confirmed = {
         phase: turn.phase,
         productProfile: turn.productProfile,
         recommendedConnectors: turn.recommendedConnectors,
         messages: appendMessage(
-          existing.messages,
+          messagesWithConfirmation,
           "assistant",
           turn.assistantMessage,
         ),

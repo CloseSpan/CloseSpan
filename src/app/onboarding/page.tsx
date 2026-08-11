@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { OnboardingAgentPanel } from "@/components/onboarding-agent-panel";
-import { displayFirstName, requireWorkspaceUser } from "@/lib/auth-user";
+import { requireWorkspaceUser } from "@/lib/auth-user";
 import { getWorkspaceSetupStatus } from "@/lib/integration-repository";
 import { getOnboardingState } from "@/lib/onboarding-repository";
 
@@ -24,8 +24,6 @@ export default async function OnboardingPage() {
     <AppShell user={user} immersive>
       <OnboardingAgentPanel
         orgId={user.orgId}
-        firstName={displayFirstName(user.name)}
-        organizationName={user.organizationName}
         initialSetup={setup}
       />
     </AppShell>

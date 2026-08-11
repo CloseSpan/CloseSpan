@@ -6,7 +6,18 @@ const repository = vi.hoisted(() => ({
   setup: null as unknown,
   save: vi.fn(),
   rename: vi.fn(),
+  discoverCompany: vi.fn(),
 }));
+
+vi.mock("@/lib/company-profile-discovery", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/lib/company-profile-discovery")
+  >();
+  return {
+    ...actual,
+    discoverCompanyProfile: repository.discoverCompany,
+  };
+});
 
 vi.mock("@/lib/auth-user", () => ({
   displayFirstName: (name: string) => name.trim().split(/\s+/)[0] || "there",
@@ -128,6 +139,7 @@ describe("onboarding route workspace reconciliation", () => {
       organizationId: "org_alpha",
       organizationName: "Northstar",
     });
+    repository.discoverCompany.mockReset();
     repository.save.mockImplementation(async (_orgId, nextState) => {
       repository.state = structuredClone(nextState);
     });
@@ -139,7 +151,10 @@ describe("onboarding route workspace reconciliation", () => {
 
     expect(response.status).toBe(200);
     expect(body.recommendedConnectors.map((item: { integrationId: string }) => item.integrationId))
-      .toEqual(["int_zendesk", "int_linear", "int_webhook"]);
+      .toEqual(["int_github", "int_zendesk", "int_linear", "int_webhook"]);
+    expect(body.suggestedActions).toContainEqual(
+      expect.objectContaining({ type: "connect_github" }),
+    );
     expect(body.suggestedActions).toContainEqual(
       expect.objectContaining({ type: "connect_webhook" }),
     );
@@ -149,6 +164,55 @@ describe("onboarding route workspace reconciliation", () => {
     expect(body.workspaceStatus.connectedIntegrationIds).toEqual([
       "int_zendesk",
     ]);
+  });
+
+  it("discovers and persists the product URL saved during organization creation", async () => {
+    repository.state = {
+      phase: "discover",
+      productProfile: {
+        productName: "CloseSpan",
+        productUrl: "https://closespan.com/",
+        productDescription: "Customer feedback operations software",
+        companyLogo: null,
+        companyProfileConfirmed: false,
+        companyProfileReadyForConfirmation: false,
+        feedbackSources: [],
+        engineeringTools: [],
+      },
+      recommendedConnectors: [],
+      messages: [],
+    } satisfies OnboardingState;
+    repository.setup = { ...setup(), feedbackConnected: false };
+    repository.discoverCompany.mockResolvedValue({
+      name: "CloseSpan",
+      url: "https://closespan.com/",
+      description: "Close customer feedback loops with verified execution.",
+      logo: "data:image/png;base64,iVBORw==",
+    });
+
+    const response = await GET(request("GET"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(repository.discoverCompany).toHaveBeenCalledWith(
+      "https://closespan.com/",
+    );
+    expect(body.productProfile).toMatchObject({
+      productName: "CloseSpan",
+      productUrl: "https://closespan.com/",
+      companyProfileReadyForConfirmation: true,
+      companyProfileConfirmed: false,
+    });
+    expect(body.messages[0].content).toBe("Hey, How's it going!");
+    expect(body.suggestedReplies).toEqual([]);
+    expect(repository.save).toHaveBeenCalledWith(
+      "org_alpha",
+      expect.objectContaining({
+        productProfile: expect.objectContaining({
+          companyProfileReadyForConfirmation: true,
+        }),
+      }),
+    );
   });
 
   it("passes authoritative GitHub status into a failure turn", async () => {
@@ -174,9 +238,7 @@ describe("onboarding route workspace reconciliation", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.messages.at(-1).content).toContain(
-      "already securely connected",
-    );
+    expect(body.messages.at(-1).content).toContain("GitHub is connected");
     expect(body.suggestedActions).not.toContainEqual(
       expect.objectContaining({ type: "connect_github" }),
     );
@@ -222,6 +284,15 @@ describe("onboarding route workspace reconciliation", () => {
     expect(body.productProfile.companyProfileConfirmed).toBe(true);
     expect(body.organizationName).toBe("Northstar");
     expect(body.recommendedConnectors.length).toBeGreaterThan(0);
+    expect(body.messages.slice(-2)).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: "Confirmed Northstar",
+      }),
+      expect.objectContaining({
+        role: "assistant",
+      }),
+    ]);
     expect(repository.rename).toHaveBeenCalledWith(expect.objectContaining({
       orgId: "org_alpha",
       name: "Northstar",

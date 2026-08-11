@@ -342,6 +342,12 @@
   --table-row-hover: rgba(154, 147, 255, 0.08);
 }
 
+:root[data-theme="dark"] .app-shell .github-connection-icon {
+  background: var(--surface-muted);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
 html {
   background: var(--bg);
   color: var(--text);
@@ -4371,7 +4377,44 @@ pre.code-block {
 }
 
 .delphi-company-actions .btn {
+  min-height: var(--control-height-lg);
+  padding-inline: var(--space-5);
   border: 0;
+  border-radius: var(--radius-pill);
+}
+
+.delphi-company-actions .btn.primary,
+.organization-rename-dialog .organization-rename-submit {
+  min-height: var(--control-height-lg);
+  padding-inline: var(--space-6);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.delphi-company-actions .btn.primary:hover:not(:disabled),
+.organization-rename-dialog .organization-rename-submit:hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-hover);
+  transform: translateY(-1px);
+}
+
+.delphi-company-actions .btn.primary:active:not(:disabled),
+.organization-rename-dialog .organization-rename-submit:active:not(:disabled) {
+  background: var(--accent-fill-active);
+  box-shadow: var(--shadow-accent-inset);
+  transform: translateY(0);
+}
+
+.delphi-company-actions .btn.primary:focus-visible,
+.organization-rename-dialog .organization-rename-submit:focus-visible {
+  outline: 0;
+  box-shadow: var(--shadow-accent-raised), var(--shadow-focus);
 }
 
 @media (max-width: 560px) {
@@ -7504,6 +7547,28 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   caret-color: var(--accent);
 }
 
+:root[data-theme="dark"] .connector-input-guidance,
+:root[data-theme="dark"] .connector-input-guidance.compact {
+  border: 0;
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+:root[data-theme="dark"] .connector-input-guidance svg {
+  color: var(--info);
+}
+
+:root[data-theme="dark"] .connector-input-guidance strong {
+  color: var(--text-strong);
+}
+
+:root[data-theme="dark"] .connector-input-guidance code {
+  background: var(--surface-muted);
+  color: var(--accent-hover);
+  box-shadow: var(--shadow-inset-sm);
+}
+
 :root[data-theme="dark"] :where(input, textarea, select):-webkit-autofill,
 :root[data-theme="dark"] :where(input, textarea, select):-webkit-autofill:hover,
 :root[data-theme="dark"] :where(input, textarea, select):-webkit-autofill:focus {
@@ -7640,6 +7705,10 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   color: var(--text-muted);
 }
 
+.organization-create-form .field-label small {
+  color: var(--text-muted);
+}
+
 .organization-create-form input,
 .organization-create-form textarea {
   border: 0 !important;
@@ -7664,6 +7733,139 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   border: 0;
   background: var(--surface);
   box-shadow: var(--shadow-raised-sm);
+}
+
+.organization-danger-zone {
+  background: color-mix(in srgb, var(--danger-soft) 42%, var(--surface-pressed));
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.organization-danger-zone > span > strong,
+.organization-delete-dialog .organization-create-head .eyebrow {
+  color: var(--danger);
+}
+
+.organization-danger-zone small {
+  color: var(--text-muted);
+}
+
+.organization-delete-trigger {
+  border: 0;
+  background: var(--surface);
+  color: var(--danger);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.organization-delete-trigger:hover:not(:disabled) {
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+.organization-delete-trigger:active:not(:disabled) {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.organization-delete-warning {
+  background: var(--danger-soft);
+  color: var(--danger);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.organization-delete-warning p {
+  color: var(--text);
+}
+
+.organization-delete-confirmation-label strong {
+  color: var(--danger);
+}
+
+.organization-create-dialog .organization-delete-submit {
+  border: 0;
+  background: var(--danger-fill);
+  color: #fff;
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.organization-create-dialog .organization-delete-submit:hover:not(:disabled) {
+  background: var(--danger-fill-hover);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+.organization-create-dialog .organization-delete-submit:active:not(:disabled) {
+  background: var(--danger-fill-active);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.organization-create-dialog .organization-delete-submit:focus-visible,
+.organization-delete-trigger:focus-visible {
+  outline: 0;
+  box-shadow: var(--shadow-raised-sm), var(--shadow-focus);
+}
+
+.organization-create-dialog .organization-delete-submit:disabled {
+  background: var(--surface-disabled);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-disabled-inset);
+  cursor: not-allowed;
+}
+
+/* Dialogs are portaled to document.body, outside .app-shell. Give their
+ * primary actions the same CTA tokens and interaction depth as workspace
+ * buttons instead of falling back to the legacy light-purple brand fill. */
+.organization-create-dialog :is(
+  .organization-create-submit,
+  .organization-rename-submit
+) {
+  border: 0;
+  background: var(--accent-fill);
+  background-image: none;
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-cta-raised);
+}
+
+.organization-create-dialog :is(
+  .organization-create-submit,
+  .organization-rename-submit
+):hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+  background-image: none;
+  box-shadow: var(--shadow-accent-cta-hover);
+  transform: translateY(-1px);
+}
+
+.organization-create-dialog :is(
+  .organization-create-submit,
+  .organization-rename-submit
+):active:not(:disabled) {
+  background: var(--accent-fill-active);
+  box-shadow: var(--shadow-accent-cta-inset);
+  transform: translateY(0);
+}
+
+.organization-create-dialog :is(
+  .organization-create-submit,
+  .organization-rename-submit
+):focus-visible {
+  outline: 0;
+  box-shadow: var(--shadow-accent-cta-raised), var(--shadow-focus);
+}
+
+.organization-create-dialog :is(
+  .organization-create-submit,
+  .organization-rename-submit
+):disabled {
+  border: 0;
+  background: var(--surface-disabled);
+  background-image: none;
+  color: var(--text-muted);
+  box-shadow: var(--shadow-disabled-inset);
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 /* Elevation belongs to the native host so it can extend beyond the scrolling
@@ -9233,6 +9435,1053 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   box-shadow:
     var(--shadow-inset),
     0 0 0 3px color-mix(in srgb, var(--accent) 44%, transparent) !important;
+}
+
+/* Immersive onboarding owns one continuous dark neumorphic surface. Keep the
+ * authored CloseSpan assets intact and prevent global field/button defaults
+ * from painting light rectangles inside its composite controls. */
+.shell-immersive .immersive-topbar {
+  min-width: 0;
+  padding-inline: clamp(var(--space-4), 2.4vw, var(--space-7));
+}
+
+.shell-immersive .immersive-brand {
+  width: 148px;
+  min-width: 148px;
+  flex: 0 0 148px;
+  overflow: visible;
+}
+
+.shell-immersive .immersive-brand .closespan-3d-logo--sm {
+  width: 148px;
+  max-width: none;
+}
+
+.shell-immersive .immersive-brand .closespan-3d-logo__image {
+  display: block;
+}
+
+.shell-immersive .immersive-top-actions {
+  min-width: 0;
+}
+
+@media (min-width: 481px) {
+  .shell-immersive
+    .organization-switcher.compact
+    .organization-switcher-control.rename-enabled {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--control-height);
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .shell-immersive
+    .organization-switcher.compact
+    .organization-switcher-control.rename-enabled
+    details {
+    min-width: 0;
+  }
+
+  .shell-immersive
+    .organization-switcher.compact
+    .organization-switcher-control.rename-enabled
+    .organization-switcher-trigger {
+    grid-template-columns: 30px minmax(0, 1fr) 16px;
+  }
+
+  .shell-immersive
+    .organization-switcher.compact
+    .organization-switcher-control.rename-enabled
+    .organization-switcher-trigger
+    > svg {
+    grid-column: 3;
+  }
+
+  .shell-immersive .organization-switcher.compact .organization-rename-trigger {
+    position: static;
+    width: var(--control-height);
+    min-width: var(--control-height);
+    height: var(--control-height);
+    min-height: var(--control-height);
+    margin: 0;
+    border-radius: var(--radius-md);
+    transform: none;
+  }
+
+  .shell-immersive
+    .organization-switcher.compact
+    .organization-rename-trigger:hover:not(:disabled),
+  .shell-immersive
+    .organization-switcher.compact
+    .organization-rename-trigger:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+.shell-immersive .immersive-top-actions > .btn {
+  border: 0;
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.shell-immersive .immersive-top-actions > .btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.shell-immersive .btn {
+  min-height: var(--control-height);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.shell-immersive .btn:hover:not(:disabled) {
+  border: 0;
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+.shell-immersive .btn:active:not(:disabled) {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.shell-immersive .btn:focus-visible {
+  outline: 0;
+  box-shadow: var(--shadow-raised-sm), var(--shadow-focus);
+}
+
+.shell-immersive .btn.primary {
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+}
+
+.shell-immersive .btn.primary:hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-hover);
+}
+
+.shell-immersive .btn.primary:active:not(:disabled) {
+  background: var(--accent-fill-active);
+  box-shadow: var(--shadow-accent-inset);
+}
+
+.shell-immersive .btn.primary:focus-visible {
+  box-shadow: var(--shadow-accent-raised), var(--shadow-focus);
+}
+
+.shell-immersive .btn:disabled {
+  background: var(--surface-disabled);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-inset-sm);
+  opacity: 0.64;
+}
+
+.shell-immersive .delphi-company-actions .btn {
+  min-height: var(--control-height-lg);
+  padding-inline: var(--space-5);
+  border-radius: var(--radius-pill);
+}
+
+.shell-immersive .delphi-company-actions .btn.primary {
+  padding-inline: var(--space-6);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-base);
+}
+
+.shell-immersive .public-discovery-intro {
+  position: relative;
+  padding-top: calc(var(--space-5) + 7px);
+  border-top: 0;
+}
+
+.shell-immersive .public-discovery-intro::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.shell-immersive .public-discovery-note {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-pressed);
+  color: var(--text);
+  box-shadow: var(--shadow-inset-sm);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.shell-immersive .delphi-confirmation-reveal.reveal-product {
+  display: grid;
+  justify-items: start;
+}
+
+.shell-immersive .delphi-product-card {
+  --delphi-product-tail: color-mix(
+    in srgb,
+    var(--surface-pressed) 74%,
+    var(--surface)
+  );
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  padding: clamp(var(--space-5), 2.2vw, var(--space-7));
+  border: 0;
+  border-radius: 22px 22px 22px 7px;
+  background: var(--delphi-product-tail);
+  color: var(--text);
+  box-shadow: var(--shadow-raised);
+}
+
+.shell-immersive .delphi-product-message .delphi-product-card {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shell-immersive .delphi-product-card::before,
+.shell-immersive .delphi-product-card::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.shell-immersive .delphi-product-card::before {
+  z-index: 0;
+  left: -8px;
+  width: 20px;
+  height: 20px;
+  border-bottom-right-radius: 15px;
+  background: var(--delphi-product-tail);
+}
+
+.shell-immersive .delphi-product-card::after {
+  z-index: 0;
+  left: -13px;
+  width: 12px;
+  height: 22px;
+  border-bottom-right-radius: 11px;
+  background: var(--bg);
+}
+
+.shell-immersive .delphi-product-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.shell-immersive .delphi-product-description {
+  color: var(--text);
+}
+
+.shell-immersive .delphi-onboarding {
+  color: var(--text);
+}
+
+.shell-immersive .delphi-thread {
+  padding: var(--space-4);
+  scroll-padding-block: var(--space-4);
+}
+
+.shell-immersive .delphi-avatar {
+  width: 72px;
+  height: 72px;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.shell-immersive .delphi-avatar img {
+  display: block;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter: drop-shadow(7px 9px 12px rgba(3, 7, 14, 0.58));
+}
+
+.shell-immersive .delphi-hero h1 {
+  color: var(--text-strong);
+}
+
+.shell-immersive :is(.delphi-sub, .delphi-bubble, .onboarding-loading) {
+  color: var(--text);
+}
+
+.shell-immersive .delphi-message-row {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.shell-immersive .delphi-message-row.assistant {
+  justify-items: start;
+}
+
+.shell-immersive .delphi-message-row.user {
+  justify-items: end;
+}
+
+.shell-immersive .delphi-message-sender {
+  margin-left: calc(48px + var(--space-3));
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.shell-immersive .delphi-message-body {
+  width: min(92%, 72rem);
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.shell-immersive .delphi-message-row.user .delphi-message-body {
+  justify-content: flex-end;
+}
+
+.shell-immersive .delphi-message-avatar {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  flex: 0 0 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.shell-immersive .delphi-message-avatar img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.shell-immersive .delphi-bubble {
+  --delphi-bubble-tail: var(--surface-muted);
+  position: relative;
+  isolation: isolate;
+  width: fit-content;
+  max-width: min(80%, 62ch);
+  overflow: visible;
+  border-radius: 22px;
+  background: var(--surface-muted);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.shell-immersive .delphi-bubble.assistant {
+  --delphi-bubble-tail: var(--surface);
+  width: fit-content;
+  max-width: min(100%, 70ch);
+  justify-self: start;
+  border-bottom-left-radius: 7px;
+  background: var(--surface);
+}
+
+.shell-immersive .delphi-bubble.user {
+  --delphi-bubble-tail: var(--accent-fill);
+  justify-self: end;
+  border-bottom-right-radius: 7px;
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent-raised);
+}
+
+.shell-immersive .delphi-bubble.assistant.resolved {
+  --delphi-bubble-tail: color-mix(
+    in srgb,
+    var(--success-soft) 64%,
+    var(--surface-muted)
+  );
+  background: var(--delphi-bubble-tail);
+}
+
+.shell-immersive .delphi-confirmed-site-summary {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.shell-immersive .delphi-confirmed-site-summary strong {
+  color: var(--text-strong);
+}
+
+.shell-immersive .delphi-confirmed-site-summary a {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--accent-hover);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.shell-immersive .delphi-confirmed-site-summary a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.shell-immersive .delphi-bubble::before,
+.shell-immersive .delphi-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.shell-immersive .delphi-bubble > * {
+  position: relative;
+  z-index: 1;
+}
+
+.shell-immersive .delphi-bubble::before {
+  z-index: 0;
+  width: 20px;
+  height: 20px;
+  background: var(--delphi-bubble-tail);
+}
+
+.shell-immersive .delphi-bubble::after {
+  z-index: 0;
+  width: 12px;
+  height: 22px;
+  background: var(--bg);
+}
+
+.shell-immersive .delphi-bubble.assistant::before {
+  left: -5px;
+  bottom: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: -2px 2px 5px rgba(3, 7, 14, 0.38);
+}
+
+.shell-immersive .delphi-bubble.assistant::after {
+  display: none;
+}
+
+.shell-immersive .delphi-message-time {
+  padding-left: calc(42px + var(--space-3));
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+.shell-immersive .delphi-message-row.user .delphi-message-time {
+  padding: 0 var(--space-1) 0 0;
+}
+
+.shell-immersive .delphi-bubble.user::before {
+  right: -8px;
+  border-bottom-left-radius: 15px;
+}
+
+.shell-immersive .delphi-bubble.user::after {
+  right: -13px;
+  border-bottom-left-radius: 11px;
+}
+
+@keyframes delphi-confirmation-message-enter {
+  from {
+    opacity: 0.84;
+    transform: translateY(8px) scale(0.985);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes delphi-confirmation-content-enter {
+  from {
+    opacity: 0.82;
+    transform: translateY(12px);
+    clip-path: inset(0 0 10% 0 round var(--radius-lg));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    clip-path: inset(0 0 0 0 round var(--radius-lg));
+  }
+}
+
+.shell-immersive .delphi-confirmation-message {
+  animation: delphi-confirmation-message-enter 280ms
+    cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.shell-immersive .delphi-confirmation-message.assistant {
+  animation-delay: 70ms;
+}
+
+.shell-immersive .delphi-action-thread {
+  display: grid;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.shell-immersive .delphi-onboarding-action-message {
+  animation: delphi-confirmation-message-enter 280ms
+    cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.shell-immersive .delphi-onboarding-action-message.assistant {
+  animation-delay: 70ms;
+}
+
+.shell-immersive .delphi-onboarding-action-message strong {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: inherit;
+  font-size: var(--text-base);
+  line-height: 1.35;
+}
+
+.shell-immersive .delphi-onboarding-action-message.assistant strong {
+  color: var(--text-strong);
+}
+
+.shell-immersive .delphi-onboarding-action-message p {
+  color: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.shell-immersive .delphi-onboarding-action-message.assistant p {
+  color: var(--text-muted);
+}
+
+.shell-immersive .delphi-message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.shell-immersive .delphi-sync-grid {
+  align-items: stretch;
+  gap: var(--space-4);
+}
+
+.shell-immersive .delphi-next-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-5);
+  width: calc(100% - 60px);
+  margin-left: 60px;
+  padding: clamp(var(--space-5), 2.4vw, var(--space-7));
+  border: 0;
+  border-radius: 24px;
+  background: color-mix(
+    in srgb,
+    var(--surface-pressed) 72%,
+    var(--surface)
+  );
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.shell-immersive .delphi-next-step-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.shell-immersive .delphi-next-step-icon .integration-provider-icon {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.shell-immersive .delphi-next-step-icon .integration-brand-mark,
+.shell-immersive .delphi-next-step-icon .integration-brand-mark svg {
+  width: 28px;
+  height: 28px;
+}
+
+.shell-immersive .delphi-next-step-copy > span {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.12em;
+}
+
+.shell-immersive .delphi-next-step-copy h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: clamp(18px, 2vw, 22px);
+}
+
+.shell-immersive .delphi-next-step-copy p {
+  max-width: 62ch;
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.shell-immersive .delphi-next-step .btn.primary {
+  min-height: 52px;
+  padding-inline: var(--space-5);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.shell-immersive .delphi-sync {
+  border: 0;
+  background: color-mix(
+    in srgb,
+    var(--surface-pressed) 78%,
+    var(--surface)
+  );
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.shell-immersive .delphi-source,
+.shell-immersive .delphi-source.connected {
+  height: 100%;
+  padding: var(--space-4);
+  border: 0;
+  background: color-mix(
+    in srgb,
+    var(--surface-pressed) 68%,
+    var(--surface)
+  );
+  color: var(--text);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.shell-immersive .delphi-source.connected {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.shell-immersive .delphi-source-priority {
+  display: block;
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.shell-immersive .delphi-source h3 {
+  color: var(--text-strong);
+}
+
+.shell-immersive .delphi-source > div:first-child > p,
+.shell-immersive .delphi-source .integration-import.quiet {
+  color: var(--text-muted);
+}
+
+.shell-immersive .delphi-source-connected {
+  padding-top: var(--space-3);
+  border-top: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 720px) {
+  .shell-immersive .delphi-message-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .shell-immersive .delphi-message-actions .btn {
+    width: 100%;
+  }
+}
+
+.shell-immersive .delphi-confirmation-reveal {
+  animation: delphi-confirmation-content-enter 420ms
+    cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.shell-immersive .delphi-confirmation-reveal.reveal-product {
+  animation-delay: 110ms;
+}
+
+.shell-immersive .delphi-confirmation-reveal.reveal-next-step {
+  animation-delay: 170ms;
+}
+
+.shell-immersive .delphi-confirmation-reveal.reveal-connectors {
+  animation-delay: 230ms;
+}
+
+.shell-immersive .delphi-confirmation-reveal.reveal-links {
+  animation-delay: 290ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-immersive .delphi-confirmation-message,
+  .shell-immersive .delphi-onboarding-action-message,
+  .shell-immersive .delphi-confirmation-reveal {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell-immersive .delphi-message-body {
+    width: calc(100% - var(--space-2));
+  }
+
+  .shell-immersive .delphi-message-sender {
+    margin-left: calc(40px + var(--space-3));
+  }
+
+  .shell-immersive .delphi-message-avatar {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .shell-immersive .delphi-message-avatar img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .shell-immersive .delphi-bubble {
+    max-width: 88%;
+  }
+
+  .shell-immersive .delphi-product-message .delphi-product-card {
+    max-width: calc(100% - var(--space-2));
+  }
+}
+
+.shell-immersive .delphi-kicker,
+.shell-immersive .delphi-bubble.thinking p {
+  color: var(--text-muted);
+}
+
+.shell-immersive .delphi-chip {
+  border: 0;
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.shell-immersive .delphi-chip:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.shell-immersive .delphi-chip:active:not(:disabled) {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.shell-immersive .delphi-composer {
+  border: 0;
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset);
+}
+
+.shell-immersive .delphi-composer input,
+.shell-immersive .delphi-composer input:hover,
+.shell-immersive .delphi-composer input:focus,
+.shell-immersive .delphi-composer input:focus-visible {
+  border: 0 !important;
+  outline: 0 !important;
+  appearance: none;
+  background: transparent !important;
+  background-image: none !important;
+  color: var(--text-strong);
+  box-shadow: none !important;
+}
+
+.shell-immersive .delphi-composer input::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.shell-immersive .delphi-send {
+  flex: 0 0 var(--control-height);
+  color: var(--text-on-accent);
+}
+
+.shell-immersive .delphi-send:disabled {
+  border: 0;
+  background: var(--surface-pressed);
+  color: color-mix(in srgb, var(--text-muted) 58%, var(--bg));
+  box-shadow: var(--shadow-inset-sm);
+  opacity: 1;
+  filter: none;
+  cursor: not-allowed;
+}
+
+/* Framer Motion owns onboarding continuity and state changes. Prevent the
+ * legacy CSS entrance keyframes from competing with layout projection. */
+.shell-immersive .delphi-motion-enabled :is(
+  .delphi-confirmation-message,
+  .delphi-onboarding-action-message,
+  .delphi-confirmation-reveal
+) {
+  animation: none;
+}
+
+/* Onboarding is one continuous Operations Manager conversation. */
+.shell-immersive .immersive-main {
+  display: block;
+}
+
+.shell-immersive .delphi-onboarding {
+  min-height: calc(100vh - 76px);
+  min-height: calc(100dvh - 76px);
+  place-items: center;
+  padding: clamp(20px, 4vw, 48px);
+}
+
+.shell-immersive .delphi-glow {
+  display: none;
+}
+
+.shell-immersive .delphi-stage-shell {
+  width: min(1180px, 100%);
+  height: min(
+    760px,
+    calc(100dvh - 76px - clamp(40px, 8vw, 96px))
+  );
+  min-height: min(560px, calc(100dvh - 100px));
+  overflow: hidden;
+  border: 0;
+  border-radius: clamp(24px, 3vw, 34px);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.shell-immersive .delphi-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  align-content: start;
+  gap: clamp(24px, 3vw, 40px);
+  padding: clamp(32px, 6vw, 84px) clamp(24px, 7vw, 96px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-bottom: calc(var(--control-height-lg) + var(--space-7));
+  scrollbar-color: var(--accent-fill) var(--surface-pressed);
+  scrollbar-width: thin;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  box-shadow: none;
+}
+
+.shell-immersive .delphi-stage::-webkit-scrollbar {
+  width: 14px;
+  background: transparent;
+}
+
+.shell-immersive .delphi-stage::-webkit-scrollbar-track {
+  margin-block: clamp(36px, 4vw, 48px);
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.shell-immersive .delphi-stage::-webkit-scrollbar-thumb {
+  min-height: 56px;
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--accent-fill);
+  background-clip: padding-box;
+  box-shadow: var(--shadow-accent-raised);
+}
+
+.shell-immersive .delphi-stage::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-fill-hover);
+  background-clip: padding-box;
+  box-shadow: var(--shadow-accent-hover);
+}
+
+.shell-immersive .delphi-soft-error {
+  order: 0;
+}
+
+.shell-immersive .delphi-thread {
+  order: 1;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  gap: clamp(24px, 3vw, 36px);
+}
+
+.shell-immersive :is(
+  .delphi-company-confirmation,
+  .delphi-next-step,
+  .delphi-product-message,
+  .delphi-action-thread,
+  .delphi-sync,
+  .delphi-credentials
+) {
+  order: 2;
+}
+
+.shell-immersive .delphi-chips {
+  order: 3;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-left: 60px;
+}
+
+.shell-immersive .delphi-chip {
+  min-height: 48px;
+  padding-inline: 22px;
+  border-radius: 999px;
+}
+
+.shell-immersive .delphi-connector-chips .connector-connect-control {
+  width: auto;
+  display: inline-flex;
+  align-items: flex-start;
+}
+
+.shell-immersive .delphi-connector-chips .connector-connect-control > .delphi-chip {
+  width: auto;
+  max-width: none;
+}
+
+.shell-immersive .delphi-connector-chips
+  :is(.connector-waiting-help, .connector-connect-control > p) {
+  max-width: 32ch;
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.shell-immersive .delphi-composer {
+  order: 4;
+  position: sticky;
+  z-index: 6;
+  bottom: 0;
+  width: calc(100% - 60px);
+  min-height: 68px;
+  margin-top: auto;
+  margin-left: 60px;
+  padding: 10px 10px 10px 24px;
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset), 0 -18px 30px color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+.shell-immersive .delphi-workspace-links {
+  order: 5;
+}
+
+.shell-immersive .delphi-message-body {
+  width: min(94%, 72rem);
+}
+
+.shell-immersive .delphi-bubble {
+  padding: 18px 22px;
+  font-size: clamp(15px, 1.4vw, 18px);
+  line-height: 1.55;
+}
+
+.shell-immersive .delphi-message-sender {
+  font-size: 15px;
+}
+
+@media (max-width: 720px) {
+  .shell-immersive .delphi-onboarding {
+    padding: 12px;
+  }
+
+  .shell-immersive .delphi-stage-shell {
+    height: calc(100dvh - 76px - 24px);
+    min-height: 0;
+    border-radius: 24px;
+  }
+
+  .shell-immersive .delphi-stage {
+    gap: 24px;
+    padding: 28px 18px;
+  }
+
+  .shell-immersive .delphi-stage::-webkit-scrollbar-track {
+    margin-block: 32px;
+  }
+
+  .shell-immersive .delphi-chips {
+    margin-left: 0;
+  }
+
+  .shell-immersive .delphi-chip {
+    min-height: 44px;
+    padding-inline: 16px;
+  }
+
+  .shell-immersive .delphi-next-step {
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+    margin-left: 0;
+    padding: var(--space-5);
+  }
+
+  .shell-immersive .delphi-next-step .btn.primary {
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+
+  .shell-immersive .delphi-composer {
+    width: 100%;
+    min-height: 60px;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .shell-immersive .immersive-brand {
+    width: min(132px, 42vw);
+    min-width: 0;
+    flex-basis: auto;
+  }
+
+  .shell-immersive .delphi-avatar,
+  .shell-immersive .delphi-avatar img {
+    width: 64px;
+    height: 64px;
+  }
 }
 
 .app-shell .prompt-evaluation-revision {

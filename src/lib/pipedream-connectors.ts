@@ -4,7 +4,6 @@ export const PIPEDREAM_CONNECTORS = {
   int_slack: "slack",
   int_app_store: "app-store-connect",
   int_play_store: "google-play",
-  int_github: "github",
   int_linear: "linear",
   int_jira: "jira",
   int_sentry: "sentry",

@@ -141,6 +141,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
 
 const availableIntegrationIds = new Set<string>([
   "int_webhook",
+  "int_github",
   ...PIPEDREAM_CONNECTOR_IDS,
 ]);
 

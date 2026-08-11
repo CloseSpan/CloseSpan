@@ -194,7 +194,7 @@ export async function getWorkspaceSetupStatus(
       listPipedreamConnections(orgId),
       getAiPublicConfiguration(orgId),
     ]);
-    const connectedIntegrationIds = connections
+    const connectedIntegrationIds: string[] = connections
       .filter((connection) => connection.state === "Connected")
       .map((connection) => connection.integrationId);
     const feedbackSourceIds = new Set(
@@ -241,14 +241,22 @@ export async function getWorkspaceSetupStatus(
     ]);
 
   const feedbackCount = feedbackResult.rows[0]?.count ?? 0;
-  const connectedIntegrationIds = integrationsResult.rows
+  const rawConnectedIntegrationIds = integrationsResult.rows
     .filter((row) => row.connection_state === "Connected")
     .map((row) => row.id);
+  const githubInstallationCount =
+    githubResult.rows[0]?.installation_count ?? 0;
+  const githubRepositoryCount = githubResult.rows[0]?.repository_count ?? 0;
+  const githubConnected =
+    githubInstallationCount > 0 && githubRepositoryCount > 0;
+  const connectedIntegrationIds = [
+    ...rawConnectedIntegrationIds.filter((id) => id !== "int_github"),
+    ...(githubConnected ? ["int_github"] : []),
+  ];
   const webhookRow = integrationsResult.rows.find(
     (row) => row.provider === WEBHOOK_PROVIDER,
   );
   const webhookConnected = webhookRow?.connection_state === "Connected";
-  const githubConnected = connectedIntegrationIds.includes("int_github");
   const aiConfigured =
     aiConfig.configured &&
     (aiConfig.connectionStatus === "ready" ||
@@ -279,8 +287,8 @@ export async function getWorkspaceSetupStatus(
       : undefined,
     github: githubConnected
       ? {
-          installationCount: githubResult.rows[0]?.installation_count ?? 0,
-          repositoryCount: githubResult.rows[0]?.repository_count ?? 0,
+          installationCount: githubInstallationCount,
+          repositoryCount: githubRepositoryCount,
         }
       : undefined,
   };

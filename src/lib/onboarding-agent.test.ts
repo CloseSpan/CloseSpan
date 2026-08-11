@@ -6,6 +6,7 @@ import {
 } from "./integration-catalog";
 import {
   confirmCompanyProfileTurn,
+  initializeOnboardingState,
   onboardingGuidanceForWorkspace,
   runOnboardingTurn,
   type OnboardingWorkspaceConnectionStatus,
@@ -117,6 +118,92 @@ describe("discoverFeedbackSourcesFromProduct", () => {
 });
 
 describe("runOnboardingTurn product-first", () => {
+  it("keeps GitHub as the only next-step message until it is connected", async () => {
+    const turn = await runOnboardingTurn({
+      orgId: "org_test",
+      firstName: "Sam",
+      organizationName: "CloseSpan",
+      state: connectorState(),
+      userMessage: "What should I connect next?",
+      workspaceStatus: emptyWorkspaceStatus,
+    });
+
+    expect(turn.assistantMessage).toBe(
+      "Connect GitHub first so you can choose the repositories CloseSpan may test and use for approved PRs.",
+    );
+    expect(turn.recommendedConnectors[0]?.integrationId).toBe("int_github");
+    expect(turn.suggestedActions).toContainEqual(
+      expect.objectContaining({ type: "connect_github" }),
+    );
+    expect(turn.suggestedReplies).toEqual(["Connect GitHub"]);
+  });
+
+  it("discovers a saved organization URL before asking the user for it again", async () => {
+    const state = defaultOnboardingState();
+    state.productProfile = {
+      ...state.productProfile,
+      productName: "Saved product name",
+      productUrl: "https://closespan.com/",
+      productDescription: "Saved product description",
+    };
+    const discoverCompany = async () => ({
+      name: "CloseSpan",
+      url: "https://closespan.com/",
+      description: null,
+      logo: "data:image/png;base64,iVBORw==",
+    });
+
+    const initialized = await initializeOnboardingState({
+      orgId: "org_test",
+      firstName: "Sam",
+      existing: state,
+      discoverCompany,
+    });
+
+    expect(initialized.messages[0]?.content).toBe("Hey, How's it going!");
+    expect(initialized.productProfile).toMatchObject({
+      productName: "CloseSpan",
+      productUrl: "https://closespan.com/",
+      productDescription: "Saved product description",
+      companyProfileConfirmed: false,
+      companyProfileReadyForConfirmation: true,
+    });
+    expect(
+      onboardingGuidanceForWorkspace({
+        state: initialized,
+        workspaceStatus: emptyWorkspaceStatus,
+      }).suggestedReplies,
+    ).toEqual([]);
+  });
+
+  it("keeps the saved URL and offers manual correction when discovery fails", async () => {
+    const state = defaultOnboardingState();
+    state.productProfile.productUrl = "https://unavailable.example/";
+
+    const initialized = await initializeOnboardingState({
+      orgId: "org_test",
+      firstName: "Sam",
+      existing: state,
+      discoverCompany: async () => {
+        throw new Error("unavailable");
+      },
+    });
+
+    expect(initialized.productProfile.productUrl).toBe(
+      "https://unavailable.example/",
+    );
+    expect(initialized.messages[0]?.content).toBe("Hey, How's it going!");
+    expect(initialized.messages[1]?.content).toBe(
+      "Site unavailable. Check the URL or describe the company.",
+    );
+    expect(
+      onboardingGuidanceForWorkspace({
+        state: initialized,
+        workspaceStatus: emptyWorkspaceStatus,
+      }).suggestedReplies,
+    ).toEqual([]);
+  });
+
   it("does not treat a temporary signup workspace name as discovered company data", () => {
     const state = defaultOnboardingState();
     state.productProfile.productName = "Sam's workspace";
@@ -207,7 +294,7 @@ describe("runOnboardingTurn product-first", () => {
       },
     });
 
-    expect(turn.assistantMessage).toContain("already securely connected");
+    expect(turn.assistantMessage).toContain("GitHub is connected");
     expect(turn.assistantMessage).toContain("Zendesk");
     expect(turn.recommendedConnectors.map((item) => item.integrationId)).toContain(
       "int_zendesk",
@@ -235,10 +322,14 @@ describe("runOnboardingTurn product-first", () => {
       organizationName: "CloseSpan",
       state,
       userMessage: "Zendesk is broken and cannot connect",
-      workspaceStatus: emptyWorkspaceStatus,
+      workspaceStatus: {
+        ...emptyWorkspaceStatus,
+        connectedIntegrationIds: ["int_github"],
+        githubConnected: true,
+      },
     });
 
-    expect(turn.assistantMessage).toContain("not required to finish onboarding");
+    expect(turn.assistantMessage).toContain("Zendesk failed");
     expect(turn.recommendedConnectors[0]?.integrationId).toBe("int_webhook");
     expect(turn.suggestedActions).toContainEqual(
       expect.objectContaining({ type: "connect_webhook" }),
@@ -297,6 +388,6 @@ describe("runOnboardingTurn product-first", () => {
     expect(guidance.suggestedActions).toContainEqual(
       expect.objectContaining({ type: "connect_webhook" }),
     );
-    expect(guidance.suggestedReplies).toContain("Connect Custom webhook");
+    expect(guidance.suggestedReplies).toContain("Connect GitHub");
   });
 });

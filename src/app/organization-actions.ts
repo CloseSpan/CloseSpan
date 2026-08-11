@@ -13,9 +13,11 @@ import {
 } from "@/lib/auth-user";
 import {
   createOrganization,
+  deleteOrganization,
   renameOrganization,
 } from "@/lib/organization-repository";
 import { workspacePersistenceMode } from "@/lib/workspace-persistence";
+import { addDefaultHttpsScheme } from "@/lib/product-url";
 
 export interface OrganizationActionState {
   error: string | null;
@@ -24,6 +26,8 @@ export interface OrganizationActionState {
 export interface RenameOrganizationActionState extends OrganizationActionState {
   success: boolean;
 }
+
+export type DeleteOrganizationActionState = OrganizationActionState;
 
 const organizationIdSchema = z
   .string()
@@ -47,6 +51,10 @@ const renameWorkspaceSchema = z.object({
     .max(120, "Workspace name must be 120 characters or fewer"),
 });
 
+const deleteOrganizationSchema = z.object({
+  confirmationName: z.string().trim().min(1).max(120),
+});
+
 function formValue(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === "string" ? value : "";
@@ -55,9 +63,7 @@ function formValue(formData: FormData, key: string): string {
 function normalizeProductUrl(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const candidate = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
+  const candidate = addDefaultHttpsScheme(trimmed);
   try {
     const parsed = new URL(candidate);
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
@@ -195,4 +201,53 @@ export async function renameOrganizationAction(
 
   revalidatePath("/", "layout");
   return { error: null, success: true };
+}
+
+export async function deleteOrganizationAction(
+  _previousState: DeleteOrganizationActionState,
+  formData: FormData,
+): Promise<DeleteOrganizationActionState> {
+  const parsed = deleteOrganizationSchema.safeParse({
+    confirmationName: formValue(formData, "confirmationName"),
+  });
+  if (!parsed.success) {
+    return { error: "Enter the organization name to confirm deletion." };
+  }
+
+  const user = await requireWorkspaceUser();
+  if (user.role !== "Admin") {
+    return { error: "Only organization administrators can delete this organization." };
+  }
+  if (workspacePersistenceMode(user.orgId) !== "postgres") {
+    return { error: "The seeded demo organization cannot be deleted." };
+  }
+  if (parsed.data.confirmationName !== user.organizationName) {
+    return { error: `Enter ${user.organizationName} exactly to confirm deletion.` };
+  }
+
+  const nextOrganization = user.organizations.find(
+    (organization) => organization.id !== user.orgId,
+  );
+  if (!nextOrganization) {
+    return {
+      error: "Create another organization before deleting your only organization.",
+    };
+  }
+
+  try {
+    await deleteOrganization({
+      orgId: user.orgId,
+      actorMemberId: user.id,
+    });
+  } catch (error) {
+    console.error("[organization:delete]", {
+      errorType: error instanceof Error ? error.name : "UnknownError",
+    });
+    return {
+      error: "The organization could not be deleted right now. Please try again.",
+    };
+  }
+
+  await activateOrganization(nextOrganization.id);
+  redirect("/overview");
 }

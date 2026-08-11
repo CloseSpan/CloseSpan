@@ -29,6 +29,14 @@ function productHost(value: string | null): string | null {
   }
 }
 
+function compactText(value: string, maxLength = 160): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  const firstSentence = normalized.split(/(?<=[.!?])\s/)[0] ?? normalized;
+  return firstSentence.length > maxLength
+    ? `${firstSentence.slice(0, maxLength - 1).trimEnd()}…`
+    : firstSentence;
+}
+
 export function PublicSourceDiscovery({
   orgId,
   productProfile,
@@ -67,7 +75,7 @@ export function PublicSourceDiscovery({
           <Globe2 size={17} />
         </div>
         <div>
-          <span className="delphi-product-status">Product understood</span>
+          <span className="delphi-product-status">Product</span>
           <h2 id="product-understood">
             {productProfile.productName || host || "Your product"}
           </h2>
@@ -77,17 +85,14 @@ export function PublicSourceDiscovery({
 
       {productProfile.productDescription && (
         <p className="delphi-product-description">
-          {productProfile.productDescription}
+          {compactText(productProfile.productDescription)}
         </p>
       )}
 
       <div className="public-discovery-intro">
         <div>
-          <strong>Optional public feedback discovery</strong>
-          <p>
-            Search public review and community pages. This does not access any
-            private account or connect a workspace app.
-          </p>
+          <strong>Find public feedback</strong>
+          <p>Search public reviews and communities.</p>
         </div>
         <button
           className="btn"
@@ -101,29 +106,27 @@ export function PublicSourceDiscovery({
             <Search size={14} aria-hidden="true" />
           )}
           {busy
-            ? "Searching public web..."
+            ? "Searching..."
             : result?.status === "completed"
               ? "Search again"
-              : "Discover public sources"}
+              : "Find sources"}
         </button>
       </div>
 
       <div aria-live="polite">
         {(unavailable || result?.status === "unavailable") && (
           <p className="public-discovery-note">
-            Public discovery is unavailable right now. You can keep connecting
-            your private feedback apps below.
+            Public search unavailable. Connect a feedback source below.
           </p>
         )}
         {result?.status === "disabled" && (
           <p className="public-discovery-note">
-            Public discovery is not enabled for this workspace yet.
+            Public search is not enabled.
           </p>
         )}
         {result?.status === "completed" && result.sources.length === 0 && (
           <p className="public-discovery-note">
-            No matching public feedback pages were found. Your authenticated
-            connectors are unaffected.
+            No public feedback found.
           </p>
         )}
       </div>
@@ -139,7 +142,7 @@ export function PublicSourceDiscovery({
       {result?.status === "completed" && result.sources.length > 0 && (
         <div className="public-source-results">
           <div className="public-source-results-head">
-            <strong>Possible public sources</strong>
+            <strong>Public sources</strong>
             <span>
               Found via {result.provider === "you" ? "You.com" : "public web"}
             </span>
@@ -153,22 +156,21 @@ export function PublicSourceDiscovery({
                 </div>
                 <h3>{source.title}</h3>
                 <small>{source.host}</small>
-                <p>{source.reason}</p>
+                <p>{compactText(source.reason, 120)}</p>
                 <a
                   className="text-link"
                   href={source.url}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Review public source
+                  Open source
                   <ExternalLink size={12} aria-hidden="true" />
                 </a>
               </article>
             ))}
           </div>
           <p className="public-source-confirmation">
-            Confirm the company profile before relying on any public result.
-            Public pages are leads, not authenticated data sources.
+            Public results are suggestions, not connected sources.
           </p>
         </div>
       )}

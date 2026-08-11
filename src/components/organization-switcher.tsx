@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   Pencil,
   Plus,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -20,10 +21,12 @@ import {
 import { createPortal, useFormStatus } from "react-dom";
 import {
   createOrganizationAction,
+  deleteOrganizationAction,
   renameOrganizationAction,
   switchOrganizationAction,
 } from "@/app/organization-actions";
 import { FitText } from "./fit-text";
+import { addDefaultHttpsScheme } from "@/lib/product-url";
 
 export interface OrganizationSwitcherItem {
   id: string;
@@ -141,9 +144,11 @@ function RenameWorkspaceButton() {
 
 function RenameWorkspaceDialog({
   organizationName,
+  onDelete,
   onClose,
 }: {
   organizationName: string;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -227,6 +232,147 @@ function RenameWorkspaceDialog({
             <RenameWorkspaceButton />
           </div>
         </form>
+        <div className="organization-danger-zone">
+          <span>
+            <strong>Delete organization</strong>
+            <small>Permanently remove this organization and its workspace data.</small>
+          </span>
+          <button
+            className="btn organization-delete-trigger"
+            type="button"
+            onClick={() => {
+              closeDialog();
+              onDelete();
+            }}
+          >
+            <Trash2 size={16} aria-hidden="true" />
+            Delete organization
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
+function DeleteOrganizationButton({ enabled }: { enabled: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      className="btn organization-delete-submit"
+      type="submit"
+      disabled={!enabled || pending}
+    >
+      {pending ? (
+        <LoaderCircle className="spin" size={16} aria-hidden="true" />
+      ) : (
+        <Trash2 size={16} aria-hidden="true" />
+      )}
+      {pending ? "Deleting…" : "Delete organization"}
+    </button>
+  );
+}
+
+function DeleteOrganizationDialog({
+  organizationName,
+  canDelete,
+  onClose,
+}: {
+  organizationName: string;
+  canDelete: boolean;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const confirmationRef = useRef<HTMLInputElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  const [confirmationName, setConfirmationName] = useState("");
+  const [deleteState, deleteFormAction] = useActionState(
+    deleteOrganizationAction,
+    { error: null },
+  );
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    const focusFrame = window.requestAnimationFrame(() => {
+      confirmationRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, []);
+
+  function closeDialog(): void {
+    dialogRef.current?.close();
+  }
+
+  const confirmed = canDelete && confirmationName.trim() === organizationName;
+
+  return (
+    <dialog
+      className="organization-create-dialog organization-rename-dialog organization-delete-dialog"
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      onClose={onClose}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) closeDialog();
+      }}
+    >
+      <div className="organization-create-panel">
+        <header className="organization-create-head">
+          <div>
+            <span className="eyebrow">Danger zone</span>
+            <h2 id={titleId}>Delete organization</h2>
+            <p className="subtle" id={descriptionId}>
+              This permanently deletes {organizationName} and its CloseSpan data.
+            </p>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Close delete organization form"
+            onClick={closeDialog}
+          >
+            <X size={19} aria-hidden="true" />
+          </button>
+        </header>
+        <form className="organization-create-form" action={deleteFormAction}>
+          <div className="organization-delete-warning" role="note">
+            <Trash2 size={18} aria-hidden="true" />
+            <p>
+              Feedback, integrations, product problems, and agent activity in this
+              organization will be permanently removed.
+            </p>
+          </div>
+          <label className="field">
+            <span className="organization-delete-confirmation-label">
+              Type <strong>{organizationName}</strong> to confirm
+            </span>
+            <input
+              name="confirmationName"
+              type="text"
+              autoComplete="off"
+              maxLength={120}
+              required
+              value={confirmationName}
+              onChange={(event) => setConfirmationName(event.currentTarget.value)}
+              ref={confirmationRef}
+            />
+            {!canDelete && (
+              <small>Create another organization before deleting this one.</small>
+            )}
+          </label>
+          {deleteState.error && (
+            <p className="toast error" role="alert">
+              {deleteState.error}
+            </p>
+          )}
+          <div className="organization-create-actions">
+            <button className="btn" type="button" onClick={closeDialog}>
+              Cancel
+            </button>
+            <DeleteOrganizationButton enabled={confirmed} />
+          </div>
+        </form>
       </div>
     </dialog>
   );
@@ -246,6 +392,7 @@ export function OrganizationSwitcher({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const organizationNameRef = useRef<HTMLInputElement>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const clientReady = useSyncExternalStore(
     subscribeToClientReady,
     () => true,
@@ -311,7 +458,7 @@ export function OrganizationSwitcher({
               maxLength={120}
               required
               ref={organizationNameRef}
-              placeholder="Acme, Inc."
+              placeholder="CloseSpan, Inc."
             />
           </label>
           <label className="field">
@@ -321,7 +468,7 @@ export function OrganizationSwitcher({
               type="text"
               maxLength={160}
               required
-              placeholder="Acme Cloud"
+              placeholder="CloseSpan"
             />
           </label>
           <label className="field">
@@ -332,16 +479,29 @@ export function OrganizationSwitcher({
               inputMode="url"
               autoComplete="url"
               maxLength={500}
-              placeholder="https://acme.com"
+              placeholder="https://closespan.com"
+              onBlur={(event) => {
+                event.currentTarget.value = addDefaultHttpsScheme(
+                  event.currentTarget.value,
+                );
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.value = addDefaultHttpsScheme(
+                    event.currentTarget.value,
+                  );
+                }
+              }}
             />
           </label>
           <label className="field">
-            Product description
+            <span className="field-label">
+              Product description <small>(optional)</small>
+            </span>
             <textarea
               name="productDescription"
               rows={4}
               maxLength={2000}
-              required
               placeholder="What the product does, who it serves, and where customers usually share feedback."
             />
             <small>
@@ -368,7 +528,18 @@ export function OrganizationSwitcher({
     renameAllowed && renameOpen && activeOrganization ? (
       <RenameWorkspaceDialog
         organizationName={activeOrganization.name}
+        onDelete={() => setDeleteOpen(true)}
         onClose={() => setRenameOpen(false)}
+      />
+    ) : null;
+  const deleteDialog =
+    renameAllowed && deleteOpen && activeOrganization ? (
+      <DeleteOrganizationDialog
+        organizationName={activeOrganization.name}
+        canDelete={organizations.some(
+          (organization) => organization.id !== activeOrganization.id,
+        )}
+        onClose={() => setDeleteOpen(false)}
       />
     ) : null;
   const dialogLayer = clientReady
@@ -376,6 +547,7 @@ export function OrganizationSwitcher({
         <>
           {createDialog}
           {renameDialog}
+          {deleteDialog}
         </>,
         document.body,
       )

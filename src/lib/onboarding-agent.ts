@@ -175,9 +175,11 @@ function buildSystemPrompt(catalog: readonly ConnectorCatalogEntry[]): string {
     "Phase rules:",
     "1) First, collect ONLY product details (name, URL if any, what it does, who uses it). Do not ask which tools they use.",
     "2) Once you have a usable product brief, set phase to connect and recommend feedback connectors inferred from the product (Zendesk, Slack, Intercom, App Store, Play Store, webhook, etc.).",
+    "After company confirmation, GitHub is always the first connection. Until it is connected, explain briefly that repository selection is required for testing and approved PRs.",
     "Never ask the user to list Zendesk, Slack, or other tools. Infer sources from the product itself.",
     "Speak like a senior ops manager: decisive, calm, practical.",
-    "Ask one focused question only while still gathering product details. Keep assistantMessage under 90 words.",
+    "Keep assistantMessage under 35 words. State one fact and one next action. Add explanation only when it helps recovery.",
+    "Ask one focused question only while gathering product details.",
     "Always return 2-4 short suggestedReplies.",
     "The allowed catalog contains only connectors that can be connected in the current product. Never recommend anything outside it.",
     "Treat currentWorkspaceConnections in the user payload as authoritative. Never ask a user to reconnect a source already listed as connected.",
@@ -336,11 +338,11 @@ function connectorFailureTurn(input: {
     input.failure.integrationId === "int_github" &&
     input.workspaceStatus.githubConnected;
   const fallbackGuidance = fallback.alreadyConnected
-    ? `Feedback intake is already covered by ${fallback.connector.provider}, so you can continue.`
-    : `Connect ${fallback.connector.provider} next to keep feedback intake moving.`;
+    ? `${fallback.connector.provider} is already connected.`
+    : `Connect ${fallback.connector.provider} next.`;
   const assistantMessage = githubAlreadyConnected
-    ? `GitHub is already securely connected in this workspace, so that step is resolved. ${fallbackGuidance}`
-    : `${input.failure.label} is not required to finish onboarding. ${fallbackGuidance} You can retry the failed connector later.`;
+    ? `GitHub is connected. ${fallbackGuidance}`
+    : `${input.failure.label} failed. ${fallbackGuidance}`;
   const suggestedReplies = fallback.alreadyConnected
     ? ["Continue onboarding", "Review connected sources"]
     : [
@@ -447,6 +449,13 @@ async function productDiscoveryTurn(input: {
   let recommendedConnectors = availableRecommendations(
     discovery.recommendedConnectors,
   ).slice(0, 6);
+  if (!recommendedConnectors.some((connector) => connector.integrationId === "int_github")) {
+    const github = recommendedConnector(
+      "int_github",
+      "Select the repositories CloseSpan may inspect, test, and use for approved pull requests.",
+    );
+    if (github) recommendedConnectors = [github, ...recommendedConnectors].slice(0, 6);
+  }
   if (
     !recommendedConnectors.some((connector) =>
       isFeedbackSourceIntegration(connector.integrationId),
@@ -460,7 +469,7 @@ async function productDiscoveryTurn(input: {
     if (webhook) recommendedConnectors = [webhook, ...recommendedConnectors];
   }
   return {
-    assistantMessage: `${discovery.summary} Connect the sources below and I'll start intake into the Feedback inbox.`,
+    assistantMessage: "Choose a feedback source to start intake.",
     phase: "connect",
     productProfile,
     recommendedConnectors,
@@ -481,19 +490,20 @@ async function companyProfileCandidateTurn(input: {
   orgId: string;
   message: string;
   existingProfile: ProductProfile;
-}): Promise<OnboardingTurnResult> {
+}, discoverCompany: typeof discoverCompanyProfile = discoverCompanyProfile): Promise<OnboardingTurnResult> {
   const companyUrl = extractCompanyUrl(input.message);
   if (companyUrl) {
     try {
-      const company = await discoverCompanyProfile(companyUrl);
+      const company = await discoverCompany(companyUrl);
       return {
-        assistantMessage: `I found ${company.name}. Review the company details below and confirm them before I create the workspace and recommend feedback integrations.`,
+        assistantMessage: "Here’s what I found.",
         phase: "discover",
         productProfile: {
           ...input.existingProfile,
           productName: company.name,
           productUrl: company.url,
-          productDescription: company.description,
+          productDescription:
+            company.description ?? input.existingProfile.productDescription,
           companyLogo: company.logo,
           companyProfileConfirmed: false,
           companyProfileReadyForConfirmation: true,
@@ -505,7 +515,7 @@ async function companyProfileCandidateTurn(input: {
     } catch {
       return {
         assistantMessage:
-          "I couldn't read that public website safely. Check the company URL and send it again, or tell me the company name and what it does.",
+          "Site unavailable. Check the URL or describe the company.",
         phase: "discover",
         productProfile: input.existingProfile,
         recommendedConnectors: [],
@@ -518,7 +528,7 @@ async function companyProfileCandidateTurn(input: {
   if (/\b(?:don't|do not|no)\b.{0,24}\b(?:website|site|url)\b/i.test(input.message)) {
     return {
       assistantMessage:
-        "No problem. Tell me the company name, what it does, and who it serves. I'll draft the same details for you to confirm.",
+        "Send the company name, what it does, and who it serves.",
       phase: "discover",
       productProfile: input.existingProfile,
       recommendedConnectors: [],
@@ -530,7 +540,7 @@ async function companyProfileCandidateTurn(input: {
   if (!looksLikeProductBrief(input.message)) {
     return {
       assistantMessage:
-        "Send your company website URL. I'll fetch its public name, logo, and description for you to confirm.",
+        "Send the company URL to continue.",
       phase: "discover",
       productProfile: input.existingProfile,
       recommendedConnectors: [],
@@ -545,7 +555,7 @@ async function companyProfileCandidateTurn(input: {
   });
   return {
     assistantMessage:
-      "I drafted the company details from your description. Confirm them below, or send the company URL or corrected details.",
+      "Review the company details, then confirm or change them.",
     phase: "discover",
     productProfile: {
       ...input.existingProfile,
@@ -582,7 +592,7 @@ export async function confirmCompanyProfileTurn(input: {
   });
   return {
     ...turn,
-    assistantMessage: `${profile.productName} is confirmed and the workspace is ready. ${turn.assistantMessage}`,
+    assistantMessage: `${profile.productName} is confirmed.`,
     productProfile: {
       ...turn.productProfile,
       productName: profile.productName,
@@ -655,6 +665,7 @@ export function onboardingGuidanceForWorkspace(input: {
       recommendedConnectors: [],
       suggestedActions: [],
       suggestedReplies: input.state.productProfile.companyProfileReadyForConfirmation
+        || input.state.productProfile.productUrl
         ? []
         : initialSuggestedReplies(),
     };
@@ -662,6 +673,13 @@ export function onboardingGuidanceForWorkspace(input: {
   let recommendedConnectors = availableRecommendations(
     input.state.recommendedConnectors,
   ).slice(0, 6);
+  if (!recommendedConnectors.some((connector) => connector.integrationId === "int_github")) {
+    const github = recommendedConnector(
+      "int_github",
+      "Select the repositories CloseSpan may inspect, test, and use for approved pull requests.",
+    );
+    if (github) recommendedConnectors = [github, ...recommendedConnectors].slice(0, 6);
+  }
   if (
     !input.workspaceStatus.feedbackConnected &&
     !recommendedConnectors.some((connector) =>
@@ -701,6 +719,13 @@ export function onboardingGuidanceForWorkspace(input: {
     };
   }
   const nextConnector =
+    (!input.workspaceStatus.githubConnected
+      ? recommendedConnectors.find(
+          (connector) =>
+            connector.integrationId === "int_github" &&
+            !connected.has(connector.integrationId),
+        )
+      : undefined) ??
     (!input.workspaceStatus.feedbackConnected
       ? recommendedConnectors.find(
           (connector) =>
@@ -721,7 +746,8 @@ export function onboardingGuidanceForWorkspace(input: {
 }
 
 export function initialAssistantMessage(firstName: string): string {
-  return `Hi ${firstName}. I'm your CloseSpan Operations Manager. Send me your company website URL first. I'll fetch the public name, logo, and a short description for you to confirm, then set up the workspace and connect your feedback apps here in chat.`;
+  void firstName;
+  return "Hey, How's it going!";
 }
 
 export function initialSuggestedReplies(): string[] {
@@ -748,7 +774,7 @@ export async function runOnboardingTurn(input: {
   if (!trimmed) {
     return {
       assistantMessage:
-        "Send your company website URL. I'll fetch its public identity for you to confirm before setup continues.",
+        "Send the company URL to continue.",
       phase: "discover",
       productProfile: input.state.productProfile,
       recommendedConnectors: availableRecommendations(
@@ -768,6 +794,35 @@ export async function runOnboardingTurn(input: {
   }
 
   const failure = reportedConnectorFailure(trimmed);
+  if (!input.workspaceStatus.githubConnected) {
+    const github = recommendedConnector(
+      "int_github",
+      "Choose repositories for testing and approved PRs.",
+    );
+    const recommendedConnectors = github
+      ? [
+          github,
+          ...availableRecommendations(input.state.recommendedConnectors).filter(
+            (connector) => connector.integrationId !== "int_github",
+          ),
+        ].slice(0, 6)
+      : availableRecommendations(input.state.recommendedConnectors);
+    return {
+      assistantMessage:
+        failure?.integrationId === "int_github"
+          ? "GitHub connection failed. Try again."
+          : "Connect GitHub first so you can choose the repositories CloseSpan may test and use for approved PRs.",
+      phase: "connect",
+      productProfile: input.state.productProfile,
+      recommendedConnectors,
+      suggestedActions: buildSuggestedActions(
+        recommendedConnectors,
+        connectedIds(input.workspaceStatus),
+        input.workspaceStatus.aiConfigured,
+      ),
+      suggestedReplies: ["Connect GitHub"],
+    };
+  }
   if (failure) {
     return connectorFailureTurn({
       state: input.state,
@@ -917,4 +972,44 @@ export function bootstrapOnboardingState(
     ...base,
     messages: appendMessage([], "assistant", initialAssistantMessage(firstName)),
   };
+}
+
+export async function initializeOnboardingState(input: {
+  orgId: string;
+  firstName: string;
+  existing?: OnboardingState;
+  discoverCompany?: typeof discoverCompanyProfile;
+}): Promise<OnboardingState> {
+  const base = input.existing ?? defaultOnboardingState();
+  if (base.messages.length > 0) return base;
+
+  const savedUrl = base.productProfile.productUrl?.trim();
+  if (!base.productProfile.companyProfileConfirmed && savedUrl) {
+    const turn = await companyProfileCandidateTurn(
+      {
+        orgId: input.orgId,
+        message: savedUrl,
+        existingProfile: base.productProfile,
+      },
+      input.discoverCompany ?? discoverCompanyProfile,
+    );
+    const discoveredCompany = Boolean(
+      turn.productProfile.companyProfileReadyForConfirmation &&
+        turn.productProfile.productName?.trim(),
+    );
+    return {
+      phase: turn.phase,
+      productProfile: turn.productProfile,
+      recommendedConnectors: turn.recommendedConnectors,
+      messages: discoveredCompany
+        ? appendMessage([], "assistant", initialAssistantMessage(input.firstName))
+        : appendMessage(
+            appendMessage([], "assistant", initialAssistantMessage(input.firstName)),
+            "assistant",
+            turn.assistantMessage,
+          ),
+    };
+  }
+
+  return bootstrapOnboardingState(input.firstName, base);
 }

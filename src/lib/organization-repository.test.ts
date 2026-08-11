@@ -21,6 +21,7 @@ vi.mock("./workspace-persistence", () => ({
 import { integrationCatalog } from "./integration-catalog";
 import {
   createOrganization,
+  deleteOrganization,
   findOrganizationMembership,
   listOrganizationMemberships,
   normalizeMembershipEmail,
@@ -282,5 +283,49 @@ describe("organization repository", () => {
       expect.stringContaining("INSERT INTO audit_events"),
       expect.anything(),
     );
+  });
+
+  it("deletes only an organization owned by the authorized administrator", async () => {
+    database.pool.query.mockResolvedValue({
+      rows: [{ id: "org_northstar" }],
+      rowCount: 1,
+    });
+
+    await deleteOrganization({
+      orgId: "org_northstar",
+      actorMemberId: "member_admin",
+    });
+
+    expect(database.pool.query).toHaveBeenCalledWith(
+      expect.stringMatching(/DELETE FROM organizations[\s\S]*workspace_members[\s\S]*member\.role='Admin'/),
+      ["org_northstar", "member_admin"],
+    );
+  });
+
+  it("rejects deletion when administrator access is missing or revoked", async () => {
+    database.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await expect(
+      deleteOrganization({
+        orgId: "org_northstar",
+        actorMemberId: "member_viewer",
+      }),
+    ).rejects.toThrow(
+      "Organization was not found or administrator access was revoked",
+    );
+  });
+
+  it("requires PostgreSQL persistence for deletion", async () => {
+    database.workspaceMode = "memory";
+
+    await expect(
+      deleteOrganization({
+        orgId: "org_demo",
+        actorMemberId: "member_admin",
+      }),
+    ).rejects.toThrow(
+      "PostgreSQL persistence is required to delete organizations",
+    );
+    expect(database.pool.query).not.toHaveBeenCalled();
   });
 });

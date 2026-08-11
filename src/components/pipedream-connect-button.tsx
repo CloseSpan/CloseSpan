@@ -71,7 +71,9 @@ export function PipedreamConnectButton({
   onConnected,
   allowAdditionalAccount = false,
   guidance = "full",
+  showGuidance = true,
   ariaLabel,
+  idleLabel = "Connect",
   onStateChange,
 }: {
   orgId: string;
@@ -82,7 +84,9 @@ export function PipedreamConnectButton({
   onConnected?: (integrationId: PipedreamConnectorId) => void;
   allowAdditionalAccount?: boolean;
   guidance?: ConnectorGuidanceMode;
+  showGuidance?: boolean;
   ariaLabel?: string;
+  idleLabel?: string;
   onStateChange?: (state: PipedreamConnectState) => void;
 }) {
   const router = useRouter();
@@ -175,11 +179,11 @@ export function PipedreamConnectButton({
         ? "Try again"
         : connected
           ? "+ Add another account"
-          : connectionState === "Needs reconnect" ? "Reconnect" : "Connect";
+          : connectionState === "Needs reconnect" ? "Reconnect" : idleLabel;
 
   return (
     <div className="connector-connect-control" aria-busy={busy}>
-      {integrationId === "int_zendesk" && !connected && (
+      {showGuidance && integrationId === "int_zendesk" && !connected && (
         <ConnectorInputGuidance mode={guidance} />
       )}
       <button type="button" className={className} aria-label={ariaLabel} disabled={busy} onClick={() => void connect()}>

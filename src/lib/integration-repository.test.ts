@@ -109,6 +109,74 @@ describe("workspace setup integration compatibility", () => {
     expect(integrationQueries[1]?.[1]).toEqual(["org_demo"]);
   });
 
+  it("does not treat a broad GitHub connector as an authorized repository", async () => {
+    database.pool.query.mockImplementation((sql: string) => {
+      if (sql.includes("INSERT INTO integrations")) {
+        return Promise.resolve({ rows: [], rowCount: 1 });
+      }
+      if (sql.includes("FROM feedback_items")) {
+        return Promise.resolve({ rows: [{ count: 0 }], rowCount: 1 });
+      }
+      if (sql.includes("FROM github_app_installations")) {
+        return Promise.resolve({
+          rows: [{ installation_count: 0, repository_count: 0 }],
+          rowCount: 1,
+        });
+      }
+      if (sql.includes("secret.public_id AS webhook_public_id")) {
+        return Promise.resolve({
+          rows: [
+            {
+              id: "int_github",
+              provider: "GitHub",
+              connection_state: "Connected",
+              last_sync_at: null,
+              webhook_public_id: null,
+            },
+          ],
+          rowCount: 1,
+        });
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+
+    const status = await getWorkspaceSetupStatus("org_demo");
+
+    expect(status.githubConnected).toBe(false);
+    expect(status.connectedIntegrationIds).not.toContain("int_github");
+    expect(status.github).toBeUndefined();
+  });
+
+  it("marks GitHub ready only after an app installation has an active repository", async () => {
+    database.pool.query.mockImplementation((sql: string) => {
+      if (sql.includes("INSERT INTO integrations")) {
+        return Promise.resolve({ rows: [], rowCount: 1 });
+      }
+      if (sql.includes("FROM feedback_items")) {
+        return Promise.resolve({ rows: [{ count: 0 }], rowCount: 1 });
+      }
+      if (sql.includes("FROM github_app_installations")) {
+        return Promise.resolve({
+          rows: [{ installation_count: 1, repository_count: 2 }],
+          rowCount: 1,
+        });
+      }
+      if (sql.includes("secret.public_id AS webhook_public_id")) {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+
+    const status = await getWorkspaceSetupStatus("org_demo");
+
+    expect(status.githubConnected).toBe(true);
+    expect(status.connectedIntegrationIds).toContain("int_github");
+    expect(status.github).toEqual({
+      installationCount: 1,
+      repositoryCount: 2,
+    });
+  });
+
   it("does not hide unrelated PostgreSQL failures", async () => {
     database.pool.query.mockImplementation((sql: string) => {
       if (sql.includes("INSERT INTO integrations")) {

@@ -42,6 +42,42 @@ export function GithubConnectionPanel({
   const activeInstallations = installations.filter((installation) => installation.active);
   const activeRepositories = repositories.filter((repository) => repository.active);
 
+  async function connectRepository() {
+    if (busy || !canManage) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/integrations/github", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-org-id": orgId,
+          "idempotency-key": crypto.randomUUID(),
+          "x-request-id": crypto.randomUUID(),
+        },
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: unknown;
+        installUrl?: unknown;
+      };
+      if (!response.ok || typeof payload.installUrl !== "string") {
+        throw new Error(
+          typeof payload.error === "string"
+            ? payload.error
+            : "GitHub connection could not be started",
+        );
+      }
+      window.location.assign(payload.installUrl);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "GitHub connection could not be started",
+      );
+      setBusy(false);
+    }
+  }
+
   async function disconnect() {
     if (busy) return;
     setBusy(true);
@@ -110,16 +146,29 @@ export function GithubConnectionPanel({
   return (
     <section className="card github-connection-panel" aria-labelledby="github-connection-title">
       <div className="github-connection-heading">
-        <div className="github-connection-icon"><Github aria-hidden="true" size={22} /></div>
-        <div>
-          <div className="eyebrow">GitHub App</div>
-          <h2 id="github-connection-title">
-            {activeInstallations.length > 0 ? "GitHub connected" : "Connect GitHub repositories"}
-          </h2>
-          <p className="subtle">
-            CloseSpan can work only in repositories explicitly selected during installation.
-          </p>
+        <div className="github-connection-heading-copy">
+          <div className="github-connection-icon"><Github aria-hidden="true" size={22} /></div>
+          <div>
+            <div className="eyebrow">GitHub App</div>
+            <h2 id="github-connection-title">
+              {activeInstallations.length > 0 ? "GitHub connected" : "Connect GitHub repositories"}
+            </h2>
+            <p className="subtle">
+              CloseSpan can work only in repositories explicitly selected during installation.
+            </p>
+          </div>
         </div>
+        {activeInstallations.length === 0 && canManage && (
+          <button
+            className="btn primary github-connect-repository-button"
+            type="button"
+            disabled={busy}
+            onClick={() => void connectRepository()}
+          >
+            <Github aria-hidden="true" size={16} />
+            {busy ? "Opening GitHub…" : "Connect repository"}
+          </button>
+        )}
       </div>
 
       {callbackStatus === "connected" && (

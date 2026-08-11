@@ -3997,6 +3997,19 @@ export function IntegrationsScreen({
                 </div>
               ) : !selectedRow.available ? (
                 <button className="btn" type="button" disabled>Coming soon</button>
+              ) : selectedRow.item.id === "int_github" ? (
+                <div>
+                  <p>
+                    CloseSpan uses its GitHub App so you choose the exact
+                    repositories available for testing and approved pull requests.
+                  </p>
+                  <Link
+                    className="btn primary"
+                    href="/integrations?view=connections&focus=int_github"
+                  >
+                    Select repositories
+                  </Link>
+                </div>
               ) : isPipedreamConnectorId(selectedRow.item.id) ? (
                 <PipedreamAccountManager
                   orgId={orgId}
