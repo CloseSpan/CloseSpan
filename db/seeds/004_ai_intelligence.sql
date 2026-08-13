@@ -1,4 +1,6 @@
-INSERT INTO prompt_versions(id,org_id,name,version,provider,purpose,system_prompt,output_schema,active) VALUES (
+INSERT INTO prompt_versions(id,org_id,name,version,provider,purpose,system_prompt,output_schema,active)
+SELECT candidate.*
+FROM (VALUES (
   'prompt_feedback_intelligence_v1',
   'org_northstar',
   'feedback-intelligence',
@@ -29,6 +31,12 @@ Analysis rules:
 - Return every requested feedback ID exactly once and follow the structured output schema.$prompt$,
   '{"name":"feedback_analysis_v1","strict":true,"fields":["feedbackId","classification","severity","redactedSummary","proposedProblemId","evidenceQuality","classificationClarity","clusterMatch","ambiguityPenalty","evidence","rationale"]}'::jsonb,
   true
+)) AS candidate(id,org_id,name,version,provider,purpose,system_prompt,output_schema,active)
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM prompt_versions prompt
+  WHERE prompt.org_id = candidate.org_id
+    AND prompt.name = candidate.name
 )
 ON CONFLICT (org_id,id) DO UPDATE SET
   purpose=excluded.purpose,
