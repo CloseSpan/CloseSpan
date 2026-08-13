@@ -1159,6 +1159,7 @@ export function ExecutionProfileSettings({
   const [busyRunnerMergeRepository, setBusyRunnerMergeRepository] = useState<string>();
   const [runnerWorkflowPulls, setRunnerWorkflowPulls] = useState<Record<string, RunnerWorkflowPullRequest>>({});
   const [runnerWorkflowNotices, setRunnerWorkflowNotices] = useState<Record<string, string>>({});
+  const [repositoryActionErrors, setRepositoryActionErrors] = useState<Record<string, string>>({});
   const [busyProfile, setBusyProfile] = useState<string>();
   const [error, setError] = useState<string>();
   const [runtimeSecrets, setRuntimeSecrets] = useState<RuntimeSecretMetadata[]>([]);
@@ -1260,7 +1261,11 @@ export function ExecutionProfileSettings({
   async function detect(repository: string): Promise<boolean> {
     if (!isAdmin) return false;
     setBusyRepository(repository);
-    setError(undefined);
+    setRepositoryActionErrors((current) => {
+      const next = { ...current };
+      delete next[repository];
+      return next;
+    });
     try {
       const response = await fetch("/api/settings/execution-profiles/detect", {
         method: "POST",
@@ -1272,7 +1277,10 @@ export function ExecutionProfileSettings({
       applySettings(payload.settings);
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Repository detection failed.");
+      setRepositoryActionErrors((current) => ({
+        ...current,
+        [repository]: cause instanceof Error ? cause.message : "Repository detection failed.",
+      }));
       return false;
     } finally {
       setBusyRepository(undefined);
@@ -1302,7 +1310,11 @@ export function ExecutionProfileSettings({
   async function installRunnerWorkflow(repository: string): Promise<void> {
     if (!isAdmin) return;
     setBusyRunnerRepository(repository);
-    setError(undefined);
+    setRepositoryActionErrors((current) => {
+      const next = { ...current };
+      delete next[repository];
+      return next;
+    });
     try {
       const response = await fetch(
         "/api/settings/execution-profiles/install-runner-workflow",
@@ -1339,7 +1351,10 @@ export function ExecutionProfileSettings({
         }));
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The Tenki workflows could not be installed.");
+      setRepositoryActionErrors((current) => ({
+        ...current,
+        [repository]: cause instanceof Error ? cause.message : "The Tenki workflows could not be installed.",
+      }));
     } finally {
       setBusyRunnerRepository(undefined);
     }
@@ -1350,7 +1365,11 @@ export function ExecutionProfileSettings({
     const pullRequest = runnerWorkflowPulls[repository];
     if (!pullRequest) return;
     setBusyRunnerMergeRepository(repository);
-    setError(undefined);
+    setRepositoryActionErrors((current) => {
+      const next = { ...current };
+      delete next[repository];
+      return next;
+    });
     try {
       const response = await fetch(
         "/api/settings/execution-profiles/approve-runner-workflow",
@@ -1386,9 +1405,12 @@ export function ExecutionProfileSettings({
           : `Tenki setup merged ${checkSummary}. ${detectionRefreshed ? "Repository detection has been refreshed." : "Refresh repository detection to finish binding the implementation workflow."}`,
       }));
     } catch (cause) {
-      setError(cause instanceof Error
-        ? cause.message
-        : "The runner setup pull request could not be merged.");
+      setRepositoryActionErrors((current) => ({
+        ...current,
+        [repository]: cause instanceof Error
+          ? cause.message
+          : "The runner setup pull request could not be merged.",
+      }));
     } finally {
       setBusyRunnerMergeRepository(undefined);
     }
@@ -1470,6 +1492,21 @@ export function ExecutionProfileSettings({
                   </button>
                 </div>
               </div>
+              {repositoryActionErrors[repository.repository] && (
+                <div className="toast error runner-workflow-error" role="alert">
+                  {repositoryActionErrors[repository.repository]}
+                  {runnerWorkflowPulls[repository.repository] && (
+                    <a
+                      className="text-link"
+                      href={runnerWorkflowPulls[repository.repository].url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Review failing checks
+                    </a>
+                  )}
+                </div>
+              )}
               {runnerWorkflowNotices[repository.repository] && (
                 <div className="callout success runner-workflow-notice" role="status">
                   <div className="callout-title">Tenki workflows installed</div>
