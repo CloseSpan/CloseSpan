@@ -34,7 +34,7 @@ export const WORKSPACE_NAVIGATION = [
   },
   {
     id: "pdd",
-    label: "PDD",
+    label: "Prompt Testing",
     section: "Prompt-driven development",
     href: "/pdd",
     group: "workflow",

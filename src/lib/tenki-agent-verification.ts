@@ -133,7 +133,7 @@ function assertPddArtifactsMatchApprovedRun(
     ) {
       throw new TenkiIndependentVerificationError(
         "sandbox_failed",
-        `The immutable PDD acceptance test changed before independent verification: ${generatedTest.path}.`,
+        `The immutable Prompt Testing acceptance test changed before independent verification: ${generatedTest.path}.`,
       );
     }
   }
@@ -527,13 +527,13 @@ export async function verifyAgentRunWithTenki(
   ) {
     throw new TenkiIndependentVerificationError(
       "sandbox_failed",
-      "The immutable PDD live test does not reference CLOSESPAN_APP_URL.",
+      "The immutable Prompt Testing live test does not reference CLOSESPAN_APP_URL.",
     );
   }
   if (liveReplayRequired && !applicationProfile) {
     throw new TenkiIndependentVerificationError(
       "sandbox_failed",
-      "The immutable PDD live test requires a configured running application.",
+      "The immutable Prompt Testing live test requires a configured running application.",
     );
   }
   const resolvedEnvironment = resolvedVerificationEnvironment(
@@ -755,7 +755,7 @@ export async function verifyAgentRunWithTenki(
       ) {
         throw new TenkiIndependentVerificationError(
           "sandbox_failed",
-          `Tenki could not verify the immutable PDD acceptance test byte-for-byte: ${generatedTest.path}.`,
+          `Tenki could not verify the immutable Prompt Testing acceptance test byte-for-byte: ${generatedTest.path}.`,
         );
       }
     }
@@ -986,11 +986,11 @@ export async function verifyAgentRunWithTenki(
         tool: "http",
         target: "CLOSESPAN_APP_URL",
         status: userStoryReplay === "passed"
-          ? "PDD live replay passed"
-          : "PDD live replay failed",
+          ? "Prompt Testing live replay passed"
+          : "Prompt Testing live replay failed",
         evidence: userStoryReplay === "passed"
-          ? `The immutable PDD test made ${liveReplayRequestCount} witnessed request(s) to the healthy VM-local application and its approved command passed independently.`
-          : "The immutable PDD live test did not make a witnessed VM-local request, or the application/test did not pass independent verification.",
+          ? `The immutable Prompt Testing test made ${liveReplayRequestCount} witnessed request(s) to the healthy VM-local application and its approved command passed independently.`
+          : "The immutable Prompt Testing live test did not make a witnessed VM-local request, or the application/test did not pass independent verification.",
       });
     }
     const logExcerpt = runtimeLogExcerpt(runtime, redactor.redact);

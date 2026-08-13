@@ -267,7 +267,7 @@ export function RepositoryMatchReview({
           <h3 id="repository-match-title">Repository execution context</h3>
           <p className="subtle">
             Review the authorized repository, monorepo root, and immutable profile
-            before PDD reads code or generates an acceptance test.
+            before Prompt Testing reads code or generates an acceptance test.
           </p>
         </div>
         <span className={`badge ${view.pddProfileReady ? "success" : "medium"}`}>
@@ -372,7 +372,7 @@ export function RepositoryMatchReview({
               {!activeSelection && (
                 <p className="repository-profile-boundary">
                   <AlertCircle size={14} />This detection is review-only and cannot
-                  run PDD. An administrator must confirm it in{" "}
+                  run Prompt Testing. An administrator must confirm it in{" "}
                   <Link href="/settings#execution">execution profile settings</Link>.
                 </p>
               )}

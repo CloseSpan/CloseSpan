@@ -33,7 +33,7 @@ export async function POST(
     const revisionHash = sha256(body.revisedPrompt.trim());
     if (revisionHash === body.currentPromptHash) {
       return NextResponse.json(
-        { error: "PDD returned the same prompt, so there is no new revision to apply. Test the prompt again." },
+        { error: "Prompt Testing returned the same prompt, so there is no new revision to apply. Test the prompt again." },
         { status: 409, headers: noStoreHeaders },
       );
     }

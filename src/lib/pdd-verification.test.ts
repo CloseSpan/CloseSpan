@@ -31,8 +31,8 @@ const snapshot: ImplementationPromptSnapshot = {
   },
 };
 
-describe("PDD acceptance verification", () => {
-  it("renders the PM story and measurable contract for PDD", () => {
+describe("Prompt Testing acceptance verification", () => {
+  it("renders the PM story and measurable contract for Prompt Testing", () => {
     const prompt = renderPddPrompt(snapshot.ticket.userStory, snapshot);
     expect(prompt).toContain("## Product-manager user story");
     expect(prompt).toContain("AC-1: Every selected row is exported.");

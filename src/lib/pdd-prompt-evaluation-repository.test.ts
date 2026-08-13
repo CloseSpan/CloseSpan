@@ -22,7 +22,7 @@ const baseInput = {
   storyHash: sha256("As a user, I want exports to work, so that reporting completes."),
 } as const;
 
-describe("PDD prompt evaluation runs", () => {
+describe("Prompt Testing prompt evaluation runs", () => {
   beforeEach(() => resetMemoryPddPromptEvaluations());
 
   it("allows only one automatic attempt for a ticket specification revision", async () => {
@@ -57,7 +57,7 @@ describe("PDD prompt evaluation runs", () => {
     expect(second.evaluation.id).not.toBe(first.evaluation.id);
   });
 
-  it("surfaces the saved review on the immutable revision that PDD applied", async () => {
+  it("surfaces the saved review on the immutable revision that Prompt Testing applied", async () => {
     const run = await beginPddPromptEvaluation({
       ...baseInput,
       triggerSource: "automatic",
@@ -66,7 +66,7 @@ describe("PDD prompt evaluation runs", () => {
       verdict: "Needs revision",
       summary: "One change is required.",
       changes: ["Clarify the expected result."],
-      acceptanceContract: "## Context\nStable PDD contract.",
+      acceptanceContract: "## Context\nStable Prompt Testing contract.",
       suggestedRevision: "Clarified immutable prompt",
       pddVersion: "0.0.309",
       executionMode: "cloud",
@@ -96,7 +96,7 @@ describe("PDD prompt evaluation runs", () => {
       baseInput.orgId,
       baseInput.problemId,
       "prompt_2",
-    )).resolves.toBe("## Context\nStable PDD contract.");
+    )).resolves.toBe("## Context\nStable Prompt Testing contract.");
   });
 
   it("persists and clears an acceptance-preparation blocker independently of alignment", async () => {

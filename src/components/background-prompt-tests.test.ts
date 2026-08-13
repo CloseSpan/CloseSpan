@@ -45,7 +45,7 @@ function evaluation(verdict: "Passed" | "Needs revision"): PromptTestResult {
 }
 
 describe("automatic agent approval preparation", () => {
-  it("leaves a manual PDD revision ready for explicit user application", async () => {
+  it("leaves a manual Prompt Testing revision ready for explicit user application", async () => {
     const request = vi.fn(async () => evaluation("Needs revision")) as unknown as
       <T>(path: string, orgId: string, body?: unknown) => Promise<T>;
 
@@ -62,7 +62,7 @@ describe("automatic agent approval preparation", () => {
     expect(result.promptEvaluation.suggestedRevision).toBe("Revised immutable prompt");
   });
 
-  it("runs PDD once, applies at most one immutable revision, and stops for review", async () => {
+  it("runs Prompt Testing once, applies at most one immutable revision, and stops for review", async () => {
     const phases: string[] = [];
     const appliedWorkflow = {
       ...emptyWorkflow(),
@@ -110,7 +110,7 @@ describe("automatic agent approval preparation", () => {
     expect(result.workflow.approval).toBeNull();
   });
 
-  it("creates the first human gate when the single PDD evaluation passes", async () => {
+  it("creates the first human gate when the single Prompt Testing evaluation passes", async () => {
     const pendingWorkflow = {
       ...emptyWorkflow(),
       approval: {

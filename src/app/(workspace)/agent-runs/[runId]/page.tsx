@@ -21,13 +21,13 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
         <div className="card-body detail-stack">
           <p>{run.implementationSummary ?? run.failureMessage ?? "The executor has not returned a report yet."}</p>
           <p className="subtle">Coding environment: Tenki Sandbox · Branch: {run.branchName}</p>
-          <div className="top-actions"><Link className="btn" href={`/pdd/${problemId}#engineering-ticket`}>Open PDD preparation</Link>{run.approvalId ? <Link className="btn" href={`/approvals/${run.approvalId}`}>View authorizing approval</Link> : null}{run.pullRequestUrl && <a className="btn primary" href={run.pullRequestUrl}>Open draft PR</a>}</div>
+          <div className="top-actions"><Link className="btn" href={`/pdd/${problemId}#engineering-ticket`}>Open Prompt Testing preparation</Link>{run.approvalId ? <Link className="btn" href={`/approvals/${run.approvalId}`}>View authorizing approval</Link> : null}{run.pullRequestUrl && <a className="btn primary" href={run.pullRequestUrl}>Open draft PR</a>}</div>
         </div>
       </section>
       <section className="card section-gap">
         <div className="card-head">
           <div>
-            <h2>Runtime and PDD verification</h2>
+            <h2>Runtime and Prompt Testing verification</h2>
             <p className="subtle">Install, build, health checks, tool interactions, and immutable user-story replay from the isolated Tenki environment.</p>
           </div>
           <span className={`badge ${runtime?.healthStatus === "passed" && runtime.userStoryReplay !== "failed" ? "success" : runtime?.healthStatus === "failed" || runtime?.userStoryReplay === "failed" ? "high" : "medium"}`}>
@@ -57,7 +57,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
                     {runtime.userStoryReplayMode === "live_application"
                       ? "Live user-story replay"
                       : runtime.userStoryReplayMode === "contract"
-                        ? "PDD contract replay"
+                        ? "Prompt Testing contract replay"
                         : "User-story replay"}
                   </p>
                   <strong>{runtime.userStoryReplay === "passed" ? "Passed" : runtime.userStoryReplay === "failed" ? "Failed" : "Not required"}</strong>

@@ -17,18 +17,18 @@ export async function POST(
 ) {
   const secret = process.env.PDD_RUNNER_SHARED_SECRET?.trim();
   if (!secret)
-    return NextResponse.json({ error: "PDD callback is not configured" }, { status: 503, headers: noStoreHeaders });
+    return NextResponse.json({ error: "Prompt Testing callback is not configured" }, { status: 503, headers: noStoreHeaders });
   const declared = Number(request.headers.get("content-length") ?? 0);
   if (declared > 16_000_000)
-    return NextResponse.json({ error: "PDD callback is too large" }, { status: 413, headers: noStoreHeaders });
+    return NextResponse.json({ error: "Prompt Testing callback is too large" }, { status: 413, headers: noStoreHeaders });
   const body = await request.text();
   if (Buffer.byteLength(body, "utf8") > 16_000_000)
-    return NextResponse.json({ error: "PDD callback is too large" }, { status: 413, headers: noStoreHeaders });
+    return NextResponse.json({ error: "Prompt Testing callback is too large" }, { status: 413, headers: noStoreHeaders });
   if (!validSignature(body, request.headers.get("x-closespan-signature") ?? "", secret))
-    return NextResponse.json({ error: "Invalid PDD callback signature" }, { status: 401, headers: noStoreHeaders });
+    return NextResponse.json({ error: "Invalid Prompt Testing callback signature" }, { status: 401, headers: noStoreHeaders });
   try {
     const payload = JSON.parse(body) as { orgId?: string; result?: unknown };
-    if (!payload.orgId || !payload.result) throw new Error("PDD callback is incomplete");
+    if (!payload.orgId || !payload.result) throw new Error("Prompt Testing callback is incomplete");
     const { verificationId } = await params;
     const workflow = await completePddVerification(
       payload.orgId,
@@ -36,7 +36,7 @@ export async function POST(
       payload.result,
       {
         actorId: "system:pdd-runner",
-        actorName: "PDD runner",
+        actorName: "Prompt Testing runner",
         traceId: `pdd_${verificationId}`,
         idempotencyKey: `pdd_${verificationId}`,
       },
@@ -49,7 +49,7 @@ export async function POST(
     return NextResponse.json({ ok: true, workflow, autonomy }, { headers: noStoreHeaders });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "PDD callback failed" },
+      { error: error instanceof Error ? error.message : "Prompt Testing callback failed" },
       { status: 409, headers: noStoreHeaders },
     );
   }

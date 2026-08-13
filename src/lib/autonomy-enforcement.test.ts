@@ -41,7 +41,7 @@ describe("autonomy workflow enforcement", () => {
       .rejects.toThrow("Prompt preparation is disabled");
   });
 
-  it("lets Recommend prepare a PDD contract but blocks agent execution", async () => {
+  it("lets Recommend prepare a Prompt Testing contract but blocks agent execution", async () => {
     const orgId = "org_recommend_enforcement";
     await updateWorkspacePolicy(orgId, policy("Recommend"), actor);
     const prepared = await generatePddAcceptanceContract(

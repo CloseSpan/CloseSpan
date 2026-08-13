@@ -4,7 +4,7 @@ import {
   createPddPromptRevisionReceipt,
 } from "./pdd-prompt-revision-receipt";
 
-describe("PDD prompt revision receipts", () => {
+describe("Prompt Testing prompt revision receipts", () => {
   beforeEach(() => {
     process.env.PROMPT_ALIGNMENT_SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
   });

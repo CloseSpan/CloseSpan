@@ -104,7 +104,7 @@ export async function evaluatePromptWithPdd(input: {
   if (input.localRuntime) assertCredentialTransport(config.url);
   const requestId = randomUUID();
   // Local Prompt Driven evaluations build a contract and then evaluate it in
-  // separate bounded provider calls. The detector carries the complete PDD
+  // separate bounded provider calls. The detector carries the complete Prompt Testing
   // contract, so its input alone can legitimately cost more than the old
   // $0.05 stage allocation. Prompt Driven's full detector contract can exceed
   // 120k input tokens before the provider is invoked, so local and fallback
@@ -187,7 +187,7 @@ export function pddRunnerConfigured(): boolean {
 
 export function assertPddRunnerConfigured(): void {
   if (!configuration())
-    throw new Error("PDD_RUNNER_URL, PDD_RUNNER_SHARED_SECRET, and CLOSESPAN_INTERNAL_BASE_URL are required for PDD verification");
+    throw new Error("PDD_RUNNER_URL, PDD_RUNNER_SHARED_SECRET, and CLOSESPAN_INTERNAL_BASE_URL are required for Prompt Testing verification");
 }
 
 export async function probePddRunner(): Promise<boolean> {
@@ -270,6 +270,6 @@ export async function dispatchPddVerification(
     if (response.body) await response.body.cancel();
     await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
   }
-  if (!response) throw new Error("PDD runner did not return a response");
-  if (!response.ok) throw new Error(`PDD runner rejected the verification with HTTP ${response.status}`);
+  if (!response) throw new Error("Prompt Testing runner did not return a response");
+  if (!response.ok) throw new Error(`Prompt Testing runner rejected the verification with HTTP ${response.status}`);
 }

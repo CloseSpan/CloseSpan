@@ -10,7 +10,7 @@ import {
 } from "./release-verification-plan";
 
 describe("sealed combined release verification plans", () => {
-  it("uses bounded backend and responsive frontend smoke checks when PDD instructions are prose", () => {
+  it("uses bounded backend and responsive frontend smoke checks when Prompt Testing instructions are prose", () => {
     const plan = parseReleaseVerificationPlan("Verify the released customer workflow.");
     expect(plan.requirements).toEqual({ backend: "required", frontend: "required" });
     expect(plan.backend.checks[0]).toMatchObject({ method: "GET", path: "/api/health", expectedStatus: 200 });
@@ -82,7 +82,7 @@ describe("sealed combined release verification plans", () => {
     expect(classifyReleaseVerificationFile("src/lib/money.ts")).toBe("unknown");
   });
 
-  it("accepts changed files covered by the PDD and never shrinks its declared scope", () => {
+  it("accepts changed files covered by the Prompt Testing and never shrinks its declared scope", () => {
     const both = parseReleaseVerificationPlan("default");
     const assessment = assessReleaseVerificationScope(both, [
       "src/components/order-table.tsx",
@@ -97,7 +97,7 @@ describe("sealed combined release verification plans", () => {
     });
   });
 
-  it("locks final execution when a PR exceeds a single-surface PDD contract", () => {
+  it("locks final execution when a PR exceeds a single-surface Prompt Testing contract", () => {
     const frontendOnly = releaseVerificationPlanSchema.parse({
       ...parseReleaseVerificationPlan("default"),
       requirements: { backend: "not_required", frontend: "required" },
@@ -113,7 +113,7 @@ describe("sealed combined release verification plans", () => {
     ]);
   });
 
-  it("requires both surfaces for unknown files unless the PDD already covers both", () => {
+  it("requires both surfaces for unknown files unless the Prompt Testing already covers both", () => {
     const backendOnly = releaseVerificationPlanSchema.parse({
       ...parseReleaseVerificationPlan("default"),
       requirements: { backend: "required", frontend: "not_required" },

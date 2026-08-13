@@ -441,10 +441,10 @@ describe("Tenki independent agent verification", () => {
     expect(verified.independentVerification?.status).toBe("failed");
   });
 
-  it("re-hashes the exact approved PDD test inside the independent VM", async () => {
+  it("re-hashes the exact approved Prompt Testing test inside the independent VM", async () => {
     const generatedTestContent = [
       'import test from "node:test";',
-      'test("approved PDD contract", () => {});',
+      'test("approved Prompt Testing contract", () => {});',
       "",
     ].join("\n");
     const generatedTest = {
@@ -461,7 +461,7 @@ describe("Tenki independent agent verification", () => {
         {
           path: generatedTest.path,
           contentBase64: Buffer.from(generatedTest.content, "utf8").toString("base64"),
-          reason: "Immutable PDD acceptance contract.",
+          reason: "Immutable Prompt Testing acceptance contract.",
         },
       ],
       testFiles: [generatedTest.path],
@@ -487,7 +487,7 @@ describe("Tenki independent agent verification", () => {
     });
   });
 
-  it("keeps a v2 application live while replaying approved and PDD commands with phase-scoped environment", async () => {
+  it("keeps a v2 application live while replaying approved and Prompt Testing commands with phase-scoped environment", async () => {
     const generatedTestContent = 'test("live user story", async () => { await fetch(process.env.CLOSESPAN_APP_URL + "/health"); });\n';
     const generatedTest = {
       path: "packages/app/tests/export.pdd.test.ts",
@@ -539,7 +539,7 @@ describe("Tenki independent agent verification", () => {
         {
           path: generatedTest.path,
           contentBase64: Buffer.from(generatedTest.content, "utf8").toString("base64"),
-          reason: "Immutable PDD acceptance contract.",
+          reason: "Immutable Prompt Testing acceptance contract.",
         },
       ],
       testFiles: [generatedTest.path],
@@ -839,7 +839,7 @@ describe("Tenki independent agent verification", () => {
     expect(client.createAndWait).not.toHaveBeenCalled();
   });
 
-  it("fails before creating a VM when the PDD test differs from the approved artifact", async () => {
+  it("fails before creating a VM when the Prompt Testing test differs from the approved artifact", async () => {
     const generatedTestContent = 'test("approved", () => {});\n';
     const generatedTest = {
       path: "packages/app/tests/export.pdd.test.ts",

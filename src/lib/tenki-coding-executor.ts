@@ -62,7 +62,7 @@ const CREATE_TIMEOUT_MS = 60_000;
 // Keep the entire execution, report callback, and sandbox cleanup inside
 // Vercel Hobby's five-minute function ceiling.
 const RUN_DURATION_MS = 4 * 60_000;
-// Reserve half of the VM lease for rebuilding, immutable PDD replay,
+// Reserve half of the VM lease for rebuilding, immutable Prompt Testing replay,
 // independent verification, publication, callbacks, and cleanup.
 const AGENT_DURATION_MS = 2 * 60_000;
 const AGENT_MAX_TURNS = 24;
@@ -1102,7 +1102,7 @@ export async function executeTenkiCodingJob(
     && !pddGeneratedTestsReferenceLiveApplication(generatedTests)
   ) {
     throw new Error(
-      "The approved PDD live test does not reference CLOSESPAN_APP_URL",
+      "The approved Prompt Testing live test does not reference CLOSESPAN_APP_URL",
     );
   }
   if (
@@ -1114,7 +1114,7 @@ export async function executeTenkiCodingJob(
     )
   ) {
     throw new Error(
-      "The approved PDD live test requires a configured running application",
+      "The approved Prompt Testing live test requires a configured running application",
     );
   }
   if (
@@ -1187,12 +1187,12 @@ export async function executeTenkiCodingJob(
 
     for (const generatedTest of job.generatedTests ?? []) {
       if (await sha256(generatedTest.content) !== generatedTest.contentHash)
-        throw new Error(`PDD test content hash does not match for ${generatedTest.path}`);
+        throw new Error(`Prompt Testing test content hash does not match for ${generatedTest.path}`);
       if (!tenkiExecutorAllowsPublishedPath(job, generatedTest.path))
-        throw new Error(`PDD test path is outside the approved ticket: ${generatedTest.path}`);
+        throw new Error(`Prompt Testing test path is outside the approved ticket: ${generatedTest.path}`);
       const target = `${REPOSITORY_ROOT}/${generatedTest.path}`;
       const directory = target.slice(0, target.lastIndexOf("/"));
-      await requireCommand(session, "mkdir", { args: ["-p", "--", directory], timeoutMs: 10_000 }, "Could not prepare the PDD test directory");
+      await requireCommand(session, "mkdir", { args: ["-p", "--", directory], timeoutMs: 10_000 }, "Could not prepare the Prompt Testing acceptance-test directory");
       await session.writeFile(target, generatedTest.content);
     }
 
@@ -1312,7 +1312,7 @@ export async function executeTenkiCodingJob(
     for (const generatedTest of job.generatedTests ?? []) {
       const content = decode(await session.readFile(`${REPOSITORY_ROOT}/${generatedTest.path}`));
       if (await sha256(content) !== generatedTest.contentHash)
-        throw new Error(`The immutable PDD acceptance test changed during execution: ${generatedTest.path}`);
+        throw new Error(`The immutable Prompt Testing acceptance test changed during execution: ${generatedTest.path}`);
     }
     // Capture the exact publication payload before agent-modified processes
     // receive any runtime or test secret. Later checks run against mutable VM
@@ -1412,10 +1412,10 @@ export async function executeTenkiCodingJob(
         stage: "implementation",
         tool: "http",
         target: "CLOSESPAN_APP_URL",
-        status: userStoryReplayPassed ? "PDD live replay passed" : "PDD live replay failed",
+        status: userStoryReplayPassed ? "Prompt Testing live replay passed" : "Prompt Testing live replay failed",
         evidence: userStoryReplayPassed
-          ? `The immutable PDD test made ${liveReplayRequestCount} witnessed request(s) to the healthy VM-local application and its approved command passed.`
-          : "The immutable PDD live test did not make a witnessed VM-local request, or the application/test did not pass.",
+          ? `The immutable Prompt Testing test made ${liveReplayRequestCount} witnessed request(s) to the healthy VM-local application and its approved command passed.`
+          : "The immutable Prompt Testing live test did not make a witnessed VM-local request, or the application/test did not pass.",
       });
     }
     const reportedCriteria = new Map(agentReport.criteria.map((item) => [item.criterionId, item]));

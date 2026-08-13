@@ -61,7 +61,7 @@ export function autonomyDescription(level: AutonomyLevel): string {
     case "Observe":
       return "Listen, classify, and surface evidence. No investigation, prompt, or execution is started.";
     case "Recommend":
-      return "Investigate and prepare prompts and PDD contracts. Code execution, merge, and deployment stay blocked.";
+      return "Investigate and prepare prompts and Prompt Testing contracts. Code execution, merge, and deployment stay blocked.";
     case "Full autonomy":
       return "Run the configured workflow end to end: investigate, prepare, execute in Tenki, merge or deploy, and verify the release.";
     default:

@@ -116,9 +116,9 @@ async function sendEmail(
     `Artifact: ${email.artifact_path}`,
     `Review: ${reviewUrl}`,
     "",
-    "PDD testing and Tenki execution still require explicit approval.",
+    "Prompt Testing and Tenki execution still require explicit approval.",
   ].join("\n");
-  const html = `<p>Hi ${escapeHtml(email.reviewer_name)},</p><p>CloseSpan created an implementation-prompt draft and assigned it to you for review.</p><p><strong>Problem:</strong> ${escapeHtml(email.title)}<br><strong>Artifact:</strong> <code>${escapeHtml(email.artifact_path)}</code></p><p><a href="${escapeHtml(reviewUrl)}">Review implementation prompt</a></p><p>PDD testing and Tenki execution still require explicit approval.</p>`;
+  const html = `<p>Hi ${escapeHtml(email.reviewer_name)},</p><p>CloseSpan created an implementation-prompt draft and assigned it to you for review.</p><p><strong>Problem:</strong> ${escapeHtml(email.title)}<br><strong>Artifact:</strong> <code>${escapeHtml(email.artifact_path)}</code></p><p><a href="${escapeHtml(reviewUrl)}">Review implementation prompt</a></p><p>Prompt Testing and Tenki execution still require explicit approval.</p>`;
   let response: Response;
   try {
     response = await fetcher(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(configuration.accountId)}/email/sending/send`, {

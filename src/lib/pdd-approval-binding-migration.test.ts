@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-describe("PDD approval binding migration", () => {
+describe("Prompt Testing approval binding migration", () => {
   it("backfills and locks the exact tenant-scoped verification on approvals", async () => {
     const sql = await readFile(
       path.join(process.cwd(), "db/migrations/035_pdd_approval_binding.sql"),

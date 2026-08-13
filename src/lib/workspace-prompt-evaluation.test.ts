@@ -38,7 +38,7 @@ const result = {
 describe("evaluateWorkspacePrompt", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("keeps workspace credentials out of PDD Cloud", async () => {
+  it("keeps workspace credentials out of Prompt Testing Cloud", async () => {
     vi.mocked(readPromptEvaluationMode).mockResolvedValue("pdd_cloud");
     vi.mocked(evaluatePromptWithPdd).mockResolvedValue({
       ...result,
@@ -55,7 +55,7 @@ describe("evaluateWorkspacePrompt", () => {
     }));
   });
 
-  it("binds local PDD to the workspace provider and model", async () => {
+  it("binds local Prompt Testing to the workspace provider and model", async () => {
     vi.mocked(readPromptEvaluationMode).mockResolvedValue("pdd_local");
     vi.mocked(getAiRuntimeConfiguration).mockResolvedValue({
       provider: "openai",

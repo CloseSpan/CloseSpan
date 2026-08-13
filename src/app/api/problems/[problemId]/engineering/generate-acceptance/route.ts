@@ -105,11 +105,11 @@ export async function POST(
           ...result.storyTest,
           status: "Generating tests",
           message:
-            "PDD is translating the approved story into repository-native acceptance tests.",
+            "Prompt Testing is translating the approved story into repository-native acceptance tests.",
         };
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "PDD runner dispatch failed";
+          error instanceof Error ? error.message : "Prompt Testing runner dispatch failed";
         await failPddVerification(context.orgId, result.storyTest.id, message);
         result.workflow = await getEngineeringWorkflow(context.orgId, problemId);
         result.storyTest = { ...result.storyTest, status: "Failed", message };

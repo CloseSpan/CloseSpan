@@ -2,17 +2,17 @@
 
 An evidence-driven B2B SaaS product that turns fragmented customer feedback into a verified product resolution. This repository implements a complete, launchable seeded MVP with explicit simulation boundaries.
 
-## PDD acceptance verification
+## Prompt Testing acceptance verification
 
-Engineering tickets use PDD as a product-manager-facing acceptance gate. A PM
-writes an English user story; the signed PDD runner converts it into a
-repository-native automated test. CloseSpan stores the PDD version, model,
+Engineering tickets use Prompt Testing as a product-manager-facing acceptance gate. A PM
+writes an English user story; the signed Prompt Testing runner converts it into a
+repository-native automated test. CloseSpan stores the underlying engine version, model,
 cost, prompt hash, generated file hash, and approved command. Approval remains
 locked until that contract is ready. During implementation the test is injected
 into the network-disabled Tenki workspace as an immutable file, so the coding
 agent can implement against it but cannot weaken it.
 
-PDD is MIT-licensed and does not add a software-license fee. Local PDD model
+Prompt Testing uses the MIT-licensed PDD engine and does not add a software-license fee. Local model
 calls and runner compute can still cost money. Configure `PDD_MAX_BUDGET_USD`,
 deploy the pinned runner through `npm run pdd:deploy:tenki`, and use a model
 gateway with a hard spend policy when a strict pre-spend ceiling is required.
@@ -21,7 +21,7 @@ PDD Cloud is not used.
 Repository access and Tenki execution are workspace-scoped. CloseSpan detects
 repository manifests without cloning or executing customer code, keeps every
 detected runtime profile inactive until an administrator confirms it, and then
-binds the exact profile ID, version, hash, and snapshot through PDD, approval,
+binds the exact profile ID, version, hash, and snapshot through Prompt Testing, approval,
 implementation, and independent verification. See the
 [execution-profile architecture and rollout guide](docs/execution-profiles.md).
 
@@ -347,9 +347,9 @@ The independently deployed `workers/workflow-scheduler` Cloudflare Worker calls 
 
 Final PR approval creates a durable queued execution rather than merging inside the approval transaction. The coordinator executes the exact approved head SHA idempotently. Subscribe the GitHub App to deployment-status events as well as pull-request events: a successful configured deployment moves the problem to `Released` and queues post-release verification; only a passing verifier callback moves it to `Verified`. Configure `DEFAULT_DEPLOYMENT_ENVIRONMENT`, `AUTO_DEPLOY_ON_MERGE`, `DEFAULT_ROLLBACK_PLAN`, `RELEASE_VERIFIER_URL`, `RELEASE_VERIFIER_CALLBACK_BASE_URL`, and `RELEASE_VERIFIER_SHARED_SECRET` for that path.
 
-Every release approval seals a combined production-verification contract. A fenced `closespan-release-verification` JSON block in the PDD release instructions defines bounded same-origin `GET`/`HEAD` backend checks plus up to eight declarative frontend journey/viewport captures; legacy `closespan-ui-verification` blocks are upgraded with a required application-health check. Prose-only instructions use the safe `/api/health` backend contract and desktop/mobile root-page journeys. The production release verifier runs both sections in one fresh outbound-only Tenki VM, caps backend time and response size, prevents redirects and external origins, checks HTTP/JSON/header expectations, then runs the existing Playwright assertions, browser-error checks, accessibility checks, screenshots, and approved-layout comparison. It cannot run generated shell commands, merge, deploy, or write repository data. `Released` advances to `Verified` only when every required backend and frontend section passes. Configure `RELEASE_ENVIRONMENT_URLS`, `RELEASE_VERIFIER_ALLOWED_HOSTS`, one of `TENKI_RELEASE_VERIFIER_IMAGE` or `TENKI_RELEASE_VERIFIER_SNAPSHOT_ID`, optionally `RELEASE_VERIFIER_STORAGE_STATE_JSON`, and optionally `RELEASE_VERIFIER_SYNTHETIC_BEARER_TOKEN` for checks explicitly bound to the `production-synthetic` auth profile. The durable Cloudflare queue boundary lives in `workers/release-verifier` and carries only tenant-scoped job references; immutable evidence and credentials never enter the queue payload.
+Every release approval seals a combined production-verification contract. A fenced `closespan-release-verification` JSON block in the Prompt Testing release instructions defines bounded same-origin `GET`/`HEAD` backend checks plus up to eight declarative frontend journey/viewport captures; legacy `closespan-ui-verification` blocks are upgraded with a required application-health check. Prose-only instructions use the safe `/api/health` backend contract and desktop/mobile root-page journeys. The production release verifier runs both sections in one fresh outbound-only Tenki VM, caps backend time and response size, prevents redirects and external origins, checks HTTP/JSON/header expectations, then runs the existing Playwright assertions, browser-error checks, accessibility checks, screenshots, and approved-layout comparison. It cannot run generated shell commands, merge, deploy, or write repository data. `Released` advances to `Verified` only when every required backend and frontend section passes. Configure `RELEASE_ENVIRONMENT_URLS`, `RELEASE_VERIFIER_ALLOWED_HOSTS`, one of `TENKI_RELEASE_VERIFIER_IMAGE` or `TENKI_RELEASE_VERIFIER_SNAPSHOT_ID`, optionally `RELEASE_VERIFIER_STORAGE_STATE_JSON`, and optionally `RELEASE_VERIFIER_SYNTHETIC_BEARER_TOKEN` for checks explicitly bound to the `production-synthetic` auth profile. The durable Cloudflare queue boundary lives in `workers/release-verifier` and carries only tenant-scoped job references; immutable evidence and credentials never enter the queue payload.
 
-Before the final execution approval becomes actionable, CloseSpan classifies the immutable changed-file manifest as backend, frontend, shared, neutral, or unknown and compares it with the PDD-declared production-verification scope. The classifier never removes an approved check. A shared change requires both surfaces, and an unknown-impact file requires both unless the PDD is revised to classify it. If the PR exceeds a backend-only or frontend-only contract, the Approval Center locks merge authorization, explains the mismatch, and sends the reviewer back to revise the PDD and approve a new agent run. The same sealed assessment is enforced again by the final-approval API, so hiding or bypassing the UI cannot authorize an incompatible PR.
+Before the final execution approval becomes actionable, CloseSpan classifies the immutable changed-file manifest as backend, frontend, shared, neutral, or unknown and compares it with the Prompt Testing-declared production-verification scope. The classifier never removes an approved check. A shared change requires both surfaces, and an unknown-impact file requires both unless the Prompt Testing contract is revised to classify it. If the PR exceeds a backend-only or frontend-only contract, the Approval Center locks merge authorization, explains the mismatch, and sends the reviewer back to revise the Prompt Testing contract and approve a new agent run. The same sealed assessment is enforced again by the final-approval API, so hiding or bypassing the UI cannot authorize an incompatible PR.
 
 The durable queue coordinator is isolated in `workers/agent-executor`; its deployment and secret setup are documented in [its README](workers/agent-executor/README.md). It receives only `TENKI_EXECUTOR_URL`, the shared signing secret, and the status-probe secret. The Node application keeps `OPENAI_API_KEY` and `TENKI_API_KEY`, runs the agent control plane, and sends bounded repository operations to a fresh Tenki microVM with inbound and outbound networking disabled. Verify the coordinator independently with `npm run typecheck:executor`.
 

@@ -74,7 +74,7 @@ function estimatedProgress(elapsedMs: number, estimatedDurationMs: number): numb
 
 export function promptPreparationLabel(phase: PromptPreparationPhase): string {
   switch (phase) {
-    case "applying-revision": return "Applying the PDD improvement";
+    case "applying-revision": return "Applying the Prompt Testing improvement";
     case "retesting": return "Retesting the immutable revision";
     case "generating-contract": return "Generating repository acceptance tests";
     case "waiting-for-approval": return "Creating the agent execution approval";
@@ -132,7 +132,7 @@ export async function prepareAgentApproval(input: {
     const proposed = evaluation.promptEvaluation.suggestedRevision;
     const receipt = evaluation.promptEvaluation.revisionReceipt;
     if (!proposed || !receipt) {
-      throw new Error("PDD requested a revision but did not return a safe immutable replacement. Review the prompt manually.");
+      throw new Error("Prompt Testing requested a revision but did not return a safe immutable replacement. Review the prompt manually.");
     }
     input.onPhase?.("applying-revision");
     const applied = await request<{ workflow: EngineeringWorkflowView }>(
@@ -153,7 +153,7 @@ export async function prepareAgentApproval(input: {
   }
 
   if (evaluation.promptEvaluation.verdict !== "Passed" || !evaluation.promptEvaluation.alignmentReceipt) {
-    throw new Error("PDD did not approve the prompt for repository execution. Review the result and retry.");
+    throw new Error("Prompt Testing did not approve the prompt for repository execution. Review the result and retry.");
   }
 
   input.onPhase?.("generating-contract");
@@ -207,7 +207,7 @@ export async function prepareAgentApproval(input: {
           status: finalWorkflow.verification.status,
           message: finalWorkflow.verification.summary
             ?? finalWorkflow.verification.failureMessage
-            ?? "PDD is preparing the repository acceptance contract.",
+            ?? "Prompt Testing is preparing the repository acceptance contract.",
           promptHash: finalWorkflow.verification.promptHash,
         };
       }
@@ -390,7 +390,7 @@ function PromptTestDock({
                 </span>
                 <span className="prompt-test-dock-copy">
                   <strong>{running ? "Checking the suggested prompt" : failed ? "Prompt check stopped" : approvalReady ? "Agent approval ready" : "Prompt result ready"}</strong>
-                  <small>{running ? `${promptPreparationLabel(task.phase)} · ${task.progress}%` : failed ? "Open to review or run again" : approvalReady ? "Review in Action approvals" : "Review the PDD result"}</small>
+                  <small>{running ? `${promptPreparationLabel(task.phase)} · ${task.progress}%` : failed ? "Open to review or run again" : approvalReady ? "Review in Action approvals" : "Review the Prompt Testing result"}</small>
                   {running && (
                     <small className="prompt-test-dock-eta">
                       {formatApproximateTimeLeft(task.estimatedDurationMs - task.elapsedMs)}

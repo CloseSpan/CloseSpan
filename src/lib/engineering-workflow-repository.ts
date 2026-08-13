@@ -1083,7 +1083,7 @@ export async function saveEngineeringSpecification(
           )`,
       [orgId, problemId],
     );
-    await audit(client, orgId, actor, `Saved engineering ticket specification revision ${revision}; unbound prompt and PDD drafts were superseded`, "EngineeringTicket", problemId);
+    await audit(client, orgId, actor, `Saved engineering ticket specification revision ${revision}; unbound prompt and Prompt Testing drafts were superseded`, "EngineeringTicket", problemId);
   });
   return postgresWorkflow(orgId, problemId);
 }
@@ -1234,7 +1234,7 @@ export async function createAutomatedPromptDraft(
       client,
       orgId,
       actor,
-      `Created automatic implementation prompt draft at ${artifactPath}; human review is required before PDD or Tenki execution`,
+      `Created automatic implementation prompt draft at ${artifactPath}; human review is required before Prompt Testing or Tenki execution`,
       "ImplementationPrompt",
       problemId,
     );
@@ -1405,7 +1405,7 @@ export async function applyPddPromptRevision(
   await assertPromptPreparationAllowed(orgId);
   const revisedPrompt = input.revisedPrompt.trim();
   if (!revisedPrompt || revisedPrompt.length > 64_000) {
-    throw new EngineeringWorkflowError("The PDD prompt revision is invalid", 400);
+    throw new EngineeringWorkflowError("The Prompt Testing prompt revision is invalid", 400);
   }
   const revisedHash = hashImplementationPrompt(revisedPrompt);
   if (workspacePersistenceMode(orgId) === "memory") {
@@ -1459,7 +1459,7 @@ export async function applyPddPromptRevision(
     if (duplicate.rows[0]?.id === current.id) return;
     if (duplicate.rows[0]) {
       throw new EngineeringWorkflowError(
-        `PDD proposed prompt revision ${duplicate.rows[0].revision}, which was already tested. Review the remaining recommendations before retrying.`,
+        `Prompt Testing proposed prompt revision ${duplicate.rows[0].revision}, which was already tested. Review the remaining recommendations before retrying.`,
         409,
       );
     }
@@ -1478,7 +1478,7 @@ export async function applyPddPromptRevision(
         current.base_branch, current.base_sha, current.artifact_path,
         JSON.stringify(current.structured_snapshot), revisedPrompt, revisedHash, actor.actorId],
     );
-    await audit(client, orgId, actor, `Applied PDD-guided implementation prompt revision ${revision} with SHA-256 ${revisedHash}`, "ImplementationPrompt", problemId);
+    await audit(client, orgId, actor, `Applied Prompt Testing-guided implementation prompt revision ${revision} with SHA-256 ${revisedHash}`, "ImplementationPrompt", problemId);
   });
   return getEngineeringWorkflow(orgId, problemId);
 }
@@ -1509,13 +1509,13 @@ export async function generatePddAcceptanceContract(
   if (workspacePersistenceMode(orgId) === "postgres") {
     if (!confirmedRepositoryMatch) {
       throw new EngineeringWorkflowError(
-        "Confirm this ticket's repository and an active execution profile before PDD testing.",
+        "Confirm this ticket's repository and an active execution profile before Prompt Testing.",
         409,
       );
     }
     if (workflow.specification.repository !== confirmedRepositoryMatch.repository) {
       throw new EngineeringWorkflowError(
-        "The confirmed repository does not match the engineering ticket. Review the ticket repository context before PDD testing.",
+        "The confirmed repository does not match the engineering ticket. Review the ticket repository context before Prompt Testing.",
         409,
       );
     }
@@ -1622,7 +1622,7 @@ export async function generatePddAcceptanceContract(
       )
     ) {
       throw new EngineeringWorkflowError(
-        "The active execution profile changed after repository review. Confirm the current profile before PDD testing.",
+        "The active execution profile changed after repository review. Confirm the current profile before Prompt Testing.",
         409,
       );
     }
@@ -1659,7 +1659,7 @@ export async function generatePddAcceptanceContract(
           resolvedProfile.snapshot.profileId, resolvedProfile.snapshot.contentHash,
           JSON.stringify(resolvedProfile.snapshot)],
       );
-      await audit(client, orgId, actor, `Queued PDD ${PDD_CLI_VERSION} acceptance-test generation for prompt ${prompt.contentHash}`, "PddPromptVerification", verificationId);
+      await audit(client, orgId, actor, `Queued Prompt Testing ${PDD_CLI_VERSION} acceptance-test generation for prompt ${prompt.contentHash}`, "PddPromptVerification", verificationId);
     });
     workflow = await postgresWorkflow(orgId, problemId);
   }
@@ -1683,9 +1683,9 @@ function pddBudgetUsd(): number {
 
 function verificationMessage(status: PddVerificationView["status"]): string {
   if (status === "Queued") return "The story is queued for executable acceptance-test generation.";
-  if (status === "Generating tests") return "PDD is translating the story into repository-native acceptance tests.";
+  if (status === "Generating tests") return "Prompt Testing is translating the story into repository-native acceptance tests.";
   if (status === "Ready for approval") return "The executable acceptance contract is ready for PM review.";
-  if (status === "Failed") return "PDD could not produce a safe executable acceptance contract.";
+  if (status === "Failed") return "Prompt Testing could not produce a safe executable acceptance contract.";
   return "This verification was replaced by a newer ticket or story.";
 }
 
@@ -1694,7 +1694,7 @@ export async function getPddVerificationExecutionContext(
   verificationId: string,
 ): Promise<PddVerificationExecutionContext> {
   if (workspacePersistenceMode(orgId) === "memory")
-    throw new EngineeringWorkflowError("Live PDD execution is unavailable in the seeded memory workspace", 409);
+    throw new EngineeringWorkflowError("Live Prompt Testing execution is unavailable in the seeded memory workspace", 409);
   const result = await databasePool().query<{
     problem_id: string; repository: string; installation_id: string; base_branch: string; base_sha: string;
     prompt_revision_id: string; prompt_hash: string; user_story: string;
@@ -1714,10 +1714,10 @@ export async function getPddVerificationExecutionContext(
           AND allowlist.repository=prompt.repository AND allowlist.active=true
        WHERE verification.org_id=$1 AND verification.id=$2`, [orgId, verificationId]);
   const row = result.rows[0];
-  if (!row) throw new EngineeringWorkflowError("PDD verification or repository authorization was not found", 404);
+  if (!row) throw new EngineeringWorkflowError("Prompt Testing verification or repository authorization was not found", 404);
   if (!["Queued", "Generating tests"].includes(row.status))
-    throw new EngineeringWorkflowError("PDD verification is no longer executable", 409);
-  const executionProfileSnapshot = validatedExecutionProfileBinding(row, "PDD verification");
+    throw new EngineeringWorkflowError("Prompt Testing verification is no longer executable", 409);
+  const executionProfileSnapshot = validatedExecutionProfileBinding(row, "Prompt Testing verification");
   assertExecutionProfileNarrowing(executionProfileSnapshot, {
     permittedPaths: row.structured_snapshot.ticket.permittedPaths,
     requiredCommands: row.structured_snapshot.ticket.requiredCommands,
@@ -1748,7 +1748,7 @@ export async function markPddVerificationGenerating(
       WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Generating tests')`,
     [orgId, verificationId],
   );
-  if (!result.rowCount) throw new EngineeringWorkflowError("PDD verification cannot be started", 409);
+  if (!result.rowCount) throw new EngineeringWorkflowError("Prompt Testing verification cannot be started", 409);
 }
 
 export async function failPddVerification(
@@ -1779,10 +1779,10 @@ export async function completePddVerification(
   actor: ActorContext,
 ): Promise<EngineeringWorkflowView> {
   if (workspacePersistenceMode(orgId) === "memory")
-    throw new EngineeringWorkflowError("Live PDD completion is unavailable in the seeded memory workspace", 409);
+    throw new EngineeringWorkflowError("Live Prompt Testing completion is unavailable in the seeded memory workspace", 409);
   const parsed = pddRunnerResultSchema.parse(payload);
   if (parsed.verificationId !== verificationId)
-    throw new EngineeringWorkflowError("PDD callback does not match the requested verification", 409);
+    throw new EngineeringWorkflowError("Prompt Testing callback does not match the requested verification", 409);
   let problemId = "";
   let shouldRequestApproval = false;
   let promptId = "";
@@ -1802,16 +1802,16 @@ export async function completePddVerification(
             AND prompt.id=verification.prompt_revision_id
          WHERE verification.org_id=$1 AND verification.id=$2 FOR UPDATE`, [orgId, verificationId]);
     const row = current.rows[0];
-    if (!row) throw new EngineeringWorkflowError("PDD verification was not found", 404);
+    if (!row) throw new EngineeringWorkflowError("Prompt Testing verification was not found", 404);
     if (!["Queued", "Generating tests"].includes(row.status))
-      throw new EngineeringWorkflowError("PDD verification is already complete or superseded", 409);
+      throw new EngineeringWorkflowError("Prompt Testing verification is already complete or superseded", 409);
     if (parsed.promptHash !== row.prompt_hash)
-      throw new EngineeringWorkflowError("PDD callback prompt hash does not match", 409);
+      throw new EngineeringWorkflowError("Prompt Testing callback prompt hash does not match", 409);
     if (parsed.pddVersion !== row.pdd_version)
-      throw new EngineeringWorkflowError("PDD callback version does not match the pinned runner version", 409);
+      throw new EngineeringWorkflowError("Prompt Testing callback version does not match the pinned runner version", 409);
     if (parsed.costUsd !== null && parsed.costUsd > Number(row.budget_usd))
-      throw new EngineeringWorkflowError("PDD callback exceeded the verification budget", 409);
-    const executionProfileSnapshot = validatedExecutionProfileBinding(row, "PDD verification");
+      throw new EngineeringWorkflowError("Prompt Testing callback exceeded the verification budget", 409);
+    const executionProfileSnapshot = validatedExecutionProfileBinding(row, "Prompt Testing verification");
     assertExecutionProfileNarrowing(executionProfileSnapshot, {
       permittedPaths: row.structured_snapshot.ticket.permittedPaths,
       requiredCommands: row.structured_snapshot.ticket.requiredCommands,
@@ -1862,7 +1862,7 @@ export async function requestImplementationApproval(
     if (!entry?.prompt) throw new EngineeringWorkflowError("Implementation prompt was not found", 404);
     if (entry.prompt.status !== "Ready") throw new EngineeringWorkflowError("Only the latest ready prompt can be submitted", 409);
     if (entry.verification?.status !== "Ready for approval" || entry.verification.promptHash !== entry.prompt.contentHash)
-      throw new EngineeringWorkflowError("Generate and review a PDD acceptance contract before requesting approval", 409);
+      throw new EngineeringWorkflowError("Generate and review a Prompt Testing acceptance contract before requesting approval", 409);
     entry.prompt.status = "Awaiting approval";
     entry.specification.implementationState = "Awaiting approval";
     entry.approval = { id: `apr_prompt_${randomUUID().replaceAll("-", "")}`, status: "Pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(), promptHash: entry.prompt.contentHash, repository: entry.prompt.repository, baseBranch: entry.prompt.baseBranch, baseSha: entry.prompt.baseSha, allowedCapabilities: ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"] };
@@ -1887,8 +1887,8 @@ export async function requestImplementationApproval(
     );
     const verificationRow = verification.rows[0];
     if (!verificationRow)
-      throw new EngineeringWorkflowError("Generate and review a PDD acceptance contract before requesting approval", 409);
-    const executionProfileSnapshot = validatedExecutionProfileBinding(verificationRow, "PDD verification");
+      throw new EngineeringWorkflowError("Generate and review a Prompt Testing acceptance contract before requesting approval", 409);
+    const executionProfileSnapshot = validatedExecutionProfileBinding(verificationRow, "Prompt Testing verification");
     problemId = row.problem_id;
     const approvalId = `apr_prompt_${randomUUID().replaceAll("-", "")}`;
     const capabilities = ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"];
@@ -1901,16 +1901,16 @@ export async function requestImplementationApproval(
       ) VALUES($1,$2,$3,$4,$5,$6,1,$7,$8,true,'Medium','Pending','agent_run',$9,$10,$11,$12,$13,$14,now()+interval '30 minutes',$15,$16,$17,$18)`,
       [approvalId, orgId, row.problem_id, promptId,
         `Run one coding agent and open a draft PR in ${row.repository}`,
-        "The approval is bound to an immutable prompt, PDD acceptance contract, base commit, repository, expiry, and single execution.",
+        "The approval is bound to an immutable prompt, Prompt Testing acceptance contract, base commit, repository, expiry, and single execution.",
         JSON.stringify(["Tenki Sandbox", "GitHub"]),
-        JSON.stringify(["Approved prompt", "PDD acceptance contract", "Redacted evidence", "Repository snapshot"]),
+        JSON.stringify(["Approved prompt", "Prompt Testing acceptance contract", "Redacted evidence", "Repository snapshot"]),
         promptId, row.content_hash, row.repository, row.base_branch, row.base_sha,
         JSON.stringify(capabilities), verificationRow.id, executionProfileSnapshot.profileId,
         executionProfileSnapshot.contentHash, JSON.stringify(executionProfileSnapshot)],
     );
     await client.query("UPDATE implementation_prompts SET status='Awaiting approval' WHERE org_id=$1 AND id=$2", [orgId, promptId]);
     await client.query("UPDATE engineering_ticket_specifications SET implementation_state='Awaiting approval',updated_at=now() WHERE org_id=$1 AND problem_id=$2", [orgId, row.problem_id]);
-    await audit(client, orgId, actor, `Requested one-run coding approval for prompt ${row.content_hash} and PDD verification ${verificationRow.id}`, "ApprovalRequest", approvalId);
+    await audit(client, orgId, actor, `Requested one-run coding approval for prompt ${row.content_hash} and Prompt Testing verification ${verificationRow.id}`, "ApprovalRequest", approvalId);
   });
   return postgresWorkflow(orgId, problemId);
 }
@@ -2008,10 +2008,10 @@ export async function approveImplementationRun(
           [orgId, row.prompt_revision_id, row.prompt_hash],
         );
     const verificationRow = verification.rows[0];
-    if (!verificationRow) throw new EngineeringWorkflowError("The PDD acceptance contract is no longer ready", 409);
-    const verificationProfile = validatedExecutionProfileBinding(verificationRow, "PDD verification");
+    if (!verificationRow) throw new EngineeringWorkflowError("The Prompt Testing acceptance contract is no longer ready", 409);
+    const verificationProfile = validatedExecutionProfileBinding(verificationRow, "Prompt Testing verification");
     if (!sameExecutionProfileBinding(approvalProfile, verificationProfile)) {
-      throw new EngineeringWorkflowError("The approval no longer matches the PDD execution profile", 409);
+      throw new EngineeringWorkflowError("The approval no longer matches the Prompt Testing execution profile", 409);
     }
     if (!row.pdd_verification_id) {
       const bound = await client.query(
@@ -2020,7 +2020,7 @@ export async function approveImplementationRun(
         [orgId, approvalId, verificationRow.id],
       );
       if (!bound.rowCount) {
-        throw new EngineeringWorkflowError("The approval's PDD acceptance contract changed before execution", 409);
+        throw new EngineeringWorkflowError("The approval's Prompt Testing acceptance contract changed before execution", 409);
       }
     }
     const title = await client.query<{ title: string }>("SELECT title FROM product_problems WHERE org_id=$1 AND id=$2", [orgId, row.problem_id]);
@@ -2129,7 +2129,7 @@ export async function getAgentRunExecutionContext(
     || row.run_pdd_verification_id !== row.approval_pdd_verification_id
   ) {
     throw new EngineeringWorkflowError(
-      "Agent run PDD verification no longer matches its approval-bound acceptance contract",
+      "Agent run Prompt Testing verification no longer matches its approval-bound acceptance contract",
       409,
     );
   }
@@ -2147,7 +2147,7 @@ export async function getAgentRunExecutionContext(
     execution_profile_id: row.verification_execution_profile_id,
     execution_profile_hash: row.verification_execution_profile_hash,
     execution_profile_snapshot: row.verification_execution_profile_snapshot,
-  }, "PDD verification");
+  }, "Prompt Testing verification");
   if (
     !sameExecutionProfileBinding(executionProfileSnapshot, approvalProfile)
     || !sameExecutionProfileBinding(executionProfileSnapshot, verificationProfile)

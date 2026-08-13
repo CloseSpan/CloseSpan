@@ -52,7 +52,7 @@ export default async function ApprovalRecordPage({
               <div className="fact"><span><Clock3 /></span><div><small>Authorization expiry</small><strong>{new Date(finalApproval.expiresAt).toLocaleString()}</strong></div></div>
             </div>
             <div className="top-actions">
-              <Link className="btn" href={`/pdd/${finalApproval.problemId}#engineering-ticket`}>Open PDD preparation</Link>
+              <Link className="btn" href={`/pdd/${finalApproval.problemId}#engineering-ticket`}>Open Prompt Testing preparation</Link>
               <a className="btn primary" href={finalApproval.pullRequestUrl} target="_blank" rel="noreferrer">Open pull request</a>
             </div>
           </div>

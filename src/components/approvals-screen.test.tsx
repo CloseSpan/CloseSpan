@@ -78,7 +78,7 @@ describe("Approval Center final execution", () => {
     expect(markup).not.toContain("Customer communication");
   });
 
-  it("locks merge approval when changed files exceed the sealed PDD scope", () => {
+  it("locks merge approval when changed files exceed the sealed Prompt Testing scope", () => {
     const blockedWorkflow: EngineeringWorkflowView = {
       ...workflow,
       finalApproval: workflow.finalApproval
@@ -96,7 +96,7 @@ describe("Approval Center final execution", () => {
                     recommended: { backend: true, frontend: true },
                     files: [{ path: "src/app/api/export/route.ts", surface: "backend" }],
                     mismatches: [
-                      "The PR contains backend or shared changes, but backend production verification is not approved in the PDD contract.",
+                      "The PR contains backend or shared changes, but backend production verification is not approved in the Prompt Testing contract.",
                     ],
                   },
                 }
@@ -115,7 +115,7 @@ describe("Approval Center final execution", () => {
 
     expect(markup).toContain("Verification scope changed");
     expect(markup).toContain("contract revision required");
-    expect(markup).toContain("Revise PDD contract");
+    expect(markup).toContain("Revise Prompt Testing contract");
     expect(markup).not.toContain("Approve and merge PR");
   });
 

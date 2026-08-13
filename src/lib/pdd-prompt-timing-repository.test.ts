@@ -6,7 +6,7 @@ import {
   resetMemoryPddPromptTimings,
 } from "./pdd-prompt-timing-repository";
 
-describe("PDD prompt timing estimates", () => {
+describe("Prompt Testing prompt timing estimates", () => {
   beforeEach(() => {
     process.env.PERSISTENCE_MODE = "memory";
     resetMemoryPddPromptTimings();

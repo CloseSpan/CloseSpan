@@ -57,10 +57,10 @@ export const pddRunnerResultSchema = z.object({
   failureMessage: z.string().trim().min(1).max(5_000).nullable(),
 }).strict().superRefine((value, context) => {
   if (value.status === "Ready for approval" && value.generatedTests.length === 0) {
-    context.addIssue({ code: "custom", path: ["generatedTests"], message: "A ready PDD verification must include an executable test" });
+    context.addIssue({ code: "custom", path: ["generatedTests"], message: "A ready Prompt Testing verification must include an executable test" });
   }
   if (value.status === "Failed" && !value.failureMessage) {
-    context.addIssue({ code: "custom", path: ["failureMessage"], message: "A failed PDD verification must explain the failure" });
+    context.addIssue({ code: "custom", path: ["failureMessage"], message: "A failed Prompt Testing verification must explain the failure" });
   }
   for (const [index, test] of value.generatedTests.entries()) {
     if (sha256(test.content) !== test.contentHash) {
@@ -111,16 +111,16 @@ export function validateGeneratedTests(
   const commands = new Set(snapshot.ticket.requiredCommands);
   for (const test of parsed.generatedTests) {
     if (test.path.startsWith("/") || test.path.split("/").includes("..")) {
-      throw new Error(`PDD returned an unsafe test path: ${test.path}`);
+      throw new Error(`Prompt Testing returned an unsafe test path: ${test.path}`);
     }
     if (!/(^|\/)(?:test|tests|__tests__)(\/|$)|\.(?:test|spec)\.[^.]+$/i.test(test.path)) {
-      throw new Error(`PDD returned a non-test artifact: ${test.path}`);
+      throw new Error(`Prompt Testing returned a non-test artifact: ${test.path}`);
     }
     if (!snapshot.ticket.permittedPaths.some((pattern) => pathMatches(pattern, test.path))) {
-      throw new Error(`PDD returned a test outside the ticket's permitted paths: ${test.path}`);
+      throw new Error(`Prompt Testing returned a test outside the ticket's permitted paths: ${test.path}`);
     }
     if (!commands.has(test.command)) {
-      throw new Error(`PDD selected a validation command that was not approved: ${test.command}`);
+      throw new Error(`Prompt Testing selected a validation command that was not approved: ${test.command}`);
     }
   }
   if (
@@ -129,7 +129,7 @@ export function validateGeneratedTests(
     && !pddGeneratedTestsReferenceLiveApplication(parsed.generatedTests)
   ) {
     throw new Error(
-      "PDD live application tests must read the VM-local base URL from CLOSESPAN_APP_URL",
+      "Prompt Testing live application tests must read the VM-local base URL from CLOSESPAN_APP_URL",
     );
   }
   return parsed;

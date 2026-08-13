@@ -227,7 +227,7 @@ function PddResultEnglishView({
       {summary && <p>{summary}</p>}
       {changes.length > 0 ? (
         <section>
-          <h4>What PDD recommends</h4>
+          <h4>What Prompt Testing recommends</h4>
           <ol>
             {changes.map((change, index) => (
               <li key={`${index}-${change.summary}`}>
@@ -423,7 +423,7 @@ export function EngineeringTicketPanel({
   const error = backgroundPromptTask?.status === "failed"
     ? backgroundPromptTask.error ?? "The story could not be tested against the prompt."
     : workflow.promptEvaluation?.status === "Failed"
-      ? workflow.promptEvaluation.failureMessage ?? "The automatic PDD check stopped. Run it manually when you are ready."
+      ? workflow.promptEvaluation.failureMessage ?? "The automatic prompt test stopped. Run it manually when you are ready."
       : storedError;
   const acceptancePreparationBlocker =
     !workflow.verification && !workflow.approval && !workflow.run
@@ -461,7 +461,7 @@ export function EngineeringTicketPanel({
             status: payload.workflow.verification.status,
             message: payload.workflow.verification.summary
               ?? payload.workflow.verification.failureMessage
-              ?? "PDD is preparing the executable acceptance contract.",
+              ?? "Prompt Testing is preparing the executable acceptance contract.",
             promptHash: payload.workflow.verification.promptHash,
           });
         }
@@ -533,7 +533,7 @@ export function EngineeringTicketPanel({
       }
       const appliedPrompt = payload.workflow.prompt;
       if (!testedPrompt || !appliedPrompt || appliedPrompt.contentHash === testedPrompt.contentHash) {
-        throw new Error("PDD did not produce a different immutable prompt revision. Test the prompt again before applying it.");
+        throw new Error("Prompt Testing did not produce a different immutable prompt revision. Test the prompt again before applying it.");
       }
       setRecentPromptComparison({
         tested: testedPrompt,
@@ -583,9 +583,9 @@ export function EngineeringTicketPanel({
     revisionReceipt: backgroundPromptResult?.promptEvaluation.revisionReceipt,
   }) && suggestedRevisionDiffers;
   const promptEvaluationSummary = incompletePromptEvaluation
-    ? "The runner returned an incomplete recommendation. Run PDD again to rebuild it from the complete generated contract. This partial result cannot be applied."
+    ? "The runner returned an incomplete recommendation. Run Prompt Testing again to rebuild it from the complete generated contract. This partial result cannot be applied."
     : !promptAligned && recommendedChanges.length > 0
-      ? `PDD found ${recommendedChanges.length} ${recommendedChanges.length === 1 ? "change" : "changes"} to make before approval.`
+      ? `Prompt Testing found ${recommendedChanges.length} ${recommendedChanges.length === 1 ? "change" : "changes"} to make before approval.`
       : promptEvaluation?.summary;
   const displayedPromptStatus = promptEvaluation?.verdict ?? promptStatus;
   const currentPromptLabel = "Agent-written prompt";
@@ -640,7 +640,7 @@ export function EngineeringTicketPanel({
           <p className="subtle">
             {preparesPromptAutomatically
               ? "CloseSpan validates this immutable prompt once, applies at most one bounded improvement, then leaves the saved result ready for review."
-              : "Review the immutable suggested prompt, then run PDD manually when you are ready to evaluate it."}
+              : "Review the immutable suggested prompt, then run Prompt Testing manually when you are ready to evaluate it."}
           </p>
         </div>
         <span
@@ -653,11 +653,11 @@ export function EngineeringTicketPanel({
       <div className="card-body detail-stack">
         {workflow.prompt?.status === "Draft" && (
           <div className="callout" role="status">
-            <div className="callout-title">Agent-created prompt queued for PDD</div>
+            <div className="callout-title">Agent-created prompt queued for Prompt Testing</div>
             <p className="subtle">
               {preparesPromptAutomatically
                 ? "CloseSpan will validate this draft once, apply at most one immutable improvement, and will not restart the check when you revisit this page."
-                : "This autonomy policy leaves prompt evaluation under your control. Choose Test with PDD when you are ready."}
+                : "This autonomy policy leaves prompt evaluation under your control. Choose Run prompt test when you are ready."}
             </p>
             {workflow.prompt.draftReason && <p className="subtle">{workflow.prompt.draftReason}</p>}
             {workflow.prompt.reviewerId && (
@@ -700,13 +700,13 @@ export function EngineeringTicketPanel({
               <div className="prompt-comparison-heading-copy">
                 <h3 id="prompt-comparison-title">
                   {promptComparison.applied
-                    ? "PDD revision applied · Improved prompt is now current"
-                    : "PDD comparison · Review the proposed prompt"}
+                    ? "Prompt Testing revision applied · Improved prompt is now current"
+                    : "Prompt Testing comparison · Review the proposed prompt"}
                 </h3>
                 <p className="subtle">
                   {promptComparison.applied
-                    ? `Revision ${promptComparison.proposed.revision} replaced the tested revision. Run PDD again only if you want to evaluate this new immutable prompt.`
-                    : "Compare the exact prompt PDD tested with the proposed immutable replacement before applying it."}
+                    ? `Revision ${promptComparison.proposed.revision} replaced the tested revision. Run Prompt Testing again only if you want to evaluate this new immutable prompt.`
+                    : "Compare the exact prompt Prompt Testing tested with the proposed immutable replacement before applying it."}
                 </p>
               </div>
               {!promptComparison.applied && canApplyImprovedPrompt && (
@@ -734,7 +734,7 @@ export function EngineeringTicketPanel({
                   ariaLabel={`Tested prompt revision ${promptComparison.tested.revision}`}
                   english={workflow.specification
                     ? <TicketEnglishView specification={workflow.specification} />
-                    : <p>This is the exact immutable prompt PDD evaluated.</p>}
+                    : <p>This is the exact immutable prompt Prompt Testing evaluated.</p>}
                   prompt={promptComparison.tested.content}
                 />
               </article>
@@ -771,7 +771,7 @@ export function EngineeringTicketPanel({
               <div className="callout warning" role="status">
                 <div className="callout-title"><AlertCircle size={14} />Nothing new to apply</div>
                 <p className="subtle">
-                  PDD returned the same prompt content. Run Test with PDD again to create a distinct revision.
+                  Prompt Testing returned the same prompt content. Run Run prompt test again to create a distinct revision.
                 </p>
               </div>
             )}
@@ -779,7 +779,7 @@ export function EngineeringTicketPanel({
             {!promptComparison.applied && recommendedChanges.length > 0 && (
               <section className="prompt-comparison-changes" aria-labelledby="pdd-recommended-changes">
                 <div className="prompt-comparison-changes-heading">
-                  <strong id="pdd-recommended-changes">What PDD changed</strong>
+                  <strong id="pdd-recommended-changes">What Prompt Testing changed</strong>
                   <span className="badge medium">
                     {recommendedChanges.length} {recommendedChanges.length === 1 ? "change" : "changes"}
                   </span>
@@ -806,7 +806,7 @@ export function EngineeringTicketPanel({
               <details className="pdd-evaluation-technical">
                 <summary>Technical details</summary>
                 <p className="subtle">
-                  PDD {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "PDD Cloud" : "local fallback"}
+                  Prompt Testing {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "Prompt Testing Cloud" : "local fallback"}
                   {promptEvaluation.model ? ` · ${promptEvaluation.model}` : ""}
                   {promptEvaluation.costUsd !== null ? ` · $${promptEvaluation.costUsd.toFixed(4)}` : ""}
                 </p>
@@ -822,13 +822,13 @@ export function EngineeringTicketPanel({
               <span className="badge brand">SHA {workflow.prompt.contentHash.slice(0, 10)}</span>
             </div>
             <p className="subtle">
-              This is the exact prompt PDD will compare with the user story below.
+              This is the exact prompt Prompt Testing will compare with the user story below.
             </p>
             <PromptViewSwitcher
               ariaLabel="Prompt currently under test"
               english={workflow.specification
                 ? <TicketEnglishView specification={workflow.specification} />
-                : <p>This is the exact immutable prompt PDD will evaluate.</p>}
+                : <p>This is the exact immutable prompt Prompt Testing will evaluate.</p>}
               prompt={workflow.prompt.content}
             />
           </section>
@@ -842,14 +842,14 @@ export function EngineeringTicketPanel({
             <div className="callout-title">
               {promptAligned ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
               {incompletePromptEvaluation
-                ? "PDD result incomplete"
+                ? "Prompt Testing result incomplete"
                 : promptAligned
                   ? "Prompt alignment passed"
-                  : "PDD needs another evaluation"}
+                  : "Prompt Testing needs another evaluation"}
             </div>
             {workflow.prompt ? (
               <PromptViewSwitcher
-                ariaLabel="Saved PDD response"
+                ariaLabel="Saved Prompt Testing response"
                 english={(
                   <PddResultEnglishView
                     aligned={promptAligned}
@@ -865,7 +865,7 @@ export function EngineeringTicketPanel({
             <details className="pdd-evaluation-technical">
               <summary>Technical details</summary>
               <p className="subtle">
-                PDD {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "PDD Cloud" : "local fallback"}
+                Prompt Testing {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "Prompt Testing Cloud" : "local fallback"}
                 {promptEvaluation.model ? ` · ${promptEvaluation.model}` : ""}
                 {promptEvaluation.costUsd !== null ? ` · $${promptEvaluation.costUsd.toFixed(4)}` : ""}
               </p>
@@ -885,7 +885,7 @@ export function EngineeringTicketPanel({
             <p>{acceptancePreparationBlocker}</p>
             <p className="subtle">
               Prompt alignment remains valid. Confirm the repository and active
-              execution profile, then run Test with PDD again.
+              execution profile, then run Run prompt test again.
             </p>
           </div>
         )}
@@ -918,11 +918,11 @@ export function EngineeringTicketPanel({
             <CheckCircle2 size={14} />
             <span className={busy ? "pdd-testing-shimmer-text" : undefined}>
               {busy
-                ? "Testing with PDD"
+                ? "Testing prompt"
                 : canTestPrompt
                   ? backgroundPromptTask?.status === "failed"
-                    ? "Test with PDD again"
-                    : "Test with PDD"
+                    ? "Run prompt test again"
+                    : "Run prompt test"
                   : "Suggested prompt required"}
             </span>
           </button>
@@ -933,8 +933,8 @@ export function EngineeringTicketPanel({
             <div className="callout-title"><AlertCircle size={14} />Ticket context needs review</div>
             <p className="subtle">
               {preparesPromptAutomatically
-                ? "CloseSpan will start one automatic PDD check when the implementation scope is complete."
-                : "Complete the implementation scope, then choose Test with PDD when you are ready."}
+                ? "CloseSpan will start one automatic prompt test when the implementation scope is complete."
+                : "Complete the implementation scope, then choose Run prompt test when you are ready."}
             </p>
             <ul className="evidence-list">
               {workflow.readiness.issues.slice(0, 4).map((issue) => <li key={issue}>{issue}</li>)}
@@ -956,7 +956,7 @@ export function EngineeringTicketPanel({
             <div
               className="pdd-testing-progress-track"
               role="progressbar"
-              aria-label="PDD prompt evaluation in progress"
+              aria-label="Prompt evaluation in progress"
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={pddProgress}
@@ -970,14 +970,14 @@ export function EngineeringTicketPanel({
           <div className="callout pdd-automatic-review-ready" role="status">
             <div className="callout-title">
               <CheckCircle2 size={14} />
-              Automatic PDD check complete
+              Automatic prompt test complete
             </div>
             <p className="subtle">
               {workflow.promptEvaluation.applied
-                ? "CloseSpan applied one immutable improvement and stopped. Review the current prompt; use Test with PDD only if you want to evaluate it again."
+                ? "CloseSpan applied one immutable improvement and stopped. Review the current prompt; use Run prompt test only if you want to evaluate it again."
                 : workflow.promptEvaluation.review
                   ? "The saved result is ready for review. CloseSpan will not rerun it when you revisit this page."
-                  : "This existing revision is marked complete and will not rerun automatically. Choose Test with PDD only if you want a fresh saved result."}
+                  : "This existing revision is marked complete and will not rerun automatically. Choose Run prompt test only if you want a fresh saved result."}
             </p>
           </div>
         )}
@@ -1003,7 +1003,7 @@ export function EngineeringTicketPanel({
         )}
 
         {verificationReady && verification && (
-          <div className="callout" role="region" aria-label="PDD acceptance contract">
+          <div className="callout" role="region" aria-label="Prompt Testing acceptance contract">
             <div className="callout-title">
               <CheckCircle2 size={14} />
               What the proposed solution must prove
@@ -1019,7 +1019,7 @@ export function EngineeringTicketPanel({
             <details>
               <summary>Technical details</summary>
               <p className="subtle">
-                PDD {verification.pddVersion} · model {verification.model ?? "provider default"}
+                Prompt Testing {verification.pddVersion} · model {verification.model ?? "provider default"}
                 {verification.costUsd === null ? ` · budget $${verification.budgetUsd.toFixed(2)}` : ` · cost $${verification.costUsd.toFixed(4)}`}
               </p>
               <p className="subtle">Generated files are hash-locked and cannot be edited by the coding agent.</p>

@@ -171,7 +171,7 @@ const runtimeRepositoryBindingDependencies: RuntimeRepositoryBindingDependencies
 /**
  * Reuses an active ticket binding, or confirms a deterministic repository
  * suggestion as part of the user's explicit request to run verification.
- * Ambiguous repository evidence remains human-reviewed in PDD.
+ * Ambiguous repository evidence remains human-reviewed in Prompt Testing.
  */
 export async function resolveRuntimeVerificationRepositoryBinding(
   input: {
@@ -384,7 +384,7 @@ export async function startIssueRuntimeVerification(input: {
   if (!match) {
     throw new HttpError(
       409,
-      "Runtime verification needs a confirmed repository binding for this ticket. Step 1: Go to Settings → Execution and verify that the authorized repository root is Active. Step 2: Open this ticket in PDD → Repository execution context, select that active repository/root, and confirm it for this ticket. Step 3: Return here and retry runtime verification.",
+      "Runtime verification needs a confirmed repository binding for this ticket. Step 1: Go to Settings → Execution and verify that the authorized repository root is Active. Step 2: Open this ticket in Prompt Testing → Repository execution context, select that active repository/root, and confirm it for this ticket. Step 3: Return here and retry runtime verification.",
     );
   }
   const profile = await getExecutionProfileVersion(input.orgId, match.profileId);

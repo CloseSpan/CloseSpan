@@ -484,7 +484,7 @@ export async function approveFinalExecution(
   }
   if (!finalExecutionScopeAllowsApproval(candidate.evidence_snapshot)) {
     throw new FinalExecutionError(
-      "Final execution is locked because the PR changed a production surface outside the approved PDD verification contract",
+      "Final execution is locked because the PR changed a production surface outside the approved Prompt Testing verification contract",
       409,
     );
   }

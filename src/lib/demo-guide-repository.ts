@@ -64,14 +64,14 @@ export const demoWorkspaceGuide: WorkspaceDemoGuide = {
     },
     {
       id: "pdd",
-      title: "Prepare the problem with PDD",
+      title: "Prepare the problem with Prompt Testing",
       description:
         "Carry the selected problem through investigation, prompt improvement, acceptance criteria, and approval readiness.",
       path: "/pdd/prob_export",
-      actionLabel: "Open PDD",
+      actionLabel: "Open Prompt Testing",
       talkingPoints: [
         "Investigation evidence and assumptions remain visible",
-        "PDD evaluates an immutable implementation prompt",
+        "Prompt Testing evaluates an immutable implementation prompt",
         "Approval stays blocked until the acceptance contract is ready",
       ],
     },

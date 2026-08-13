@@ -65,7 +65,7 @@ function request() {
   });
 }
 
-describe("PDD acceptance generation API", () => {
+describe("Prompt Testing acceptance generation API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     workflow.get.mockResolvedValue({
@@ -80,7 +80,7 @@ describe("PDD acceptance generation API", () => {
   });
 
   it("saves the execution-profile blocker on the passed prompt evaluation", async () => {
-    const message = "Confirm this ticket's repository and an active execution profile before PDD testing.";
+    const message = "Confirm this ticket's repository and an active execution profile before Prompt Testing.";
     workflow.generateAcceptance.mockRejectedValue(new Error(message));
 
     const response = await POST(request(), {

@@ -62,7 +62,7 @@ describe("prompt review email delivery", () => {
     const request = fetcher.mock.calls[0][1] as RequestInit;
     const payload = JSON.parse(String(request.body));
     expect(payload).toMatchObject({ to: row.to_email, subject: expect.stringContaining(row.title) });
-    expect(payload.text).toContain("PDD testing and Tenki execution still require explicit approval");
+    expect(payload.text).toContain("Prompt Testing and Tenki execution still require explicit approval");
     expect(payload.html).toContain("Review implementation prompt");
     expect(database.pool.query).toHaveBeenCalledWith(expect.stringContaining("status=$2"), expect.arrayContaining(["email-1", "Sent"]));
   });

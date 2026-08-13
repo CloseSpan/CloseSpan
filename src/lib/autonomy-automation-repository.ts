@@ -163,18 +163,18 @@ async function alignAndDispatchPdd(
           await markPddVerificationGenerating(orgId, acceptance.storyTest.id);
           await dispatchPddVerification(execution);
         } catch (error) {
-          const message = error instanceof Error ? error.message : "PDD verification could not start.";
+          const message = error instanceof Error ? error.message : "Prompt Testing verification could not start.";
           await failPddVerification(orgId, acceptance.storyTest.id, message);
           return { action: "blocked", problemId, message };
         }
-        return { action: "pdd_dispatched", problemId, message: "PDD is generating the repository-bound acceptance contract." };
+        return { action: "pdd_dispatched", problemId, message: "Prompt Testing is generating the repository-bound acceptance contract." };
       }
       return {
         action: acceptance.storyTest.status === "Ready for approval" ? "prompt_aligned" : "blocked",
         problemId,
         message: acceptance.storyTest.status === "Ready for approval"
           ? "The prompt and acceptance contract are aligned."
-          : "PDD is not configured to execute the repository acceptance contract.",
+          : "Prompt Testing is not configured to execute the repository acceptance contract.",
       };
     }
     const revisedPrompt = [
@@ -196,7 +196,7 @@ async function alignAndDispatchPdd(
   return {
     action: "blocked",
     problemId,
-    message: "PDD could not align the prompt after three immutable revisions; human review is required.",
+    message: "Prompt Testing could not align the prompt after three immutable revisions; human review is required.",
   };
 }
 

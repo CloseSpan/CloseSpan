@@ -4,11 +4,11 @@ import {
   pddPromptReviewSchema,
 } from "./pdd-prompt-review";
 
-describe("PDD prompt review contract", () => {
-  it("accepts a compact actionable PDD result without an invented score", () => {
+describe("Prompt Testing prompt review contract", () => {
+  it("accepts a compact actionable Prompt Testing result without an invented score", () => {
     const result = pddPromptReviewSchema.parse({
       verdict: "Needs revision",
-      summary: "PDD found 1 change to make before approval.",
+      summary: "Prompt Testing found 1 change to make before approval.",
       changes: ["Require the downloaded CSV to contain every expected row."],
       suggestedRevision: "Ensure large exports contain every expected row.",
       pddVersion: "0.0.309",
@@ -25,7 +25,7 @@ describe("PDD prompt review contract", () => {
 
   it("preserves a complete generated contract recommendation", () => {
     const contractRecommendation = [
-      'Update the prompt with the complete PDD "Acceptance Criteria" contract section:',
+      'Update the prompt with the complete Prompt Testing "Acceptance Criteria" contract section:',
       "",
       "## Acceptance Criteria",
       "- Given valid names, when the workflow is submitted, then every name is present in the payload.",
@@ -33,7 +33,7 @@ describe("PDD prompt review contract", () => {
     ].join("\n");
     const result = pddPromptReviewSchema.parse({
       verdict: "Needs revision",
-      summary: "PDD found 1 change to make before approval.",
+      summary: "Prompt Testing found 1 change to make before approval.",
       changes: [contractRecommendation],
       suggestedRevision: "Apply the complete acceptance contract.",
       pddVersion: "0.0.309",
@@ -50,13 +50,13 @@ describe("PDD prompt review contract", () => {
   it("embeds generated contract sections as real prompt headings", () => {
     const revision = buildPddRequiredRevision("Fix the workflow.", [
       [
-        'Update the prompt with the complete PDD "Context" contract section:',
+        'Update the prompt with the complete Prompt Testing "Context" contract section:',
         "",
         "## Context",
         "The workflow must apply the submitted Post Context.",
       ].join("\n"),
       [
-        'Update the prompt with the complete PDD "Negative Cases" contract section:',
+        'Update the prompt with the complete Prompt Testing "Negative Cases" contract section:',
         "",
         "## Negative Cases",
         "- Post Context must not be silently ignored.",
@@ -66,10 +66,10 @@ describe("PDD prompt review contract", () => {
     expect(revision).toContain("Fix the workflow.\n\n## PDD-required outcomes");
     expect(revision).toContain("\n\n## Context\nThe workflow must apply");
     expect(revision).toContain("\n\n## Negative Cases\n- Post Context must not");
-    expect(revision).not.toContain("Update the prompt with the complete PDD");
+    expect(revision).not.toContain("Update the prompt with the complete Prompt Testing");
   });
 
-  it("canonicalizes PDD's contract-first rewrite without duplicate criteria", () => {
+  it("canonicalizes Prompt Testing's contract-first rewrite without duplicate criteria", () => {
     const prompt = [
       "Correct the affected workflow and preserve unrelated behavior.",
       "",
@@ -109,7 +109,7 @@ describe("PDD prompt review contract", () => {
     expect(revision.match(/^## Non-Goals$/gm)).toHaveLength(1);
   });
 
-  it("replaces an existing contract when PDD regenerates all six sections", () => {
+  it("replaces an existing contract when Prompt Testing regenerates all six sections", () => {
     const headings = [
       "Context",
       "Acceptance Criteria",
@@ -119,7 +119,7 @@ describe("PDD prompt review contract", () => {
       "Non-Goals",
     ];
     const changes = headings.map((heading) => [
-      `Update the prompt with the complete PDD "${heading}" contract section:`,
+      `Update the prompt with the complete Prompt Testing "${heading}" contract section:`,
       "",
       `## ${heading}`,
       `Canonical ${heading} requirement.`,
@@ -154,7 +154,7 @@ describe("PDD prompt review contract", () => {
     expect(revision).not.toContain("## PDD-required outcomes");
   });
 
-  it("preserves repository and runtime evidence when PDD regenerates the contract", () => {
+  it("preserves repository and runtime evidence when Prompt Testing regenerates the contract", () => {
     const implementationPrompt = [
       "# CloseSpan implementation ticket",
       "",
@@ -175,7 +175,7 @@ describe("PDD prompt review contract", () => {
       "Negative Cases",
       "Non-Goals",
     ].map((heading) => [
-      `Update the prompt with the complete PDD "${heading}" contract section:`,
+      `Update the prompt with the complete Prompt Testing "${heading}" contract section:`,
       "",
       `## ${heading}`,
       `Canonical ${heading} requirement.`,

@@ -115,7 +115,7 @@ describe("approval-bound engineering workflow", () => {
     expect(repeated.workflow.approval?.id).toBe(first.workflow.approval?.id);
   });
 
-  it("applies a PDD-guided prompt as a new immutable revision", async () => {
+  it("applies a Prompt Testing-guided prompt as a new immutable revision", async () => {
     const initial = await getEngineeringWorkflow(ORG_ID, primaryProblem.id);
     const generated = await generatePddAcceptanceContract(
       ORG_ID,

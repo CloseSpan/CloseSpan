@@ -221,7 +221,7 @@ export function RepositoryActivationProgress({ orgId }: { orgId: string }) {
         ? "Approve repository execution"
         : "Preparing repository execution";
   const description = complete
-    ? "Runtime verification and approved PDD execution are enabled."
+    ? "Runtime verification and approved Prompt Testing execution are enabled."
     : failed
       ? "CloseSpan could not finish one repository automatically. Retry after resolving the reported access or configuration issue."
       : pendingApproval

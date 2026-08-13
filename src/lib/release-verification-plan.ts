@@ -332,7 +332,7 @@ function pathLooksLikeTest(path: string): boolean {
 
 /**
  * Conservatively classifies the production surface implied by a changed path.
- * Unknown paths are intentional: a single-surface PDD must not silently approve
+ * Unknown paths are intentional: a single-surface Prompt Testing must not silently approve
  * files whose runtime impact cannot be established from the immutable PR manifest.
  */
 export function classifyReleaseVerificationFile(path: string): ReleaseVerificationSurface {
@@ -387,13 +387,13 @@ export function assessReleaseVerificationScope(
   };
   const mismatches: string[] = [];
   if (observed.backend && !declared.backend) {
-    mismatches.push("The PR contains backend or shared changes, but backend production verification is not approved in the PDD contract.");
+    mismatches.push("The PR contains backend or shared changes, but backend production verification is not approved in the Prompt Testing contract.");
   }
   if (observed.frontend && !declared.frontend) {
-    mismatches.push("The PR contains frontend or shared changes, but frontend production verification is not approved in the PDD contract.");
+    mismatches.push("The PR contains frontend or shared changes, but frontend production verification is not approved in the Prompt Testing contract.");
   }
   if (observed.unknown && !(declared.backend && declared.frontend)) {
-    mismatches.push("Some changed files have an unknown runtime impact; both verification surfaces are required until the PDD classifies them.");
+    mismatches.push("Some changed files have an unknown runtime impact; both verification surfaces are required until Prompt Testing classifies them.");
   }
   return {
     schemaVersion: 1,

@@ -22,7 +22,7 @@ CloseSpan is an accountable feedback-to-fix operating system, not a feedback ana
 
 ## Operating Context
 
-The workflow begins with feedback imported from approved customer and team sources. CloseSpan normalizes and clusters signals into product problems, connects affected accounts and revenue impact, and prepares agent investigations and proposed solutions. A product user expresses the expected outcome as an English user story; PDD turns that story into a repository-native acceptance test. Agents use the results to improve the proposed solution.
+The workflow begins with feedback imported from approved customer and team sources. CloseSpan normalizes and clusters signals into product problems, connects affected accounts and revenue impact, and prepares agent investigations and proposed solutions. A product user expresses the expected outcome as an English user story; Prompt Testing turns that story into a repository-native acceptance test. Agents use the results to improve the proposed solution.
 
 After user approval, an agent writes code and runs the implementation against protected acceptance criteria in a Tenki virtual machine. The workflow includes automated tests, repository changes, pull-request review in Tenki, revisions in response to review, deployment, release verification, and closing the loop with affected customer conversations.
 
@@ -35,7 +35,7 @@ After user approval, an agent writes code and runs the implementation against pr
 - Human approval gates consequential actions, including implementation scope, repository changes, and deployment.
 - Agent progress, failures, review feedback, revisions, and final outcomes must remain visible and recoverable.
 - Customer data and credentials remain tenant-scoped; integrations use approved least-privilege access and explicit simulation boundaries where a connector is not live.
-- The existing product is implemented with Next.js, React, TypeScript, PostgreSQL, PDD, and Tenki-backed execution.
+- The existing product is implemented with Next.js, React, TypeScript, PostgreSQL, Prompt Testing, and Tenki-backed execution.
 
 ## Brand Commitments
 
@@ -43,8 +43,8 @@ The product name is CloseSpan. The incumbent identity is a calm, accountable neo
 
 ## Evidence on Hand
 
-- The repository implements authenticated feedback, problem, investigation, approval, engineering-ticket, PDD, Tenki, notification, integration, release, and follow-up workflows.
-- `README.md` documents the feedback-to-fix operating model and the protected PDD/Tenki acceptance workflow.
+- The repository implements authenticated feedback, problem, investigation, approval, engineering-ticket, Prompt Testing, Tenki, notification, integration, release, and follow-up workflows.
+- `README.md` documents the feedback-to-fix operating model and the protected Prompt Testing/Tenki acceptance workflow.
 - The current Overview implementation and persisted Impeccable critique provide evidence of the incumbent visual system and current information architecture.
 - No customer testimonials, production performance benchmarks, or outcome claims should be invented without separate verified evidence.
 

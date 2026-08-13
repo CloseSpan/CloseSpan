@@ -6,7 +6,7 @@ const sql = readFileSync(
   "utf8",
 );
 
-describe("PDD retry migration", () => {
+describe("Prompt Testing retry migration", () => {
   it("preserves failed attempts while allowing one new active attempt", () => {
     expect(sql).toContain("DROP CONSTRAINT IF EXISTS pdd_prompt_verifications_org_id_prompt_revision_id_story_hash_key");
     expect(sql).toContain("WHERE status IN ('Queued','Generating tests','Ready for approval')");

@@ -221,7 +221,7 @@ describe("Tenki coding executor approval boundary", () => {
     expect(tenkiExecutorAllowsPath(policy, "/etc/passwd")).toBe(false);
   });
 
-  it("prevents the coding agent from editing a PDD-generated acceptance test", () => {
+  it("prevents the coding agent from editing a Prompt Testing-generated acceptance test", () => {
     expect(tenkiExecutorAllowsPath({
       ...policy,
       generatedTests: [{

@@ -168,7 +168,7 @@ export async function beginPddPromptEvaluation(input: {
       ORDER BY created_at DESC,id DESC LIMIT 1`,
     [input.orgId, input.problemId, input.specificationId, input.specificationRevision],
   );
-  if (!existing.rows[0]) throw new Error("The automatic PDD evaluation could not be reconciled");
+  if (!existing.rows[0]) throw new Error("The automatic Prompt Testing evaluation could not be reconciled");
   return { evaluation: fromRow(existing.rows[0], true), shouldRun: false };
 }
 

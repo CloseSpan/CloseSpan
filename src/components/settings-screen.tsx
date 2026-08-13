@@ -367,8 +367,8 @@ export function SettingsScreen({
                 <div className="callout-title">Drafts cannot execute code</div>
                 <p className="subtle">
                   {autonomy === "Full autonomy"
-                    ? "Full autonomy evaluates and revises the prompt, generates the PDD contract, and advances the immutable workflow automatically."
-                    : "A product manager reviews the PDD result before any isolated Tenki run. Execution follows the autonomy boundary above."}
+                    ? "Full autonomy evaluates and revises the prompt, generates the Prompt Testing contract, and advances the immutable workflow automatically."
+                    : "A product manager reviews the Prompt Testing result before any isolated Tenki run. Execution follows the autonomy boundary above."}
                 </p>
               </div>
               <label className="toggle-row section-gap-sm">
@@ -435,10 +435,10 @@ export function SettingsScreen({
                   ariaLabel="Prompt evaluation engine"
                   value={promptEvaluationMode}
                   options={[
-                    { label: "PDD Cloud", value: "pdd_cloud" },
+                    { label: "Prompt Testing Cloud", value: "pdd_cloud" },
                     { label: "Local Prompt Driven CLI", value: "pdd_local" },
                     {
-                      label: "PDD Cloud + local fallback",
+                      label: "Prompt Testing Cloud + local fallback",
                       value: "pdd_cloud_with_local_fallback",
                     },
                   ]}
@@ -450,10 +450,10 @@ export function SettingsScreen({
                 />
                 <span className="subtle">
                   {promptEvaluationMode === "pdd_cloud"
-                    ? "PDD Cloud creates the contract and evaluates the immutable revision. Your workspace AI credential is never sent to PDD Cloud."
+                    ? "Prompt Testing Cloud creates the contract and evaluates the immutable revision. Your workspace AI credential is never sent to Prompt Testing Cloud."
                     : promptEvaluationMode === "pdd_local"
                       ? `${settings.ai.providerLabel} ${settings.ai.model} powers this workspace's isolated pdd --local job. The credential is held only for that evaluation and is not stored by the runner.`
-                      : "PDD Cloud runs first without your workspace credential. If Cloud is unavailable, the same immutable revision retries once through an isolated local CLI job using the workspace AI provider."}
+                      : "Prompt Testing Cloud runs first without your workspace credential. If Cloud is unavailable, the same immutable revision retries once through an isolated local CLI job using the workspace AI provider."}
                 </span>
               </div>
               <div
@@ -468,7 +468,7 @@ export function SettingsScreen({
                 <p className="subtle">
                   {localEvaluationReady
                     ? `${settings.ai.model} is available for local Prompt Driven evaluations and Cloud fallback.`
-                    : "Add a workspace model and credential under AI provider. PDD Cloud remains available, but local mode and local fallback cannot run without it."}
+                    : "Add a workspace model and credential under AI provider. Prompt Testing Cloud remains available, but local mode and local fallback cannot run without it."}
                 </p>
               </div>
               <div className="callout section-gap-sm">
@@ -484,7 +484,7 @@ export function SettingsScreen({
             <div className="card-head">
               <div>
                 <h2>Repository execution environments</h2>
-                <p className="subtle">Detect, review, and version the exact environment used by PDD and both Tenki VMs. Advanced staging credentials are managed here when a running application requires them.</p>
+                <p className="subtle">Detect, review, and version the exact environment used by Prompt Testing and both Tenki VMs. Advanced staging credentials are managed here when a running application requires them.</p>
               </div>
               <span className="badge brand">Approval-bound</span>
             </div>

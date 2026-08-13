@@ -100,8 +100,8 @@ export async function POST(
     });
     if (!evaluationRun.shouldRun) {
       const message = evaluationRun.evaluation.status === "Running"
-        ? "The automatic PDD evaluation is already running for this ticket revision."
-        : "PDD already ran automatically for this ticket revision. Review the saved result or choose Test with PDD to run it manually.";
+        ? "The automatic Prompt evaluation is already running for this ticket revision."
+        : "Prompt Testing already ran automatically for this ticket revision. Review the saved result or choose Run prompt test to run it manually.";
       return NextResponse.json(
         { error: message, evaluation: evaluationRun.evaluation },
         { status: 409, headers: noStoreHeaders },
@@ -144,7 +144,7 @@ export async function POST(
       ...evaluation,
       summary: evaluation.verdict === "Passed"
         ? "The suggested prompt covers the outcome in your user story."
-        : `PDD found ${evaluation.changes.length} ${evaluation.changes.length === 1 ? "change" : "changes"} to make before approval.`,
+        : `Prompt Testing found ${evaluation.changes.length} ${evaluation.changes.length === 1 ? "change" : "changes"} to make before approval.`,
       suggestedRevision,
       alignmentReceipt,
       revisionReceipt: suggestedRevision
@@ -187,7 +187,7 @@ export async function POST(
       await failPddPromptEvaluation(
         context.orgId,
         evaluationRun.evaluation.id,
-        error instanceof Error ? error.message : "PDD prompt evaluation failed",
+        error instanceof Error ? error.message : "Prompt evaluation failed",
       ).catch(() => undefined);
       await recordPddPromptEvaluationTiming({
         orgId: context.orgId,

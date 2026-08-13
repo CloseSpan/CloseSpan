@@ -91,7 +91,7 @@ describe("evaluatePromptWithPdd", () => {
     vi.restoreAllMocks();
   });
 
-  it("submits asynchronously and polls for the final PDD verdict", async () => {
+  it("submits asynchronously and polls for the final Prompt Testing verdict", async () => {
     let calls = 0;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       calls += 1;
@@ -141,7 +141,7 @@ describe("evaluatePromptWithPdd", () => {
 
   it("surfaces the runner's actionable failure instead of a generic HTTP error", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
-      error: "PDD could not derive a test contract from the user story",
+      error: "Prompt Testing could not derive a test contract from the user story",
     }), { status: 502, headers: { "content-type": "application/json" } }));
 
     await expect(evaluatePromptWithPdd({
@@ -155,7 +155,7 @@ describe("evaluatePromptWithPdd", () => {
         model: "gpt-5.6-sol",
         apiKey: "workspace-openai-secret",
       },
-    })).rejects.toThrow("PDD could not derive a test contract from the user story");
+    })).rejects.toThrow("Prompt Testing could not derive a test contract from the user story");
   });
 
   it("sends the workspace runtime only for a signed local evaluation", async () => {

@@ -60,17 +60,17 @@ describe("PddScreen", () => {
     );
 
     expect(markup).toContain("Prompt-driven development");
-    expect(markup).not.toContain("PDD queue");
-    expect(markup).toContain("Back to PDD prioritization");
+    expect(markup).not.toContain("Prompt Testing queue");
+    expect(markup).toContain("Back to Prompt Testing priorities");
     expect(markup).toContain("Prompt preparation");
-    expect(markup).toContain("PDD evaluation");
+    expect(markup).toContain("Prompt evaluation");
     expect(markup).toContain("Approval readiness");
     expect(markup).toContain("View product problem");
     expect(markup).not.toContain("Hypothesis—not confirmed");
     expect(markup).toContain("Prompt workflow");
   });
 
-  it("renders a ranked PDD list with readiness controls and a tracker per task", () => {
+  it("renders a ranked Prompt Testing list with readiness controls and a tracker per task", () => {
     const markup = renderToStaticMarkup(
       <PddPrioritizationScreen
         problems={analytics.problems}
@@ -82,18 +82,18 @@ describe("PddScreen", () => {
       />,
     );
 
-    expect(markup).toContain("PDD prioritization");
+    expect(markup).toContain("Prompt Testing priorities");
     expect(markup).toContain("Rank: prompt-test readiness");
     expect(markup).toContain("All readiness states");
     expect(markup).toContain("Repository confirmed");
     expect(markup).toContain("Execution profile active");
     expect(markup).toContain("Implementation prompt ready");
     expect(markup).toContain("Acceptance tests generated");
-    expect(markup).toContain("Open PDD task");
+    expect(markup).toContain("Open Prompt Testing task");
     expect(markup).toContain(`/pdd/${primaryProblem.id}#engineering-ticket`);
   });
 
-  it("uses a true empty state when there are no open PDD tasks", () => {
+  it("uses a true empty state when there are no open Prompt Testing tasks", () => {
     const markup = renderToStaticMarkup(
       <PddPrioritizationScreen
         problems={[]}
@@ -103,11 +103,11 @@ describe("PddScreen", () => {
       />,
     );
 
-    expect(markup).toContain("No open PDD tasks");
+    expect(markup).toContain("No open Prompt Testing tasks");
     expect(markup).not.toContain("Choose another readiness state");
   });
 
-  it("keeps investigation evidence on the product problem with a PDD handoff", () => {
+  it("keeps investigation evidence on the product problem with a Prompt Testing handoff", () => {
     const problem = analytics.problems.find((item) => item.id === primaryProblem.id)!;
     const markup = renderToStaticMarkup(
       <ProductProblemInvestigationPanel problem={problem} investigation={investigation} />,
@@ -207,7 +207,7 @@ describe("PddScreen", () => {
     expect(markup).not.toContain("Unavailable");
   });
 
-  it("blocks PDD until the reported issue is verified in the current product", () => {
+  it("blocks Prompt Testing until the reported issue is verified in the current product", () => {
     const problem = analytics.problems.find((item) => item.id === primaryProblem.id)!;
     const unverified = {
       ...investigation,
@@ -248,7 +248,7 @@ describe("PddScreen", () => {
     expect(pddMarkup).toContain("Current issue verification required");
     expect(pddMarkup).not.toContain("Prompt workflow");
     expect(prioritizationMarkup).toContain("Issue verification required");
-    expect(prioritizationMarkup).toContain("Open PDD task");
+    expect(prioritizationMarkup).toContain("Open Prompt Testing task");
     expect(prioritizationMarkup).toContain(`/pdd/${problem.id}#engineering-ticket`);
   });
 
@@ -295,7 +295,7 @@ describe("PddScreen", () => {
     expect(problemMarkup).toContain("samshanmukh/zup · aaaaaaaaaaaa");
     expect(problemMarkup).not.toContain("Continue to prompt");
     expect(priorityMarkup).toContain("Runtime verification running");
-    expect(priorityMarkup).toContain("Open PDD task");
+    expect(priorityMarkup).toContain("Open Prompt Testing task");
     expect(priorityMarkup).toContain(`/pdd/${problem.id}#engineering-ticket`);
   });
 
@@ -352,7 +352,7 @@ describe("PddScreen", () => {
     expect(markup).not.toContain("Verification in progress");
   });
 
-  it("keeps a verification-blocked task inside PDD and offers a separate recovery action", () => {
+  it("keeps a verification-blocked task inside Prompt Testing and offers a separate recovery action", () => {
     const problem = analytics.problems.find((item) => item.id === primaryProblem.id)!;
     const blocked = {
       ...investigation,

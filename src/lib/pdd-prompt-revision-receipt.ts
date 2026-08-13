@@ -34,20 +34,20 @@ export function createPddPromptRevisionReceipt(input: {
 export function assertPddPromptRevisionReceipt(token: unknown, expected: {
   orgId: string; problemId: string; promptHash: string; revisionHash: string; storyHash: string;
 }): void {
-  if (typeof token !== "string" || token.length > 4_096) throw new Error("A valid PDD revision receipt is required");
+  if (typeof token !== "string" || token.length > 4_096) throw new Error("A valid Prompt Testing revision receipt is required");
   const [payload, supplied, extra] = token.split(".");
-  if (!payload || !supplied || extra) throw new Error("A valid PDD revision receipt is required");
+  if (!payload || !supplied || extra) throw new Error("A valid Prompt Testing revision receipt is required");
   const expectedSignature = signature(payload);
   const actual = Buffer.from(supplied, "base64url");
   if (actual.length !== expectedSignature.length || !timingSafeEqual(actual, expectedSignature)) {
-    throw new Error("A valid PDD revision receipt is required");
+    throw new Error("A valid Prompt Testing revision receipt is required");
   }
   let parsed: z.infer<typeof schema>;
   try { parsed = schema.parse(JSON.parse(Buffer.from(payload, "base64url").toString("utf8"))); }
-  catch { throw new Error("A valid PDD revision receipt is required"); }
+  catch { throw new Error("A valid Prompt Testing revision receipt is required"); }
   const now = Date.now();
-  if (parsed.expiresAt <= now || parsed.issuedAt > now + 60_000) throw new Error("The PDD revision expired; test the prompt again");
+  if (parsed.expiresAt <= now || parsed.issuedAt > now + 60_000) throw new Error("The Prompt Testing revision expired; test the prompt again");
   for (const key of ["orgId", "problemId", "promptHash", "revisionHash", "storyHash"] as const) {
-    if (parsed[key] !== expected[key]) throw new Error("The PDD revision does not match this prompt and story");
+    if (parsed[key] !== expected[key]) throw new Error("The Prompt Testing revision does not match this prompt and story");
   }
 }

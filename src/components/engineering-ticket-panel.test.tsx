@@ -113,7 +113,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     }).every((step) => step.state === "complete")).toBe(true);
   });
 
-  it("does not repeat the PDD preparation tracker inside the focused prompt panel", () => {
+  it("does not repeat the Prompt Testing preparation tracker inside the focused prompt panel", () => {
     const markup = renderPanel(readyPromptWorkflow());
 
     expect(markup).not.toContain("Prepare this task for action");
@@ -130,7 +130,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("Confirm the repository execution context");
   });
 
-  it("starts automatic PDD only for an eligible autonomy level and only once", () => {
+  it("starts automatic Prompt Testing only for an eligible autonomy level and only once", () => {
     const candidate = readyPromptWorkflow();
     expect(shouldAutomaticallyPreparePrompt({
       autonomyLevel: "Execute with approval",
@@ -270,13 +270,13 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
         completedAt: "2026-08-11T12:01:00.000Z",
       },
     });
-    expect(markup).toContain("Automatic PDD check complete");
+    expect(markup).toContain("Automatic prompt test complete");
     expect(markup).toContain("existing revision is marked complete");
-    expect(markup).toContain("Test with PDD");
+    expect(markup).toContain("Run prompt test");
     expect(markup).not.toContain("Preparing agent approval");
   });
 
-  it("fills toward completion using the observed PDD duration without claiming completion early", () => {
+  it("fills toward completion using the observed Prompt Testing duration without claiming completion early", () => {
     expect(estimatedPddProgress(0, 40_000)).toBe(4);
     expect(estimatedPddProgress(20_000, 40_000)).toBe(50);
     expect(estimatedPddProgress(40_000, 40_000)).toBe(95);
@@ -285,7 +285,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(formatPddDuration(75_000)).toBe("1m 15s");
   });
 
-  it("shimmers the PDD button label only while testing is in progress", () => {
+  it("shimmers the Prompt Testing button label only while testing is in progress", () => {
     const candidate = readyPromptWorkflow();
     const markup = renderPanel({
       ...candidate,
@@ -307,12 +307,12 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
       },
     });
 
-    expect(markup).toContain('<span class="pdd-testing-shimmer-text">Testing with PDD</span>');
+    expect(markup).toContain('<span class="pdd-testing-shimmer-text">Testing prompt</span>');
   });
 
   it("keeps the execution-profile blocker visible beside a passed alignment result", () => {
     const candidate = readyPromptWorkflow();
-    const blocker = "Confirm this ticket's repository and an active execution profile before PDD testing.";
+    const blocker = "Confirm this ticket's repository and an active execution profile before Prompt Testing.";
     const markup = renderPanel({
       ...candidate,
       promptEvaluation: {
@@ -346,13 +346,13 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     });
 
     expect(markup).toContain("Prompt alignment passed");
-    expect(markup).not.toContain("PDD passed");
+    expect(markup).not.toContain("Prompt Testing passed");
     expect(markup).toContain("Execution setup blocked");
     expect(markup).toContain(blocker.replaceAll("'", "&#x27;"));
     expect(markup).toContain("Confirm the repository execution context");
   });
 
-  it("turns a dense PDD recommendation into a readable summary and steps", () => {
+  it("turns a dense Prompt Testing recommendation into a readable summary and steps", () => {
     expect(structurePddChange(
       "Add a Contract section. Follow these specific instructions: 1. Add the requested outcome. 2. Include the boundary cases.",
     )).toEqual({
@@ -361,7 +361,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     });
   });
 
-  it("expands numbered recommendations embedded in one PDD change", () => {
+  it("expands numbered recommendations embedded in one Prompt Testing change", () => {
     expect(structurePddChanges([
       '1. Retain the opening problem statement: Keep the first sentence: "Correct the export defect." 2. Insert the Contract: Add the requested outcome and acceptance criteria.',
     ])).toEqual([
@@ -451,8 +451,8 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("English");
     expect(markup).toContain(".prompt");
     expect(markup).toContain("# Correct large exports");
-    expect(markup).toContain("This is the exact prompt PDD will compare");
-    expect(markup).toContain("Agent-created prompt queued for PDD");
+    expect(markup).toContain("This is the exact prompt Prompt Testing will compare");
+    expect(markup).toContain("Agent-created prompt queued for Prompt Testing");
     expect(markup).toContain("will not restart the check when you revisit this page");
   });
 

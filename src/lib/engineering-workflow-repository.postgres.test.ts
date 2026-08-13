@@ -215,7 +215,7 @@ describe("PostgreSQL engineering workflow state guards", () => {
     );
   });
 
-  it("reports a repeated PDD revision clearly instead of leaking a unique-constraint error", async () => {
+  it("reports a repeated Prompt Testing revision clearly instead of leaking a unique-constraint error", async () => {
     const currentHash = "c".repeat(64);
     database.client.query.mockImplementation(async (sql: unknown) => {
       const normalized = normalizedSql(sql);
@@ -252,7 +252,7 @@ describe("PostgreSQL engineering workflow state guards", () => {
     )).toBe(false);
   });
 
-  it("stores the exact ready PDD verification on a new approval", async () => {
+  it("stores the exact ready Prompt Testing verification on a new approval", async () => {
     database.client.query.mockImplementation(async (sql: unknown) => {
       const normalized = normalizedSql(sql);
       if (normalized.includes("FROM implementation_prompts") && normalized.includes("FOR UPDATE")) {
@@ -283,7 +283,7 @@ describe("PostgreSQL engineering workflow state guards", () => {
     expect(insert?.[1]?.[14]).toBe(verificationId);
   });
 
-  it("consumes the approval's exact PDD verification instead of reselecting the latest", async () => {
+  it("consumes the approval's exact Prompt Testing verification instead of reselecting the latest", async () => {
     database.client.query.mockImplementation(async (sql: unknown, parameters?: unknown[]) => {
       const normalized = normalizedSql(sql);
       if (normalized.includes("FROM approval_requests")) {
@@ -300,7 +300,7 @@ describe("PostgreSQL engineering workflow state guards", () => {
         return { rows: [verificationRow()], rowCount: 1 };
       }
       if (normalized.includes("SELECT title FROM product_problems")) {
-        return { rows: [{ title: "Bound PDD contract" }], rowCount: 1 };
+        return { rows: [{ title: "Bound Prompt Testing contract" }], rowCount: 1 };
       }
       return { rows: [], rowCount: 1 };
     });
@@ -332,7 +332,7 @@ describe("PostgreSQL engineering workflow state guards", () => {
         return { rows: [verificationRow()], rowCount: 1 };
       }
       if (normalized.includes("SELECT title FROM product_problems")) {
-        return { rows: [{ title: "Legacy PDD contract" }], rowCount: 1 };
+        return { rows: [{ title: "Legacy Prompt Testing contract" }], rowCount: 1 };
       }
       return { rows: [], rowCount: 1 };
     });
@@ -348,7 +348,7 @@ describe("PostgreSQL engineering workflow state guards", () => {
     );
   });
 
-  it("fails closed when an agent run and its approval reference different PDD contracts", async () => {
+  it("fails closed when an agent run and its approval reference different Prompt Testing contracts", async () => {
     database.pool.query.mockResolvedValueOnce({
       rows: [{
         run_pdd_verification_id: verificationId,
@@ -404,7 +404,7 @@ describe("PostgreSQL engineering workflow state guards", () => {
       normalizedSql(sql).includes("INSERT INTO engineering_ticket_specifications"))).toBe(false);
   });
 
-  it("preserves approval- and run-bound PDD contracts when saving a later ticket revision", async () => {
+  it("preserves approval- and run-bound Prompt Testing contracts when saving a later ticket revision", async () => {
     database.client.query.mockImplementation(async (sql: unknown) => {
       const normalized = normalizedSql(sql);
       if (normalized.includes("FROM product_problems")) {

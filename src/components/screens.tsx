@@ -3292,7 +3292,7 @@ export function ProductProblemInvestigationPanel({
                         Open Settings → Execution
                       </Link>
                       <Link className="btn secondary" href={`/pdd/${problem.id}`}>
-                        Open PDD repository context
+                        Open Prompt Testing repository context
                       </Link>
                     </div>
                   )}
@@ -3405,8 +3405,8 @@ export function ProductProblemInvestigationPanel({
                       ? "Resolve the recorded environment or access blocker, then run verification again before writing an implementation prompt."
                     : "Do not prepare an implementation prompt for this report unless new evidence confirms the issue is current."}</p>
                 <span className="subtle">{investigation.verification.status === "Confirmed current"
-                  ? "PDD will use this verified investigation as the prompt evidence boundary."
-                  : "PDD remains blocked until the current issue is confirmed."}</span>
+                  ? "Prompt Testing will use this verified investigation as the prompt evidence boundary."
+                  : "Prompt Testing remains blocked until the current issue is confirmed."}</span>
               </div>
               {investigation.verification.status === "Confirmed current" && (
                 <Link className="btn primary" href={`/pdd/${encodeURIComponent(problem.id)}#engineering-ticket`}>
@@ -3428,7 +3428,7 @@ export function ProductProblemInvestigationPanel({
           <section className="investigation-next-step">
             <div>
               <h3>Investigate before writing the prompt</h3>
-              <p>Establish a working hypothesis, identify evidence gaps, and propose repository-scoped checks before starting PDD.</p>
+              <p>Establish a working hypothesis, identify evidence gaps, and propose repository-scoped checks before starting Prompt Testing.</p>
               <span className="subtle">Affected impact: {money(problem.revenue)} ARR across {problem.count} signals.</span>
             </div>
             <button className="btn primary" type="button" disabled={startingInvestigation} onClick={startInvestigation}>
@@ -3445,7 +3445,7 @@ export function ProductProblemInvestigationPanel({
                   Open Settings → Execution
                 </Link>
                 <Link className="btn secondary" href={`/pdd/${problem.id}`}>
-                  Open PDD repository context
+                  Open Prompt Testing repository context
                 </Link>
               </div>
             )}
@@ -3525,7 +3525,7 @@ function pddPreparationState(input: {
       : category === "approval"
         ? "Approval ready"
         : category === "active"
-          ? evaluating ? "PDD evaluating" : "Acceptance preparation"
+          ? evaluating ? "Evaluating prompt" : "Acceptance preparation"
           : category === "ready"
             ? "Ready to prompt-test"
             : !repositoryReady
@@ -3596,23 +3596,23 @@ export function PddPrioritizationScreen({
     <>
       <PageTitle
         title="Prompt-driven development"
-        description="Rank product problems by prompt-test readiness, then open one task for focused PDD evaluation."
+        description="Rank product problems by prompt-test readiness, then open one task for focused Prompt evaluation."
         action={
           <div className="pdd-list-controls">
             <CustomSelect
-              ariaLabel="Filter PDD tasks by readiness"
+              ariaLabel="Filter Prompt Testing tasks by readiness"
               value={readinessFilter}
               onValueChange={(value) => setReadinessFilter(value as PddReadinessFilter)}
               options={[
                 { value: "all", label: "All readiness states" },
                 { value: "ready", label: "Ready to test" },
                 { value: "preparing", label: "Needs preparation" },
-                { value: "active", label: "PDD active" },
+                { value: "active", label: "Prompt Testing active" },
                 { value: "approval", label: "Approval ready" },
               ]}
             />
             <CustomSelect
-              ariaLabel="Rank PDD tasks by"
+              ariaLabel="Rank Prompt Testing tasks by"
               value={rankMode}
               onValueChange={(value) => setRankMode(value as PddRankMode)}
               options={[
@@ -3629,7 +3629,7 @@ export function PddPrioritizationScreen({
       <section className="pdd-priority-workspace">
         <div className="pdd-priority-head">
           <div>
-            <h2>PDD prioritization</h2>
+            <h2>Prompt Testing priorities</h2>
             <p>{visibleRows.length} task{visibleRows.length === 1 ? "" : "s"} ranked for prompt preparation and testing.</p>
           </div>
           <span className="badge brand">{rows.filter((row) => row.preparation.category === "ready").length} ready to test</span>
@@ -3655,7 +3655,7 @@ export function PddPrioritizationScreen({
                       </p>
                     </div>
                     <span className="pdd-priority-open">
-                      Open PDD task
+                      Open Prompt Testing task
                       <ChevronRight size={15} aria-hidden="true" />
                     </span>
                   </div>
@@ -3668,7 +3668,7 @@ export function PddPrioritizationScreen({
           </ol>
         ) : (
           <div className="empty pdd-priority-empty">
-            <strong>{rows.length ? "No tasks match this readiness filter" : "No open PDD tasks"}</strong>
+            <strong>{rows.length ? "No tasks match this readiness filter" : "No open Prompt Testing tasks"}</strong>
             <p>
               {rows.length
                 ? "Choose another readiness state to return tasks to the list."
@@ -3709,7 +3709,7 @@ export function PddScreen({
           description="Turn an investigated product problem into a tested, approval-ready implementation contract."
         />
         <EmptyWorkspaceState
-          title="Nothing is ready for PDD"
+          title="Nothing is ready for Prompt Testing"
           description="Review customer evidence and create a product problem before preparing implementation work."
           actionHref="/problems"
           actionLabel="Review product problems"
@@ -3723,7 +3723,7 @@ export function PddScreen({
     : selectedWorkflow.approval || selectedWorkflow.verification?.status === "Ready for approval"
       ? 2
       : 1;
-  const phases = ["Prompt preparation", "PDD evaluation", "Approval readiness"];
+  const phases = ["Prompt preparation", "Prompt evaluation", "Approval readiness"];
 
   return (
     <>
@@ -3732,7 +3732,7 @@ export function PddScreen({
         description="Improve the immutable prompt, generate acceptance tests, and prepare investigated work for approval."
         action={
           <Link className="btn" href="/pdd">
-            <ChevronLeft size={14} aria-hidden="true" /> Back to PDD prioritization
+            <ChevronLeft size={14} aria-hidden="true" /> Back to Prompt Testing priorities
           </Link>
         }
       />
@@ -3748,7 +3748,7 @@ export function PddScreen({
               View product problem <ChevronRight size={13} aria-hidden="true" />
             </Link>
           </section>
-          <nav className="pdd-phase-rail card" aria-label="PDD preparation phases">
+          <nav className="pdd-phase-rail card" aria-label="Prompt Testing preparation phases">
             {phases.map((phase, index) => (
               <span
                 className={`pdd-phase is-${index < currentPhase ? "complete" : index === currentPhase ? "current" : "upcoming"}`}
@@ -4290,8 +4290,8 @@ export function ApprovalsScreen({
                     <div className="callout warning" role="alert">
                       <div className="callout-title">Verification scope changed</div>
                       <p>
-                        This PR touches a production surface outside the approved PDD contract.
-                        Final execution is locked until the PDD is revised and a new agent run is reviewed.
+                        This PR touches a production surface outside the approved Prompt Testing contract.
+                        Final execution is locked until the Prompt Testing contract is revised and a new agent run is reviewed.
                       </p>
                       <ul>
                         {finalApproval.releaseVerification.scopeAssessment.mismatches.map((mismatch) => (
@@ -4321,7 +4321,7 @@ export function ApprovalsScreen({
                       </button>
                       {finalApproval.releaseVerification?.scopeAssessment.compatible === false ? (
                         <Link className="btn primary" href={`/problems/${finalApproval.problemId}`}>
-                          Revise PDD contract
+                          Revise Prompt Testing contract
                           <ChevronRight size={14} />
                         </Link>
                       ) : (
@@ -5899,7 +5899,7 @@ export function GenericProblemScreen({
   const promptBlockedReason = !issueVerified
     ? promptDraftReadiness.reason
     : promptAlreadyCreated
-    ? "The suggested prompt is ready in PDD. Review the investigation below before continuing to testing."
+    ? "The suggested prompt is ready in Prompt Testing. Review the investigation below before continuing to testing."
     : needsInvestigationReview
       ? investigationPercent === null
         ? "Complete the investigation before generating a prompt."
