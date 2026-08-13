@@ -160,6 +160,13 @@ function mergeGithub(input: {
     conclusion: string | null;
     name: string;
   }>;
+  baseRuns?: Array<{
+    id: number;
+    workflow_id: number;
+    status: string;
+    conclusion: string | null;
+    name: string;
+  }>;
   defaultWorkflow?: string | null;
   proposedWorkflow?: string | null;
   defaultRuntimeWorkflow?: string | null;
@@ -224,9 +231,9 @@ function mergeGithub(input: {
         merge,
       },
       actions: {
-        listWorkflowRunsForRepo: vi.fn().mockResolvedValue({
-          data: { workflow_runs: input.runs ?? [] },
-        }),
+        listWorkflowRunsForRepo: vi.fn(async ({ head_sha }: { head_sha: string }) => ({
+          data: { workflow_runs: head_sha === baseSha ? input.baseRuns ?? [] : input.runs ?? [] },
+        })),
       },
     },
   };
@@ -257,6 +264,7 @@ describe("Tenki runner workflow approval", () => {
       pullRequestUrl: "https://github.example/pull/12",
       mergedSha: mock.mergedSha,
       githubActionsChecksPassed: 1,
+      preexistingGithubActionsFailures: 0,
     });
     expect(mock.merge).toHaveBeenCalledWith(expect.objectContaining({
       pull_number: 12,
@@ -319,8 +327,34 @@ describe("Tenki runner workflow approval", () => {
       defaultBranch: "main",
       pullRequestNumber: 12,
     }, { createClient: async () => failed.client as never, template, runtimeTemplate, sizingTemplate })).rejects.toThrow(
-      "Resolve the failing GitHub Actions checks first: CI",
+      "Resolve the GitHub Actions checks newly failing on this setup PR first: CI",
     );
+  });
+
+  it("does not attribute a check already failing on the exact base commit to the setup PR", async () => {
+    const failure = {
+      id: 92,
+      workflow_id: 8,
+      status: "completed",
+      conclusion: "failure",
+      name: "Swift",
+    };
+    const mock = mergeGithub({
+      runs: [failure],
+      baseRuns: [{ ...failure, id: 91 }],
+    });
+
+    await expect(approveAndMergeTenkiRunnerWorkflow({
+      installationId: "42",
+      repository: "acme/app",
+      defaultBranch: "main",
+      pullRequestNumber: 12,
+    }, { createClient: async () => mock.client as never, template, runtimeTemplate, sizingTemplate })).resolves.toMatchObject({
+      status: "merged",
+      githubActionsChecksPassed: 0,
+      preexistingGithubActionsFailures: 1,
+    });
+    expect(mock.merge).toHaveBeenCalledOnce();
   });
 
   it("is idempotent when the exact workflow is already installed", async () => {
