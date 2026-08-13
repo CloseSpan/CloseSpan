@@ -29,6 +29,7 @@ describe("approval-bound runner model tokens", () => {
     const claims = await verifyAgentRunnerModelToken(issued.token);
 
     expect(issued.expiresAt).toBe("2026-08-11T21:10:00.000Z");
+    expect(issued.token).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(claims).toMatchObject({
       sub: input.runId,
       orgId: input.orgId,
@@ -37,6 +38,17 @@ describe("approval-bound runner model tokens", () => {
       executionProfileHash: input.executionProfileHash,
       provider: "openai",
       model: input.model,
+    });
+  });
+
+  it("accepts a signed JWT issued before opaque runner credentials", async () => {
+    vi.stubEnv("AGENT_EXECUTOR_SHARED_SECRET", "s".repeat(64));
+    const issued = await issueAgentRunnerModelToken(input);
+    const legacyJwt = Buffer.from(issued.token.slice("csrt_".length), "base64url").toString("utf8");
+
+    await expect(verifyAgentRunnerModelToken(legacyJwt)).resolves.toMatchObject({
+      sub: input.runId,
+      orgId: input.orgId,
     });
   });
 

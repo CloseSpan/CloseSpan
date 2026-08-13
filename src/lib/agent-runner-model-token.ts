@@ -4,6 +4,7 @@ import { jwtVerify, SignJWT, type JWTPayload } from "jose";
 const ISSUER = "closespan";
 const AUDIENCE = "closespan-runner-model";
 const MAX_TOKEN_LIFETIME_SECONDS = 70 * 60;
+const OPAQUE_TOKEN_PREFIX = "csrt_";
 
 export interface AgentRunnerModelClaims extends JWTPayload {
   sub: string;
@@ -39,7 +40,7 @@ export async function issueAgentRunnerModelToken(input: {
 }): Promise<{ token: string; expiresAt: string }> {
   const now = Math.floor(Date.now() / 1_000);
   const expiration = now + MAX_TOKEN_LIFETIME_SECONDS;
-  const token = await new SignJWT({
+  const signedToken = await new SignJWT({
     orgId: input.orgId,
     repository: input.repository,
     promptHash: input.promptHash,
@@ -56,13 +57,17 @@ export async function issueAgentRunnerModelToken(input: {
     .setNotBefore(now - 5)
     .setExpirationTime(expiration)
     .sign(signingKey());
+  const token = `${OPAQUE_TOKEN_PREFIX}${Buffer.from(signedToken, "utf8").toString("base64url")}`;
   return { token, expiresAt: new Date(expiration * 1_000).toISOString() };
 }
 
 export async function verifyAgentRunnerModelToken(
   token: string,
 ): Promise<AgentRunnerModelClaims> {
-  const verified = await jwtVerify(token, signingKey(), {
+  const signedToken = token.startsWith(OPAQUE_TOKEN_PREFIX)
+    ? Buffer.from(token.slice(OPAQUE_TOKEN_PREFIX.length), "base64url").toString("utf8")
+    : token;
+  const verified = await jwtVerify(signedToken, signingKey(), {
     issuer: ISSUER,
     audience: AUDIENCE,
     algorithms: ["HS256"],
