@@ -161,7 +161,6 @@ export interface TenkiRunnerWorkflowMergeResult {
   pullRequestUrl: string | null;
   mergedSha: string;
   githubActionsChecksPassed: number;
-  preexistingGithubActionsFailures: number;
 }
 
 /**
@@ -325,11 +324,10 @@ function latestWorkflowRuns<T extends {
  * Merge only the setup PR created by installTenkiRunnerWorkflow.
  *
  * The exact head commit is revalidated immediately before merge. The PR may
- * add only CloseSpan's immutable runner workflows. GitHub Actions runs must be
- * complete, and any failure newly introduced by the setup PR blocks the merge.
- * A workflow already failing on the exact base commit is reported but is not
- * attributed to CloseSpan's setup-only change. GitHub still enforces repository
- * branch protections when the merge is attempted.
+ * add only CloseSpan's immutable runner workflow, and every GitHub Actions run
+ * reported for that head commit must be complete and successful. Repositories
+ * without Actions runs still receive the same deterministic content, scope,
+ * branch, and head-SHA checks before GitHub enforces its branch protections.
  */
 export async function approveAndMergeTenkiRunnerWorkflow(
   input: {
@@ -407,7 +405,6 @@ export async function approveAndMergeTenkiRunnerWorkflow(
         ? installedPull.data.merge_commit_sha
         : baseRef.data.object.sha,
       githubActionsChecksPassed: 0,
-      preexistingGithubActionsFailures: 0,
     };
   }
 
@@ -490,24 +487,10 @@ export async function approveAndMergeTenkiRunnerWorkflow(
   const failed = runs.filter(
     (run) => !run.conclusion || !acceptedConclusions.has(run.conclusion),
   );
-  const baseRuns = failed.length > 0
-    ? latestWorkflowRuns((await github.rest.actions.listWorkflowRunsForRepo({
-        ...repository,
-        head_sha: baseRef.data.object.sha,
-        per_page: 100,
-      })).data.workflow_runs)
-    : [];
-  const preexistingFailedWorkflowIds = new Set(baseRuns
-    .filter((run) => run.status === "completed"
-      && (!run.conclusion || !acceptedConclusions.has(run.conclusion)))
-    .map((run) => run.workflow_id));
-  const regressions = failed.filter(
-    (run) => !preexistingFailedWorkflowIds.has(run.workflow_id),
-  );
-  if (regressions.length > 0) {
+  if (failed.length > 0) {
     throw new HttpError(
       409,
-      `Resolve the GitHub Actions checks newly failing on this setup PR first: ${regressions.map((run) => run.name).join(", ")}`,
+      `Resolve the failing GitHub Actions checks first: ${failed.map((run) => run.name).join(", ")}`,
     );
   }
 
@@ -529,7 +512,6 @@ export async function approveAndMergeTenkiRunnerWorkflow(
     pullRequestNumber: input.pullRequestNumber,
     pullRequestUrl: pull.data.html_url,
     mergedSha: merged.data.sha,
-    githubActionsChecksPassed: runs.length - failed.length,
-    preexistingGithubActionsFailures: failed.length,
+    githubActionsChecksPassed: runs.length,
   };
 }

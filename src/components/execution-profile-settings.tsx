@@ -62,7 +62,6 @@ interface RunnerWorkflowMergeResult {
   pullRequestUrl?: string | null;
   mergedSha?: string;
   githubActionsChecksPassed?: number;
-  preexistingGithubActionsFailures?: number;
 }
 
 interface RuntimeSecretVersionMetadata {
@@ -1394,20 +1393,16 @@ export function ExecutionProfileSettings({
       });
       const detectionRefreshed = await detect(repository);
       const checks = payload.githubActionsChecksPassed ?? 0;
-      const preexistingFailures = payload.preexistingGithubActionsFailures ?? 0;
       const checkSummary = checks > 0
         ? `after ${checks} reported GitHub Actions ${checks === 1 ? "check" : "checks"} passed`
         : "with no GitHub Actions checks reported";
-      const existingFailureSummary = preexistingFailures > 0
-        ? ` ${preexistingFailures} repository ${preexistingFailures === 1 ? "check was" : "checks were"} already failing on the exact base commit and did not block this setup-only change.`
-        : "";
       setRunnerWorkflowNotices((current) => ({
         ...current,
         [repository]: payload.status === "installed"
           ? detectionRefreshed
             ? "The Tenki workflows were already installed. Repository detection has been refreshed."
             : "The Tenki workflows were already installed, but repository detection still needs to be refreshed."
-          : `Tenki setup merged ${checkSummary}.${existingFailureSummary} ${detectionRefreshed ? "Repository detection has been refreshed." : "Refresh repository detection to finish binding the implementation workflow."}`,
+          : `Tenki setup merged ${checkSummary}. ${detectionRefreshed ? "Repository detection has been refreshed." : "Refresh repository detection to finish binding the implementation workflow."}`,
       }));
     } catch (cause) {
       setRepositoryActionErrors((current) => ({
@@ -1522,7 +1517,7 @@ export function ExecutionProfileSettings({
                 <div className="callout runner-workflow-approval" aria-live="polite">
                   <div className="callout-title">Runner setup is ready for your approval</div>
                   <p>
-                    CloseSpan will recheck the exact pull request commit, allow only the reviewed implementation and runtime-verifier workflow files, and block any GitHub Actions failure introduced by this setup change. Failures already present on the exact base commit are reported but do not prevent activation. Your approval merges the setup pull request; CloseSpan never commits it directly to the default branch.
+                    CloseSpan will recheck the exact pull request commit, allow only the reviewed implementation and runtime-verifier workflow files, and require every reported GitHub Actions run to pass. Your approval merges the setup pull request; CloseSpan never commits it directly to the default branch.
                   </p>
                   <div className="top-actions">
                     <button
