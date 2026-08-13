@@ -1528,7 +1528,7 @@ export function ExecutionProfileSettings({
                   <span>{repositoryActionErrors[repository.repository]}</span>
                   {runnerWorkflowPulls[repository.repository] && (
                     <a
-                      className="btn secondary"
+                      className="btn secondary runner-workflow-review-button"
                       href={runnerWorkflowPulls[repository.repository].url}
                       target="_blank"
                       rel="noopener noreferrer"

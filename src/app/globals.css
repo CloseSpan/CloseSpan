@@ -3125,6 +3125,37 @@ html,body { background:var(--neu-canvas); }
   box-shadow:var(--neu-inset);
 }
 
+/* Keep recovery actions distinct and compact inside repository workflow errors. */
+.app-shell .runner-workflow-error {
+  flex-wrap:wrap;
+}
+
+.app-shell .runner-workflow-review-button {
+  min-height:34px;
+  padding:0 13px;
+  border:1px solid rgba(255,255,255,.58);
+  border-radius:10px;
+  background:var(--neu-surface-raised);
+  color:#5147c7;
+  font-size:11px;
+  font-weight:760;
+  line-height:1;
+  white-space:nowrap;
+  box-shadow:4px 4px 10px rgba(145,155,176,.3),-4px -4px 10px rgba(255,255,255,.84);
+}
+
+.app-shell .runner-workflow-review-button:hover:not(:disabled) {
+  border-color:rgba(79,70,229,.22);
+  background:#f2f4fa;
+  color:#4036b2;
+  box-shadow:5px 5px 12px rgba(145,155,176,.32),-5px -5px 12px rgba(255,255,255,.9);
+}
+
+.app-shell .runner-workflow-review-button:active:not(:disabled) {
+  transform:translateY(1px);
+  box-shadow:var(--neu-pressed);
+}
+
 /* Public landing: dark and light neumorphic surfaces remain visually distinct. */
 .landing { background:var(--neu-canvas); }
 .landing-header,.landing-top { background:#0d1325; }
@@ -3206,6 +3237,11 @@ html,body { background:var(--neu-canvas); }
   .app-shell .integration-suggestions-agent,
   .app-shell .integration-suggestion-board {
     box-shadow:var(--neu-raised-soft);
+  }
+
+  .app-shell .runner-workflow-error {
+    align-items:flex-start;
+    flex-direction:column;
   }
 }
 
