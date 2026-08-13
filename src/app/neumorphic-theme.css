@@ -3211,6 +3211,8 @@ table tbody tr:hover {
 .app-shell .investigation-verification {
   display: grid;
   gap: var(--space-4);
+  min-width: 0;
+  max-width: 100%;
   padding: var(--space-5);
   border-radius: var(--radius-lg);
   background: var(--surface-pressed);
@@ -3248,6 +3250,7 @@ table tbody tr:hover {
 
 .app-shell .runtime-verification-action {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-5);
@@ -3258,6 +3261,7 @@ table tbody tr:hover {
 }
 
 .app-shell .runtime-verification-action > div {
+  flex: 1 1 36rem;
   min-width: 0;
 }
 
@@ -3299,6 +3303,7 @@ table tbody tr:hover {
 
 .app-shell .runtime-verification-action .btn {
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .app-shell .runtime-verification-feedback {
