@@ -191,17 +191,30 @@ async function readInvestigationCandidate(
     `SELECT problem.id,problem.title,problem.statement,problem.summary,
             problem.confidence,problem.product_area,problem.suspected_files,
             count(membership.feedback_id)::int AS evidence_count,
-            jsonb_agg(feedback.type ORDER BY feedback.created_at,feedback.id) AS feedback_types,
+            jsonb_agg(approved_analysis.classification ORDER BY feedback.created_at,feedback.id) AS feedback_types,
             jsonb_agg(feedback.quote ORDER BY feedback.created_at,feedback.id) AS feedback_quotes
        FROM product_problems problem
        JOIN feedback_cluster_memberships membership
          ON membership.org_id=problem.org_id AND membership.problem_id=problem.id
        JOIN feedback_items feedback
          ON feedback.org_id=membership.org_id AND feedback.id=membership.feedback_id
+       JOIN LATERAL (
+         SELECT analysis.classification
+           FROM ai_feedback_analyses analysis
+           JOIN model_runs run
+             ON run.org_id=analysis.org_id
+            AND run.id=analysis.model_run_id
+            AND run.status='Succeeded'
+          WHERE analysis.org_id=feedback.org_id
+            AND analysis.feedback_id=feedback.id
+            AND analysis.review_status='Approved'
+          ORDER BY analysis.created_at DESC,analysis.id DESC
+          LIMIT 1
+       ) approved_analysis ON true
       WHERE problem.org_id=$1
         AND problem.stage <> 'Closed'
         AND ($2::text IS NULL OR problem.id=$2)
-        AND feedback.type IN ('Bug','Incident','Feature request')
+        AND approved_analysis.classification IN ('Bug','Incident','Feature request')
         AND NOT EXISTS (
           SELECT 1 FROM investigations existing
            WHERE existing.org_id=problem.org_id AND existing.problem_id=problem.id

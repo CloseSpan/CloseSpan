@@ -153,7 +153,11 @@ describe("investigation workspace repository", () => {
       confidence: 0.65,
     });
     expect(database.query).toHaveBeenCalledWith(
-      expect.stringContaining("feedback.type IN ('Bug','Incident','Feature request')"),
+      expect.stringContaining("approved_analysis.classification IN ('Bug','Incident','Feature request')"),
+      ["org-1", "prob-1"],
+    );
+    expect(database.query).toHaveBeenCalledWith(
+      expect.stringContaining("analysis.review_status='Approved'"),
       ["org-1", "prob-1"],
     );
     expect(database.query).toHaveBeenCalledWith(

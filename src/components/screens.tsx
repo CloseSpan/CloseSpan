@@ -2881,7 +2881,7 @@ export function ProductProblemInvestigationPanel({
         },
       });
       const payload = await response.json() as { error?: string };
-      if (!response.ok && response.status !== 409) {
+      if (!response.ok) {
         throw new Error(payload.error ?? "The investigation could not be started.");
       }
       router.refresh();
