@@ -32,6 +32,7 @@ export async function POST(
       repository: context.repository,
       runId,
       workflowPath: TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
+      expectedSha: context.baseSha,
     });
     const configuration = await getAiRuntimeConfiguration(context.orgId);
     if (

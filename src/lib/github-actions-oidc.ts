@@ -13,6 +13,7 @@ export interface GithubActionsOidcClaims extends JWTPayload {
   ref: string;
   workflow_ref: string;
   run_id: string;
+  sha: string;
   job_workflow_ref?: string;
 }
 
@@ -32,6 +33,7 @@ export async function verifyGithubActionsOidcToken(
     || typeof claims.ref !== "string"
     || typeof claims.workflow_ref !== "string"
     || typeof claims.run_id !== "string"
+    || typeof claims.sha !== "string"
   ) {
     throw new Error("GitHub Actions identity token is missing required workflow claims");
   }
@@ -44,16 +46,23 @@ export function assertGithubActionsRunIdentity(input: {
   runId: string;
   workflowPath: string;
   reportedWorkflowRunId?: number;
+  expectedSha?: string;
 }): void {
   const expectedRef = `refs/heads/closespan/runs/${input.runId}`;
   const expectedWorkflowRef = `${input.repository}/${input.workflowPath}@${expectedRef}`;
+  const workflowRefAtClaimedRef = `${input.repository}/${input.workflowPath}@${input.claims.ref}`;
+  const exactCommitFallback = Boolean(
+    input.expectedSha
+    && input.claims.sha.toLowerCase() === input.expectedSha.toLowerCase()
+    && input.claims.workflow_ref === workflowRefAtClaimedRef,
+  );
   if (input.claims.repository !== input.repository) {
     throw new Error("GitHub Actions callback repository does not match the approval-bound run");
   }
-  if (input.claims.ref !== expectedRef) {
+  if (input.claims.ref !== expectedRef && !exactCommitFallback) {
     throw new Error("GitHub Actions callback ref does not match the immutable run ref");
   }
-  if (input.claims.workflow_ref !== expectedWorkflowRef) {
+  if (input.claims.workflow_ref !== expectedWorkflowRef && !exactCommitFallback) {
     throw new Error("GitHub Actions callback workflow does not match the immutable execution profile");
   }
   if (

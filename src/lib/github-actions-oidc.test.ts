@@ -14,6 +14,7 @@ function claims(overrides: Partial<GithubActionsOidcClaims> = {}): GithubActions
     ref,
     workflow_ref: `${repository}/${workflowPath}@${ref}`,
     run_id: "123",
+    sha: "a".repeat(40),
     ...overrides,
   };
 }
@@ -31,6 +32,28 @@ describe("GitHub Actions OIDC run identity", () => {
     expect(() => assertGithubActionsRunIdentity({
       claims: claims({ actor: "some-user" }), repository, runId, workflowPath,
     })).toThrow("CloseSpan GitHub App");
+  });
+
+  it("accepts a bot dispatch on another ref only when the approved commit matches", () => {
+    const ref = "refs/heads/main";
+    expect(() => assertGithubActionsRunIdentity({
+      claims: claims({ ref, workflow_ref: `${repository}/${workflowPath}@${ref}` }),
+      repository,
+      runId,
+      workflowPath,
+      expectedSha: "a".repeat(40),
+    })).not.toThrow();
+  });
+
+  it("rejects another ref when its commit is not the approved commit", () => {
+    const ref = "refs/heads/main";
+    expect(() => assertGithubActionsRunIdentity({
+      claims: claims({ ref, workflow_ref: `${repository}/${workflowPath}@${ref}` }),
+      repository,
+      runId,
+      workflowPath,
+      expectedSha: "b".repeat(40),
+    })).toThrow("immutable run ref");
   });
 
   it("honors the configured GitHub App bot login", () => {

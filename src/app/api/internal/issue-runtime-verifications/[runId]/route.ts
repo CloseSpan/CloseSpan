@@ -42,6 +42,7 @@ export async function GET(
       repository: context.repository,
       runId,
       workflowPath: TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
+      expectedSha: context.baseSha,
     });
     const body = JSON.stringify(buildIssueRuntimeVerificationJob(context));
     if (Buffer.byteLength(body, "utf8") > MAX_CALLBACK_BYTES) {
@@ -99,6 +100,7 @@ export async function POST(
       repository: context.repository,
       runId,
       workflowPath: TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
+      expectedSha: context.baseSha,
     });
     if (payload.event === "started") {
       await markIssueRuntimeVerificationRunning(context.orgId, runId);
@@ -122,6 +124,7 @@ export async function POST(
       runId,
       workflowPath: TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
       reportedWorkflowRunId: report.environment.workflowRunId,
+      expectedSha: context.baseSha,
     });
     await completeIssueRuntimeVerification(context, report);
     return NextResponse.json({ ok: true }, { headers: noStoreHeaders });
