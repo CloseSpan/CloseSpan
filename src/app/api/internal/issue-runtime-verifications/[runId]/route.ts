@@ -55,6 +55,7 @@ export async function GET(
       headers: { ...noStoreHeaders, "content-type": "application/json" },
     });
   } catch (error) {
+    console.error("Runtime verifier job request failed", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Runtime verifier job request failed" },
       { status: 409, headers: noStoreHeaders },
@@ -129,6 +130,7 @@ export async function POST(
     await completeIssueRuntimeVerification(context, report);
     return NextResponse.json({ ok: true }, { headers: noStoreHeaders });
   } catch (error) {
+    console.error("Runtime verification callback failed", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Runtime verification callback failed" },
       { status: 409, headers: noStoreHeaders },
