@@ -21,6 +21,8 @@ import { PipedreamConnectButton } from "@/components/pipedream-connect-button";
 import { IntegrationSyncStatus } from "@/components/integration-sync-status";
 import { IntegrationProviderIcon } from "@/components/integration-provider-icon";
 import { PublicSourceDiscovery } from "@/components/public-source-discovery";
+import { RepositoryContextProgress } from "@/components/repository-context-progress";
+import { RepositoryActivationProgress } from "@/components/repository-activation-progress";
 import {
   isFeedbackSourceIntegration,
   isIntegrationAvailable,
@@ -29,6 +31,7 @@ import type { IntegrationConnectionState } from "@/lib/integration-client";
 import type { WorkspaceSetupStatus } from "@/lib/integration-repository";
 import { isPipedreamConnectorId } from "@/lib/pipedream-connectors";
 import {
+  prioritizeOnboardingContinuation,
   resolvedConnectorFailure,
 } from "@/lib/onboarding-guidance";
 import type { OnboardingAction } from "@/lib/onboarding-agent";
@@ -295,6 +298,8 @@ export function OnboardingAgentPanel({
   const router = useRouter();
   const prefersReducedMotion = useReducedMotion();
   const stageRef = useRef<HTMLDivElement>(null);
+  const conversationRef = useRef<HTMLDivElement>(null);
+  const shouldFollowConversationRef = useRef(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<OnboardingState | null>(null);
   const [actions, setActions] = useState<OnboardingAction[]>([]);
@@ -381,37 +386,6 @@ export function OnboardingAgentPanel({
     };
   }, [orgId]);
 
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-
-    let frame = 0;
-    const followConversation = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        stage.scrollTo({
-          top: stage.scrollHeight,
-          behavior: prefersReducedMotion ? "auto" : "smooth",
-        });
-      });
-    };
-    const observer = new MutationObserver(followConversation);
-    observer.observe(stage, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-    const resizeObserver = new ResizeObserver(followConversation);
-    resizeObserver.observe(stage);
-    followConversation();
-
-    return () => {
-      observer.disconnect();
-      resizeObserver.disconnect();
-      window.cancelAnimationFrame(frame);
-    };
-  }, [busy, prefersReducedMotion]);
-
   const hasProductBrief = Boolean(
     state?.productProfile.companyProfileConfirmed &&
       state.productProfile.productName?.trim(),
@@ -485,18 +459,70 @@ export function OnboardingAgentPanel({
     [state?.recommendedConnectors],
   );
   const showSourceStage = hasProductBrief && githubConnected;
+  const minimumConnectionsReady =
+    showSourceStage && setupStatus.feedbackConnected;
   const showComposer = Boolean(
     state &&
       (!hasProductBrief
         ? !hasCompanyCandidate
         : showSourceStage),
   );
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    const conversation = conversationRef.current;
+    if (!stage || !conversation) return;
+
+    let frame = 0;
+    const updateFollowPreference = () => {
+      const stageBounds = stage.getBoundingClientRect();
+      const conversationBottom = conversation.getBoundingClientRect().bottom;
+      shouldFollowConversationRef.current =
+        conversationBottom >= stageBounds.top - 72 &&
+        conversationBottom <= stageBounds.bottom + 72;
+    };
+    const followConversation = () => {
+      if (!shouldFollowConversationRef.current) return;
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        conversation.scrollIntoView({
+          block: "end",
+          inline: "nearest",
+          behavior: prefersReducedMotion ? "auto" : "smooth",
+        });
+      });
+    };
+    const observer = new MutationObserver(followConversation);
+    observer.observe(conversation, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    const resizeObserver = new ResizeObserver(followConversation);
+    resizeObserver.observe(conversation);
+    stage.addEventListener("scroll", updateFollowPreference, { passive: true });
+
+    shouldFollowConversationRef.current = true;
+    followConversation();
+
+    return () => {
+      observer.disconnect();
+      resizeObserver.disconnect();
+      stage.removeEventListener("scroll", updateFollowPreference);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [minimumConnectionsReady, prefersReducedMotion, showSourceStage]);
   const confirmedSiteDescription = compactSiteDescription(
     state?.productProfile.productDescription ?? null,
   );
-  const visibleSuggestedReplies = githubFailureIsResolved
-    ? []
-    : suggestedReplies;
+  const orderedSuggestedReplies = useMemo(
+    () =>
+      prioritizeOnboardingContinuation(
+        githubFailureIsResolved ? [] : suggestedReplies,
+        minimumConnectionsReady,
+      ),
+    [githubFailureIsResolved, minimumConnectionsReady, suggestedReplies],
+  );
   const supportFlowActive =
     supportFlow.step === "email" ||
     supportFlow.step === "subject" ||
@@ -531,15 +557,17 @@ export function OnboardingAgentPanel({
     () =>
       Boolean(
         state &&
+          !hasProductBrief &&
           state.messages.filter((message) => message.role === "user").length === 0 &&
           suggestedReplies.length > 0,
       ),
-    [state, suggestedReplies.length],
+    [hasProductBrief, state, suggestedReplies.length],
   );
 
   async function sendMessage(raw: string) {
     const message = raw.trim();
     if (!message || busy) return;
+    shouldFollowConversationRef.current = true;
     setBusy("chat");
     setError(null);
     setDraft("");
@@ -558,6 +586,21 @@ export function OnboardingAgentPanel({
     } finally {
       setBusy(null);
       inputRef.current?.focus();
+    }
+  }
+
+  async function continueOnboarding() {
+    if (busy || !minimumConnectionsReady) return;
+    setBusy("continue");
+    setError(null);
+    try {
+      await onboardingActionFetch(orgId, "continue");
+      router.push("/overview");
+      router.refresh();
+    } catch {
+      setError(FRIENDLY_ERROR);
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -789,6 +832,7 @@ export function OnboardingAgentPanel({
     assistantMessage: string,
     assistantFollowUp?: string,
   ) {
+    shouldFollowConversationRef.current = true;
     setActivityMessages((previous) => {
       const exchangeLength = assistantFollowUp ? 3 : 2;
       const lastUser = previous.at(-exchangeLength);
@@ -828,6 +872,39 @@ export function OnboardingAgentPanel({
           : []),
       ];
     });
+  }
+
+  function recordPipedreamConnection(
+    connector: OnboardingState["recommendedConnectors"][number],
+    integrationId: string,
+  ) {
+    setConnectedIds((previous) =>
+      previous.includes(integrationId)
+        ? previous
+        : [...previous, integrationId],
+    );
+    setConnectionStates((previous) => ({
+      ...previous,
+      [integrationId]: "Connected",
+    }));
+    setSyncRefreshKeys((previous) => ({
+      ...previous,
+      [integrationId]: (previous[integrationId] ?? 0) + 1,
+    }));
+    setSuggestedReplies([]);
+    recordActivityExchange(
+      `Connect ${connector.provider}`,
+      `${connector.provider} is connected`,
+      isFeedbackSourceIntegration(connector.integrationId)
+        ? "Import starts automatically."
+        : "Ready for approved actions.",
+    );
+    void workspaceSetupFetch(orgId)
+      .then((next) => {
+        setSetupStatus(next);
+        setConnectedIds(next.connectedIntegrationIds);
+      })
+      .catch(() => undefined);
   }
 
   async function runAction(action: OnboardingAction) {
@@ -912,7 +989,7 @@ export function OnboardingAgentPanel({
           </div>
         )}
 
-        <motion.div className="delphi-thread" layout>
+        <motion.div className="delphi-thread" ref={conversationRef} layout>
           <AnimatePresence initial={false}>
           {!state ? (
             error ? (
@@ -1043,8 +1120,8 @@ export function OnboardingAgentPanel({
                 <h2 id="github-connected-title">GitHub connected</h2>
                 <p>
                   {githubRepositoryCount > 0
-                    ? `${githubRepositoryCount} ${githubRepositoryCount === 1 ? "repository is" : "repositories are"} ready for approved runs.`
-                    : "Selected repositories are ready for approved runs."}
+                    ? `${githubRepositoryCount} ${githubRepositoryCount === 1 ? "repository is" : "repositories are"} connected and being prepared.`
+                    : "Selected repositories are connected and being prepared."}
                 </p>
               </div>
               <Link className="btn" href="/integrations?focus=int_github">
@@ -1053,8 +1130,14 @@ export function OnboardingAgentPanel({
             </motion.section>
           )}
           {state && showSourceStage && (
+            <RepositoryContextProgress orgId={orgId} />
+          )}
+          {state && showSourceStage && (
+            <RepositoryActivationProgress orgId={orgId} />
+          )}
+          {state && showSourceStage && !minimumConnectionsReady && (
             <motion.div
-              className="delphi-message-row assistant"
+              className="delphi-message-row assistant delphi-source-cue"
               layout
               initial={prefersReducedMotion ? false : { opacity: 0, x: -18, y: 8 }}
               animate={{ opacity: 1, x: 0, y: 0 }}
@@ -1107,6 +1190,24 @@ export function OnboardingAgentPanel({
               </time>
             </motion.div>
           ))}
+          {state && minimumConnectionsReady && (
+            <motion.div
+              className="delphi-message-row assistant delphi-source-cue"
+              layout
+              initial={prefersReducedMotion ? false : { opacity: 0, x: -18, y: 8 }}
+              animate={{ opacity: 1, x: 0, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <span className="delphi-message-sender">Operations Manager</span>
+              <div className="delphi-message-body">
+                <OperationsManagerAvatar />
+                <div className="delphi-bubble assistant">
+                  <p>Continue for now, or connect more sources?</p>
+                </div>
+              </div>
+            </motion.div>
+          )}
           {busy === "chat" && (
             <motion.div
               className="delphi-message-row assistant"
@@ -1133,7 +1234,9 @@ export function OnboardingAgentPanel({
         <p className="sr-only" aria-live="polite" aria-atomic="true">
           {busy === "chat"
             ? "The Operations Manager is preparing a response."
-            : showSourceStage
+            : minimumConnectionsReady
+              ? "GitHub and one feedback source are connected. Continue for now, or connect more sources."
+              : showSourceStage
               ? "GitHub is connected. Next, connect one feedback source."
             : state?.messages.at(-1)?.role === "assistant"
               ? state.messages.at(-1)?.content
@@ -1304,15 +1407,89 @@ export function OnboardingAgentPanel({
                 <strong>Connect feedback</strong>
                 <p>Choose one source.</p>
               </div>
-              <div className="delphi-sync-source-icons" aria-hidden="true">
-                {feedbackConnectors.slice(0, 4).map((connector) => (
-                  <IntegrationProviderIcon
-                    key={connector.integrationId}
-                    integrationId={connector.integrationId}
-                    size={18}
-                    compact
-                  />
-                ))}
+              <div
+                className="delphi-sync-source-icons"
+                aria-label="Quick connect feedback sources"
+              >
+                {feedbackConnectors
+                  .filter((connector) => {
+                    const observedConnectionState =
+                      connectionStates[connector.integrationId];
+                    const connected =
+                      observedConnectionState === undefined
+                        ? connectedIds.includes(connector.integrationId)
+                        : observedConnectionState === "Connected";
+                    return !connected && isIntegrationAvailable(connector.integrationId);
+                  })
+                  .slice(0, 4)
+                  .map((connector) => {
+                    const observedConnectionState =
+                      connectionStates[connector.integrationId];
+                    const pipedreamIntegrationId = isPipedreamConnectorId(
+                      connector.integrationId,
+                    )
+                      ? connector.integrationId
+                      : null;
+                    const icon = (
+                      <IntegrationProviderIcon
+                        integrationId={connector.integrationId}
+                        size={18}
+                        compact
+                      />
+                    );
+
+                    if (pipedreamIntegrationId) {
+                      return (
+                        <PipedreamConnectButton
+                          key={connector.integrationId}
+                          orgId={orgId}
+                          integrationId={pipedreamIntegrationId}
+                          className="delphi-sync-source-shortcut"
+                          connectionState={observedConnectionState}
+                          showGuidance={false}
+                          showStatusDetails={false}
+                          leadingIcon={icon}
+                          iconOnly
+                          ariaLabel={`Connect ${connector.provider}`}
+                          onConnected={(integrationId) =>
+                            recordPipedreamConnection(connector, integrationId)
+                          }
+                        />
+                      );
+                    }
+
+                    if (connector.integrationId === "int_webhook") {
+                      const opening = busy === "connect_webhook";
+                      return (
+                        <button
+                          key={connector.integrationId}
+                          className="delphi-sync-source-shortcut"
+                          type="button"
+                          aria-label="Connect Custom webhook"
+                          title="Connect Custom webhook"
+                          disabled={opening}
+                          onClick={() =>
+                            void runAction({
+                              type: "connect_webhook",
+                              label: "Create webhook endpoint",
+                            })
+                          }
+                        >
+                          {opening ? (
+                            <LoaderCircle
+                              className="spin"
+                              size={16}
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            icon
+                          )}
+                        </button>
+                      );
+                    }
+
+                    return null;
+                  })}
               </div>
             </div>
             <div className="delphi-sync-grid">
@@ -1420,33 +1597,9 @@ export function OnboardingAgentPanel({
                         integrationId={pipedreamIntegrationId}
                         guidance="compact"
                         connectionState={observedConnectionState}
-                        onConnected={(integrationId) => {
-                          setConnectedIds((previous) =>
-                            previous.includes(integrationId)
-                              ? previous
-                              : [...previous, integrationId],
-                          );
-                          setConnectionStates((previous) => ({
-                            ...previous,
-                            [integrationId]: "Connected",
-                          }));
-                          setSyncRefreshKeys((previous) => ({
-                            ...previous,
-                            [integrationId]: (previous[integrationId] ?? 0) + 1,
-                          }));
-                          setSuggestedReplies([]);
-                          recordActivityExchange(
-                            `Connect ${connector.provider}`,
-                            `${connector.provider} is connected`,
-                            feedbackSource
-                              ? "Import starts automatically."
-                              : "Ready for approved actions.",
-                          );
-                          void workspaceSetupFetch(orgId).then((next) => {
-                            setSetupStatus(next);
-                            setConnectedIds(next.connectedIntegrationIds);
-                          }).catch(() => undefined);
-                        }}
+                        onConnected={(integrationId) =>
+                          recordPipedreamConnection(connector, integrationId)
+                        }
                       />
                     ) : action?.type === "oauth_connect" ? (
                       <Link
@@ -1476,7 +1629,7 @@ export function OnboardingAgentPanel({
           supportFlow.step !== "review" &&
           (supportFlowActive ||
             showStarters ||
-            visibleSuggestedReplies.length > 0 ||
+            orderedSuggestedReplies.length > 0 ||
             supportFlow.step === "idle" ||
             supportFlow.step === "sent") && (
           <motion.div
@@ -1488,16 +1641,33 @@ export function OnboardingAgentPanel({
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
           >
             {!supportFlowActive &&
-              (showStarters ? STARTER_CHIPS : visibleSuggestedReplies).map((chip) => (
+              (showStarters ? STARTER_CHIPS : orderedSuggestedReplies).map((chip) => (
               <motion.button
                 key={chip}
                 type="button"
-                className="delphi-chip"
-                disabled={busy === "chat"}
-                onClick={() => void sendMessage(chip)}
+                className={`delphi-chip${
+                  chip === "Connect Apple App Store"
+                    ? " delphi-app-store-chip"
+                    : ""
+                }`}
+                disabled={Boolean(busy)}
+                onClick={() =>
+                  chip === "Continue for now"
+                    ? void continueOnboarding()
+                    : void sendMessage(chip)
+                }
                 whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
               >
-                {chip}
+                {chip === "Connect Apple App Store" && (
+                  <IntegrationProviderIcon
+                    integrationId="int_app_store"
+                    size={16}
+                    compact
+                  />
+                )}
+                {chip === "Connect Apple App Store"
+                  ? "Connect App Store"
+                  : chip}
               </motion.button>
             ))}
             {!supportFlowActive && (

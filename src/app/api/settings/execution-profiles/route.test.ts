@@ -5,6 +5,7 @@ import { upgradeExecutionProfileConfigV2 } from "@/lib/execution-profile";
 const profiles = vi.hoisted(() => ({ list: vi.fn(), override: vi.fn() }));
 const repositories = vi.hoisted(() => ({ list: vi.fn() }));
 const runtimeSecrets = vi.hoisted(() => ({ validate: vi.fn() }));
+const runnerSetups = vi.hoisted(() => ({ list: vi.fn() }));
 
 vi.mock("@/lib/execution-profile-repository", () => ({
   listExecutionProfileSettings: profiles.list,
@@ -18,6 +19,9 @@ vi.mock("@/lib/workspace-persistence", () => ({
 }));
 vi.mock("@/lib/runtime-secret-repository", () => ({
   validateRuntimeSecretBindings: runtimeSecrets.validate,
+}));
+vi.mock("@/lib/tenki-runner-workflow-setup-repository", () => ({
+  listPendingTenkiRunnerWorkflowSetups: runnerSetups.list,
 }));
 
 import { GET, PUT } from "./route";
@@ -46,6 +50,13 @@ describe("execution profile settings API", () => {
     profiles.override.mockReset().mockResolvedValue({ id: "override" });
     repositories.list.mockReset().mockResolvedValue([]);
     runtimeSecrets.validate.mockReset().mockResolvedValue(undefined);
+    runnerSetups.list.mockReset().mockResolvedValue([{
+      repository: "acme/app",
+      workflowPath: ".github/workflows/closespan-agent-runner.yml",
+      pullRequestNumber: 12,
+      pullRequestUrl: "https://github.example/pull/12",
+      updatedAt: "2026-08-11T12:00:00.000Z",
+    }]);
   });
 
   it("returns profiles and the workspace's GitHub-authorized repositories", async () => {
@@ -55,8 +66,13 @@ describe("execution profile settings API", () => {
       available: true,
       assignments: [],
       repositories: [],
+      runnerWorkflowSetups: [{
+        repository: "acme/app",
+        pullRequestNumber: 12,
+      }],
     });
     expect(profiles.list).toHaveBeenCalledWith("org-1");
+    expect(runnerSetups.list).toHaveBeenCalledWith("org-1");
   });
 
   it("does not disclose execution profiles or repository access to non-admin members", async () => {
@@ -114,5 +130,47 @@ describe("execution profile settings API", () => {
       bindings: config.secretBindings,
     });
     expect(profiles.override).toHaveBeenCalledOnce();
+  });
+
+  it("allows only documented same-platform runner sizes with matching resources", async () => {
+    const config = {
+      schemaVersion: 3 as const,
+      language: "swift",
+      packageManager: "xcode",
+      workingDirectory: ".",
+      permittedPaths: ["**/*"],
+      cpuCores: 6,
+      memoryMb: 28_672,
+      executor: {
+        kind: "tenki_github_actions" as const,
+        platform: "macos" as const,
+        architecture: "arm64" as const,
+        runnerLabel: "tenki-macos-15-medium",
+        workflowPath: ".github/workflows/closespan-agent-runner.yml",
+        workflowSha256: "a".repeat(64),
+        xcode: {
+          version: "16",
+          containerKind: "project" as const,
+          containerPath: "App.xcodeproj",
+          scheme: "App",
+          configuration: "Debug",
+          destination: "platform=iOS Simulator,name=iPhone 16",
+          sdk: "iphonesimulator" as const,
+          signingPolicy: "simulator_only" as const,
+        },
+        androidEmulator: null,
+      },
+    };
+    expect((await PUT(request("PUT", {
+      repository: "acme/app", workspaceRoot: ".", parentProfileId: null, config,
+    }))).status).toBe(200);
+    expect((await PUT(request("PUT", {
+      repository: "acme/app", workspaceRoot: ".", parentProfileId: null,
+      config: { ...config, executor: { ...config.executor, runnerLabel: "tenki-auto" } },
+    }))).status).toBe(409);
+    expect((await PUT(request("PUT", {
+      repository: "acme/app", workspaceRoot: ".", parentProfileId: null,
+      config: { ...config, cpuCores: 4 },
+    }))).status).toBe(409);
   });
 });

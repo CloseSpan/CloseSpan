@@ -63,16 +63,16 @@ export const demoWorkspaceGuide: WorkspaceDemoGuide = {
       ],
     },
     {
-      id: "priority",
-      title: "Prioritize by business impact",
+      id: "pdd",
+      title: "Prepare the problem with PDD",
       description:
-        "Compare frequency, severity, affected revenue, churn risk, confidence, and effort in one decision surface.",
-      path: "/prioritization",
-      actionLabel: "Open prioritization",
+        "Carry the selected problem through investigation, prompt improvement, acceptance criteria, and approval readiness.",
+      path: "/pdd/prob_export",
+      actionLabel: "Open PDD",
       talkingPoints: [
-        "The export regression leads because evidence and revenue align",
-        "Weights express the team's operating policy",
-        "Each score traces back to customer evidence",
+        "Investigation evidence and assumptions remain visible",
+        "PDD evaluates an immutable implementation prompt",
+        "Approval stays blocked until the acceptance contract is ready",
       ],
     },
     {

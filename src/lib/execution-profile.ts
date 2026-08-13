@@ -297,6 +297,141 @@ const executionProfileConfigV2InputSchema = z
     }
   });
 
+const repositoryRelativeFileSchema = z.string().trim().min(1).max(500).refine(
+  (value) => !value.startsWith("/")
+    && !value.includes("\\")
+    && !value.split("/").includes(".."),
+  "Path must stay inside the repository",
+);
+
+const tenkiGithubActionsXcodeSchema = z.object({
+  version: z.string().trim().min(1).max(40),
+  containerKind: z.enum(["workspace", "project", "package"]),
+  containerPath: repositoryRelativeFileSchema,
+  scheme: z.string().trim().min(1).max(200),
+  configuration: z.string().trim().min(1).max(80).default("Debug"),
+  destination: z.string().trim().min(1).max(500),
+  sdk: z.literal("iphonesimulator").default("iphonesimulator"),
+  signingPolicy: z.literal("simulator_only").default("simulator_only"),
+}).strict().superRefine((value, context) => {
+  const expectedSuffix = value.containerKind === "workspace"
+    ? ".xcworkspace"
+    : value.containerKind === "project"
+      ? ".xcodeproj"
+      : "Package.swift";
+  if (!value.containerPath.endsWith(expectedSuffix)) {
+    context.addIssue({
+      code: "custom",
+      path: ["containerPath"],
+      message: `Xcode ${value.containerKind} path must end with ${expectedSuffix}`,
+    });
+  }
+});
+
+const tenkiGithubActionsAndroidSchema = z.object({
+  apiLevel: z.number().int().min(21).max(99),
+  target: z.enum(["google_apis", "google_apis_playstore", "default"]),
+  architecture: z.enum(["x86_64", "arm64-v8a"]),
+  deviceProfile: z.string().trim().min(1).max(120),
+  gradleTask: z.string().trim().regex(/^:[A-Za-z0-9_.:-]+$/),
+}).strict();
+
+const executionProfileExecutorSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("tenki_sandbox"),
+  }).strict(),
+  z.object({
+    kind: z.literal("tenki_github_actions"),
+    platform: z.enum(["linux", "macos"]),
+    architecture: z.enum(["x64", "arm64"]),
+    runnerLabel: z.string().trim().regex(/^[A-Za-z0-9_.-]{1,120}$/),
+    workflowPath: z.string().trim().regex(
+      /^\.github\/workflows\/[A-Za-z0-9_.-]+\.ya?ml$/,
+      "Runner workflow must be a repository workflow YAML file",
+    ),
+    // Detection can create a reviewable candidate before the runner workflow
+    // exists. Confirmation and dispatch both require this immutable digest.
+    workflowSha256: z.union([z.string().regex(/^[a-f0-9]{64}$/), z.null()]),
+    xcode: z.union([tenkiGithubActionsXcodeSchema, z.null()]).default(null),
+    androidEmulator: z.union([tenkiGithubActionsAndroidSchema, z.null()]).default(null),
+  }).strict(),
+]);
+
+const executionProfileConfigV3InputSchema = z
+  .object({
+    schemaVersion: z.literal(3),
+    ...executionProfileBaseShape,
+    automaticInstall: z.boolean().default(false),
+    automaticBuild: z.boolean().default(false),
+    publicEnvironment: z.array(z.object({
+      name: environmentNameSchema,
+      value: z.string().max(4_000),
+    }).strict()).max(100).default([]),
+    secretBindings: z.array(z.object({
+      envName: environmentNameSchema,
+      secretId: z.string().uuid(),
+      secretVersion: z.number().int().positive(),
+      exposure: z.enum(["setup", "runtime", "test"]),
+    }).strict()).max(100).default([]),
+    startCommand: z.union([z.string().trim().min(1).max(1_000), z.null()]).default(null),
+    applicationPort: z.union([z.number().int().min(1_024).max(65_535), z.null()]).default(null),
+    healthCheckPath: z.union([
+      z.string().trim().regex(/^\/(?!\/)[^\s?#]{0,499}$/, "Health check must be an absolute HTTP path without a query or fragment"),
+      z.null(),
+    ]).default(null),
+    healthCheckTimeoutMs: z.number().int().min(5_000).max(600_000).default(90_000),
+    previewEnabled: z.boolean().default(false),
+    previewTtlMs: z.number().int().min(60_000).max(900_000).default(600_000),
+    runtimeTools: runtimeToolsSchema,
+    executor: executionProfileExecutorSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    refineBootSource(value, context);
+    if (value.automaticInstall && value.installCommands.length === 0) {
+      context.addIssue({ code: "custom", path: ["automaticInstall"], message: "Automatic install requires at least one install command" });
+    }
+    if (value.automaticBuild && value.buildCommands.length === 0) {
+      context.addIssue({ code: "custom", path: ["automaticBuild"], message: "Automatic build requires at least one build command" });
+    }
+    const runtimeConfigured = Boolean(value.startCommand || value.applicationPort || value.healthCheckPath);
+    if (runtimeConfigured && !(value.startCommand && value.applicationPort && value.healthCheckPath)) {
+      context.addIssue({ code: "custom", path: ["startCommand"], message: "A running application requires a start command, application port, and health check path" });
+    }
+    const executor = value.executor;
+    if (executor.kind === "tenki_github_actions") {
+      if (value.tenkiImage || value.tenkiSnapshotId) {
+        context.addIssue({ code: "custom", path: ["tenkiImage"], message: "Tenki GitHub Actions profiles use a runner label, not a Sandbox image or snapshot" });
+      }
+      if (value.allowInbound || value.previewEnabled) {
+        context.addIssue({ code: "custom", path: ["allowInbound"], message: "Tenki GitHub Actions jobs cannot expose an inbound CloseSpan preview" });
+      }
+      if (value.secretBindings.length > 0) {
+        context.addIssue({
+          code: "custom",
+          path: ["secretBindings"],
+          message: "Tenki GitHub Actions profiles must use explicitly reviewed GitHub Actions secrets; CloseSpan runtime secret bindings are not exported to repository workflows",
+        });
+      }
+      if (executor.platform === "macos") {
+        if (executor.architecture !== "arm64") {
+          context.addIssue({ code: "custom", path: ["executor", "architecture"], message: "Tenki macOS runners use Apple Silicon arm64" });
+        }
+        if (!executor.xcode) {
+          context.addIssue({ code: "custom", path: ["executor", "xcode"], message: "A Tenki macOS execution profile requires an Xcode contract" });
+        }
+        if (executor.androidEmulator) {
+          context.addIssue({ code: "custom", path: ["executor", "androidEmulator"], message: "Android Emulator profiles run on Tenki Linux x64 with KVM" });
+        }
+      } else if (executor.xcode) {
+        context.addIssue({ code: "custom", path: ["executor", "xcode"], message: "Xcode requires a Tenki macOS runner" });
+      }
+      if (executor.androidEmulator && executor.architecture !== "x64") {
+        context.addIssue({ code: "custom", path: ["executor", "architecture"], message: "Tenki Android Emulator profiles require Linux x64 with nested KVM" });
+      }
+    }
+  });
+
 export interface ExecutionProfileConfigBase {
   language: string;
   framework: string | null;
@@ -355,11 +490,53 @@ export interface ExecutionProfileConfigV2 extends ExecutionProfileConfigBase {
   runtimeTools: ExecutionProfileRuntimeTools;
 }
 
-export type ExecutionProfileConfig = ExecutionProfileConfigV1 | ExecutionProfileConfigV2;
+export interface TenkiGithubActionsXcodeContract {
+  version: string;
+  containerKind: "workspace" | "project" | "package";
+  containerPath: string;
+  scheme: string;
+  configuration: string;
+  destination: string;
+  sdk: "iphonesimulator";
+  signingPolicy: "simulator_only";
+}
+
+export interface TenkiGithubActionsAndroidContract {
+  apiLevel: number;
+  target: "google_apis" | "google_apis_playstore" | "default";
+  architecture: "x86_64" | "arm64-v8a";
+  deviceProfile: string;
+  gradleTask: string;
+}
+
+export type ExecutionProfileExecutor =
+  | { kind: "tenki_sandbox" }
+  | {
+      kind: "tenki_github_actions";
+      platform: "linux" | "macos";
+      architecture: "x64" | "arm64";
+      runnerLabel: string;
+      workflowPath: string;
+      workflowSha256: string | null;
+      xcode: TenkiGithubActionsXcodeContract | null;
+      androidEmulator: TenkiGithubActionsAndroidContract | null;
+    };
+
+export interface ExecutionProfileConfigV3
+  extends Omit<ExecutionProfileConfigV2, "schemaVersion"> {
+  schemaVersion: 3;
+  executor: ExecutionProfileExecutor;
+}
+
+export type ExecutionProfileConfig =
+  | ExecutionProfileConfigV1
+  | ExecutionProfileConfigV2
+  | ExecutionProfileConfigV3;
 
 export function assertTenkiProviderResourceLimits(
-  config: Pick<ExecutionProfileConfig, "cpuCores" | "memoryMb">,
+  config: ExecutionProfileConfig,
 ): void {
+  if (executionProfileExecutor(config).kind === "tenki_github_actions") return;
   if (config.cpuCores > 16) {
     throw new Error("Tenki execution profiles support at most 16 CPU cores");
   }
@@ -566,9 +743,11 @@ export function sanitizeExecutionProfileConfig(
   const requestedVersion = input && typeof input === "object"
     ? (input as { schemaVersion?: unknown }).schemaVersion
     : undefined;
-  const parsed = requestedVersion === 2
-    ? executionProfileConfigV2InputSchema.parse(input)
-    : executionProfileConfigV1InputSchema.parse(input);
+  const parsed = requestedVersion === 3
+    ? executionProfileConfigV3InputSchema.parse(input)
+    : requestedVersion === 2
+      ? executionProfileConfigV2InputSchema.parse(input)
+      : executionProfileConfigV1InputSchema.parse(input);
   const workingDirectory = normalizeRelativePath(
     parsed.workingDirectory,
     "Working directory",
@@ -606,8 +785,7 @@ export function sanitizeExecutionProfileConfig(
   if (parsed.schemaVersion === 1) {
     return { schemaVersion: 1, ...base };
   }
-  return {
-    schemaVersion: 2,
+  const runtime = {
     ...base,
     automaticInstall: parsed.automaticInstall,
     automaticBuild: parsed.automaticBuild,
@@ -623,6 +801,27 @@ export function sanitizeExecutionProfileConfig(
     previewTtlMs: parsed.previewTtlMs,
     runtimeTools: { ...parsed.runtimeTools },
   };
+  if (parsed.schemaVersion === 2) {
+    return { schemaVersion: 2, ...runtime };
+  }
+  const executor = parsed.executor.kind === "tenki_sandbox"
+    ? { kind: "tenki_sandbox" as const }
+    : {
+        ...parsed.executor,
+        xcode: parsed.executor.xcode
+          ? {
+              ...parsed.executor.xcode,
+              containerPath: normalizeRelativePath(
+                parsed.executor.xcode.containerPath,
+                "Xcode container path",
+              ),
+            }
+          : null,
+        androidEmulator: parsed.executor.androidEmulator
+          ? { ...parsed.executor.androidEmulator }
+          : null,
+      };
+  return { schemaVersion: 3, ...runtime, executor };
 }
 
 export function upgradeExecutionProfileConfigV2(
@@ -630,6 +829,11 @@ export function upgradeExecutionProfileConfigV2(
 ): ExecutionProfileConfigV2 {
   const config = sanitizeExecutionProfileConfig(input);
   if (config.schemaVersion === 2) return config;
+  if (config.schemaVersion === 3) {
+    const { executor, ...runtime } = config;
+    void executor;
+    return { ...runtime, schemaVersion: 2 };
+  }
   return sanitizeExecutionProfileConfig({
     ...config,
     schemaVersion: 2,
@@ -645,6 +849,34 @@ export function upgradeExecutionProfileConfigV2(
     previewTtlMs: 600_000,
     runtimeTools: { http: false, browser: false, logs: false },
   }) as ExecutionProfileConfigV2;
+}
+
+export function executionProfileUsesRuntimeContract(
+  config: ExecutionProfileConfig,
+): config is ExecutionProfileConfigV2 | ExecutionProfileConfigV3 {
+  return config.schemaVersion === 2 || config.schemaVersion === 3;
+}
+
+export function assertExecutionProfileReadyForActivation(
+  config: ExecutionProfileConfig,
+): void {
+  if (
+    config.schemaVersion === 3
+    && config.executor.kind === "tenki_github_actions"
+    && !config.executor.workflowSha256
+  ) {
+    throw new Error(
+      "Tenki GitHub Actions profiles require an immutable runner workflow SHA-256 before activation",
+    );
+  }
+}
+
+export function executionProfileExecutor(
+  config: ExecutionProfileConfig,
+): ExecutionProfileExecutor {
+  return config.schemaVersion === 3
+    ? config.executor
+    : { kind: "tenki_sandbox" };
 }
 
 export const executionProfileConfigSchema = z.unknown().transform(

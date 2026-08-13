@@ -46,6 +46,11 @@ if PDD_EXECUTION_MODE not in {"cloud", "local"}:
 PDD_CLOUD_FALLBACK_ENABLED = os.environ.get(
     "PDD_CLOUD_FALLBACK_ENABLED", "false"
 ).strip().lower() in {"1", "true", "yes", "on"}
+PROMPT_EVALUATION_MODES = {
+    "pdd_cloud",
+    "pdd_local",
+    "pdd_cloud_with_local_fallback",
+}
 PDD_JWT_TOKEN = os.environ.get("PDD_JWT_TOKEN", "").strip()
 PDD_REFRESH_TOKEN = os.environ.get("PDD_REFRESH_TOKEN", "").strip()
 CALLBACK_ORIGIN = os.environ.get("CLOSESPAN_CALLBACK_ORIGIN", "").strip().rstrip("/")
@@ -56,6 +61,20 @@ MAX_PROMPT_EVALUATIONS = 256
 PROMPT_EVALUATION_RETENTION_SECONDS = 3_600
 PDD_VERSION_TOKEN = re.compile(
     r"(?<![0-9A-Za-z.])v?(\d{1,4}\.\d{1,4}\.\d{1,4})(?![0-9A-Za-z.])"
+)
+MAX_PROMPT_CHANGE_CHARACTERS = 16_000
+# PDD reserves a model's maximum output cost before each internal provider
+# call. Keep prompt-review stages bounded so a high-output model cannot exhaust
+# the request-wide dollar ceiling before later detector calls are invoked.
+PROMPT_EVALUATION_MAX_OUTPUT_TOKENS = 4_096
+PROMPT_EVALUATION_DETECTION_MAX_OUTPUT_TOKENS = 8_192
+PROMPT_CONTRACT_CHANGE_SECTIONS = (
+    "Context",
+    "Acceptance Criteria",
+    "Oracle",
+    "Non-Oracle",
+    "Negative Cases",
+    "Non-Goals",
 )
 
 PROFILE_CONFIG_BASE_KEYS = {
@@ -108,6 +127,14 @@ LOCAL_PROVIDER_CREDENTIALS = {
     "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY",
     "OPENAI_API_KEY", "OPENROUTER_API_KEY", "TOGETHERAI_API_KEY", "XAI_API_KEY",
 }
+WORKSPACE_LOCAL_PROVIDERS = {
+    "openai": ("OPENAI_API_KEY", "openai"),
+    "anthropic": ("ANTHROPIC_API_KEY", "anthropic"),
+    "xai": ("XAI_API_KEY", "xai"),
+    "openrouter": ("OPENROUTER_API_KEY", "openrouter"),
+}
+OPENAI_CODEX_SERVICE_TIERS = {"sol", "terra", "luna"}
+PDD_MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 RUNTIME_TOOL_KEYS = {"http", "browser", "logs"}
 BROWSER_PREFLIGHT_COMMAND = (
     'node -e "let c;try{c=require(\'playwright\').chromium}catch{c=require(\'@playwright/test\').chromium}'
@@ -623,6 +650,8 @@ def language_for(path: pathlib.Path) -> tuple[str, str]:
         return "Python", f"tests/test_{path.stem}_pdd.py"
     if suffix == ".go":
         return "Go", f"{path.stem}_pdd_test.go"
+    if suffix == ".swift":
+        return "Swift", "CloseSpanPDDTests.swift"
     raise ValueError(f"PDD runner does not support the target extension {suffix}")
 
 
@@ -638,7 +667,18 @@ def choose_target(root: pathlib.Path, suspected: list[str]) -> tuple[pathlib.Pat
             language, output_name = language_for(relative)
         except ValueError:
             continue
-        output = relative.parent / output_name
+        if language == "Swift":
+            project_root = next(
+                (
+                    parent
+                    for parent in (target.parent, *target.parents)
+                    if parent == root or any(parent.glob("*.xcodeproj"))
+                ),
+                root,
+            )
+            output = project_root.relative_to(root) / "tests" / output_name
+        else:
+            output = relative.parent / output_name
         return target, language, pathlib.Path(str(output))
     raise ValueError("No supported suspected source file exists in the repository snapshot")
 
@@ -647,28 +687,69 @@ def permitted(path: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
 
 
-def cost_report(path: pathlib.Path) -> tuple[float | None, str | None]:
-    if not path.exists():
-        return None, PDD_MODEL or None
+def cost_report(
+    path: pathlib.Path, fallback_model: str | None = None,
+) -> tuple[float | None, str | None]:
+    repair_path = path.with_name(f"{path.name}.contract-repair.json")
+    if not path.exists() and not repair_path.exists():
+        return None, fallback_model or PDD_MODEL or None
     total = 0.0
-    model = PDD_MODEL or None
-    with path.open(newline="", encoding="utf-8") as handle:
-        for row in csv.DictReader(handle):
-            try:
-                total += float(row.get("cost") or 0)
-            except ValueError:
-                pass
-            model = row.get("resolved_model") or row.get("model") or model
+    model = fallback_model or PDD_MODEL or None
+    if path.exists():
+        with path.open(newline="", encoding="utf-8") as handle:
+            for row in csv.DictReader(handle):
+                try:
+                    total += float(row.get("cost") or 0)
+                except ValueError:
+                    pass
+                model = row.get("resolved_model") or row.get("model") or model
+    if repair_path.exists():
+        try:
+            repair = json.loads(repair_path.read_text(encoding="utf-8"))
+            total += float(repair.get("cost") or 0)
+            model = repair.get("model") or model
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            pass
     return round(total, 6), model
 
 
-def pdd_environment(mode: str, budget_usd: float) -> dict[str, str]:
+def local_pdd_model(runtime: dict | None) -> str | None:
+    if not runtime:
+        return PDD_MODEL or None
+    provider = runtime["provider"]
+    prefix = WORKSPACE_LOCAL_PROVIDERS[provider][1]
+    model = runtime["model"]
+    bare_model = model.removeprefix(f"{prefix}/")
+    if provider == "openai":
+        # CloseSpan's Codex runtime exposes service-tier aliases such as
+        # gpt-5.6-sol. Prompt Driven's OpenAI catalog uses the public API model
+        # family name (gpt-5.6); the service tier is not part of that model ID.
+        match = re.fullmatch(r"(gpt-\d+(?:\.\d+)?)-(sol|terra|luna)", bare_model)
+        if match and match.group(2) in OPENAI_CODEX_SERVICE_TIERS:
+            bare_model = match.group(1)
+    return f"{prefix}/{bare_model}"
+
+
+def pdd_environment(
+    mode: str,
+    budget_usd: float,
+    *,
+    local_runtime: dict | None = None,
+    isolate_local_credentials: bool = False,
+    output_token_cap: int | None = None,
+) -> dict[str, str]:
     environment = os.environ.copy()
     environment["PDD_NO_INTERACTIVE"] = "1"
     environment["PDD_ALLOW_INTERACTIVE"] = "0"
     environment["PDD_COMMAND_MAX_COST_USD"] = f"{budget_usd:.6f}"
-    if PDD_MODEL:
-        environment["PDD_MODEL_DEFAULT"] = PDD_MODEL
+    environment.pop("PDD_COMMAND_MAX_OUTPUT_TOKENS", None)
+    if output_token_cap is not None:
+        if output_token_cap <= 0:
+            raise ValueError("PDD output token cap must be positive")
+        environment["PDD_COMMAND_MAX_OUTPUT_TOKENS"] = str(output_token_cap)
+    selected_model = local_pdd_model(local_runtime)
+    if selected_model:
+        environment["PDD_MODEL_DEFAULT"] = selected_model
     if mode == "cloud":
         environment.pop("PDD_FORCE_LOCAL", None)
         environment.pop("PDD_REFRESH_TOKEN", None)
@@ -687,6 +768,26 @@ def pdd_environment(mode: str, budget_usd: float) -> dict[str, str]:
     else:
         environment["PDD_FORCE_LOCAL"] = "1"
         environment["PDD_CLOUD_RUN"] = "false"
+        if isolate_local_credentials:
+            # Prompt evaluations are tenant-scoped. Never allow a job without
+            # an explicit workspace runtime to inherit another credential from
+            # the runner process.
+            for name in LOCAL_PROVIDER_CREDENTIALS:
+                environment.pop(name, None)
+            environment.pop("PDD_MODEL_DEFAULT", None)
+            if local_runtime:
+                credential_name = WORKSPACE_LOCAL_PROVIDERS[
+                    local_runtime["provider"]
+                ][0]
+                credential_value = local_runtime.get("apiKey")
+                if local_runtime.get("credentialSource") == "runner":
+                    credential_value = os.environ.get(credential_name, "").strip()
+                if not credential_value:
+                    raise ValueError(
+                        f"The runner credential for {local_runtime['provider']} is not configured"
+                    )
+                environment[credential_name] = credential_value
+                environment["PDD_MODEL_DEFAULT"] = local_pdd_model(local_runtime) or ""
     return environment
 
 
@@ -723,10 +824,16 @@ def pdd_command(
 
 
 def validate_prompt_evaluation(value: object) -> dict:
-    if not isinstance(value, dict) or set(value) != {
+    required_fields = {
         "schemaVersion", "requestId", "promptHash", "userStory",
         "implementationPrompt", "pddVersion", "budgetUsd",
-    }:
+    }
+    optional_fields = {"evaluationMode", "localRuntime", "acceptanceContract"}
+    if (
+        not isinstance(value, dict)
+        or not required_fields.issubset(value)
+        or not set(value).issubset(required_fields | optional_fields)
+    ):
         raise ValueError("PDD prompt evaluation payload is invalid")
     if value["schemaVersion"] != 1:
         raise ValueError("PDD prompt evaluation schema is unsupported")
@@ -743,10 +850,63 @@ def validate_prompt_evaluation(value: object) -> dict:
         value[field] = item.strip()
     if value["pddVersion"] != PDD_CLI_VERSION:
         raise ValueError("PDD prompt evaluation version does not match the runner")
+    acceptance_contract = value.get("acceptanceContract")
+    if acceptance_contract is not None:
+        if (
+            not isinstance(acceptance_contract, str)
+            or not acceptance_contract.strip()
+            or len(acceptance_contract.encode()) > MAX_OUTPUT_BYTES
+            or "\x00" in acceptance_contract
+        ):
+            raise ValueError("PDD acceptance contract is invalid")
+        required_headings = {
+            match.group(1).strip().casefold()
+            for match in re.finditer(r"^##\s+([^\n]+?)\s*$", acceptance_contract, re.MULTILINE)
+        }
+        if not all(name.casefold() in required_headings for name in PROMPT_CONTRACT_CHANGE_SECTIONS):
+            raise ValueError("PDD acceptance contract is incomplete")
+        value["acceptanceContract"] = acceptance_contract.strip()
     budget = value["budgetUsd"]
     if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not 0 < float(budget) <= 5:
         raise ValueError("PDD prompt evaluation budget is invalid")
     value["budgetUsd"] = float(budget)
+    if "evaluationMode" not in value:
+        value["evaluationMode"] = (
+            "pdd_local" if PDD_EXECUTION_MODE == "local"
+            else "pdd_cloud_with_local_fallback"
+            if PDD_CLOUD_FALLBACK_ENABLED
+            else "pdd_cloud"
+        )
+    if value["evaluationMode"] not in PROMPT_EVALUATION_MODES:
+        raise ValueError("PDD prompt evaluation mode is invalid")
+    runtime = value.get("localRuntime")
+    if value["evaluationMode"] == "pdd_local" and runtime is None:
+        raise ValueError("PDD local runtime is required")
+    if runtime is not None:
+        if value["evaluationMode"] == "pdd_cloud":
+            raise ValueError("PDD Cloud evaluations cannot receive local credentials")
+        runtime_fields = set(runtime) if isinstance(runtime, dict) else set()
+        if runtime_fields not in (
+            {"provider", "model", "apiKey"},
+            {"provider", "model", "credentialSource"},
+        ):
+            raise ValueError("PDD local runtime is invalid")
+        if runtime["provider"] not in WORKSPACE_LOCAL_PROVIDERS:
+            raise ValueError("PDD local provider is unsupported")
+        if (
+            not isinstance(runtime["model"], str)
+            or not PDD_MODEL_NAME.fullmatch(runtime["model"])
+        ):
+            raise ValueError("PDD local model is invalid")
+        if "apiKey" in runtime:
+            if (
+                not isinstance(runtime["apiKey"], str)
+                or not 8 <= len(runtime["apiKey"]) <= 8_192
+                or any(character in runtime["apiKey"] for character in ("\x00", "\n", "\r"))
+            ):
+                raise ValueError("PDD local credential is invalid")
+        elif runtime.get("credentialSource") != "runner":
+            raise ValueError("PDD local credential source is invalid")
     return value
 
 
@@ -849,6 +1009,161 @@ def pdd_story_command(
     return command
 
 
+def pdd_contract_repair_command(
+    *, story: pathlib.Path, issue: pathlib.Path, prompts: pathlib.Path,
+) -> list[str]:
+    """Regenerate a missing contract through Prompt Driven's supported API."""
+    script = """
+import json
+import pathlib
+import sys
+from pdd.user_story_tests import sync_user_story_contract
+
+changed, message, cost, model, contract_path = sync_user_story_contract(
+    sys.argv[1],
+    issue=sys.argv[2],
+    prompts_dir=sys.argv[3],
+    time=0.5,
+    force=True,
+)
+result = {
+    "changed": bool(changed),
+    "message": str(message or ""),
+    "cost": float(cost or 0),
+    "model": str(model or ""),
+    "contractPath": str(contract_path or ""),
+}
+print("CLOSESPAN_CONTRACT_REPAIR=" + json.dumps(result, separators=(",", ":")))
+if not contract_path or not pathlib.Path(contract_path).is_file():
+    raise SystemExit(1)
+""".strip()
+    return [
+        "python", "-c", script, story.as_posix(), issue.as_posix(),
+        prompts.as_posix(),
+    ]
+
+
+def pdd_contract_repair_receipt(output: str) -> dict | None:
+    """Extract PDD's bounded repair receipt from otherwise noisy CLI output."""
+    marker = "CLOSESPAN_CONTRACT_REPAIR="
+    marker_index = output.rfind(marker)
+    receipt = output[marker_index + len(marker):].lstrip() if marker_index >= 0 else ""
+    if not receipt:
+        return None
+    try:
+        result, _ = json.JSONDecoder().raw_decode(receipt)
+    except json.JSONDecodeError:
+        return None
+    return result if isinstance(result, dict) else None
+
+
+def log_contract_repair_failure(
+    *, mode: str, process: subprocess.CompletedProcess[str],
+) -> None:
+    """Log only PDD-authored, bounded metadata; never log prompts or credentials."""
+    result = pdd_contract_repair_receipt(process.stdout)
+    if not result:
+        return
+    message = re.sub(r"/[A-Za-z0-9_./-]+", "<path>", str(result.get("message") or ""))
+    for pattern in CREDENTIAL_VALUE_PATTERNS:
+        message = pattern.sub("[redacted]", message)
+    print(json.dumps({
+        "event": "pdd_contract_repair_failed",
+        "mode": mode,
+        "returnCode": process.returncode,
+        "model": str(result.get("model") or "")[:200],
+        "message": message[:1_000],
+    }, separators=(",", ":")))
+
+
+def log_pdd_stage_failure(
+    *, stage: str, mode: str, process: subprocess.CompletedProcess[str],
+) -> None:
+    """Emit bounded provider diagnostics without prompts, paths, or credentials."""
+    relevant = []
+    for line in "\n".join((process.stdout or "", process.stderr or "")).splitlines():
+        if not re.search(
+            r"error|exception|model|provider|budget|cost|credential|api.?key|unauthor|invalid|unavailable|failed",
+            line,
+            re.IGNORECASE,
+        ):
+            continue
+        sanitized = re.sub(r"\x1b\[[0-9;]*m", "", line)
+        sanitized = re.sub(r"/[A-Za-z0-9_./-]+", "<path>", sanitized)
+        for pattern in CREDENTIAL_VALUE_PATTERNS:
+            sanitized = pattern.sub("[redacted]", sanitized)
+        relevant.append(sanitized[:500])
+    print(json.dumps({
+        "event": "pdd_stage_failed",
+        "stage": stage,
+        "mode": mode,
+        "returnCode": process.returncode,
+        "diagnostic": relevant[-8:],
+    }, separators=(",", ":")))
+
+
+def prompt_evaluation_story(root: pathlib.Path) -> pathlib.Path:
+    """Return the one bounded story artifact available for contract repair."""
+    stories = sorted(
+        path for path in (root / "user_stories").rglob("story__*.md")
+        if path.is_file() and not path.is_symlink()
+    )
+    if len(stories) != 1:
+        raise RuntimeError("PDD did not produce the required prompt-evaluation story")
+    if not 0 < stories[0].stat().st_size <= MAX_OUTPUT_BYTES:
+        raise RuntimeError("PDD produced an invalid prompt-evaluation story")
+    return stories[0]
+
+
+def repair_prompt_evaluation_contract(
+    *, root: pathlib.Path, mode: str, budget_usd: float, costs: pathlib.Path,
+    local_runtime: dict | None = None,
+) -> None:
+    """Make one bounded repair attempt when PDD's best-effort add skips a contract."""
+    story = prompt_evaluation_story(root)
+    process = subprocess.run(
+        pdd_contract_repair_command(
+            story=story,
+            issue=root / "requested-outcome.md",
+            prompts=root / "prompts",
+        ),
+        cwd=root,
+        env=pdd_environment(
+            mode,
+            budget_usd,
+            local_runtime=local_runtime,
+            isolate_local_credentials=True,
+            output_token_cap=PROMPT_EVALUATION_MAX_OUTPUT_TOKENS,
+        ),
+        capture_output=True,
+        text=True,
+        timeout=RUN_TIMEOUT_SECONDS,
+        check=False,
+    )
+    if process.returncode != 0:
+        log_contract_repair_failure(mode=mode, process=process)
+        raise pdd_prompt_stage_error(
+            "contract-regeneration", process, mode=mode,
+        )
+    try:
+        result = pdd_contract_repair_receipt(process.stdout)
+        if not isinstance(result, dict):
+            raise TypeError("contract repair receipt is missing")
+        repair_cost = float(result.get("cost") or 0)
+        repair_model = result.get("model") or ""
+    except (AttributeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "PDD returned an invalid contract-regeneration receipt"
+        ) from exc
+    if repair_cost < 0 or repair_cost > budget_usd:
+        raise RuntimeError("PDD contract regeneration exceeded its review budget")
+    costs.with_name(f"{costs.name}.contract-repair.json").write_text(
+        json.dumps({"cost": repair_cost, "model": repair_model}),
+        encoding="utf-8",
+    )
+    prompt_evaluation_artifacts(root)
+
+
 def prompt_evaluation_artifacts(root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
     """Return the one complete story/contract pair authored for an evaluation."""
     stories_root = root / "user_stories"
@@ -875,7 +1190,7 @@ def prompt_evaluation_artifacts(root: pathlib.Path) -> tuple[pathlib.Path, pathl
 
 
 def pdd_prompt_stage_error(
-    stage: str, process: subprocess.CompletedProcess[str],
+    stage: str, process: subprocess.CompletedProcess[str], *, mode: str = "cloud",
 ) -> RuntimeError:
     """Map PDD CLI diagnostics to a safe, actionable runner error."""
     details = " ".join(
@@ -884,11 +1199,25 @@ def pdd_prompt_stage_error(
     if "authentication" in details or "token expired" in details:
         return RuntimeError("PDD Cloud authentication could not be refreshed")
     if any(phrase in details for phrase in (
-        "budget exceeded", "cost limit", "maximum cost", "max cost",
+        "budget exceeded", "budget exhausted", "budget cannot fund",
+        "cost limit", "maximum cost", "max cost", "output token ceiling is exhausted",
         "exceeded the configured", "insufficient pddc",
     )):
+        if mode == "local":
+            return RuntimeError(
+                "Local Prompt Driven evaluation could not complete within its bounded review budget"
+            )
         return RuntimeError("PDD Cloud could not complete prompt evaluation within its budget")
-    if "no models" in details or "model" in details and "unavailable" in details:
+    if mode == "local" and any(phrase in details for phrase in (
+        "no matching row", "choose an available model", "not found in csv",
+        "requires api key", "no models available",
+    )):
+        return RuntimeError(
+            "The configured AI model is not supported by Prompt Driven; choose a compatible model in AI Settings"
+        )
+    if mode == "cloud" and (
+        "no models" in details or "model" in details and "unavailable" in details
+    ):
         return RuntimeError("PDD Cloud could not select an evaluation model")
     return RuntimeError(f"PDD could not complete the {stage} stage")
 
@@ -908,30 +1237,154 @@ def verify_pdd_cloud_authentication(*, mode: str, budget_usd: float) -> None:
 
 def run_prompt_evaluation_pipeline(
     *, root: pathlib.Path, mode: str, budget_usd: float, costs: pathlib.Path,
+    local_runtime: dict | None = None, acceptance_contract: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Generate PDD's independent contract, then evaluate the suggested prompt."""
     issue = root / "requested-outcome.md"
-    contract_budget = round(budget_usd * 0.7, 6)
-    detection_budget = round(budget_usd - contract_budget, 6)
-    verify_pdd_cloud_authentication(mode=mode, budget_usd=contract_budget)
+    # The final detector reads the complete generated contract plus Prompt
+    # Driven's evaluation template. Contract generation already succeeds with
+    # a small cap, so do not scale those two preparatory stages up with the
+    # larger local ceiling; reserve the remainder for the detector.
+    generation_budget, repair_budget, _detection_budget = (
+        prompt_evaluation_stage_budgets(budget_usd)
+    )
+    verify_pdd_cloud_authentication(mode=mode, budget_usd=generation_budget)
     generation = subprocess.run(
         pdd_story_command(mode=mode, costs=costs, issue=issue), cwd=root,
-        env=pdd_environment(mode, contract_budget), capture_output=True,
+        env=pdd_environment(
+            mode,
+            generation_budget,
+            local_runtime=local_runtime,
+            isolate_local_credentials=True,
+            output_token_cap=PROMPT_EVALUATION_MAX_OUTPUT_TOKENS,
+        ), capture_output=True,
         text=True, timeout=RUN_TIMEOUT_SECONDS, check=False,
     )
     if generation.returncode != 0:
-        raise pdd_prompt_stage_error("contract-generation", generation)
+        log_pdd_stage_failure(
+            stage="contract-generation", mode=mode, process=generation,
+        )
+        raise pdd_prompt_stage_error(
+            "contract-generation", generation, mode=mode,
+        )
 
-    prompt_evaluation_artifacts(root)
+    try:
+        prompt_evaluation_artifacts(root)
+    except RuntimeError as error:
+        if "required prompt-evaluation contract" not in str(error):
+            raise
+        repair_prompt_evaluation_contract(
+            root=root,
+            mode=mode,
+            budget_usd=repair_budget,
+            costs=costs,
+            local_runtime=local_runtime,
+        )
+
+    if acceptance_contract:
+        # A retest must use the immutable contract authored by the preceding
+        # PDD review. Regenerating it would move the acceptance boundary after
+        # the product manager applied the requested revision.
+        _, contract_path = prompt_evaluation_artifacts(root)
+        contract_path.write_text(acceptance_contract.strip() + "\n", encoding="utf-8")
+
+    # Give the detector the real unspent remainder. A repair is best-effort and
+    # usually does not run, so permanently reserving its entire ceiling made
+    # otherwise valid local evaluations fail before the provider was invoked.
+    # The final cost check still enforces the request-wide hard ceiling.
+    preparation_cost, _preparation_model = cost_report(
+        costs,
+        fallback_model=local_pdd_model(local_runtime),
+    )
+    detection_budget = round(budget_usd - float(preparation_cost or 0), 6)
+    if detection_budget <= 0:
+        raise RuntimeError(
+            "PDD preparation exhausted the prompt evaluation review budget"
+        )
 
     detection = subprocess.run(
         pdd_detect_command(mode=mode, costs=costs), cwd=root,
-        env=pdd_environment(mode, detection_budget), capture_output=True,
+        env=pdd_environment(
+            mode,
+            detection_budget,
+            local_runtime=local_runtime,
+            isolate_local_credentials=True,
+            output_token_cap=PROMPT_EVALUATION_DETECTION_MAX_OUTPUT_TOKENS,
+        ), capture_output=True,
         text=True, timeout=RUN_TIMEOUT_SECONDS, check=False,
     )
     if detection.returncode not in {0, 1}:
-        raise pdd_prompt_stage_error("prompt-detection", detection)
+        log_pdd_stage_failure(
+            stage="prompt-detection", mode=mode, process=detection,
+        )
+        raise pdd_prompt_stage_error("prompt-detection", detection, mode=mode)
     return detection
+
+
+def prompt_evaluation_stage_budgets(budget_usd: float) -> tuple[float, float, float]:
+    generation = round(min(budget_usd * 0.25, 0.25), 6)
+    repair = round(min(budget_usd * 0.15, 0.25), 6)
+    detection = round(budget_usd - generation - repair, 6)
+    return generation, repair, detection
+
+
+def split_numbered_change_instructions(instruction: str) -> list[str]:
+    compact = " ".join(instruction.split()).strip()
+    if not compact:
+        return []
+    markers = list(re.finditer(r"(?:^|\s)\d+\.\s+(?=[A-Z\"'])", compact))
+    if not markers or markers[0].start() != 0:
+        return [compact]
+    return [
+        compact[marker.end():(markers[index + 1].start() if index + 1 < len(markers) else len(compact))].strip()
+        for index, marker in enumerate(markers)
+        if compact[marker.end():(markers[index + 1].start() if index + 1 < len(markers) else len(compact))].strip()
+    ]
+
+
+def prompt_change_is_complete(instruction: str) -> bool:
+    """Reject visibly clipped PDD instructions before they reach an approval."""
+    compact = instruction.rstrip()
+    if not compact or compact.endswith(("...", "…")):
+        return False
+    return compact.endswith((".", "!", "?", ":", ")", "]", "}", '"', "'", "`"))
+
+
+def contract_change_recommendations(contract: str) -> list[str]:
+    """Recover complete recommendations from PDD's generated source contract."""
+    headings = list(re.finditer(r"^##\s+([^\n]+?)\s*$", contract, re.MULTILINE))
+    sections: dict[str, str] = {}
+    for index, heading in enumerate(headings):
+        name = heading.group(1).strip()
+        body_end = headings[index + 1].start() if index + 1 < len(headings) else len(contract)
+        body = contract[heading.end():body_end].strip()
+        if body:
+            sections[name.casefold()] = body
+
+    recovered: list[str] = []
+    for name in PROMPT_CONTRACT_CHANGE_SECTIONS:
+        body = sections.get(name.casefold())
+        if not body:
+            continue
+        recommendation = (
+            f'Update the prompt with the complete PDD "{name}" contract section:\n\n'
+            f"## {name}\n{body}"
+        )
+        if len(recommendation) > MAX_PROMPT_CHANGE_CHARACTERS:
+            raise RuntimeError(
+                f'PDD generated an oversized "{name}" contract section; retry the evaluation'
+            )
+        recovered.append(recommendation)
+    if not recovered:
+        raise RuntimeError("PDD returned incomplete change instructions without a recoverable contract")
+    return recovered
+
+
+def complete_story_changes(changes: list[str], contract: str) -> list[str]:
+    """Use the immutable PDD contract whenever detector prose is incomplete."""
+    if changes and all(prompt_change_is_complete(change) for change in changes):
+        return changes
+    return contract_change_recommendations(contract)
 
 
 def parse_story_detection(output: str) -> tuple[str, list[str]]:
@@ -958,9 +1411,11 @@ def parse_story_detection(output: str) -> tuple[str, list[str]]:
                 continue
             instruction = change.get("change_instructions") or change.get("instruction")
             if isinstance(instruction, str):
-                compact = " ".join(instruction.split()).strip()
-                if compact and compact not in changes:
-                    changes.append(compact[:500])
+                for recommendation in split_numbered_change_instructions(instruction):
+                    if recommendation and recommendation not in changes:
+                        if len(recommendation) > MAX_PROMPT_CHANGE_CHARACTERS:
+                            raise RuntimeError("PDD returned an oversized prompt-change instruction")
+                        changes.append(recommendation)
     if outcome == "STORY_FAILURE" and not changes:
         changes.append("Revise the implementation prompt so it explicitly delivers the user story's observable outcome.")
     return ("Passed" if outcome == "PASS" else "Needs revision"), changes[:8]
@@ -979,25 +1434,56 @@ def evaluate_prompt_with_pdd(request: dict) -> dict:
             encoding="utf-8",
         )
         costs = root / "pdd-costs.csv"
-        mode = PDD_EXECUTION_MODE
+        evaluation_mode = request["evaluationMode"]
+        local_runtime = request.get("localRuntime")
+        mode = "local" if evaluation_mode == "pdd_local" else "cloud"
+        local_fallback_enabled = (
+            evaluation_mode == "pdd_cloud_with_local_fallback"
+        )
+        if mode == "local" and not local_runtime:
+            raise RuntimeError(
+                "Configure an AI provider for this workspace before using local Prompt Driven evaluation"
+            )
+        cloud_budget = min(request["budgetUsd"], 0.25)
+        effective_budget = request["budgetUsd"] if mode == "local" else cloud_budget
         try:
             process = run_prompt_evaluation_pipeline(
-                root=root, mode=mode, budget_usd=request["budgetUsd"], costs=costs,
+                root=root, mode=mode, budget_usd=effective_budget, costs=costs,
+                local_runtime=local_runtime,
+                acceptance_contract=request.get("acceptanceContract"),
             )
         except RuntimeError:
-            if mode != "cloud" or not PDD_CLOUD_FALLBACK_ENABLED:
+            if mode != "cloud" or not local_fallback_enabled:
                 raise
             costs.unlink(missing_ok=True)
             for artifact in stories.rglob("*"):
                 if artifact.is_file():
                     artifact.unlink()
+            if not local_runtime:
+                raise RuntimeError(
+                    "PDD Cloud was unavailable and this workspace has no AI provider for local fallback"
+                )
             mode = "local"
+            effective_budget = request["budgetUsd"]
             process = run_prompt_evaluation_pipeline(
-                root=root, mode=mode, budget_usd=request["budgetUsd"], costs=costs,
+                root=root, mode=mode, budget_usd=effective_budget, costs=costs,
+                local_runtime=local_runtime,
+                acceptance_contract=request.get("acceptanceContract"),
             )
         verdict, changes = parse_story_detection(process.stdout)
-        cost, model = cost_report(costs)
-        if cost is not None and cost > request["budgetUsd"]:
+        acceptance_contract = request.get("acceptanceContract")
+        if verdict == "Needs revision":
+            _, contract_path = prompt_evaluation_artifacts(root)
+            acceptance_contract = contract_path.read_text(encoding="utf-8").strip()
+            changes = complete_story_changes(
+                changes,
+                acceptance_contract,
+            )
+        cost, model = cost_report(
+            costs,
+            local_pdd_model(local_runtime) if mode == "local" else None,
+        )
+        if cost is not None and cost > effective_budget:
             raise RuntimeError("PDD prompt evaluation exceeded its review budget")
         return {
             "schemaVersion": 1,
@@ -1005,6 +1491,7 @@ def evaluate_prompt_with_pdd(request: dict) -> dict:
             "promptHash": request["promptHash"],
             "verdict": verdict,
             "changes": changes,
+            **({"acceptanceContract": acceptance_contract} if acceptance_contract else {}),
             "pddVersion": PDD_CLI_VERSION,
             "executionMode": mode,
             "model": model,
@@ -1069,7 +1556,18 @@ def execute(job: dict) -> None:
             if not command:
                 raise ValueError("The ticket has no approved test command")
             prompt = root / f"closespan_{language}.prompt"
-            prompt.write_text(job["pddPrompt"], encoding="utf-8")
+            pdd_prompt = job["pddPrompt"]
+            if language == "Swift":
+                pdd_prompt += """
+
+Swift acceptance-test contract:
+- Write one standalone Swift script at the requested output path.
+- It will run as `swift tests/CloseSpanPDDTests.swift` from the Xcode project root.
+- Do not import XCTest or the application module, because the repository may not have a test target yet.
+- Use Foundation and deterministic source/fixture assertions, print concise failure evidence, and exit non-zero when any assertion fails.
+- Resolve repository files relative to the script location; never use absolute machine paths or network access.
+"""
+            prompt.write_text(pdd_prompt, encoding="utf-8")
             (root / output).parent.mkdir(parents=True, exist_ok=True)
             costs = root / "pdd-costs.csv"
             budget_usd = float(job["budgetUsd"])

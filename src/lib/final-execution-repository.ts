@@ -10,6 +10,8 @@ import {
   type ReleaseVerificationScopeAssessment,
   type UiVerificationBaseline,
 } from "./release-verification-plan";
+import { autonomyCapabilities } from "./autonomy-policy";
+import { readAutonomyLevel } from "./workspace-settings-repository";
 
 export type FinalExecutionApprovalStatus =
   | "Pending"
@@ -454,6 +456,13 @@ export async function approveFinalExecution(
   approvalId: string,
   actor: FinalExecutionActor,
 ): Promise<FinalExecutionApprovalView> {
+  const level = await readAutonomyLevel(orgId);
+  if (!autonomyCapabilities(level).requestAgentExecution) {
+    throw new FinalExecutionError(
+      `Final execution is disabled while Agent autonomy is set to ${level}.`,
+      409,
+    );
+  }
   const candidate = await loadCandidate(orgId, approvalId);
   const retryingApprovedMerge =
     candidate.status === "Approved" && candidate.attempt_status === "Failed";

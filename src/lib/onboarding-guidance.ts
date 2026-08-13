@@ -31,3 +31,18 @@ export function resolvedConnectorFailure(input: {
     "i",
   ).test(latestAssistantMessage);
 }
+
+const CONTINUE_REPLY_PATTERN =
+  /^continue(?: for now| to the workspace)?[?.!]?$/i;
+
+export function prioritizeOnboardingContinuation(
+  replies: readonly string[],
+  canContinue: boolean,
+): string[] {
+  const connectionReplies = replies.filter(
+    (reply) => !CONTINUE_REPLY_PATTERN.test(reply.trim()),
+  );
+  return canContinue
+    ? ["Continue for now", ...connectionReplies]
+    : connectionReplies;
+}

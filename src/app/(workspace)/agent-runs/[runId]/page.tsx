@@ -21,7 +21,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
         <div className="card-body detail-stack">
           <p>{run.implementationSummary ?? run.failureMessage ?? "The executor has not returned a report yet."}</p>
           <p className="subtle">Coding environment: Tenki Sandbox · Branch: {run.branchName}</p>
-          <div className="top-actions"><Link className="btn" href={`/problems/${problemId}#engineering-ticket`}>Open ticket</Link>{run.approvalId ? <Link className="btn" href={`/approvals/${run.approvalId}`}>View authorizing approval</Link> : null}{run.pullRequestUrl && <a className="btn primary" href={run.pullRequestUrl}>Open draft PR</a>}</div>
+          <div className="top-actions"><Link className="btn" href={`/pdd/${problemId}#engineering-ticket`}>Open PDD preparation</Link>{run.approvalId ? <Link className="btn" href={`/approvals/${run.approvalId}`}>View authorizing approval</Link> : null}{run.pullRequestUrl && <a className="btn primary" href={run.pullRequestUrl}>Open draft PR</a>}</div>
         </div>
       </section>
       <section className="card section-gap">

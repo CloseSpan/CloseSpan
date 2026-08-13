@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { Octokit } from "@octokit/rest";
 import { parseGithubInstallationId, verifyGithubInstallation } from "./github-app-auth";
 
-function clients(input?: { contents?: "read" | "write"; pulls?: "read" | "write" }) {
+function clients(input?: {
+  contents?: "read" | "write";
+  pulls?: "read" | "write";
+  actions?: "read" | "write";
+  workflows?: "read" | "write";
+}) {
   const app = {
     rest: {
       apps: {
@@ -17,6 +22,8 @@ function clients(input?: { contents?: "read" | "write"; pulls?: "read" | "write"
             permissions: {
               contents: input?.contents ?? "write",
               pull_requests: input?.pulls ?? "write",
+              actions: input?.actions ?? "write",
+              workflows: input?.workflows ?? "write",
               metadata: "read",
             },
           },
@@ -55,5 +62,16 @@ describe("GitHub App installation verification", () => {
     await expect(
       verifyGithubInstallation("150109806", clients({ contents: "read" })),
     ).rejects.toThrow("Contents and Pull requests read/write");
+  });
+
+  it("requires Actions and Workflows write permission only when Tenki runner dispatch is enabled", async () => {
+    vi.stubEnv("TENKI_GITHUB_ACTIONS_ENABLED", "true");
+    await expect(
+      verifyGithubInstallation("150109806", clients({ actions: "read" })),
+    ).rejects.toThrow("Actions and Workflows read/write permission");
+    await expect(
+      verifyGithubInstallation("150109806", clients({ workflows: "read" })),
+    ).rejects.toThrow("Actions and Workflows read/write permission");
+    vi.unstubAllEnvs();
   });
 });

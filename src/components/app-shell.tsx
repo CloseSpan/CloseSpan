@@ -18,6 +18,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 import { WorkspaceBreadcrumb } from "./workspace-breadcrumb";
 import { WorkspaceRouteTransition } from "./workspace-route-transition";
+import { BackgroundPromptTestProvider } from "./background-prompt-tests";
 import { unreadPromptReviewNotificationCount } from "@/lib/prompt-review-notification-repository";
 import { isCloseSpanPlatformAdmin } from "@/lib/workspace-access-policy";
 
@@ -117,6 +118,7 @@ export async function AppShell({
   }
 
   return (
+    <BackgroundPromptTestProvider orgId={user.orgId} avoidGuidedDemo={Boolean(demoGuide)}>
     <div className="shell app-shell">
       <a className="skip-link" href="#main-content">
         Skip to content
@@ -162,5 +164,6 @@ export async function AppShell({
       </main>
       {demoGuide && <GuidedDemo guide={demoGuide} orgId={user.orgId} />}
     </div>
+    </BackgroundPromptTestProvider>
   );
 }

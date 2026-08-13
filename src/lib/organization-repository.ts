@@ -208,7 +208,7 @@ export async function createOrganization(
       `INSERT INTO workspace_settings(
          org_id,autonomy_level,pii_redaction,retention_days,priority_weights,
          monthly_model_budget,used_model_cost,hard_stop,plan_name,plan_price
-       ) VALUES($1,'Observe',true,365,$2::jsonb,0,0,true,'Production','Managed externally')`,
+       ) VALUES($1,'Execute with approval',true,365,$2::jsonb,0,0,true,'Production','Managed externally')`,
       [organizationId, JSON.stringify(defaultPriorityWeights)],
     );
     await client.query(

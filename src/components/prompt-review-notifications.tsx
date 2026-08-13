@@ -75,7 +75,7 @@ export function PromptReviewNotifications({
               <small className="subtle">{new Date(notification.createdAt).toLocaleString()}</small>
             </div>
             <div className="top-actions">
-              <Link className="btn primary" href={`/problems/${notification.problemId}#engineering-ticket`}>Review</Link>
+              <Link className="btn primary" href={`/pdd/${notification.problemId}#engineering-ticket`}>Review</Link>
               {notification.status === "Unread" && (
                 <button className="btn" type="button" disabled={busyId === notification.id} onClick={() => void markRead(notification.id)}>
                   <Check size={14} /> {busyId === notification.id ? "Saving…" : "Mark read"}

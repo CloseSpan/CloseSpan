@@ -12,7 +12,10 @@ import {
   noStoreHeaders,
 } from "@/lib/request-security";
 import { assertManagedTenkiBootSourceAllowed } from "@/lib/tenki-environment-catalog-repository";
-import { assertTenkiProviderResourceLimits } from "@/lib/execution-profile";
+import {
+  assertExecutionProfileReadyForActivation,
+  assertTenkiProviderResourceLimits,
+} from "@/lib/execution-profile";
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,6 +34,7 @@ export async function POST(request: NextRequest) {
     if (!detected || detected.source !== "detected") {
       throw new HttpError(404, "Detected execution profile was not found");
     }
+    assertExecutionProfileReadyForActivation(detected.config);
     assertTenkiProviderResourceLimits(detected.config);
     await assertManagedTenkiBootSourceAllowed({
       orgId: context.orgId,

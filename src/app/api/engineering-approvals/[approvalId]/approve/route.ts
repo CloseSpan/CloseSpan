@@ -20,7 +20,7 @@ export async function POST(
       approvalId,
       context,
     );
-    if (workflow.run && process.env.AGENT_EXECUTOR_URL) {
+    if (workflow.run) {
       const execution = await getAgentRunExecutionContext(context.orgId, workflow.run.id);
       try {
         await dispatchAgentRun(execution);

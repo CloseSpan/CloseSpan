@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { completePddVerification } from "@/lib/engineering-workflow-repository";
 import { noStoreHeaders } from "@/lib/request-security";
+import { reconcileFullAutonomy } from "@/lib/autonomy-automation-repository";
 
 function validSignature(body: string, provided: string, secret: string): boolean {
   if (!/^[a-f0-9]{64}$/.test(provided)) return false;
@@ -40,7 +41,12 @@ export async function POST(
         idempotencyKey: `pdd_${verificationId}`,
       },
     );
-    return NextResponse.json({ ok: true, workflow }, { headers: noStoreHeaders });
+    const autonomy = await reconcileFullAutonomy(payload.orgId).catch((error: unknown) => ({
+      action: "blocked" as const,
+      problemId: workflow.problemId,
+      message: error instanceof Error ? error.message : "Full-autonomy reconciliation failed.",
+    }));
+    return NextResponse.json({ ok: true, workflow, autonomy }, { headers: noStoreHeaders });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "PDD callback failed" },

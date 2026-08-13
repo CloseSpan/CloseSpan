@@ -33,18 +33,24 @@ const providerIcons: Record<
 
 const brandMarks: Partial<Record<string, ReactNode>> = {
   int_app_store: (
-    <svg viewBox="0 0 24 24" role="img" aria-label="Apple App Store">
-      <rect width="24" height="24" rx="5.5" fill="#0D96F6" />
+    <svg viewBox="0 0 24 24" role="img" aria-label="App Store Connect">
+      <rect width="24" height="24" rx="5.5" fill="#087CF0" />
       <g
         fill="none"
         stroke="#fff"
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth="2.15"
+        strokeWidth="1.7"
       >
-        <path d="m6.2 18.2 6.15-10.65" />
-        <path d="m10.45 4.9 7.35 12.75" />
-        <path d="M5.1 15.05h11.75" />
+        <path d="M8.05 16.6 12 5.9l3.95 10.7" />
+        <path d="M6.45 14.25h11.1" />
+      </g>
+      <g fill="#fff">
+        <circle cx="12" cy="5.9" r="1.45" />
+        <circle cx="8.05" cy="16.6" r="1.45" />
+        <circle cx="15.95" cy="16.6" r="1.45" />
+        <circle cx="6.45" cy="14.25" r="1.05" />
+        <circle cx="17.55" cy="14.25" r="1.05" />
       </g>
     </svg>
   ),

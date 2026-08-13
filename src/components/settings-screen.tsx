@@ -18,10 +18,17 @@ import { CustomSelect } from "./custom-select";
 import { PageTitle } from "./screens";
 import { TenkiSandboxCheck } from "./tenki-sandbox-check";
 import { ExecutionProfileSettings } from "./execution-profile-settings";
+import {
+  autonomyDescription,
+  autonomyLevels,
+  type AutonomyLevel,
+} from "@/lib/autonomy-policy";
+import type { PromptEvaluationMode } from "@/lib/prompt-evaluation-policy";
 
 const settingsSections = [
   ["agent", "Agent autonomy"],
   ["prompt-drafts", "Prompt drafting"],
+  ["prompt-evaluation", "Prompt evaluation"],
   ["execution", "Execution environments"],
   ["model", "AI provider"],
   ["priority", "Prioritization"],
@@ -64,6 +71,9 @@ export function SettingsScreen({
     settings.priorityWeights,
   );
   const [autonomy, setAutonomy] = useState(settings.autonomyLevel);
+  const [fullAutonomyConfirmed, setFullAutonomyConfirmed] = useState(
+    settings.autonomyLevel === "Full autonomy",
+  );
   const initialRetention = initialRetentionSelection(settings.retentionDays);
   const [retention, setRetention] = useState(initialRetention.option);
   const [customRetention, setCustomRetention] = useState(
@@ -77,6 +87,9 @@ export function SettingsScreen({
   const [billingRetryError, setBillingRetryError] = useState<string>();
   const [promptDraftPolicy, setPromptDraftPolicy] = useState(
     settings.promptDraftPolicy,
+  );
+  const [promptEvaluationMode, setPromptEvaluationMode] = useState(
+    settings.promptEvaluationMode,
   );
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("agent");
@@ -95,6 +108,7 @@ export function SettingsScreen({
     retention !== CUSTOM_RETENTION_OPTION ||
     isValidCustomRetention(customRetention);
   const isAdmin = userRole === "Admin";
+  const localEvaluationReady = settings.ai.configured;
   const saveDisabledReason =
     !isAdmin
       ? "Only workspace admins can change policy."
@@ -102,6 +116,10 @@ export function SettingsScreen({
         ? "Prioritization weights must total 100%."
         : !retentionValid
           ? "Enter a valid feedback-retention period."
+          : autonomy === "Full autonomy" && !fullAutonomyConfirmed
+            ? "Confirm the full-autonomy execution policy before saving."
+          : promptEvaluationMode === "pdd_local" && !localEvaluationReady
+            ? "Configure a workspace AI provider before selecting local Prompt Driven evaluation."
           : undefined;
   const labels: Record<string, string> = {
     frequency: "Frequency",
@@ -142,10 +160,21 @@ export function SettingsScreen({
           retentionDays: retentionDays(),
           priorityWeights: weights,
           promptDraftPolicy,
+          promptEvaluationMode,
         }),
       });
-      const payload = await response.json() as { error?: string };
+      const payload = await response.json() as {
+        error?: string;
+        policy?: {
+          promptDraftPolicy?: typeof promptDraftPolicy;
+          promptEvaluationMode?: PromptEvaluationMode;
+        };
+      };
       if (!response.ok) throw new Error(payload.error ?? "Workspace policy could not be saved.");
+      if (payload.policy?.promptDraftPolicy) setPromptDraftPolicy(payload.policy.promptDraftPolicy);
+      if (payload.policy?.promptEvaluationMode) {
+        setPromptEvaluationMode(payload.policy.promptEvaluationMode);
+      }
       setSaved(true);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Workspace policy could not be saved.");
@@ -249,27 +278,57 @@ export function SettingsScreen({
                 <CustomSelect
                   ariaLabel="Autonomy level"
                   value={autonomy}
-                  options={[
-                    "Observe",
-                    "Recommend",
-                    "Organize",
-                    "Execute with approval",
-                    "Limited autonomy",
-                  ]}
+                  options={[...autonomyLevels]}
                   disabled={!isAdmin}
                   onValueChange={(value) => {
-                    setAutonomy(value);
+                    setAutonomy(value as AutonomyLevel);
+                    if (value === "Full autonomy") {
+                      setFullAutonomyConfirmed(false);
+                      setPromptDraftPolicy((current) => ({ ...current, mode: "automatic" }));
+                    } else {
+                      setFullAutonomyConfirmed(true);
+                    }
                     setSaved(false);
                   }}
                 />
+                <span className="subtle">
+                  {autonomyDescription(autonomy as AutonomyLevel)}
+                </span>
               </div>
-              <div className="callout section-gap-sm">
-                <div className="callout-title">Protected actions</div>
-                <p className="subtle">
-                  Production code merges and deployments always require a human.
-                  This cannot be overridden by workspace autonomy.
-                </p>
-              </div>
+              {autonomy === "Full autonomy" ? (
+                <div className="callout warning section-gap-sm">
+                  <div className="callout-title">End-to-end execution enabled</div>
+                  <p className="subtle">
+                    CloseSpan will automatically authorize immutable agent and final-execution records,
+                    then use the configured repository, Tenki profile, deployment path, rollback plan,
+                    and production verification checks. Scope, secrets, paths, commands, and SHA locks remain enforced.
+                  </p>
+                  <label className="toggle-row section-gap-xs">
+                    <div>
+                      <strong>I understand this permits automatic merge or deployment</strong>
+                      <p className="subtle">Required once when switching this workspace to Full autonomy.</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={fullAutonomyConfirmed}
+                      disabled={!isAdmin}
+                      onChange={(event) => {
+                        setFullAutonomyConfirmed(event.target.checked);
+                        setSaved(false);
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="callout section-gap-sm">
+                  <div className="callout-title">Execution boundary</div>
+                  <p className="subtle">
+                    {autonomy === "Execute with approval"
+                      ? "A human must approve the immutable Tenki run and the commit-locked merge or deployment."
+                      : "Tenki agent runs, pull-request merge, and production deployment are blocked at this level."}
+                  </p>
+                </div>
+              )}
               <TenkiSandboxCheck
                 orgId={orgId}
                 configured={tenkiConfigured}
@@ -306,7 +365,11 @@ export function SettingsScreen({
               </div>
               <div className="callout section-gap-sm">
                 <div className="callout-title">Drafts cannot execute code</div>
-                <p className="subtle">A product manager must promote the draft through PDD and explicitly approve each isolated Tenki run. Automatic merge and deployment remain blocked.</p>
+                <p className="subtle">
+                  {autonomy === "Full autonomy"
+                    ? "Full autonomy evaluates and revises the prompt, generates the PDD contract, and advances the immutable workflow automatically."
+                    : "A product manager reviews the PDD result before any isolated Tenki run. Execution follows the autonomy boundary above."}
+                </p>
               </div>
               <label className="toggle-row section-gap-sm">
                 <div><strong>Bug and incident reports</strong><p className="subtle">Draft a suggested fix after the evidence threshold is met.</p></div>
@@ -353,6 +416,68 @@ export function SettingsScreen({
                   <p className="subtle">The preference will be saved and alerts will remain safely queued until Cloudflare Email Service credentials and a verified sender are configured.</p>
                 </div>
               )}
+            </div>
+          </section>
+          <section className="card" id="prompt-evaluation">
+            <div className="card-head">
+              <div>
+                <h2>Prompt evaluation</h2>
+                <p className="subtle">
+                  Choose where Prompt Driven evaluates new immutable .prompt revisions.
+                </p>
+              </div>
+              <span className="badge brand">Organization policy</span>
+            </div>
+            <div className="card-body">
+              <div className="field">
+                <span>Evaluation engine</span>
+                <CustomSelect
+                  ariaLabel="Prompt evaluation engine"
+                  value={promptEvaluationMode}
+                  options={[
+                    { label: "PDD Cloud", value: "pdd_cloud" },
+                    { label: "Local Prompt Driven CLI", value: "pdd_local" },
+                    {
+                      label: "PDD Cloud + local fallback",
+                      value: "pdd_cloud_with_local_fallback",
+                    },
+                  ]}
+                  disabled={!isAdmin}
+                  onValueChange={(mode) => {
+                    setPromptEvaluationMode(mode as PromptEvaluationMode);
+                    setSaved(false);
+                  }}
+                />
+                <span className="subtle">
+                  {promptEvaluationMode === "pdd_cloud"
+                    ? "PDD Cloud creates the contract and evaluates the immutable revision. Your workspace AI credential is never sent to PDD Cloud."
+                    : promptEvaluationMode === "pdd_local"
+                      ? `${settings.ai.providerLabel} ${settings.ai.model} powers this workspace's isolated pdd --local job. The credential is held only for that evaluation and is not stored by the runner.`
+                      : "PDD Cloud runs first without your workspace credential. If Cloud is unavailable, the same immutable revision retries once through an isolated local CLI job using the workspace AI provider."}
+                </span>
+              </div>
+              <div
+                className={`callout section-gap-sm ${localEvaluationReady ? "" : "warning"}`}
+                role="status"
+              >
+                <div className="callout-title">
+                  {localEvaluationReady
+                    ? `Local engine ready · ${settings.ai.providerLabel}`
+                    : "Local engine needs an AI provider"}
+                </div>
+                <p className="subtle">
+                  {localEvaluationReady
+                    ? `${settings.ai.model} is available for local Prompt Driven evaluations and Cloud fallback.`
+                    : "Add a workspace model and credential under AI provider. PDD Cloud remains available, but local mode and local fallback cannot run without it."}
+                </p>
+              </div>
+              <div className="callout section-gap-sm">
+                <div className="callout-title">Applies to new evaluations</div>
+                <p className="subtle">
+                  Running and completed evaluations remain bound to the engine that started them.
+                  Repository execution and Tenki verification keep their existing approval boundaries.
+                </p>
+              </div>
             </div>
           </section>
           <section className="card" id="execution">

@@ -13,6 +13,9 @@ import {
 import { workspacePersistenceMode } from "@/lib/workspace-persistence";
 import {
   assertTenkiProviderResourceLimits,
+  assertExecutionProfileReadyForActivation,
+  executionProfileExecutor,
+  executionProfileUsesRuntimeContract,
   sanitizeExecutionProfileConfig,
 } from "@/lib/execution-profile";
 import { validateRuntimeSecretBindings } from "@/lib/runtime-secret-repository";
@@ -20,6 +23,8 @@ import {
   assertManagedTenkiBootSourceAllowed,
   listManagedTenkiEnvironmentArtifacts,
 } from "@/lib/tenki-environment-catalog-repository";
+import { listPendingTenkiRunnerWorkflowSetups } from "@/lib/tenki-runner-workflow-setup-repository";
+import { assertTenkiRunnerLabel, tenkiRunnerSize } from "@/lib/tenki-runner-sizing";
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,13 +35,14 @@ export async function GET(request: NextRequest) {
         { headers: noStoreHeaders },
       );
     }
-    const [settings, repositories, managedEnvironments] = await Promise.all([
+    const [settings, repositories, managedEnvironments, runnerWorkflowSetups] = await Promise.all([
       listExecutionProfileSettings(context.orgId),
       listGithubRepositoryAuthorizations(context.orgId),
       listManagedTenkiEnvironmentArtifacts(context.orgId),
+      listPendingTenkiRunnerWorkflowSetups(context.orgId),
     ]);
     return NextResponse.json(
-      { available: true, ...settings, repositories, managedEnvironments },
+      { available: true, ...settings, repositories, managedEnvironments, runnerWorkflowSetups },
       { headers: noStoreHeaders },
     );
   } catch (error) {
@@ -69,8 +75,17 @@ export async function PUT(request: NextRequest) {
         : undefined;
     if (parentProfileId === undefined) throw new Error("Parent profile ID is invalid");
     const config = sanitizeExecutionProfileConfig(body.config);
+    const executor = executionProfileExecutor(config);
+    if (executor.kind === "tenki_github_actions") {
+      assertTenkiRunnerLabel(executor.runnerLabel, executor.platform);
+      const runnerSize = tenkiRunnerSize(executor.runnerLabel)!;
+      if (config.cpuCores !== runnerSize.cpuCores || config.memoryMb !== runnerSize.memoryMb) {
+        throw new Error("Runner CPU and memory must match the selected documented Tenki size");
+      }
+    }
     assertTenkiProviderResourceLimits(config);
-    if (config.schemaVersion === 2) {
+    assertExecutionProfileReadyForActivation(config);
+    if (executionProfileUsesRuntimeContract(config)) {
       await validateRuntimeSecretBindings({
         orgId: context.orgId,
         repository,

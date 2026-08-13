@@ -201,7 +201,11 @@ describeLive("Tenki approval-bound staging canary", () => {
     });
     expect(verified.status).toBe("Tests passed");
     expect(verified.independentVerification?.status).toBe("passed");
-    expect(verified.independentVerification?.sessionId).not.toBe(implementationSessionId);
+    expect(verified.independentVerification?.provider).toBe("Tenki Sandbox");
+    if (verified.independentVerification?.provider !== "Tenki Sandbox") {
+      throw new Error("Expected Tenki Sandbox verification evidence");
+    }
+    expect(verified.independentVerification.sessionId).not.toBe(implementationSessionId);
     await writeFile(reportPath, `${JSON.stringify({ context, report: verified }, null, 2)}\n`, { mode: 0o600 });
   }, 15 * 60_000);
 });

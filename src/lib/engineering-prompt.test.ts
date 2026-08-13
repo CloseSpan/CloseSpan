@@ -45,6 +45,41 @@ const snapshot: ImplementationPromptSnapshot = {
     assumptions: [],
     missingInformation: ["Production trace"],
     suspectedFiles: ["src/export/finalize.ts"],
+    repositoryContext: {
+      provider: "CloseSpan Repository Context",
+      repository: "northstar/analytics-api",
+      commitSha: "a".repeat(40),
+      query: "Trace the large export failure",
+      retrieval: "## src/export/finalize.ts:20-38\nThe finalizer commits after completion.",
+      matches: [{
+        path: "src/export/finalize.ts",
+        startLine: 20,
+        endLine: 38,
+        score: 91,
+        declarations: ["finalizeExport"],
+      }],
+      capturedAt: "2026-08-12T00:00:00.000Z",
+    },
+    runtimeVerification: {
+      outcome: "Confirmed current",
+      summary: "The export completed with an empty artifact in the pinned checkout.",
+      expectedBehavior: "The exported CSV contains every selected row.",
+      actualBehavior: "The exported CSV contained no data rows.",
+      reproductionSteps: ["Export 10,001 rows", "Open the downloaded CSV"],
+      commands: [{
+        command: "npm test -- export-runtime",
+        status: "failed",
+        output: "Expected 10001 rows; received 0",
+        durationMs: 840,
+      }],
+      observations: ["The success state appeared before the storage commit."],
+      artifacts: [{ name: "export-test", path: ".closespan-run/export.xml", kind: "test-report" }],
+      repository: "northstar/analytics-api",
+      commitSha: "a".repeat(40),
+      completedAt: "2026-08-12T00:05:00.000Z",
+      runnerLabel: "tenki-macos-15",
+      workflowRunId: 101,
+    },
     redactedEvidence: [],
   },
 };
@@ -74,6 +109,13 @@ describe("engineering prompt contract", () => {
     expect(first).toContain("<scenario_title>\nLarge export\n</scenario_title>");
     expect(first).toContain('drafting_guidance: "pdd-alignment-v1"');
     expect(first).toContain("## Contract: Requested outcome");
+    expect(first).toContain("## Repository context");
+    expect(first).toContain("Pinned repository: northstar/analytics-api@");
+    expect(first).toContain("src/export/finalize.ts:20-38");
+    expect(first).toContain("## Current issue runtime evidence");
+    expect(first).toContain("Outcome: Confirmed current");
+    expect(first).toContain("Expected 10001 rows; received 0");
+    expect(first).toContain("does not by itself prove a root cause");
     expect(first).toContain("**Oracle — user-visible proof that the outcome is delivered:**");
     expect(first).toContain("**Non-oracle — insufficient proof on its own:**");
     expect(first.indexOf("## Contract: Requested outcome")).toBeLessThan(

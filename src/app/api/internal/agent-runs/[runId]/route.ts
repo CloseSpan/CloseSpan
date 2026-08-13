@@ -14,12 +14,22 @@ import {
   verifyAgentRunWithTenki,
   type TenkiVerificationResolvedEnvironment,
 } from "@/lib/tenki-agent-verification";
-import { sanitizeExecutionProfileConfig } from "@/lib/execution-profile";
+import {
+  executionProfileExecutor,
+  sanitizeExecutionProfileConfig,
+} from "@/lib/execution-profile";
 import { resolveRuntimeSecretBindings } from "@/lib/runtime-secret-repository";
 import { assertManagedTenkiBootSourceAllowed } from "@/lib/tenki-environment-catalog-repository";
 import type { TrustedTenkiBootSource } from "@/lib/tenki-boot-source-attestation";
+import { reconcileFullAutonomy } from "@/lib/autonomy-automation-repository";
+import {
+  assertGithubActionsRunIdentity,
+  verifyGithubActionsOidcToken,
+} from "@/lib/github-actions-oidc";
+import { buildTenkiGithubActionsJob } from "@/lib/tenki-github-actions-job";
 
 export const maxDuration = 300;
+const MAX_CALLBACK_BYTES = 6_000_000;
 
 function validSignature(body: string, provided: string, secret: string): boolean {
   const expected = createHmac("sha256", secret).update(body).digest();
@@ -27,26 +37,97 @@ function validSignature(body: string, provided: string, secret: string): boolean
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ runId: string }> },
+) {
+  const orgId = request.nextUrl.searchParams.get("orgId")?.trim();
+  if (!orgId) return NextResponse.json({ error: "Runner job request is missing the organization ID" }, { status: 400, headers: noStoreHeaders });
+  const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!bearer) return NextResponse.json({ error: "Runner job request requires GitHub OIDC authentication" }, { status: 401, headers: noStoreHeaders });
+  try {
+    const claims = await verifyGithubActionsOidcToken(bearer);
+    const { runId } = await params;
+    const context = await getAgentRunExecutionContext(orgId, runId);
+    const profile = sanitizeExecutionProfileConfig(context.executionProfileSnapshot.config);
+    const executor = executionProfileExecutor(profile);
+    if (executor.kind !== "tenki_github_actions") {
+      throw new Error("Agent run is not bound to a Tenki GitHub Actions execution profile");
+    }
+    assertGithubActionsRunIdentity({
+      claims,
+      repository: context.repository,
+      runId,
+      workflowPath: executor.workflowPath,
+    });
+    const job = buildTenkiGithubActionsJob(context);
+    const body = JSON.stringify(job);
+    if (Buffer.byteLength(body, "utf8") > MAX_CALLBACK_BYTES) {
+      return NextResponse.json({ error: "Runner job is too large" }, { status: 413, headers: noStoreHeaders });
+    }
+    return new NextResponse(body, {
+      headers: { ...noStoreHeaders, "content-type": "application/json" },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Runner job request failed" },
+      { status: 409, headers: noStoreHeaders },
+    );
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ runId: string }> },
 ) {
-  const secret = process.env.AGENT_EXECUTOR_SHARED_SECRET?.trim();
-  if (!secret) return NextResponse.json({ error: "Executor callback is not configured" }, { status: 503, headers: noStoreHeaders });
+  const secret = process.env.AGENT_EXECUTOR_SHARED_SECRET?.trim() ?? "";
   const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > 6_000_000) return NextResponse.json({ error: "Executor callback is too large" }, { status: 413, headers: noStoreHeaders });
+  if (contentLength > MAX_CALLBACK_BYTES) return NextResponse.json({ error: "Executor callback is too large" }, { status: 413, headers: noStoreHeaders });
   const body = await request.text();
-  if (Buffer.byteLength(body, "utf8") > 6_000_000) return NextResponse.json({ error: "Executor callback is too large" }, { status: 413, headers: noStoreHeaders });
+  if (Buffer.byteLength(body, "utf8") > MAX_CALLBACK_BYTES) return NextResponse.json({ error: "Executor callback is too large" }, { status: 413, headers: noStoreHeaders });
+  let payload: { event?: string; orgId?: string; sandboxId?: string; code?: string; message?: string; report?: unknown };
+  try {
+    payload = JSON.parse(body) as typeof payload;
+  } catch {
+    return NextResponse.json({ error: "Invalid executor callback" }, { status: 400, headers: noStoreHeaders });
+  }
+  const { runId } = await params;
   const signature = request.headers.get("x-closespan-signature") ?? "";
-  if (!/^[a-f0-9]{64}$/.test(signature) || !validSignature(body, signature, secret))
+  const hmacAuthenticated = Boolean(secret) && /^[a-f0-9]{64}$/.test(signature)
+    && validSignature(body, signature, secret);
+  const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
+  let oidcClaims: Awaited<ReturnType<typeof verifyGithubActionsOidcToken>> | null = null;
+  if (bearer) {
+    try {
+      oidcClaims = await verifyGithubActionsOidcToken(bearer);
+    } catch {
+      oidcClaims = null;
+    }
+  }
+  if (!hmacAuthenticated && !oidcClaims)
     return NextResponse.json({ error: "Invalid executor signature" }, { status: 401, headers: noStoreHeaders });
   let failureContext: Awaited<ReturnType<typeof getAgentRunExecutionContext>> | null = null;
   try {
-    const payload = JSON.parse(body) as { event?: string; orgId?: string; sandboxId?: string; code?: string; message?: string; report?: unknown };
     if (!payload.orgId) throw new Error("Executor callback is missing the organization ID");
-    const { runId } = await params;
     const context = await getAgentRunExecutionContext(payload.orgId, runId);
     failureContext = context;
+    const boundProfile = context.executionProfileSnapshot
+      ? sanitizeExecutionProfileConfig(context.executionProfileSnapshot.config)
+      : null;
+    const boundExecutor = boundProfile
+      ? executionProfileExecutor(boundProfile)
+      : { kind: "tenki_sandbox" as const };
+    if (boundExecutor.kind === "tenki_github_actions") {
+      if (!oidcClaims) throw new Error("Tenki GitHub Actions callbacks require GitHub OIDC authentication");
+      assertGithubActionsRunIdentity({
+        claims: oidcClaims,
+        repository: context.repository,
+        runId,
+        workflowPath: boundExecutor.workflowPath,
+      });
+    } else if (!hmacAuthenticated) {
+      throw new Error("Tenki Sandbox callbacks require the executor HMAC signature");
+    }
     if (payload.event === "started") {
       if (!payload.sandboxId) throw new Error("Executor callback is missing the sandbox ID");
       await markAgentRunRunning(payload.orgId, runId, payload.sandboxId);
@@ -58,6 +139,20 @@ export async function POST(
     }
     if (payload.event !== "completed") throw new Error("Unknown executor callback event");
     const report = agentImplementationReportSchema.parse(payload.report);
+    if (
+      oidcClaims
+      && report.independentVerification?.provider === "Tenki GitHub Actions"
+    ) {
+      assertGithubActionsRunIdentity({
+        claims: oidcClaims,
+        repository: context.repository,
+        runId,
+        workflowPath: boundExecutor.kind === "tenki_github_actions"
+          ? boundExecutor.workflowPath
+          : "",
+        reportedWorkflowRunId: report.independentVerification.workflowRunId,
+      });
+    }
     validateAgentImplementationReport(report, {
       runId,
       promptHash: context.promptHash,
@@ -73,17 +168,43 @@ export async function POST(
     after(async () => {
       let verificationPassed = false;
       try {
+        const profile = context.executionProfileSnapshot
+          ? sanitizeExecutionProfileConfig(context.executionProfileSnapshot.config)
+          : null;
+        const executor = profile ? executionProfileExecutor(profile) : { kind: "tenki_sandbox" as const };
+        if (executor.kind === "tenki_github_actions") {
+          const attestation = report.independentVerification;
+          if (
+            !attestation
+            || attestation.provider !== "Tenki GitHub Actions"
+            || attestation.status !== "passed"
+            || attestation.runnerLabel !== executor.runnerLabel
+            || attestation.platform !== executor.platform
+            || attestation.implementationJobId === attestation.verificationJobId
+          ) {
+            throw new Error("Tenki runner report is missing a matching independent fresh-job verification attestation");
+          }
+          verificationPassed = true;
+          const publication = await publishAgentRun(context, report);
+          await completeAgentRun(
+            context,
+            { ...report, status: "Draft PR opened" },
+            publication,
+          );
+          await reconcileFullAutonomy(context.orgId).catch(() => undefined);
+          return;
+        }
         let runtimeEnvironment: TenkiVerificationResolvedEnvironment | undefined;
         let trustedBootSource: TrustedTenkiBootSource | undefined;
         if (context.executionProfileSnapshot) {
-          const profile = sanitizeExecutionProfileConfig(
+          const sandboxProfile = sanitizeExecutionProfileConfig(
             context.executionProfileSnapshot.config,
           );
           const managedEnvironment = await assertManagedTenkiBootSourceAllowed({
             orgId: context.orgId,
             repository: context.repository,
             workspaceRoot: context.executionProfileSnapshot.workspaceRoot,
-            config: profile,
+            config: sandboxProfile,
             permitDeprecated: true,
           });
           if (managedEnvironment) {
@@ -102,12 +223,12 @@ export async function POST(
               snapshotId: managedEnvironment.snapshotId,
             };
           }
-          if (profile.schemaVersion === 2) {
+          if (sandboxProfile.schemaVersion === 2 || sandboxProfile.schemaVersion === 3) {
             const resolved = await resolveRuntimeSecretBindings({
               orgId: context.orgId,
               repository: context.repository,
               workspaceRoot: context.executionProfileSnapshot.workspaceRoot,
-              bindings: profile.secretBindings,
+              bindings: sandboxProfile.secretBindings,
             });
             runtimeEnvironment = {
               setupEnv: resolved.setup,
@@ -132,6 +253,7 @@ export async function POST(
           { ...verified, status: "Draft PR opened" },
           publication,
         );
+        await reconcileFullAutonomy(context.orgId).catch(() => undefined);
       } catch (error) {
         await failAgentRun(
           context,

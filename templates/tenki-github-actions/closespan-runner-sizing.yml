@@ -1,0 +1,156 @@
+name: CloseSpan runner sizing probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      closespan_probe_id:
+        description: Immutable CloseSpan sizing probe ID
+        required: true
+        type: string
+      closespan_org_id:
+        description: CloseSpan organization ID
+        required: true
+        type: string
+      closespan_callback_url:
+        description: CloseSpan sizing callback URL
+        required: true
+        type: string
+      closespan_profile_hash:
+        description: Immutable execution profile hash
+        required: true
+        type: string
+      closespan_runner_label:
+        description: Documented Tenki runner label selected by repository analysis
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    name: Measure repository workload
+    runs-on: ${{ inputs.closespan_runner_label }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Run bounded sizing probe
+        env:
+          CLOSESPAN_PROBE_ID: ${{ inputs.closespan_probe_id }}
+          CLOSESPAN_ORG_ID: ${{ inputs.closespan_org_id }}
+          CLOSESPAN_CALLBACK_URL: ${{ inputs.closespan_callback_url }}
+          CLOSESPAN_PROFILE_HASH: ${{ inputs.closespan_profile_hash }}
+        shell: bash
+        run: |
+          node <<'CLOSESPAN_PROBE'
+          const { spawn, execFileSync } = require("node:child_process");
+          const os = require("node:os");
+
+          async function oidcToken() {
+            const url = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+            url.searchParams.set("audience", "closespan-agent-run");
+            const response = await fetch(url, {
+              headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
+            });
+            if (!response.ok) throw new Error(`GitHub OIDC token request failed (${response.status})`);
+            return (await response.json()).value;
+          }
+
+          async function callback(token, payload) {
+            const response = await fetch(process.env.CLOSESPAN_CALLBACK_URL, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ orgId: process.env.CLOSESPAN_ORG_ID, ...payload }),
+            });
+            if (!response.ok) throw new Error(`CloseSpan sizing callback failed (${response.status}): ${await response.text()}`);
+          }
+
+          function processUsage(rootPid) {
+            try {
+              const text = execFileSync("ps", ["-axo", "pid=,ppid=,%cpu=,rss="], { encoding: "utf8" });
+              const rows = text.trim().split("\n").map((line) => {
+                const [pid, ppid, cpu, rss] = line.trim().split(/\s+/).map(Number);
+                return { pid, ppid, cpu, rss };
+              }).filter((row) => Number.isFinite(row.pid));
+              const selected = new Set([rootPid]);
+              let changed = true;
+              while (changed) {
+                changed = false;
+                for (const row of rows) if (selected.has(row.ppid) && !selected.has(row.pid)) {
+                  selected.add(row.pid); changed = true;
+                }
+              }
+              return rows.filter((row) => selected.has(row.pid)).reduce(
+                (sum, row) => ({ cpu: sum.cpu + (row.cpu || 0), memoryMb: sum.memoryMb + (row.rss || 0) / 1024 }),
+                { cpu: 0, memoryMb: 0 },
+              );
+            } catch { return { cpu: 0, memoryMb: 0 }; }
+          }
+
+          async function runCommand(command, cwd, timeoutMs, sample) {
+            return new Promise((resolve) => {
+              const child = spawn(command, { cwd, shell: true, stdio: "inherit", detached: true });
+              let timedOut = false;
+              const interval = setInterval(() => sample(processUsage(child.pid)), 1000);
+              const timer = setTimeout(() => {
+                timedOut = true;
+                try { process.kill(-child.pid, "SIGTERM"); } catch {}
+                setTimeout(() => { try { process.kill(-child.pid, "SIGKILL"); } catch {} }, 5_000).unref();
+              }, timeoutMs);
+              child.on("exit", (code, signal) => {
+                clearInterval(interval); clearTimeout(timer); sample(processUsage(child.pid));
+                resolve({ exitCode: code === null ? (signal === "SIGKILL" ? 137 : 1) : code, signal, timedOut });
+              });
+            });
+          }
+
+          (async () => {
+            const token = await oidcToken();
+            const jobResponse = await fetch(`${process.env.CLOSESPAN_CALLBACK_URL}?orgId=${encodeURIComponent(process.env.CLOSESPAN_ORG_ID)}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!jobResponse.ok) throw new Error(`CloseSpan sizing job request failed (${jobResponse.status}): ${await jobResponse.text()}`);
+            const job = await jobResponse.json();
+            if (job.profileHash !== process.env.CLOSESPAN_PROFILE_HASH || job.sourceSha !== process.env.GITHUB_SHA) {
+              throw new Error("Sizing probe is not bound to this profile and commit");
+            }
+            await callback(token, { event: "started", githubWorkflowRunId: Number(process.env.GITHUB_RUN_ID) });
+            const startedAt = Date.now();
+            let peakMemoryMb = 0, cpuTotal = 0, samples = 0;
+            let result = { exitCode: 0, signal: null, timedOut: false };
+            const sample = (usage) => {
+              const runnerMemoryMb = (os.totalmem() - os.freemem()) / 1024 / 1024;
+              const runnerCpuRatio = os.loadavg()[0] / Math.max(job.cpuCores, 1);
+              peakMemoryMb = Math.max(peakMemoryMb, usage.memoryMb, runnerMemoryMb);
+              cpuTotal += Math.max(usage.cpu / Math.max(job.cpuCores * 100, 1), runnerCpuRatio);
+              samples += 1;
+            };
+            for (const command of job.commands) {
+              result = await runCommand(command, job.workingDirectory, job.commandTimeoutMs, sample);
+              if (result.exitCode !== 0) break;
+            }
+            const telemetry = {
+              durationMs: Date.now() - startedAt,
+              cpuSaturationRatio: samples ? cpuTotal / samples : 0,
+              memoryPressureRatio: peakMemoryMb / Math.max(job.memoryLimitMb, 1),
+              peakMemoryMb,
+              memoryLimitMb: job.memoryLimitMb,
+              exitCode: result.exitCode,
+              signal: result.signal,
+              oomKilled: result.exitCode === 137 || result.signal === "SIGKILL" && !result.timedOut,
+              timedOut: result.timedOut,
+              sampledAt: new Date().toISOString(),
+              samples,
+            };
+            await callback(token, { event: "completed", githubWorkflowRunId: Number(process.env.GITHUB_RUN_ID), telemetry });
+          })().catch(async (error) => {
+            try {
+              const token = await oidcToken();
+              await callback(token, { event: "failed", code: "probe_failed", message: error instanceof Error ? error.message : String(error) });
+            } catch (callbackError) { console.error(callbackError); }
+            console.error(error); process.exit(1);
+          });
+          CLOSESPAN_PROBE

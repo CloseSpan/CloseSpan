@@ -2,11 +2,14 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { databasePool, transaction } from "./db";
 import type { Severity, Stage } from "./domain";
+import { HttpError } from "./request-security";
 import {
   primaryProblem as seedProblem,
   recommendation as seedRecommendation,
 } from "./seed";
 import { workspacePersistenceMode } from "./workspace-persistence";
+import { runtimeVerificationFailureMessage } from "./runtime-verifier-errors";
+import type { IssueRuntimeVerificationRunView } from "./issue-runtime-verification";
 
 export interface InvestigationWorkspaceItem {
   id: string;
@@ -16,6 +19,7 @@ export interface InvestigationWorkspaceItem {
   status: string;
   confidence: number;
   signalConfidence: number;
+  relatedSignalCount: number;
   severity: Severity;
   stage: Stage;
   productArea: string;
@@ -27,7 +31,30 @@ export interface InvestigationWorkspaceItem {
   proposedAction: string;
   recommendedTests: string[];
   suspectedFiles: string[];
+  verification: InvestigationVerification;
+  runtimeVerification?: IssueRuntimeVerificationRunView | null;
   updatedAt: string;
+}
+
+export type InvestigationVerificationStatus =
+  | "Unverified"
+  | "Confirmed current"
+  | "Not reproduced"
+  | "Already resolved"
+  | "Verification blocked";
+
+export type InvestigationVerificationMethod =
+  | "Product reproduction"
+  | "Automated check"
+  | "Production telemetry"
+  | "Release evidence";
+
+export interface InvestigationVerification {
+  status: InvestigationVerificationStatus;
+  method: InvestigationVerificationMethod | null;
+  summary: string | null;
+  actorName: string | null;
+  verifiedAt: string | null;
 }
 
 export interface AutomatedInvestigationResult {
@@ -59,6 +86,7 @@ interface InvestigationRow {
   status: string;
   confidence: number;
   signal_confidence: number;
+  related_signal_count: number;
   severity: Severity;
   stage: Stage;
   product_area: string;
@@ -70,8 +98,39 @@ interface InvestigationRow {
   proposed_action: string;
   recommended_tests: unknown;
   suspected_files: unknown;
+  verification_status: InvestigationVerificationStatus;
+  verification_method: InvestigationVerificationMethod | null;
+  verification_summary: string | null;
+  verification_actor_name: string | null;
+  verified_at: Date | string | null;
+  runtime_run_id?: string | null;
+  runtime_status?: IssueRuntimeVerificationRunView["status"] | null;
+  runtime_outcome?: IssueRuntimeVerificationRunView["outcome"];
+  runtime_repository?: string | null;
+  runtime_base_sha?: string | null;
+  runtime_summary?: string | null;
+  runtime_failure_message?: string | null;
+  runtime_requested_by_name?: string | null;
+  runtime_requested_at?: Date | string | null;
+  runtime_started_at?: Date | string | null;
+  runtime_completed_at?: Date | string | null;
+  runtime_workflow_run_id?: string | number | null;
   updated_at: Date | string;
 }
+
+const VERIFICATION_STATUSES = new Set<InvestigationVerificationStatus>([
+  "Confirmed current",
+  "Not reproduced",
+  "Already resolved",
+  "Verification blocked",
+]);
+
+const VERIFICATION_METHODS = new Set<InvestigationVerificationMethod>([
+  "Product reproduction",
+  "Automated check",
+  "Production telemetry",
+  "Release evidence",
+]);
 
 const INTERNAL_CANARY_TITLE = /^(?:strict\s+)?production\b.*\bcanary\b/i;
 
@@ -298,6 +357,7 @@ export function mapInvestigationWorkspaceRow(
     status: row.status,
     confidence: Number(row.confidence),
     signalConfidence: Number(row.signal_confidence),
+    relatedSignalCount: Number(row.related_signal_count),
     severity: row.severity,
     stage: row.stage,
     productArea: row.product_area,
@@ -309,6 +369,49 @@ export function mapInvestigationWorkspaceRow(
     proposedAction: row.proposed_action,
     recommendedTests: stringArray(row.recommended_tests),
     suspectedFiles: stringArray(row.suspected_files),
+    verification: {
+      status: row.verification_status ?? "Unverified",
+      method: row.verification_method,
+      summary: row.verification_status === "Verification blocked"
+        ? runtimeVerificationFailureMessage(row.verification_summary)
+        : row.verification_summary,
+      actorName: row.verification_actor_name,
+      verifiedAt: row.verified_at
+        ? row.verified_at instanceof Date
+          ? row.verified_at.toISOString()
+          : String(row.verified_at)
+        : null,
+    },
+    runtimeVerification: row.runtime_run_id && row.runtime_status
+      ? {
+          id: row.runtime_run_id,
+          status: row.runtime_status,
+          outcome: row.runtime_outcome ?? null,
+          repository: row.runtime_repository ?? row.repository,
+          baseSha: row.runtime_base_sha ?? "",
+          summary: row.runtime_status === "Failed"
+            ? runtimeVerificationFailureMessage(row.runtime_summary ?? null)
+            : row.runtime_summary ?? null,
+          failureMessage: runtimeVerificationFailureMessage(row.runtime_failure_message ?? null),
+          requestedByName: row.runtime_requested_by_name ?? "CloseSpan reviewer",
+          requestedAt: row.runtime_requested_at instanceof Date
+            ? row.runtime_requested_at.toISOString()
+            : String(row.runtime_requested_at),
+          startedAt: row.runtime_started_at
+            ? row.runtime_started_at instanceof Date
+              ? row.runtime_started_at.toISOString()
+              : String(row.runtime_started_at)
+            : null,
+          completedAt: row.runtime_completed_at
+            ? row.runtime_completed_at instanceof Date
+              ? row.runtime_completed_at.toISOString()
+              : String(row.runtime_completed_at)
+            : null,
+          workflowRunId: row.runtime_workflow_run_id == null
+            ? null
+            : Number(row.runtime_workflow_run_id),
+        }
+      : null,
     updatedAt:
       row.updated_at instanceof Date
         ? row.updated_at.toISOString()
@@ -329,6 +432,7 @@ export async function listWorkspaceInvestigations(
         status: "Ready for review",
         confidence: seedRecommendation.confidence,
         signalConfidence: seedProblem.confidence,
+        relatedSignalCount: seedProblem.feedbackIds.length,
         severity: seedProblem.severity,
         stage: seedProblem.stage,
         productArea: seedProblem.productArea,
@@ -340,6 +444,14 @@ export async function listWorkspaceInvestigations(
         proposedAction: seedRecommendation.proposedAction,
         recommendedTests: seedRecommendation.tests,
         suspectedFiles: seedProblem.suspectedFiles,
+        verification: {
+          status: "Confirmed current",
+          method: "Product reproduction",
+          summary: "The demonstration issue is pre-verified so the sample workflow can show prompt preparation.",
+          actorName: "CloseSpan demo",
+          verifiedAt: "2026-08-08T00:00:00.000Z",
+        },
+        runtimeVerification: null,
         updatedAt: "2026-08-08T00:00:00.000Z",
       },
     ];
@@ -353,6 +465,12 @@ export async function listWorkspaceInvestigations(
             investigation.status,
             investigation.confidence,
             problem.confidence AS signal_confidence,
+            (
+              SELECT count(*)::int
+                FROM feedback_cluster_memberships membership
+               WHERE membership.org_id=investigation.org_id
+                 AND membership.problem_id=investigation.problem_id
+            ) AS related_signal_count,
             problem.severity,
             problem.stage,
             problem.product_area,
@@ -364,11 +482,36 @@ export async function listWorkspaceInvestigations(
             investigation.proposed_action,
             investigation.recommended_tests,
             investigation.suspected_files,
+            investigation.verification_status,
+            investigation.verification_method,
+            investigation.verification_summary,
+            investigation.verification_actor_name,
+            investigation.verified_at,
+            runtime.id AS runtime_run_id,
+            runtime.status AS runtime_status,
+            runtime.outcome AS runtime_outcome,
+            runtime.repository AS runtime_repository,
+            runtime.base_sha AS runtime_base_sha,
+            runtime.summary AS runtime_summary,
+            runtime.failure_message AS runtime_failure_message,
+            runtime.requested_by_name AS runtime_requested_by_name,
+            runtime.requested_at AS runtime_requested_at,
+            runtime.started_at AS runtime_started_at,
+            runtime.completed_at AS runtime_completed_at,
+            runtime.workflow_run_id AS runtime_workflow_run_id,
             investigation.updated_at
        FROM investigations investigation
-       JOIN product_problems problem
+      JOIN product_problems problem
          ON problem.org_id=investigation.org_id
         AND problem.id=investigation.problem_id
+       LEFT JOIN LATERAL (
+         SELECT candidate.*
+           FROM issue_runtime_verification_runs candidate
+          WHERE candidate.org_id=investigation.org_id
+            AND candidate.problem_id=investigation.problem_id
+          ORDER BY candidate.requested_at DESC,candidate.id
+          LIMIT 1
+       ) runtime ON true
       WHERE investigation.org_id=$1
       ORDER BY
         CASE investigation.status
@@ -387,4 +530,57 @@ export async function listWorkspaceInvestigations(
   return result.rows
     .filter((row) => isCustomerVisibleInvestigationTitle(row.title))
     .map(mapInvestigationWorkspaceRow);
+}
+
+export async function recordInvestigationVerification(input: {
+  orgId: string;
+  problemId: string;
+  status: InvestigationVerificationStatus;
+  method: InvestigationVerificationMethod;
+  summary: string;
+  actor: { actorId: string; actorName: string; traceId: string };
+}): Promise<void> {
+  if (workspacePersistenceMode(input.orgId) === "memory") {
+    throw new HttpError(409, "Verification changes are unavailable in the demonstration workspace");
+  }
+  if (!VERIFICATION_STATUSES.has(input.status)) {
+    throw new HttpError(400, "Choose a valid verification outcome");
+  }
+  if (!VERIFICATION_METHODS.has(input.method)) {
+    throw new HttpError(400, "Choose how the issue was checked");
+  }
+  const summary = input.summary.trim().replace(/\s+/g, " ");
+  if (summary.length < 20 || summary.length > 2_000) {
+    throw new HttpError(400, "Verification evidence must be between 20 and 2,000 characters");
+  }
+  await transaction(async (client) => {
+    const updated = await client.query<{ id: string }>(
+      `UPDATE investigations investigation
+          SET verification_status=$3,verification_method=$4,verification_summary=$5,
+              verification_actor_id=$6,verification_actor_name=$7,verified_at=now(),updated_at=now()
+        WHERE investigation.org_id=$1
+          AND investigation.id=(
+            SELECT latest.id FROM investigations latest
+             WHERE latest.org_id=$1 AND latest.problem_id=$2
+             ORDER BY latest.updated_at DESC,latest.id LIMIT 1
+          )
+        RETURNING investigation.id`,
+      [input.orgId, input.problemId, input.status, input.method, summary,
+        input.actor.actorId, input.actor.actorName],
+    );
+    const investigationId = updated.rows[0]?.id;
+    if (!investigationId) throw new HttpError(404, "Investigation was not found");
+    await client.query(
+      `INSERT INTO audit_events(
+         id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+       ) VALUES($1,$2,$3,$4,$5,'Investigation',$6,$7)`,
+      [randomUUID(), input.orgId, input.actor.actorId, input.actor.actorName,
+        `Recorded issue verification: ${input.status} via ${input.method}.`, investigationId,
+        input.actor.traceId],
+    );
+    await client.query(
+      "UPDATE workspaces SET version=version+1,updated_at=now() WHERE org_id=$1",
+      [input.orgId],
+    );
+  });
 }

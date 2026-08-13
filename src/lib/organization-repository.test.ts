@@ -124,6 +124,11 @@ describe("organization repository", () => {
       values[3] === "sam@example.com",
     )).toBe(true);
     expect(calls.some(([sql, values]) =>
+      sqlIncludes(sql, "INSERT INTO workspace_settings") &&
+      sqlIncludes(sql, "'Execute with approval'") &&
+      values[0] === result.organizationId,
+    )).toBe(true);
+    expect(calls.some(([sql, values]) =>
       sqlIncludes(sql, "INSERT INTO workspace_onboarding") &&
       values[0] === result.organizationId &&
       JSON.parse(values[1]).productName === "Northstar",

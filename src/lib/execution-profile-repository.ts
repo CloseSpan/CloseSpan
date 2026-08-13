@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { databasePool, transaction } from "./db";
 import {
   SAFE_GENERIC_EXECUTION_PROFILE_CONFIG,
+  assertExecutionProfileReadyForActivation,
   assertExecutionProfileScopeBoundary,
   hashExecutionProfileConfig,
   normalizeExecutionProfileScope,
@@ -392,6 +393,7 @@ export async function confirmDetectedExecutionProfile(
     if (!detected || detected.source !== "detected") {
       throw new Error("Detected execution profile was not found");
     }
+    assertExecutionProfileReadyForActivation(detected.config);
     await lockProfileScope(client, input.orgId, detected);
     detected = await getProfileWithClient(
       client,

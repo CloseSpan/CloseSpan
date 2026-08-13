@@ -9,6 +9,15 @@ import {
   noStoreHeaders,
 } from "@/lib/request-security";
 import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
+import {
+  buildQueuedRepositoryContexts,
+  queueRepositoryContexts,
+} from "@/lib/repository-context-repository";
+import {
+  activateReadyDetectedExecutionProfiles,
+  prepareDetectedTenkiRunner,
+  prepareTenkiRunnerSizingProbes,
+} from "@/lib/tenki-runner-onboarding";
 
 export async function GET(request: NextRequest) {
   try {
@@ -45,12 +54,20 @@ export async function PUT(request: NextRequest) {
         repository.workspaceSelected &&
         repository.active,
     );
+    await queueRepositoryContexts({
+      orgId: context.orgId,
+      installationId: body.installationId,
+      repositories: selected.map((repository) => ({
+        repository: repository.repository,
+        defaultBranch: repository.defaultBranch,
+      })),
+    });
     after(async () => {
       let failed = 0;
       for (let index = 0; index < selected.length; index += 2) {
         const outcomes = await Promise.allSettled(
-          selected.slice(index, index + 2).map((repository) =>
-            detectAndSaveGithubRepositoryProfiles({
+          selected.slice(index, index + 2).map(async (repository) => {
+            const detection = await detectAndSaveGithubRepositoryProfiles({
               orgId: context.orgId,
               installationId: repository.installationId,
               repository: repository.repository,
@@ -60,12 +77,38 @@ export async function PUT(request: NextRequest) {
                 actorName: "Repository profile detector",
                 traceId: context.traceId,
               },
-            }),
-          ),
+            });
+            await prepareDetectedTenkiRunner({
+              orgId: context.orgId,
+              installationId: repository.installationId,
+              repository: repository.repository,
+              defaultBranch: repository.defaultBranch,
+              detection,
+            });
+            await prepareTenkiRunnerSizingProbes({
+              orgId: context.orgId,
+              installationId: repository.installationId,
+              repository: repository.repository,
+              callbackBaseUrl: request.nextUrl.origin,
+            });
+            await activateReadyDetectedExecutionProfiles({
+              orgId: context.orgId,
+              repository: repository.repository,
+              actor: {
+                actorId: "system:workspace-repository-activator",
+                actorName: "Repository execution activator",
+                traceId: context.traceId,
+              },
+            });
+          }),
         );
         failed += outcomes.filter((outcome) => outcome.status === "rejected").length;
       }
       if (failed) console.warn(`Execution profile detection needs retry for ${failed} selected repositories`);
+      await buildQueuedRepositoryContexts(
+        context.orgId,
+        selected.map((repository) => repository.repository),
+      );
     });
     return NextResponse.json(
       {

@@ -1,5 +1,4 @@
-import { notFound } from "next/navigation";
-import { InvestigationsScreen } from "@/components/screens";
+import { notFound, redirect } from "next/navigation";
 import { requireWorkspaceUser } from "@/lib/auth-user";
 import { listWorkspaceInvestigations } from "@/lib/investigation-repository";
 
@@ -14,12 +13,7 @@ export default async function Page({
   const { investigationId } = await params;
   const investigations = await listWorkspaceInvestigations(user.orgId);
 
-  if (!investigations.some((item) => item.id === investigationId)) notFound();
-
-  return (
-    <InvestigationsScreen
-      investigations={investigations}
-      selectedInvestigationId={investigationId}
-    />
-  );
+  const investigation = investigations.find((item) => item.id === investigationId);
+  if (!investigation) notFound();
+  redirect(`/problems/${encodeURIComponent(investigation.problemId)}#investigation`);
 }

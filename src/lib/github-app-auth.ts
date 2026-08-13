@@ -61,6 +61,17 @@ export async function createGithubInstallationClient(
   return new Octokit({ auth: authentication.token });
 }
 
+export function assertTenkiGithubActionsPermissions(
+  permissions: Record<string, string>,
+): void {
+  if (permissions.actions !== "write" || permissions.workflows !== "write") {
+    throw new HttpError(
+      409,
+      "Tenki runner setup requires Actions and Workflows read/write permission; update and reconnect the CloseSpan GitHub App installation",
+    );
+  }
+}
+
 export async function verifyGithubInstallation(
   installationId: string,
   clients: GithubAppClients = {},
@@ -83,6 +94,9 @@ export async function verifyGithubInstallation(
       409,
       "The GitHub App installation must grant Contents and Pull requests read/write access",
     );
+  if (process.env.TENKI_GITHUB_ACTIONS_ENABLED === "true") {
+    assertTenkiGithubActionsPermissions(permissions);
+  }
 
   const account = installation.account;
   const accountLogin = account && "login" in account ? account.login : null;

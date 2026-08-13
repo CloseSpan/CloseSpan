@@ -106,7 +106,7 @@ async function sendEmail(
   configuration: CloudflareEmailConfiguration,
   fetcher: typeof fetch,
 ): Promise<{ status: "Sent" | "Pending" | "Failed"; error?: string; messageId?: string }> {
-  const reviewUrl = new URL(`/problems/${encodeURIComponent(email.problem_id)}#engineering-ticket`, configuration.appOrigin).toString();
+  const reviewUrl = new URL(`/pdd/${encodeURIComponent(email.problem_id)}#engineering-ticket`, configuration.appOrigin).toString();
   const subject = `Review implementation prompt: ${email.title}`;
   const text = [
     `Hi ${email.reviewer_name},`,

@@ -18,6 +18,7 @@ const github = vi.hoisted(() => ({
   publish: vi.fn(),
 }));
 const runtimeSecrets = vi.hoisted(() => ({ resolve: vi.fn() }));
+const oidc = vi.hoisted(() => ({ verify: vi.fn(), assert: vi.fn() }));
 
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -52,9 +53,13 @@ vi.mock("@/lib/github-agent-publisher", () => ({
 vi.mock("@/lib/runtime-secret-repository", () => ({
   resolveRuntimeSecretBindings: runtimeSecrets.resolve,
 }));
+vi.mock("@/lib/github-actions-oidc", () => ({
+  verifyGithubActionsOidcToken: oidc.verify,
+  assertGithubActionsRunIdentity: oidc.assert,
+}));
 
 import { NextRequest } from "next/server";
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const runId = "11111111-1111-4111-8111-111111111111";
 const secret = "test-callback-secret";
@@ -82,6 +87,59 @@ function callbackRequest(payload: unknown): NextRequest {
     },
     body,
   });
+}
+
+function oidcCallbackRequest(payload: { orgId: string } & Record<string, unknown>): NextRequest {
+  const body = JSON.stringify(payload);
+  return new NextRequest(`http://localhost/api/internal/agent-runs/${runId}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer github-oidc-token" },
+    body,
+  });
+}
+
+function runnerContext() {
+  return {
+    ...context,
+    repository: "owner/repo",
+    executionProfileId: "22222222-2222-4222-8222-222222222222",
+    executionProfileHash: "c".repeat(64),
+    promptContent: "Approved implementation prompt",
+    expiresAt: "2026-08-13T00:00:00.000Z",
+    allowedCapabilities: ["repository:read", "repository:write", "tests:execute"],
+    generatedTests: [{ path: "tests/pdd.test.ts", content: "test content", contentHash: "d".repeat(64), command: "npm test" }],
+    promptSnapshot: {
+      ticket: {
+        requiredCommands: ["npm test"],
+        permittedPaths: ["src/**/*", "tests/**/*"],
+        acceptanceCriteria: [{ id: "AC-1" }],
+        testScenarios: [{ id: "TEST-1", testLevel: "integration", criterionIds: ["AC-1"] }],
+        releaseVerification: "Run npm test",
+      },
+    },
+    executionProfileSnapshot: {
+      profileId: "22222222-2222-4222-8222-222222222222",
+      version: 1,
+      source: "confirmed",
+      repository: "owner/repo",
+      workspaceRoot: ".",
+      contentHash: "c".repeat(64),
+      config: {
+        ...upgradeExecutionProfileConfigV2({ schemaVersion: 1 }),
+        schemaVersion: 3,
+        executor: {
+          kind: "tenki_github_actions",
+          platform: "linux",
+          architecture: "x64",
+          runnerLabel: "tenki-standard-large-8c-16g",
+          workflowPath: ".github/workflows/closespan-agent-runner.yml",
+          workflowSha256: "e".repeat(64),
+          xcode: null,
+          androidEmulator: null,
+        },
+      },
+    },
+  };
 }
 
 describe("agent-run completion callback", () => {
@@ -114,6 +172,15 @@ describe("agent-run completion callback", () => {
       test: {},
       redactionValues: [],
     });
+    oidc.verify.mockReset().mockResolvedValue({
+      actor: "closespan[bot]",
+      event_name: "workflow_dispatch",
+      repository: "owner/repo",
+      ref: `refs/heads/closespan/runs/${runId}`,
+      workflow_ref: `owner/repo/.github/workflows/closespan-agent-runner.yml@refs/heads/closespan/runs/${runId}`,
+      run_id: "123",
+    });
+    oidc.assert.mockReset();
   });
 
   it("acknowledges the executor promptly and verifies automatically before publication", async () => {
@@ -136,6 +203,58 @@ describe("agent-run completion callback", () => {
     expect(github.publish).toHaveBeenCalledOnce();
     expect(workflow.complete).toHaveBeenCalledTimes(2);
     expect(workflow.fail).not.toHaveBeenCalled();
+  });
+
+  it("accepts a GitHub OIDC identity from the approval-bound Tenki runner workflow", async () => {
+    workflow.context.mockResolvedValue({
+      ...context,
+      repository: "owner/repo",
+      executionProfileSnapshot: {
+        config: {
+          ...upgradeExecutionProfileConfigV2({ schemaVersion: 1 }),
+          schemaVersion: 3,
+          executor: {
+            kind: "tenki_github_actions",
+            platform: "linux",
+            architecture: "x64",
+            runnerLabel: "tenki-standard-large-8c-16g",
+            workflowPath: ".github/workflows/closespan-agent-runner.yml",
+            workflowSha256: "c".repeat(64),
+            xcode: null,
+            androidEmulator: null,
+          },
+        },
+      },
+    });
+    const response = await POST(
+      oidcCallbackRequest({ event: "started", orgId: "org-1", sandboxId: "github-actions:123" }),
+      { params: Promise.resolve({ runId }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(workflow.running).toHaveBeenCalledWith("org-1", runId, "github-actions:123");
+    expect(oidc.assert).toHaveBeenCalledOnce();
+  });
+
+  it("returns a secret-free approval-bound job to the OIDC-authenticated runner", async () => {
+    vi.unstubAllEnvs();
+    workflow.context.mockResolvedValue(runnerContext());
+    const response = await GET(
+      new NextRequest(`http://localhost/api/internal/agent-runs/${runId}?orgId=org-1`, {
+        headers: { authorization: "Bearer github-oidc-token" },
+      }),
+      { params: Promise.resolve({ runId }) },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      schemaVersion: 1,
+      runId,
+      repository: "owner/repo",
+      requiredCommands: ["npm test"],
+      runner: { label: "tenki-standard-large-8c-16g", platform: "linux" },
+    });
+    expect(oidc.assert).toHaveBeenCalledOnce();
   });
 
   it("does not publish when independent verification fails", async () => {

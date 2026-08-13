@@ -75,6 +75,45 @@ export interface PromptEvidence {
   assumptions: string[];
   missingInformation: string[];
   suspectedFiles: string[];
+  repositoryContext?: {
+    provider: "CloseSpan Repository Context";
+    repository: string;
+    commitSha: string;
+    query: string;
+    retrieval: string;
+    matches?: Array<{
+      path: string;
+      startLine: number;
+      endLine: number;
+      score: number;
+      declarations: string[];
+    }>;
+    capturedAt: string;
+  };
+  runtimeVerification?: {
+    outcome: "Confirmed current" | "Not reproduced" | "Verification blocked";
+    summary: string;
+    expectedBehavior: string;
+    actualBehavior: string;
+    reproductionSteps: string[];
+    commands: Array<{
+      command: string;
+      status: "passed" | "failed" | "blocked";
+      output: string;
+      durationMs: number;
+    }>;
+    observations: string[];
+    artifacts: Array<{
+      name: string;
+      path: string;
+      kind: "screenshot" | "log" | "test-report";
+    }>;
+    repository: string;
+    commitSha: string;
+    completedAt: string;
+    runnerLabel: string;
+    workflowRunId: number;
+  };
   redactedEvidence: Array<{
     source: string;
     observedAt: string;
@@ -349,6 +388,48 @@ export function renderImplementationPrompt(
     "",
     promptValue("problem_summary", evidence.summary),
     "",
+    ...(evidence.repositoryContext
+      ? [
+          "## Repository context",
+          `Provider: ${evidence.repositoryContext.provider}`,
+          `Pinned repository: ${evidence.repositoryContext.repository}@${evidence.repositoryContext.commitSha}`,
+          promptValue("repository_context_query", evidence.repositoryContext.query),
+          promptValue("repository_context_retrieval", evidence.repositoryContext.retrieval),
+          "",
+        ]
+      : []),
+    ...(evidence.runtimeVerification
+      ? [
+          "## Current issue runtime evidence",
+          `Outcome: ${evidence.runtimeVerification.outcome}`,
+          `Verified repository: ${evidence.runtimeVerification.repository}@${evidence.runtimeVerification.commitSha}`,
+          `Runner: ${evidence.runtimeVerification.runnerLabel}`,
+          `GitHub workflow run: ${evidence.runtimeVerification.workflowRunId}`,
+          promptValue("runtime_verification_summary", evidence.runtimeVerification.summary),
+          promptValue("runtime_expected_behavior", evidence.runtimeVerification.expectedBehavior),
+          promptValue("runtime_actual_behavior", evidence.runtimeVerification.actualBehavior),
+          "- Reproduction steps observed by the runtime verifier:",
+          promptList(evidence.runtimeVerification.reproductionSteps, "runtime_reproduction_step"),
+          "- Commands and observed results:",
+          promptList(
+            evidence.runtimeVerification.commands.slice(0, 8).map((item) =>
+              `[${item.status}] ${item.command}\n${item.output.slice(0, 1_500)}`,
+            ),
+            "runtime_command",
+          ),
+          "- Runtime observations:",
+          promptList(evidence.runtimeVerification.observations.slice(0, 12), "runtime_observation"),
+          "- Attested artifacts:",
+          promptList(
+            evidence.runtimeVerification.artifacts.slice(0, 12).map((item) =>
+              `${item.kind}: ${item.name} (${item.path})`,
+            ),
+            "runtime_artifact",
+          ),
+          "Treat this section as observed evidence of behavior at the pinned commit. It does not by itself prove a root cause or prescribe an implementation.",
+          "",
+        ]
+      : []),
     "## Contract: Requested outcome",
     "**Covers:**",
     promptList(contractCovers, "contract_coverage"),

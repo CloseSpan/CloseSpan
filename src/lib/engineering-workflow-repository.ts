@@ -41,10 +41,12 @@ import {
 } from "./billing-outbox";
 import {
   assertExecutionProfileNarrowing,
+  executionProfileExecutor,
   hashExecutionProfileConfig,
   sanitizeExecutionProfileConfig,
   type ExecutionProfileSnapshot,
 } from "./execution-profile";
+import { assertTenkiRunnerWorkflowSetupInstalled } from "./tenki-runner-workflow-setup-repository";
 import {
   resolveExecutionProfileForTicket,
 } from "./execution-profile-repository";
@@ -57,6 +59,33 @@ import {
   type FinalExecutionApprovalView,
 } from "./final-execution-repository";
 import { parseReleaseVerificationPlan } from "./release-verification-plan";
+import { autonomyCapabilities } from "./autonomy-policy";
+import { readAutonomyLevel } from "./workspace-settings-repository";
+import {
+  readPddPromptEvaluation,
+  type PddPromptEvaluationView,
+} from "./pdd-prompt-evaluation-repository";
+import { enrichPromptEvidence } from "./problem-evidence-bundle";
+
+async function assertPromptPreparationAllowed(orgId: string): Promise<void> {
+  const level = await readAutonomyLevel(orgId);
+  if (!autonomyCapabilities(level).preparePrompt) {
+    throw new EngineeringWorkflowError(
+      `Prompt preparation is disabled while Agent autonomy is set to ${level}.`,
+      409,
+    );
+  }
+}
+
+async function assertAgentExecutionAllowed(orgId: string): Promise<void> {
+  const level = await readAutonomyLevel(orgId);
+  if (!autonomyCapabilities(level).requestAgentExecution) {
+    throw new EngineeringWorkflowError(
+      `Agent execution is disabled while Agent autonomy is set to ${level}.`,
+      409,
+    );
+  }
+}
 
 export interface ImplementationPromptView {
   id: string;
@@ -74,6 +103,19 @@ export interface ImplementationPromptView {
   reviewerName?: string | null;
   reviewerNotificationRequested?: boolean;
   reviewerEmailNotificationRequested?: boolean;
+  evidenceBinding?: {
+    repositoryContext: {
+      repository: string;
+      commitSha: string;
+      matchCount: number;
+      capturedAt: string;
+    } | null;
+    runtimeVerification: {
+      outcome: NonNullable<PromptEvidence["runtimeVerification"]>["outcome"];
+      commitSha: string;
+      completedAt: string;
+    } | null;
+  };
 }
 
 export interface AutomatedPromptDraftInput {
@@ -158,6 +200,7 @@ export interface EngineeringWorkflowView {
   specification: EngineeringTicketSpecification | null;
   readiness: { ready: boolean; issues: string[] };
   prompt: ImplementationPromptView | null;
+  promptEvaluation?: PddPromptEvaluationView | null;
   verification: PddVerificationView | null;
   approval: EngineeringApprovalView | null;
   finalApproval: FinalExecutionApprovalView | null;
@@ -455,9 +498,11 @@ async function readPrompt(
     reviewer_name: string | null;
     reviewer_notification_requested: boolean;
     reviewer_email_notification_requested: boolean;
+    structured_snapshot: ImplementationPromptSnapshot;
   }>(`SELECT prompt.id,prompt.revision,prompt.status,prompt.artifact_path,
              prompt.rendered_content,prompt.content_hash,prompt.repository,
              prompt.base_branch,prompt.base_sha,prompt.created_at,prompt.draft_reason,
+             prompt.structured_snapshot,
              prompt.reviewer_id,reviewer.display_name AS reviewer_name,
              prompt.reviewer_notification_requested,
              prompt.reviewer_email_notification_requested
@@ -478,6 +523,23 @@ async function readPrompt(
     reviewerName: row.reviewer_name,
     reviewerNotificationRequested: row.reviewer_notification_requested,
     reviewerEmailNotificationRequested: row.reviewer_email_notification_requested,
+    evidenceBinding: {
+      repositoryContext: row.structured_snapshot?.evidence?.repositoryContext
+        ? {
+            repository: row.structured_snapshot.evidence.repositoryContext.repository,
+            commitSha: row.structured_snapshot.evidence.repositoryContext.commitSha,
+            matchCount: row.structured_snapshot.evidence.repositoryContext.matches?.length ?? 0,
+            capturedAt: row.structured_snapshot.evidence.repositoryContext.capturedAt,
+          }
+        : null,
+      runtimeVerification: row.structured_snapshot?.evidence?.runtimeVerification
+        ? {
+            outcome: row.structured_snapshot.evidence.runtimeVerification.outcome,
+            commitSha: row.structured_snapshot.evidence.runtimeVerification.commitSha,
+            completedAt: row.structured_snapshot.evidence.runtimeVerification.completedAt,
+          }
+        : null,
+    },
   } : null;
 }
 
@@ -747,7 +809,8 @@ async function postgresWorkflow(orgId: string, problemId: string): Promise<Engin
     readRun(pool, orgId, problemId),
     readReleaseEvidence(pool, orgId, problemId),
   ]);
-  return { problemId, specification, readiness: ticketReadiness(specification), prompt, verification, approval, finalApproval, run, releaseEvidence };
+  const promptEvaluation = await readPddPromptEvaluation(orgId, problemId, prompt?.id);
+  return { problemId, specification, readiness: ticketReadiness(specification), prompt, promptEvaluation, verification, approval, finalApproval, run, releaseEvidence };
 }
 
 async function readReleaseEvidence(database: Pool | PoolClient, orgId: string, problemId: string): Promise<ReleaseVerificationEvidence | null> {
@@ -851,7 +914,8 @@ function memoryWorkflow(orgId: string, problemId: string): MemoryWorkflow {
 export async function getEngineeringWorkflow(orgId: string, problemId: string): Promise<EngineeringWorkflowView> {
   if (workspacePersistenceMode(orgId) === "memory") {
     const current = memoryWorkflow(orgId, problemId);
-    return { problemId, ...structuredClone(current), readiness: ticketReadiness(current.specification) };
+    const promptEvaluation = await readPddPromptEvaluation(orgId, problemId, current.prompt?.id);
+    return { problemId, ...structuredClone(current), promptEvaluation, readiness: ticketReadiness(current.specification) };
   }
   return postgresWorkflow(orgId, problemId);
 }
@@ -867,6 +931,7 @@ export async function listEngineeringApprovalWorkflows(
       .map(([key, workflow]) => ({
         problemId: key.slice(orgId.length + 1),
         ...structuredClone(workflow),
+        promptEvaluation: null,
         readiness: ticketReadiness(workflow.specification),
       }));
   }
@@ -1213,6 +1278,7 @@ export async function generateImplementationPrompt(
   problemId: string,
   actor: ActorContext,
 ): Promise<EngineeringWorkflowView> {
+  await assertPromptPreparationAllowed(orgId);
   if (workspacePersistenceMode(orgId) === "memory") {
     const current = memoryWorkflow(orgId, problemId);
     const ticket = validateEngineeringTicket(current.specification);
@@ -1239,7 +1305,21 @@ export async function generateImplementationPrompt(
     const specification = await readSpecification(client, orgId, problemId);
     if (!specification) throw new EngineeringWorkflowError("Create the engineering ticket specification first", 409);
     const ticket = validateEngineeringTicket(specification);
-    const evidence = await promptEvidence(client, orgId, problemId);
+    const baseEvidence = await promptEvidence(client, orgId, problemId);
+    let evidence: PromptEvidence;
+    try {
+      evidence = await enrichPromptEvidence({
+        orgId,
+        problemId,
+        ticket,
+        evidence: baseEvidence,
+      });
+    } catch {
+      throw new EngineeringWorkflowError(
+        `Repository context for ${ticket.repository}@${ticket.baseSha.slice(0, 12)} is not ready. Refresh the repository context, then generate the prompt again.`,
+        409,
+      );
+    }
     const previous = await client.query<{ revision: number }>(
       "SELECT revision FROM implementation_prompts WHERE org_id=$1 AND problem_id=$2 ORDER BY revision DESC LIMIT 1 FOR UPDATE",
       [orgId, problemId],
@@ -1271,11 +1351,22 @@ export async function getPromptAlignmentContext(
   userStory: unknown,
   actor: ActorContext,
 ): Promise<PromptAlignmentContext> {
+  await assertPromptPreparationAllowed(orgId);
   const issue = userStoryInputIssue(userStory);
   if (issue) throw new EngineeringWorkflowError(issue, 400);
   const story = (userStory as string).trim();
   let workflow = await getEngineeringWorkflow(orgId, problemId);
-  if (!workflow.prompt || workflow.prompt.status === "Superseded") {
+  const promptHasExactRepositoryContext = Boolean(
+    workflow.prompt?.evidenceBinding?.repositoryContext
+      && workflow.prompt.evidenceBinding.repositoryContext.repository === workflow.prompt.repository
+      && workflow.prompt.evidenceBinding.repositoryContext.commitSha === workflow.prompt.baseSha,
+  );
+  const exactRepositoryContextRequired = workspacePersistenceMode(orgId) === "postgres";
+  if (
+    !workflow.prompt
+    || workflow.prompt.status === "Superseded"
+    || (exactRepositoryContextRequired && !promptHasExactRepositoryContext)
+  ) {
     if (!workflow.specification || !workflow.readiness.ready) {
       throw new EngineeringWorkflowError(
         "A reviewable implementation prompt is required before testing the suggested prompt.",
@@ -1311,6 +1402,7 @@ export async function applyPddPromptRevision(
   input: { currentPromptHash: string; revisedPrompt: string },
   actor: ActorContext,
 ): Promise<EngineeringWorkflowView> {
+  await assertPromptPreparationAllowed(orgId);
   const revisedPrompt = input.revisedPrompt.trim();
   if (!revisedPrompt || revisedPrompt.length > 64_000) {
     throw new EngineeringWorkflowError("The PDD prompt revision is invalid", 400);
@@ -1320,6 +1412,9 @@ export async function applyPddPromptRevision(
     const current = memoryWorkflow(orgId, problemId);
     if (!current.prompt || current.prompt.contentHash !== input.currentPromptHash) {
       throw new EngineeringWorkflowError("The suggested prompt changed; test it again", 409);
+    }
+    if (current.prompt.contentHash === revisedHash) {
+      return getEngineeringWorkflow(orgId, problemId);
     }
     current.prompt = {
       ...current.prompt,
@@ -1352,6 +1447,22 @@ export async function applyPddPromptRevision(
     if (current.status === "Approved") {
       throw new EngineeringWorkflowError("An approved prompt cannot be revised", 409);
     }
+    const duplicate = await client.query<{
+      id: string; revision: number;
+    }>(
+      `SELECT id,revision
+         FROM implementation_prompts
+        WHERE org_id=$1 AND problem_id=$2 AND content_hash=$3
+        LIMIT 1 FOR UPDATE`,
+      [orgId, problemId, revisedHash],
+    );
+    if (duplicate.rows[0]?.id === current.id) return;
+    if (duplicate.rows[0]) {
+      throw new EngineeringWorkflowError(
+        `PDD proposed prompt revision ${duplicate.rows[0].revision}, which was already tested. Review the remaining recommendations before retrying.`,
+        409,
+      );
+    }
     const revision = current.revision + 1;
     await client.query(
       "UPDATE implementation_prompts SET status='Superseded' WHERE org_id=$1 AND problem_id=$2 AND status <> 'Superseded'",
@@ -1381,6 +1492,7 @@ export async function generatePddAcceptanceContract(
   workflow: EngineeringWorkflowView;
   storyTest: UserStoryPromptTestView;
 }> {
+  await assertPromptPreparationAllowed(orgId);
   const issue = userStoryInputIssue(userStory);
   if (issue) throw new EngineeringWorkflowError(issue, 400);
   const story = (userStory as string).trim();
@@ -1466,7 +1578,11 @@ export async function generatePddAcceptanceContract(
       generatedTests: [{ path: "tests/pdd.acceptance.test.ts", content: demoTestContent, contentHash: sha256(demoTestContent), command: "npm test" }],
       failureMessage: null, createdAt: new Date().toISOString(), completedAt: new Date().toISOString(),
     };
-    workflow = await requestImplementationApproval(orgId, prompt.id, actor);
+    workflow = await getEngineeringWorkflow(orgId, problemId);
+    const level = await readAutonomyLevel(orgId);
+    if (autonomyCapabilities(level).requestAgentExecution) {
+      workflow = await requestImplementationApproval(orgId, prompt.id, actor);
+    }
   } else {
     const ticketBindingResult = await databasePool().query<ExecutionProfileBindingRow>(
       `SELECT execution_profile_id,execution_profile_hash,execution_profile_snapshot
@@ -1726,7 +1842,12 @@ export async function completePddVerification(
       },
     });
   });
-  if (shouldRequestApproval) return requestImplementationApproval(orgId, promptId, actor);
+  if (shouldRequestApproval) {
+    const level = await readAutonomyLevel(orgId);
+    if (autonomyCapabilities(level).requestAgentExecution) {
+      return requestImplementationApproval(orgId, promptId, actor);
+    }
+  }
   return postgresWorkflow(orgId, problemId);
 }
 
@@ -1735,6 +1856,7 @@ export async function requestImplementationApproval(
   promptId: string,
   actor: ActorContext,
 ): Promise<EngineeringWorkflowView> {
+  await assertAgentExecutionAllowed(orgId);
   if (workspacePersistenceMode(orgId) === "memory") {
     const entry = [...memoryWorkflows.values()].find((item) => item.prompt?.id === promptId);
     if (!entry?.prompt) throw new EngineeringWorkflowError("Implementation prompt was not found", 404);
@@ -1798,6 +1920,7 @@ export async function approveImplementationRun(
   approvalId: string,
   actor: ActorContext,
 ): Promise<EngineeringWorkflowView> {
+  await assertAgentExecutionAllowed(orgId);
   if (workspacePersistenceMode(orgId) === "memory") {
     const pair = [...memoryWorkflows.entries()].find(([, item]) => item.approval?.id === approvalId);
     if (!pair?.[1].approval || !pair[1].prompt) throw new EngineeringWorkflowError("Approval was not found", 404);
@@ -1845,6 +1968,18 @@ export async function approveImplementationRun(
       return;
     }
     const approvalProfile = validatedExecutionProfileBinding(row, "Approval request");
+    if (executionProfileExecutor(approvalProfile.config).kind === "tenki_github_actions") {
+      try {
+        await assertTenkiRunnerWorkflowSetupInstalled(orgId, row.repository);
+      } catch (error) {
+        throw new EngineeringWorkflowError(
+          error instanceof Error
+            ? error.message
+            : "The Tenki runner workflow is not ready",
+          409,
+        );
+      }
+    }
     const prompt = await client.query<{ content_hash: string; status: string }>(
       "SELECT content_hash,status FROM implementation_prompts WHERE org_id=$1 AND id=$2 FOR UPDATE",
       [orgId, row.prompt_revision_id],

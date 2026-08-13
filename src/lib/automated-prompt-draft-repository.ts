@@ -17,6 +17,7 @@ import {
   assertExecutionProfileNarrowing,
   sanitizeExecutionProfileConfig,
 } from "./execution-profile";
+import { enrichPromptEvidence } from "./problem-evidence-bundle";
 
 interface DraftCandidateRow {
   id: string;
@@ -59,8 +60,14 @@ export interface PromptDraftReadiness {
   evidenceCount: number;
   requiredEvidence: number;
   hasInvestigation: boolean;
+  verificationStatus: "Unverified" | "Confirmed current" | "Not reproduced" | "Already resolved" | "Verification blocked";
   hasExistingWorkflow: boolean;
   repositoryReady: boolean;
+  signalConfidenceFactors: {
+    clusterMatch: number;
+    evidenceQuality: number;
+    lowAmbiguity: number;
+  } | null;
   canGenerate: boolean;
   reason: string;
 }
@@ -196,7 +203,11 @@ async function resolveBaseSha(row: DraftCandidateRow): Promise<string> {
   }
 }
 
-function promptEvidence(row: DraftCandidateRow, redactedEvidence: PromptEvidence["redactedEvidence"]): PromptEvidence {
+function promptEvidence(
+  row: DraftCandidateRow,
+  redactedEvidence: PromptEvidence["redactedEvidence"],
+  repositoryContext?: PromptEvidence["repositoryContext"],
+): PromptEvidence {
   return {
     problemId: row.id,
     title: row.title,
@@ -209,6 +220,7 @@ function promptEvidence(row: DraftCandidateRow, redactedEvidence: PromptEvidence
     assumptions: row.assumptions ?? [],
     missingInformation: row.missing_information ?? [],
     suspectedFiles: row.suspected_files ?? [],
+    repositoryContext,
     redactedEvidence,
   };
 }
@@ -237,8 +249,9 @@ async function nextPostgresCandidate(
        JOIN LATERAL (
          SELECT candidate.hypothesis,candidate.confidence,candidate.assumptions,
                 candidate.missing_information,candidate.proposed_action,candidate.recommended_tests
-           FROM investigations candidate
+          FROM investigations candidate
           WHERE candidate.org_id=problem.org_id AND candidate.problem_id=problem.id
+            AND candidate.verification_status='Confirmed current'
           ORDER BY candidate.updated_at DESC,candidate.id LIMIT 1
        ) investigation ON true
        LEFT JOIN LATERAL (
@@ -357,8 +370,10 @@ export async function readPromptDraftReadiness(
       evidenceCount,
       requiredEvidence: policy.minimumEvidence,
       hasInvestigation,
+      verificationStatus: hasInvestigation ? "Confirmed current" : "Unverified",
       hasExistingWorkflow: false,
       repositoryReady: hasInvestigation,
+      signalConfidenceFactors: null,
       canGenerate,
       reason: canGenerate
         ? "This problem is ready for a reviewable suggested prompt."
@@ -375,8 +390,14 @@ export async function readPromptDraftReadiness(
     feature_count: number;
     investigation_confidence: number | null;
     investigation_id: string | null;
+    verification_status: "Unverified" | "Confirmed current" | "Not reproduced" | "Already resolved" | "Verification blocked" | null;
     has_existing_workflow: boolean;
     repository_ready: boolean;
+    signal_confidence_factors: {
+      clusterMatch?: number;
+      evidenceQuality?: number;
+      ambiguityPenalty?: number;
+    } | null;
   }>(
     `SELECT problem.confidence AS problem_confidence,
             count(membership.feedback_id)::int AS evidence_count,
@@ -384,6 +405,8 @@ export async function readPromptDraftReadiness(
             count(*) FILTER (WHERE feedback.type='Feature request')::int AS feature_count,
             investigation.id AS investigation_id,
             investigation.confidence AS investigation_confidence,
+            investigation.verification_status,
+            confidence_breakdown.factors AS signal_confidence_factors,
             (
               EXISTS (SELECT 1 FROM engineering_ticket_specifications specification
                        WHERE specification.org_id=problem.org_id AND specification.problem_id=problem.id)
@@ -419,13 +442,33 @@ export async function readPromptDraftReadiness(
        LEFT JOIN feedback_items feedback
          ON feedback.org_id=membership.org_id AND feedback.id=membership.feedback_id
        LEFT JOIN LATERAL (
-         SELECT candidate.id,candidate.confidence
+         SELECT candidate.id,candidate.confidence,candidate.verification_status
            FROM investigations candidate
           WHERE candidate.org_id=problem.org_id AND candidate.problem_id=problem.id
           ORDER BY candidate.updated_at DESC,candidate.id LIMIT 1
        ) investigation ON true
+       LEFT JOIN LATERAL (
+         SELECT jsonb_build_object(
+                  'clusterMatch',avg((latest.confidence_factors->>'clusterMatch')::float),
+                  'evidenceQuality',avg((latest.confidence_factors->>'evidenceQuality')::float),
+                  'ambiguityPenalty',avg((latest.confidence_factors->>'ambiguityPenalty')::float)
+                ) AS factors
+           FROM (
+             SELECT DISTINCT ON (analysis.feedback_id)
+                    analysis.feedback_id,analysis.confidence_factors
+               FROM feedback_cluster_memberships linked
+               JOIN ai_feedback_analyses analysis
+                 ON analysis.org_id=linked.org_id
+                AND analysis.feedback_id=linked.feedback_id
+                AND analysis.review_status='Approved'
+              WHERE linked.org_id=problem.org_id
+                AND linked.problem_id=problem.id
+              ORDER BY analysis.feedback_id,analysis.created_at DESC,analysis.id DESC
+           ) latest
+       ) confidence_breakdown ON true
       WHERE problem.org_id=$1 AND problem.id=$2
-      GROUP BY problem.org_id,problem.id,investigation.id,investigation.confidence`,
+      GROUP BY problem.org_id,problem.id,investigation.id,investigation.confidence,
+               investigation.verification_status,confidence_breakdown.factors`,
     [orgId, problemId],
   );
   const row = result.rows[0];
@@ -438,8 +481,10 @@ export async function readPromptDraftReadiness(
       evidenceCount: 0,
       requiredEvidence: policy.minimumEvidence,
       hasInvestigation: false,
+      verificationStatus: "Unverified",
       hasExistingWorkflow: false,
       repositoryReady: false,
+      signalConfidenceFactors: null,
       canGenerate: false,
       reason: "This product problem was not found.",
     };
@@ -450,6 +495,7 @@ export async function readPromptDraftReadiness(
       ? "Bug"
       : "Other";
   const hasInvestigation = row.investigation_confidence !== null;
+  const verificationStatus = row.verification_status ?? "Unverified";
   const assessment = assessPromptDraftEligibility(directDraftPolicy, {
     kind,
     evidenceCount: row.evidence_count,
@@ -457,7 +503,9 @@ export async function readPromptDraftReadiness(
     hasInvestigation,
     hasExistingWorkflow: row.has_existing_workflow,
   });
-  const canGenerate = assessment.eligible && row.repository_ready;
+  const canGenerate = assessment.eligible
+    && row.repository_ready
+    && verificationStatus === "Confirmed current";
   return {
     problemId,
     investigationId: row.investigation_id,
@@ -466,11 +514,29 @@ export async function readPromptDraftReadiness(
     evidenceCount: row.evidence_count,
     requiredEvidence: policy.minimumEvidence,
     hasInvestigation,
+    verificationStatus,
     hasExistingWorkflow: row.has_existing_workflow,
     repositoryReady: row.repository_ready,
+    signalConfidenceFactors: row.signal_confidence_factors &&
+      typeof row.signal_confidence_factors.clusterMatch === "number" &&
+      typeof row.signal_confidence_factors.evidenceQuality === "number" &&
+      typeof row.signal_confidence_factors.ambiguityPenalty === "number" &&
+      Number.isFinite(row.signal_confidence_factors.clusterMatch) &&
+      Number.isFinite(row.signal_confidence_factors.evidenceQuality) &&
+      Number.isFinite(row.signal_confidence_factors.ambiguityPenalty)
+      ? {
+          clusterMatch: row.signal_confidence_factors.clusterMatch,
+          evidenceQuality: row.signal_confidence_factors.evidenceQuality,
+          lowAmbiguity: 1 - row.signal_confidence_factors.ambiguityPenalty,
+        }
+      : null,
     canGenerate,
     reason: canGenerate
       ? "This problem is ready for a reviewable suggested prompt."
+      : verificationStatus !== "Confirmed current"
+        ? verificationStatus === "Unverified"
+          ? "Verify that the reported issue still exists before generating a prompt."
+          : `The current verification outcome is “${verificationStatus}”; prompt generation remains blocked.`
       : !row.repository_ready && assessment.eligible
         ? "Confirm an authorized repository before generating the suggested prompt."
         : assessment.reason,
@@ -497,7 +563,9 @@ async function createForCandidate(orgId: string, policy: PromptDraftPolicy, row:
       reason: "Repository selection requires product-manager review before a prompt can be drafted.",
     };
   }
-  const baseSha = await resolveBaseSha(row);
+  const baseSha = workspacePersistenceMode(orgId) === "memory"
+    ? "a".repeat(40)
+    : await resolveBaseSha(row);
   const redactedEvidence = workspacePersistenceMode(orgId) === "memory"
     ? []
     : (await databasePool().query<{ source: string; observed_at: string; quote: string }>(
@@ -509,25 +577,50 @@ async function createForCandidate(orgId: string, policy: PromptDraftPolicy, row:
       [orgId, row.id],
     )).rows.map((item) => ({ source: item.source, observedAt: item.observed_at, quote: item.quote }));
   const repository = row.repository;
+  if (!baseSha) {
+    return {
+      created: false,
+      problemId: row.id,
+      promptId: null,
+      reason: "CloseSpan could not resolve the repository's latest commit. Refresh the GitHub connection before drafting the prompt.",
+    };
+  }
+  const specification = buildAutomatedEngineeringDraft({
+    kind,
+    title: row.title,
+    statement: row.statement,
+    summary: row.summary,
+    proposedAction: row.proposed_action,
+    recommendedTests: row.recommended_tests ?? [],
+    suspectedFiles: row.suspected_files ?? [],
+    repository,
+    baseBranch: row.default_branch ?? "main",
+    baseSha,
+    evidenceCount: row.evidence_count,
+    executionProfileConfig: row.execution_profile_config,
+  });
+  let evidence = promptEvidence(row, redactedEvidence);
+  try {
+    evidence = await enrichPromptEvidence({
+      orgId,
+      problemId: row.id,
+      ticket: specification,
+      evidence,
+    });
+  } catch {
+    return {
+      created: false,
+      problemId: row.id,
+      promptId: null,
+      reason: `Repository context for ${repository}@${baseSha.slice(0, 12)} is not ready. Refresh repository context before drafting the prompt.`,
+    };
+  }
   const result = await createAutomatedPromptDraft(
     orgId,
     row.id,
     {
-      specification: buildAutomatedEngineeringDraft({
-        kind,
-        title: row.title,
-        statement: row.statement,
-        summary: row.summary,
-        proposedAction: row.proposed_action,
-        recommendedTests: row.recommended_tests ?? [],
-        suspectedFiles: row.suspected_files ?? [],
-        repository,
-        baseBranch: row.default_branch ?? "main",
-        baseSha,
-        evidenceCount: row.evidence_count,
-        executionProfileConfig: row.execution_profile_config,
-      }),
-      evidence: promptEvidence(row, redactedEvidence),
+      specification,
+      evidence,
       reason: assessment.reason,
       reviewerId: policy.reviewerId,
       notifyInApp: policy.inAppNotifications,

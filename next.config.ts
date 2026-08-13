@@ -19,6 +19,11 @@ const contentSecurityPolicy = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: process.cwd(),
+  outputFileTracingIncludes: {
+    "/api/settings/execution-profiles/install-runner-workflow": [
+      "./templates/tenki-github-actions/closespan-agent-runner.yml",
+    ],
+  },
   poweredByHeader: false,
   compress: true,
   output: "standalone",

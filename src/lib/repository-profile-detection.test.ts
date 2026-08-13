@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { TENKI_BROWSER_PREFLIGHT_COMMAND } from "./execution-profile";
 
@@ -80,6 +81,65 @@ function githubFixture() {
   return { github, methods: github.rest.git };
 }
 
+function mobileGithubFixture(platform: "ios" | "android") {
+  const workflow = "name: CloseSpan runner\non: workflow_dispatch\n";
+  const blobs = new Map<string, ReturnType<typeof encoded>>([
+    ["workflow", encoded(workflow)],
+    ...(platform === "ios" ? [
+      ["package", encoded(JSON.stringify({ scripts: { test: "vitest" }, devDependencies: { vite: "7.0.0" } }))],
+      ["project", encoded("IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; /* SwiftUI */")],
+      ["scheme", encoded("<Scheme version=\"1.7\"></Scheme>")],
+      ["internal-workspace", encoded("<Workspace version=\"1.0\"></Workspace>")],
+    ] : [
+      ["gradle", encoded("plugins { id(\"com.android.application\") version \"8.8.0\" }")],
+    ]),
+  ] as Array<[string, ReturnType<typeof encoded>]>);
+  const trees = new Map<string, Array<Record<string, unknown>>>([
+    [ROOT_TREE_SHA, platform === "ios" ? [
+      { path: "package.json", type: "blob", sha: "package", size: blobs.get("package")?.size },
+      { path: "Zup.xcodeproj", type: "tree", sha: "project-tree" },
+      { path: ".github", type: "tree", sha: "github-tree" },
+    ] : [
+      { path: "build.gradle.kts", type: "blob", sha: "gradle", size: blobs.get("gradle")?.size },
+      { path: ".github", type: "tree", sha: "github-tree" },
+    ]],
+    ["project-tree", [
+      { path: "project.pbxproj", type: "blob", sha: "project", size: blobs.get("project")?.size },
+      ...(platform === "ios" ? [{ path: "project.xcworkspace", type: "tree", sha: "internal-workspace-tree" }] : []),
+      { path: "xcshareddata", type: "tree", sha: "shared-tree" },
+    ]],
+    ["internal-workspace-tree", [{
+      path: "contents.xcworkspacedata",
+      type: "blob",
+      sha: "internal-workspace",
+      size: blobs.get("internal-workspace")?.size,
+    }]],
+    ["shared-tree", [{ path: "xcschemes", type: "tree", sha: "schemes-tree" }]],
+    ["schemes-tree", [{ path: "Zup.xcscheme", type: "blob", sha: "scheme", size: blobs.get("scheme")?.size }]],
+    ["github-tree", [{ path: "workflows", type: "tree", sha: "workflows-tree" }]],
+    ["workflows-tree", [{
+      path: "closespan-agent-runner.yml", type: "blob", sha: "workflow", size: blobs.get("workflow")?.size,
+    }]],
+  ]);
+  return {
+    workflow,
+    github: {
+      rest: {
+        git: {
+          getRef: vi.fn().mockResolvedValue({ data: { object: { sha: COMMIT_SHA } } }),
+          getCommit: vi.fn().mockResolvedValue({ data: { tree: { sha: ROOT_TREE_SHA } } }),
+          getTree: vi.fn(async ({ tree_sha }: { tree_sha: string }) => ({
+            data: { tree: trees.get(tree_sha) ?? [], truncated: false },
+          })),
+          getBlob: vi.fn(async ({ file_sha }: { file_sha: string }) => ({
+            data: blobs.get(file_sha) ?? encoded(""),
+          })),
+        },
+      },
+    } as unknown as RepositoryMetadataGithubClient,
+  };
+}
+
 describe("repository execution-profile detection", () => {
   it("detects monorepo roots from bounded manifest metadata at the exact branch SHA", async () => {
     const { github, methods } = githubFixture();
@@ -111,7 +171,7 @@ describe("repository execution-profile detection", () => {
       },
       reviewState: "Pending review",
       active: false,
-      detectorVersion: 4,
+      detectorVersion: 6,
       environment: { image: "sandbox", snapshotId: null, runtimeFamily: "node" },
     });
     expect(result.profiles.find((profile) => profile.root === "apps/web")).toMatchObject({
@@ -152,6 +212,110 @@ describe("repository execution-profile detection", () => {
       orgId: "org-1",
       suggestion: expect.objectContaining({ reviewState: "Pending review", active: false }),
       evidence: result.evidence,
+    }));
+  });
+
+  it("routes an Xcode repository to a digest-bound Tenki macOS runner profile even when package.json exists", async () => {
+    profileRepository.save.mockReset().mockResolvedValue({ id: "profile-ios" });
+    const { github, workflow } = mobileGithubFixture("ios");
+    const detected = await detectAndSaveGithubRepositoryProfiles({
+      orgId: "org-1",
+      installationId: "150109806",
+      repository: "samshanmukh/zup",
+      defaultBranch: "main",
+    }, { github });
+
+    expect(detected.profiles).toHaveLength(1);
+    expect(detected.profiles[0]).toMatchObject({
+      root: ".",
+      platform: "ios",
+      language: "swift",
+      xcode: { containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
+      commands: { test: "swift tests/CloseSpanPDDTests.swift" },
+      runnerWorkflowSha256: createHash("sha256").update(workflow).digest("hex"),
+    });
+    expect(profileRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      config: expect.objectContaining({
+        schemaVersion: 3,
+        language: "swift",
+        tenkiImage: null,
+        executor: expect.objectContaining({
+          kind: "tenki_github_actions",
+          platform: "macos",
+          architecture: "arm64",
+          workflowPath: ".github/workflows/closespan-agent-runner.yml",
+          workflowSha256: createHash("sha256").update(workflow).digest("hex"),
+          xcode: expect.objectContaining({ scheme: "Zup", signingPolicy: "simulator_only" }),
+        }),
+      }),
+      detectionEvidence: expect.objectContaining({ platform: "ios" }),
+    }));
+  });
+
+  it("rebases a nested Xcode project to its execution-profile working directory", async () => {
+    profileRepository.save.mockReset().mockResolvedValue({ id: "profile-ios-nested" });
+    const { github, workflow } = mobileGithubFixture("ios");
+    const getTree = vi.mocked(github.rest.git.getTree);
+    const originalImplementation = getTree.getMockImplementation();
+    if (!originalImplementation) throw new Error("Expected the mobile GitHub fixture tree implementation");
+    getTree.mockImplementation(async (input) => {
+      const { tree_sha } = input;
+      if (tree_sha === ROOT_TREE_SHA) {
+        return { data: { tree: [
+          { path: "ZupNative", type: "tree", sha: "nested-project-root" },
+          { path: ".github", type: "tree", sha: "github-tree" },
+        ], truncated: false } };
+      }
+      if (tree_sha === "nested-project-root") {
+        return { data: { tree: [
+          { path: "Zup.xcodeproj", type: "tree", sha: "project-tree" },
+        ], truncated: false } };
+      }
+      return originalImplementation(input);
+    });
+
+    const detected = await detectAndSaveGithubRepositoryProfiles({
+      orgId: "org-1",
+      installationId: "150109806",
+      repository: "samshanmukh/zup",
+      defaultBranch: "main",
+    }, { github });
+
+    expect(detected.profiles[0]).toMatchObject({
+      root: "ZupNative",
+      xcode: { containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
+      commands: { test: "swift tests/CloseSpanPDDTests.swift" },
+      runnerWorkflowSha256: createHash("sha256").update(workflow).digest("hex"),
+    });
+  });
+
+  it("routes Android instrumentation to a Tenki Linux x64 runner with nested-KVM metadata", async () => {
+    profileRepository.save.mockReset().mockResolvedValue({ id: "profile-android" });
+    const { github } = mobileGithubFixture("android");
+    await detectAndSaveGithubRepositoryProfiles({
+      orgId: "org-1",
+      installationId: "150109806",
+      repository: "acme/android",
+      defaultBranch: "main",
+    }, { github });
+
+    expect(profileRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      config: expect.objectContaining({
+        schemaVersion: 3,
+        framework: "Android",
+        executor: expect.objectContaining({
+          kind: "tenki_github_actions",
+          platform: "linux",
+          architecture: "x64",
+          runnerLabel: "tenki-standard-large-8c-16g",
+          androidEmulator: expect.objectContaining({
+            apiLevel: 35,
+            architecture: "x86_64",
+            gradleTask: ":app:connectedDebugAndroidTest",
+          }),
+        }),
+      }),
+      detectionEvidence: expect.objectContaining({ platform: "android" }),
     }));
   });
 

@@ -3,6 +3,10 @@ import { workspacePersistenceMode } from "./workspace-persistence";
 import type { FeedbackType } from "./domain";
 import { getMemoryProblemStages } from "./problem-automation-memory";
 import {
+  readProblemActiveWork,
+} from "./problem-active-work-repository";
+import type { ProblemActiveWork } from "./problem-active-work";
+import {
   buildFeedbackWeekDescriptors,
   createEmptyOverviewAnalytics,
   OVERVIEW_WEEK_BUCKETS,
@@ -207,6 +211,7 @@ export function buildOverviewAnalytics(input: {
   problemRows: ProblemRow[];
   resolutionRows: ResolutionRow[];
   feedbackCount?: FeedbackCountRow;
+  activeWork?: ProblemActiveWork[];
 }): OverviewAnalytics {
   const {
     weeklyRows,
@@ -216,7 +221,11 @@ export function buildOverviewAnalytics(input: {
     problemRows,
     resolutionRows,
     feedbackCount = { total: 0, awaiting_analysis: 0 },
+    activeWork = [],
   } = input;
+  const activeWorkByProblem = new Map(
+    activeWork.map((item) => [item.problemId, item]),
+  );
   if (
     weeklyRows.length === 0 &&
     themeRows.length === 0 &&
@@ -273,6 +282,7 @@ export function buildOverviewAnalytics(input: {
     revenue: row.revenue,
     confidence: Math.round(row.confidence * 100),
     trend: percentageChange(row.current_signals, row.previous_signals),
+    activeWork: activeWorkByProblem.get(row.id) ?? null,
   }));
   const uniqueAccounts = new Map(problems.flatMap((problem) => problem.accounts).map((account) => [account.accountId, account]));
   const currentResolution = resolutionRows.find((row) => row.comparison_period === "current")?.average_days ?? 0;
@@ -323,7 +333,7 @@ export async function getOverviewAnalytics(orgId: string): Promise<OverviewAnaly
   }
   const pool = databasePool();
   const referenceDate = new Date();
-  const [feedbackEventsResult, themeEventsResult, problemResult, resolutionResult, feedbackCountResult] = await Promise.all([
+  const [feedbackEventsResult, themeEventsResult, problemResult, resolutionResult, feedbackCountResult, activeWork] = await Promise.all([
     pool.query<FeedbackEventRow>(
       `SELECT source,observed_at,created_at
        FROM feedback_items
@@ -379,6 +389,7 @@ export async function getOverviewAnalytics(orgId: string): Promise<OverviewAnaly
           AND membership.feedback_id=feedback_items.id
       ))::int awaiting_analysis
       FROM feedback_items WHERE org_id=$1`, [orgId]),
+    readProblemActiveWork(orgId),
   ]);
   const themeRowsByRange = Object.fromEntries(
     THEME_RANGE_OPTIONS.map(({ value, days }) => [
@@ -398,5 +409,6 @@ export async function getOverviewAnalytics(orgId: string): Promise<OverviewAnaly
     problemRows: problemResult.rows,
     resolutionRows: resolutionResult.rows,
     feedbackCount: feedbackCountResult.rows[0],
+    activeWork,
   });
 }

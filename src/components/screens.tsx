@@ -25,6 +25,7 @@ import {
   Filter,
   GitBranch,
   Info,
+  LoaderCircle,
   MonitorCheck,
   RefreshCw,
   RotateCcw,
@@ -34,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { launchPricingNote } from "@/lib/plans";
+import { autonomyDescription, autonomyLevels, type AutonomyLevel } from "@/lib/autonomy-policy";
 import type { DemoState } from "@/lib/store";
 import { FeedbackVolumeChart } from "./feedback-volume-chart";
 import { FitText } from "./fit-text";
@@ -90,14 +92,34 @@ import type {
   IntegrationView,
   SettingsView,
 } from "@/lib/workspace-repository";
-import type { InvestigationWorkspaceItem } from "@/lib/investigation-repository";
+import type {
+  InvestigationVerificationMethod,
+  InvestigationVerificationStatus,
+  InvestigationWorkspaceItem,
+} from "@/lib/investigation-repository";
 import type { EngineeringWorkflowView } from "@/lib/engineering-workflow-repository";
+import type { ProductProblemEvidenceBundle } from "@/lib/problem-evidence-bundle";
+import {
+  ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MS,
+  ISSUE_RUNTIME_VERIFICATION_RUNNING_TIMEOUT_MS,
+} from "@/lib/issue-runtime-verification-policy";
+import type { IssueRuntimeVerificationRunView } from "@/lib/issue-runtime-verification";
 import type { FinalExecutionApprovalView } from "@/lib/final-execution-repository";
 import type {
   FeedbackType,
   FeedbackItem,
   ProductProblem,
 } from "@/lib/domain";
+import {
+  isProblemActiveWork,
+  type ProblemActiveWork,
+  type ProblemActiveWorkStatus,
+} from "@/lib/problem-active-work";
+import { useOptionalBackgroundPromptTests } from "./background-prompt-tests";
+import {
+  EngineeringPreparationSteps,
+  engineeringPreparationSteps,
+} from "./engineering-ticket-panel";
 
 const money = (value: number) => `$${Math.round(value / 1000)}k`;
 const compactMoney = (value: number) =>
@@ -436,6 +458,11 @@ interface FeedbackAnalysisView {
   feedbackId: string;
   classification: string;
   severity: string;
+  sentiment: "Positive" | "Neutral" | "Negative" | "Mixed" | null;
+  sentimentIntensity: number | null;
+  sentimentConfidence: number | null;
+  sentimentEvidence: string[];
+  sentimentRationale: string | null;
   redactedSummary: string;
   proposedProblemId: string | null;
   classificationConfidence: number;
@@ -443,6 +470,23 @@ interface FeedbackAnalysisView {
   rationale: string;
   evidence: string[];
   reviewStatus: "Proposed" | "Approved" | "Rejected";
+}
+
+function sentimentTone(
+  sentiment: FeedbackAnalysisView["sentiment"],
+): string {
+  return sentiment ? ` is-${sentiment.toLowerCase()}` : " is-unavailable";
+}
+
+function sentimentIntensityLabel(intensity: number | null): string | null {
+  if (intensity === null) return null;
+  if (intensity >= 0.67) return "Strong intensity";
+  if (intensity >= 0.34) return "Moderate intensity";
+  return "Low intensity";
+}
+
+export function classificationConfidenceLabel(confidence: number): string {
+  return `${Math.round(confidence * 100)}% classification confidence`;
 }
 
 export function FeedbackScreen({
@@ -942,7 +986,7 @@ export function FeedbackScreen({
               <th>Customer signal</th>
               <th>Source</th>
               <th>Type</th>
-              <th>Severity</th>
+              <th>Sentiment</th>
               <th>Account</th>
               <th>Problem</th>
             </tr>
@@ -1010,15 +1054,16 @@ export function FeedbackScreen({
                     )}
                   </td>
                   <td>
-                    <span
-                      className={`badge ${(analysis?.severity ?? item.severity).toLowerCase()}`}
-                    >
-                      {analysis?.severity ?? item.severity}
-                    </span>
+                    {analysis?.sentiment ? (
+                      <span className={`badge feedback-sentiment${sentimentTone(analysis.sentiment)}`}>
+                        {analysis.sentiment}
+                      </span>
+                    ) : (
+                      <span className="subtle">Not analyzed</span>
+                    )}
                   </td>
                   <td>
                     {item.accountTier}
-                    <small>{money(item.arr)} ARR</small>
                   </td>
                   <td>
                     {reviewedProblem ? (
@@ -1145,11 +1190,33 @@ export function FeedbackScreen({
                 </div>
                 <div>
                   <dt>Account</dt>
-                  <dd>{openFeedback.accountTier} · {money(openFeedback.arr)} ARR</dd>
+                  <dd>{openFeedback.accountTier}</dd>
                 </div>
                 <div>
                   <dt>Privacy</dt>
                   <dd>{openFeedback.redacted ? "PII redacted" : "PII scan clear"}</dd>
+                </div>
+                <div className="feedback-detail-wide feedback-detail-sentiment">
+                  <dt>Sentiment</dt>
+                  <dd>
+                    {openAnalysis?.sentiment ? (
+                      <>
+                        <span className={`badge feedback-sentiment${sentimentTone(openAnalysis.sentiment)}`}>
+                          {openAnalysis.sentiment}
+                        </span>
+                        <span className="feedback-sentiment-detail">
+                          {[
+                            sentimentIntensityLabel(openAnalysis.sentimentIntensity),
+                            openAnalysis.sentimentConfidence === null
+                              ? null
+                              : `${Math.round(openAnalysis.sentimentConfidence * 100)}% sentiment confidence`,
+                          ].filter(Boolean).join(" · ")}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="subtle">Not analyzed</span>
+                    )}
+                  </dd>
                 </div>
                 <div className="feedback-detail-wide">
                   <dt>Source context</dt>
@@ -1166,7 +1233,7 @@ export function FeedbackScreen({
                     </div>
                     <span className={`badge ${openAnalysis.reviewStatus === "Approved" ? "success" : "brand"}`}>
                       {openAnalysis.reviewStatus === "Proposed"
-                        ? `${Math.round(openAnalysis.classificationConfidence * 100)}% confidence`
+                        ? classificationConfidenceLabel(openAnalysis.classificationConfidence)
                         : openAnalysis.reviewStatus}
                     </span>
                   </div>
@@ -2159,11 +2226,35 @@ function ProblemTable({
   );
 }
 
-function ProblemLifecycleBoard({
+function promptTaskStatus(
+  phase: "evaluating" | "applying-revision" | "retesting" | "generating-contract" | "waiting-for-approval",
+): ProblemActiveWorkStatus {
+  if (phase === "applying-revision") return "Working";
+  if (phase === "generating-contract" || phase === "waiting-for-approval")
+    return "Preparing";
+  return "Testing";
+}
+
+export function ProblemLifecycleBoard({
   problems,
+  activeWork = [],
 }: {
   problems: OverviewAnalytics["problems"];
+  activeWork?: ProblemActiveWork[];
 }) {
+  const backgroundPromptTests = useOptionalBackgroundPromptTests();
+  const activeWorkByProblem = useMemo(() => {
+    const values = new Map(
+      activeWork.map((item) => [item.problemId, item.status]),
+    );
+    for (const task of backgroundPromptTests?.tasks ?? []) {
+      if (task.status === "running") {
+        values.set(task.problemId, promptTaskStatus(task.phase));
+      }
+    }
+    return values;
+  }, [activeWork, backgroundPromptTests?.tasks]);
+
   return (
     <div className="board" aria-label="Problems by lifecycle stage">
       {prioritizationStages.map((stage) => {
@@ -2184,32 +2275,48 @@ function ProblemLifecycleBoard({
             {stageProblems.length === 0 ? (
               <p className="problem-board-empty">No problems</p>
             ) : (
-              stageProblems.map((problem) => (
-                <Link
-                  className="problem-card"
-                  href={`/problems/${problem.id}`}
-                  key={problem.id}
-                >
-                  <div className="ticket-badges">
-                    <span className="badge">{problem.type}</span>
-                    <span
-                      className={`badge ${problem.severity.toLowerCase()}`}
-                    >
-                      {problem.severity}
-                    </span>
-                  </div>
-                  <h3>{problem.title}</h3>
-                  <p className="subtle">
-                    {problem.count} {problem.count === 1 ? "signal" : "signals"}
-                    {" · "}
-                    {money(problem.revenue)} ARR
-                  </p>
-                  <div className="mini-bar" aria-hidden="true">
-                    <span style={{ width: `${problem.confidence}%` }} />
-                  </div>
-                  <small>{problem.confidence}% evidence confidence</small>
-                </Link>
-              ))
+              stageProblems.map((problem) => {
+                const workStatus = activeWorkByProblem.get(problem.id);
+                return (
+                  <Link
+                    className="problem-card"
+                    href={`/problems/${problem.id}`}
+                    key={problem.id}
+                  >
+                    <div className="ticket-badges">
+                      <span className="badge">{problem.type}</span>
+                      <span
+                        className={`badge ${problem.severity.toLowerCase()}`}
+                      >
+                        {problem.severity}
+                      </span>
+                    </div>
+                    <h3>{problem.title}</h3>
+                    <p className="subtle">
+                      {problem.count} {problem.count === 1 ? "signal" : "signals"}
+                      {" · "}
+                      {money(problem.revenue)} ARR
+                    </p>
+                    <div className="mini-bar" aria-hidden="true">
+                      <span style={{ width: `${problem.confidence}%` }} />
+                    </div>
+                    <small>{problem.confidence}% evidence confidence</small>
+                    {workStatus && (
+                      <span
+                        className="problem-card-work-status"
+                        role="status"
+                        aria-label={`${workStatus} in progress`}
+                      >
+                        <strong>{workStatus}</strong>
+                        <LoaderCircle
+                          className="problem-card-work-spinner spin"
+                          aria-hidden="true"
+                        />
+                      </span>
+                    )}
+                  </Link>
+                );
+              })
             )}
           </section>
         );
@@ -2221,6 +2328,41 @@ function ProblemLifecycleBoard({
 export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) {
   const reduceMotion = useReducedMotion();
   const [tableView, setTableView] = useState<ProblemView>("problems");
+  const [activeWork, setActiveWork] = useState<ProblemActiveWork[]>(() =>
+    analytics.problems.flatMap((problem) =>
+      problem.activeWork ? [problem.activeWork] : [],
+    ),
+  );
+
+  useEffect(() => {
+    if (tableView !== "board") return;
+    const controller = new AbortController();
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/problems/active-work", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok || disposed) return;
+        const payload = await response.json() as { activeWork?: unknown };
+        if (!Array.isArray(payload.activeWork)) return;
+        const next = payload.activeWork.filter(isProblemActiveWork);
+        if (!disposed) setActiveWork(next);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.warn("Unable to refresh active problem work", error);
+        }
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(refresh, 5_000);
+    return () => {
+      disposed = true;
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [tableView]);
   const uncertain = analytics.problems.filter(
     (problem) => problem.confidence < 80,
   ).length;
@@ -2365,7 +2507,10 @@ export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) 
               >
                 {tableView === "board" ? (
                   <div className="problem-board-panel">
-                    <ProblemLifecycleBoard problems={analytics.problems} />
+                    <ProblemLifecycleBoard
+                      problems={analytics.problems}
+                      activeWork={activeWork}
+                    />
                   </div>
                 ) : (
                   <ProblemTable
@@ -2579,6 +2724,41 @@ function investigationStatusTone(status: string) {
   return "";
 }
 
+function verificationTone(status: InvestigationVerificationStatus) {
+  if (status === "Confirmed current") return "success";
+  if (status === "Not reproduced" || status === "Already resolved") return "medium";
+  return "high";
+}
+
+function compactElapsed(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+export function runtimeVerificationElapsedLabel(
+  run: Pick<IssueRuntimeVerificationRunView, "status" | "requestedAt" | "startedAt">,
+  now: number,
+): string | null {
+  if (run.status !== "Queued" && run.status !== "Running") return null;
+  const startedAt = run.status === "Queued"
+    ? Date.parse(run.requestedAt)
+    : Date.parse(run.startedAt ?? run.requestedAt);
+  if (!Number.isFinite(startedAt)) return null;
+  const limit = run.status === "Queued"
+    ? ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MS
+    : ISSUE_RUNTIME_VERIFICATION_RUNNING_TIMEOUT_MS;
+  const elapsed = Math.max(0, now - startedAt);
+  if (elapsed >= limit) {
+    return `${run.status === "Queued" ? "Queued" : "Running"} for ${compactElapsed(elapsed)} · timeout reconciliation pending`;
+  }
+  return `${run.status === "Queued" ? "Queued" : "Running"} for ${compactElapsed(elapsed)} · timeout in ${compactElapsed(limit - elapsed)}`;
+}
+
 function InvestigationList({
   title,
   items,
@@ -2604,27 +2784,817 @@ function InvestigationList({
   );
 }
 
-export function InvestigationsScreen({
-  investigations,
-  selectedInvestigationId,
-}: {
-  investigations: InvestigationWorkspaceItem[];
-  selectedInvestigationId: string | null;
-}) {
-  const selected = investigations.find(
-    (item) => item.id === selectedInvestigationId,
-  );
+interface RepositoryContextRefreshSnapshot {
+  repository: string;
+  commitSha: string | null;
+  status: "Queued" | "Discovering" | "Uploading" | "Indexing" | "Ready" | "Failed";
+  stage: string;
+  progress: number;
+  errorMessage: string | null;
+}
 
-  if (!selected) {
+function waitForRepositoryContextPoll(milliseconds: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(resolve, milliseconds);
+    signal.addEventListener("abort", () => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Repository context refresh cancelled", "AbortError"));
+    }, { once: true });
+  });
+}
+
+export function ProductProblemInvestigationPanel({
+  problem,
+  investigation,
+  evidenceBundle,
+  showSummary = true,
+}: {
+  problem: OverviewAnalytics["problems"][number];
+  investigation?: InvestigationWorkspaceItem;
+  evidenceBundle?: ProductProblemEvidenceBundle | null;
+  showSummary?: boolean;
+}) {
+  const router = useRouter();
+  const [startingInvestigation, setStartingInvestigation] = useState(false);
+  const [startingRuntimeVerification, setStartingRuntimeVerification] = useState(false);
+  const [runtimeClock, setRuntimeClock] = useState(() => Date.now());
+  const [verificationStatus, setVerificationStatus] = useState<InvestigationVerificationStatus>("Confirmed current");
+  const [verificationMethod, setVerificationMethod] = useState<InvestigationVerificationMethod>("Product reproduction");
+  const [verificationSummary, setVerificationSummary] = useState("");
+  const [editingVerification, setEditingVerification] = useState(false);
+  const [savingVerification, setSavingVerification] = useState(false);
+  const [refreshingRepositoryContext, setRefreshingRepositoryContext] = useState(false);
+  const [repositoryContextFeedback, setRepositoryContextFeedback] = useState<string>();
+  const [investigationError, setInvestigationError] = useState<string>();
+  const repositoryContextRefreshAbort = useRef<AbortController | null>(null);
+  const updatedAt = investigation ? new Date(investigation.updatedAt) : null;
+  const updatedLabel = !updatedAt || Number.isNaN(updatedAt.getTime())
+    ? "Awaiting investigation"
+    : `Updated ${updatedAt.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  const runtimeVerification = investigation?.runtimeVerification ?? null;
+  const evidenceToCollect = evidenceBundle?.remainingEvidence
+    ?? investigation?.missingInformation
+    ?? [];
+  const recommendedChecks = evidenceBundle?.recommendedChecks
+    ?? investigation?.recommendedTests
+    ?? [];
+  const relevantCodePaths = evidenceBundle?.relevantCodePaths.length
+    ? evidenceBundle.relevantCodePaths
+    : investigation?.suspectedFiles ?? [];
+  const runtimeEvidence = evidenceBundle?.runtimeVerification ?? null;
+  const runtimeConfirmed = runtimeEvidence?.outcome === "Confirmed current";
+  const runtimeVerificationActive = runtimeVerification?.status === "Queued"
+    || runtimeVerification?.status === "Running";
+  const runtimeVerificationQueued = runtimeVerification?.status === "Queued";
+  const runtimeTiming = runtimeVerification
+    ? runtimeVerificationElapsedLabel(runtimeVerification, runtimeClock)
+    : null;
+
+  useEffect(() => {
+    if (!runtimeVerificationActive) return;
+    const timer = window.setInterval(() => router.refresh(), 4_000);
+    return () => window.clearInterval(timer);
+  }, [router, runtimeVerificationActive]);
+
+  useEffect(() => {
+    if (!runtimeVerificationActive) return;
+    const timer = window.setInterval(() => setRuntimeClock(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [runtimeVerificationActive]);
+
+  useEffect(() => () => repositoryContextRefreshAbort.current?.abort(), []);
+
+  async function startInvestigation() {
+    setStartingInvestigation(true);
+    setInvestigationError(undefined);
+    try {
+      const response = await fetch(`/api/problems/${problem.id}/investigation`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": crypto.randomUUID(),
+          "x-request-id": crypto.randomUUID(),
+        },
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok && response.status !== 409) {
+        throw new Error(payload.error ?? "The investigation could not be started.");
+      }
+      router.refresh();
+    } catch (cause) {
+      setInvestigationError(cause instanceof Error ? cause.message : "The investigation could not be started.");
+    } finally {
+      setStartingInvestigation(false);
+    }
+  }
+
+  async function saveVerification(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!investigation) return;
+    setSavingVerification(true);
+    setInvestigationError(undefined);
+    try {
+      const response = await fetch(`/api/problems/${problem.id}/investigation/verification`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": crypto.randomUUID(),
+          "x-request-id": crypto.randomUUID(),
+        },
+        body: JSON.stringify({
+          status: verificationStatus,
+          method: verificationMethod,
+          summary: verificationSummary,
+        }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Issue verification could not be recorded.");
+      setEditingVerification(false);
+      router.refresh();
+    } catch (cause) {
+      setInvestigationError(cause instanceof Error ? cause.message : "Issue verification could not be recorded.");
+    } finally {
+      setSavingVerification(false);
+    }
+  }
+
+  async function runRuntimeVerification() {
+    if (!investigation) return;
+    setStartingRuntimeVerification(true);
+    setInvestigationError(undefined);
+    try {
+      const response = await fetch(
+        `/api/problems/${problem.id}/investigation/runtime-verification`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": crypto.randomUUID(),
+            "x-request-id": crypto.randomUUID(),
+          },
+        },
+      );
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Runtime verification could not be started.");
+      }
+      router.refresh();
+    } catch (cause) {
+      setInvestigationError(
+        cause instanceof Error ? cause.message : "Runtime verification could not be started.",
+      );
+    } finally {
+      setStartingRuntimeVerification(false);
+    }
+  }
+
+  async function refreshRepositoryContext() {
+    if (!evidenceBundle || refreshingRepositoryContext) return;
+    repositoryContextRefreshAbort.current?.abort();
+    const controller = new AbortController();
+    repositoryContextRefreshAbort.current = controller;
+    setRefreshingRepositoryContext(true);
+    setRepositoryContextFeedback("Queuing repository context refresh…");
+    try {
+      const response = await fetch("/api/repository-contexts", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": crypto.randomUUID(),
+          "x-request-id": crypto.randomUUID(),
+        },
+        body: JSON.stringify({ repository: evidenceBundle.repository }),
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Repository context could not be refreshed.");
+      }
+
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        await waitForRepositoryContextPoll(1_500, controller.signal);
+        const statusResponse = await fetch("/api/repository-contexts", {
+          headers: { "x-request-id": crypto.randomUUID() },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const statusPayload = await statusResponse.json().catch(() => ({})) as {
+          contexts?: RepositoryContextRefreshSnapshot[];
+          error?: string;
+        };
+        if (!statusResponse.ok || !Array.isArray(statusPayload.contexts)) {
+          throw new Error(statusPayload.error ?? "Repository context status could not be loaded.");
+        }
+        const context = statusPayload.contexts.find(
+          (candidate) => candidate.repository === evidenceBundle.repository,
+        );
+        if (!context) throw new Error("Repository context was not found.");
+        if (context.status === "Failed") {
+          throw new Error(context.errorMessage ?? "Repository context refresh failed. Try again.");
+        }
+        if (
+          context.status === "Ready"
+          && context.commitSha?.toLowerCase() === evidenceBundle.commitSha.toLowerCase()
+        ) {
+          setRepositoryContextFeedback("Repository context refreshed. Updating investigation…");
+          router.refresh();
+          return;
+        }
+        setRepositoryContextFeedback(
+          context.status === "Ready"
+            ? "Repository changed again while context was refreshing. Refresh once more to use the latest commit."
+            : `${context.stage} · ${context.progress}%`,
+        );
+      }
+      setRepositoryContextFeedback("Repository context is still refreshing. Reload this page in a moment.");
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setRepositoryContextFeedback(
+        cause instanceof Error ? cause.message : "Repository context could not be refreshed.",
+      );
+    } finally {
+      if (repositoryContextRefreshAbort.current === controller) {
+        repositoryContextRefreshAbort.current = null;
+        setRefreshingRepositoryContext(false);
+      }
+    }
+  }
+
+  return (
+    <article className="card investigation-detail-card problem-investigation-detail section-gap" id="investigation">
+      <header className="investigation-detail-head">
+        <div className="investigation-detail-heading">
+          <h2>Investigation</h2>
+          <p>
+            {investigation?.title ?? "Establish the evidence boundary before prompt preparation"}
+            {" · "}{problem.productArea}
+            {" · "}{problem.severity} severity
+          </p>
+        </div>
+        {showSummary && (
+          <div className="investigation-detail-status">
+            <span className={`badge ${investigation ? investigationStatusTone(investigation.status) : "high"}`}>
+              {investigation ? investigationStatusLabel(investigation.status) : "Not started"}
+            </span>
+            <span className="subtle">{updatedLabel}</span>
+          </div>
+        )}
+      </header>
+
+      <div className="investigation-detail-body">
+        {showSummary && (
+          <section className="investigation-readiness" aria-label="Investigation readiness">
+            <div>
+              <span>Related signals</span>
+              <strong>{investigation?.relatedSignalCount ?? problem.count}</strong>
+              <small>Customer reports linked to this problem</small>
+            </div>
+            <div>
+              <span>Evidence still needed</span>
+              <strong>{investigation ? evidenceToCollect.length : "—"}</strong>
+              <small>Open evidence gaps</small>
+            </div>
+            <div>
+              <span>Recommended checks</span>
+              <strong>{investigation ? recommendedChecks.length : "—"}</strong>
+              <small>Proposed, not completed</small>
+            </div>
+          </section>
+        )}
+
+        {investigation ? (
+          <>
+            {evidenceBundle && (
+              <section className={`investigation-repository-evidence is-${evidenceBundle.contextStatus === "Exact commit" ? "exact" : "unavailable"}`} aria-label="Repository context provenance">
+                <div>
+                  <GitBranch size={16} aria-hidden="true" />
+                  <span>
+                    <strong>Repository context</strong>
+                    {" · "}{evidenceBundle.repository}
+                    {evidenceBundle.commitSha ? `@${evidenceBundle.commitSha.slice(0, 12)}` : ""}
+                  </span>
+                </div>
+                <div>
+                  {evidenceBundle.contextStatus === "Refresh required" ? (
+                    <span className="badge medium investigation-context-refresh-capsule">
+                      <span>Refresh required</span>
+                      <button
+                        type="button"
+                        className="investigation-context-refresh"
+                        aria-label={refreshingRepositoryContext
+                          ? "Refreshing repository context"
+                          : "Refresh repository context"}
+                        title={refreshingRepositoryContext
+                          ? "Refreshing repository context"
+                          : "Refresh repository context"}
+                        disabled={refreshingRepositoryContext}
+                        onClick={() => void refreshRepositoryContext()}
+                      >
+                        <RefreshCw
+                          size={14}
+                          className={refreshingRepositoryContext ? "spin" : undefined}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </span>
+                  ) : (
+                    <span className={`badge ${evidenceBundle.contextStatus === "Exact commit" ? "success" : "medium"}`}>
+                      {evidenceBundle.contextStatus === "Exact commit"
+                        ? evidenceBundle.freshness === "Runtime commit"
+                          ? "Runtime commit"
+                          : "Indexed commit"
+                        : evidenceBundle.contextStatus}
+                    </span>
+                  )}
+                  <span className="subtle" aria-live="polite">
+                    {evidenceBundle.contextStatus === "Exact commit" && !refreshingRepositoryContext
+                      ? evidenceBundle.contextMessage
+                      : repositoryContextFeedback ?? evidenceBundle.contextMessage}
+                  </span>
+                </div>
+              </section>
+            )}
+
+            <section className={`callout ${runtimeConfirmed ? "success" : "warning"} investigation-hypothesis`}>
+              <div className="callout-title">
+                {runtimeConfirmed
+                  ? <ShieldCheck size={14} aria-hidden="true" />
+                  : <AlertTriangle size={14} aria-hidden="true" />}
+                {runtimeConfirmed
+                  ? "Behavior runtime-confirmed · root cause unconfirmed"
+                  : "Hypothesis—not confirmed"}
+              </div>
+              <p>{runtimeConfirmed ? runtimeEvidence.summary : investigation.hypothesis}</p>
+              {runtimeConfirmed && <p className="subtle">Working hypothesis: {investigation.hypothesis}</p>}
+            </section>
+
+            <div className="investigation-detail-grid">
+              <InvestigationList title="Evidence to collect" items={evidenceToCollect} emptyLabel="No additional evidence gaps remain from this investigation." />
+              <InvestigationList title="Recommended checks" items={recommendedChecks} emptyLabel="No checks are recommended." />
+              <InvestigationList title={evidenceBundle?.contextStatus === "Exact commit" ? "Repository context matches" : "Suspected code paths"} items={relevantCodePaths} emptyLabel="No code paths are supported by the current evidence yet." />
+              <InvestigationList title="Working assumptions" items={investigation.assumptions} emptyLabel="No assumptions are recorded." />
+            </div>
+
+            <section className={`investigation-verification is-${verificationTone(investigation.verification.status)}`} aria-labelledby="issue-verification-title">
+              <div className="investigation-verification-head">
+                <div>
+                  <h3 id="issue-verification-title">Current issue verification</h3>
+                  <p>Run the reported path at the pinned GitHub commit before preparing implementation work.</p>
+                </div>
+                <span className={`badge ${runtimeVerificationActive ? "medium" : verificationTone(investigation.verification.status)}`}>
+                  {runtimeVerificationActive
+                    ? runtimeVerification?.status === "Queued" ? "Queued for Tenki" : "Running on Tenki"
+                    : investigation.verification.status}
+                </span>
+              </div>
+
+              <div className="runtime-verification-action">
+                <div>
+                  <strong>{runtimeVerificationActive
+                    ? runtimeVerificationQueued
+                      ? "Waiting for a Tenki runner"
+                      : "Testing the current product runtime"
+                    : runtimeVerification
+                      ? runtimeVerification.outcome ?? "Runtime verification finished"
+                      : "Verify in the product runtime"}</strong>
+                  <p>{runtimeVerification?.summary
+                    ?? (runtimeVerificationActive
+                      ? runtimeVerificationQueued
+                        ? `CloseSpan dispatched ${runtimeVerification.repository} at ${runtimeVerification.baseSha.slice(0, 12)} and is waiting for the configured runner. Verification has not started.`
+                        : `CloseSpan is checking ${runtimeVerification.repository} at ${runtimeVerification.baseSha.slice(0, 12)} on the configured Tenki runner.`
+                      : "CloseSpan will pin the authorized repository commit, exercise the user-visible path on Tenki, and return attested evidence here.")}</p>
+                  {runtimeTiming && (
+                    <span className="runtime-verification-timing" suppressHydrationWarning>
+                      <Clock3 size={13} aria-hidden="true" />
+                      {runtimeTiming}
+                    </span>
+                  )}
+                  {runtimeVerification && (
+                    <span>
+                      {runtimeVerification.repository} · {runtimeVerification.baseSha.slice(0, 12)} · requested by {runtimeVerification.requestedByName}
+                      {runtimeVerification.workflowRunId ? (
+                        <> · <a href={`https://github.com/${runtimeVerification.repository}/actions/runs/${runtimeVerification.workflowRunId}`} target="_blank" rel="noreferrer">View GitHub run</a></>
+                      ) : null}
+                    </span>
+                  )}
+                </div>
+                <button
+                  className="btn primary"
+                  type="button"
+                  disabled={startingRuntimeVerification || runtimeVerificationActive}
+                  onClick={runRuntimeVerification}
+                >
+                  {startingRuntimeVerification || runtimeVerificationActive
+                    ? <LoaderCircle className="spin" size={14} aria-hidden="true" />
+                    : runtimeVerification?.status === "Failed"
+                      || runtimeVerification?.outcome === "Verification blocked"
+                      ? <RotateCcw size={14} aria-hidden="true" />
+                      : <MonitorCheck size={14} aria-hidden="true" />}
+                  {startingRuntimeVerification
+                    ? "Starting…"
+                    : runtimeVerificationQueued
+                      ? "Waiting for runner"
+                      : runtimeVerification?.status === "Running"
+                        ? "Verification in progress"
+                        : runtimeVerification?.status === "Failed"
+                          || runtimeVerification?.outcome === "Verification blocked"
+                          ? "Retry runtime verification"
+                          : runtimeVerification ? "Run again on Tenki" : "Run runtime verification"}
+                </button>
+              </div>
+
+              {editingVerification ? (
+                <form className="investigation-verification-form" onSubmit={saveVerification}>
+                  <label className="field">
+                    <span>Outcome</span>
+                    <select
+                      value={verificationStatus}
+                      onChange={(event) => setVerificationStatus(event.target.value as InvestigationVerificationStatus)}
+                    >
+                      <option value="Confirmed current">Confirmed current</option>
+                      <option value="Not reproduced">Not reproduced</option>
+                      <option value="Already resolved">Already resolved</option>
+                      <option value="Verification blocked">Verification blocked</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Verification method</span>
+                    <select
+                      value={verificationMethod}
+                      onChange={(event) => setVerificationMethod(event.target.value as InvestigationVerificationMethod)}
+                    >
+                      <option value="Production telemetry">Production telemetry</option>
+                      <option value="Release evidence">Release evidence</option>
+                    </select>
+                  </label>
+                  <label className="field investigation-verification-evidence">
+                    <span>Observed evidence</span>
+                    <textarea
+                      rows={4}
+                      minLength={20}
+                      maxLength={2000}
+                      required
+                      value={verificationSummary}
+                      onChange={(event) => setVerificationSummary(event.target.value)}
+                      placeholder="Record the production trace, release evidence, environment, and observed result."
+                    />
+                    <small>Use this only for trusted evidence collected outside the CloseSpan runtime run.</small>
+                  </label>
+                  <button className="btn primary" type="submit" disabled={savingVerification || verificationSummary.trim().length < 20}>
+                    {savingVerification ? <LoaderCircle className="spin" size={14} aria-hidden="true" /> : <ShieldCheck size={14} aria-hidden="true" />}
+                    {savingVerification ? "Recording…" : "Record verification"}
+                  </button>
+                </form>
+              ) : investigation.verification.status !== "Unverified"
+                && !(runtimeVerification && investigation.verification.method === "Automated check") ? (
+                <div className="investigation-verification-record-wrap">
+                  <div className={`investigation-verification-record is-${verificationTone(investigation.verification.status)}`}>
+                    {investigation.verification.status === "Verification blocked"
+                      ? <AlertTriangle size={18} aria-hidden="true" />
+                      : <ShieldCheck size={18} aria-hidden="true" />}
+                    <div>
+                      <strong>{investigation.verification.method}</strong>
+                      <p>{investigation.verification.summary}</p>
+                      <span>
+                        {investigation.verification.actorName ?? "Recorded reviewer"}
+                        {investigation.verification.verifiedAt
+                          ? ` · ${new Date(investigation.verification.verifiedAt).toLocaleString()}`
+                          : ""}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    className="btn secondary"
+                    type="button"
+                    onClick={() => {
+                      setVerificationStatus("Confirmed current");
+                      setVerificationMethod("Production telemetry");
+                      setVerificationSummary("");
+                      setEditingVerification(true);
+                    }}
+                  >
+                    Record newer external evidence
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="btn secondary runtime-verification-external"
+                  type="button"
+                  onClick={() => {
+                    setVerificationStatus("Confirmed current");
+                    setVerificationMethod("Production telemetry");
+                    setVerificationSummary("");
+                    setEditingVerification(true);
+                  }}
+                >
+                  Record external evidence
+                </button>
+              )}
+            </section>
+
+            <section className="investigation-next-step">
+              <div>
+                <h3>{investigation.verification.status === "Confirmed current" ? "Recommended action" : "Verification required"}</h3>
+                <p>{investigation.verification.status === "Confirmed current"
+                  ? investigation.proposedAction
+                  : investigation.verification.status === "Unverified"
+                    ? "Reproduce the reported behavior and record the observed result before writing an implementation prompt."
+                    : investigation.verification.status === "Verification blocked"
+                      ? "Resolve the recorded environment or access blocker, then run verification again before writing an implementation prompt."
+                    : "Do not prepare an implementation prompt for this report unless new evidence confirms the issue is current."}</p>
+                <span className="subtle">{investigation.verification.status === "Confirmed current"
+                  ? "PDD will use this verified investigation as the prompt evidence boundary."
+                  : "PDD remains blocked until the current issue is confirmed."}</span>
+              </div>
+              {investigation.verification.status === "Confirmed current" && (
+                <Link className="btn primary" href={`/pdd/${encodeURIComponent(problem.id)}#engineering-ticket`}>
+                  Continue to prompt <ChevronRight size={14} aria-hidden="true" />
+                </Link>
+              )}
+            </section>
+
+            <footer className="investigation-context-line">
+              <GitBranch size={15} aria-hidden="true" />
+              <span>{investigation.repository}</span>
+              <span aria-hidden="true">·</span>
+              <span>{investigation.team}</span>
+              <span aria-hidden="true">·</span>
+              <span>{Math.round(investigation.signalConfidence * 100)}% initial report confidence</span>
+            </footer>
+          </>
+        ) : (
+          <section className="investigation-next-step">
+            <div>
+              <h3>Investigate before writing the prompt</h3>
+              <p>Establish a working hypothesis, identify evidence gaps, and propose repository-scoped checks before starting PDD.</p>
+              <span className="subtle">Affected impact: {money(problem.revenue)} ARR across {problem.count} signals.</span>
+            </div>
+            <button className="btn primary" type="button" disabled={startingInvestigation} onClick={startInvestigation}>
+              {startingInvestigation ? "Starting…" : "Start investigation"}
+            </button>
+          </section>
+        )}
+        {investigationError && <p className="toast error" role="alert">{investigationError}</p>}
+      </div>
+    </article>
+  );
+}
+
+function pddQueueTone(status: string): string {
+  const normalized = status.toLowerCase();
+  if (normalized.includes("approval") || normalized.includes("execution")) return "success";
+  if (normalized.includes("needed") || normalized.includes("required")) return "high";
+  return "medium";
+}
+
+type PddRankMode = "readiness" | "revenue" | "signals" | "severity";
+type PddReadinessFilter = "all" | "ready" | "preparing" | "active" | "approval";
+
+const pddSeverityRank: Record<string, number> = {
+  Critical: 4,
+  High: 3,
+  Medium: 2,
+  Low: 1,
+};
+
+function pddPreparationState(input: {
+  investigation?: InvestigationWorkspaceItem;
+  workflow?: EngineeringWorkflowView;
+  repositoryReady: boolean;
+}) {
+  const { investigation, workflow, repositoryReady } = input;
+  const actionApprovalReady = Boolean(
+    workflow?.run
+      || workflow?.approval?.status === "Pending"
+      || workflow?.approval?.status === "Approved",
+  );
+  const acceptanceReady = Boolean(
+    actionApprovalReady || workflow?.verification?.status === "Ready for approval",
+  );
+  const promptReady = Boolean(
+    workflow?.prompt && workflow.specification && workflow.readiness.ready,
+  );
+  const review = workflow?.promptEvaluation?.review;
+  const promptAligned = Boolean(
+    acceptanceReady
+      || (review?.verdict === "Passed"
+        && (!review.promptHash || review.promptHash === workflow?.prompt?.contentHash)),
+  );
+  const steps = engineeringPreparationSteps({
+    repositoryProfileReady: repositoryReady,
+    promptReady,
+    promptAligned,
+    acceptanceReady,
+    approvalReady: actionApprovalReady,
+  });
+  const completed = steps.filter((step) => step.state === "complete").length;
+  const evaluating = workflow?.promptEvaluation?.status === "Running";
+  const issueVerified = investigation?.verification.status === "Confirmed current";
+  const runtimeVerificationActive = investigation?.runtimeVerification?.status === "Queued"
+    || investigation?.runtimeVerification?.status === "Running";
+  const readyToTest = Boolean(issueVerified && repositoryReady && promptReady && !promptAligned && !evaluating);
+  const category: Exclude<PddReadinessFilter, "all"> = !issueVerified
+    ? "preparing"
+    : actionApprovalReady
+      ? "approval"
+      : evaluating || promptAligned
+        ? "active"
+        : readyToTest
+          ? "ready"
+          : "preparing";
+  const label = !investigation
+    ? "Investigation required"
+    : !issueVerified
+      ? runtimeVerificationActive ? "Runtime verification running" : "Issue verification required"
+      : category === "approval"
+        ? "Approval ready"
+        : category === "active"
+          ? evaluating ? "PDD evaluating" : "Acceptance preparation"
+          : category === "ready"
+            ? "Ready to prompt-test"
+            : !repositoryReady
+              ? "Repository setup required"
+              : "Preparing prompt";
+  const readinessBucket = category === "ready"
+    ? 0
+    : category === "active"
+      ? 1
+      : category === "preparing"
+        ? 2
+        : 3;
+  return {
+    steps,
+    completed,
+    category,
+    label,
+    readinessBucket,
+    hasInvestigation: Boolean(investigation),
+    issueVerified,
+    runtimeVerificationActive,
+  };
+}
+
+export function PddPrioritizationScreen({
+  problems,
+  investigations,
+  workflows,
+  repositoryReadyByProblem,
+}: {
+  problems: OverviewAnalytics["problems"];
+  investigations: InvestigationWorkspaceItem[];
+  workflows: Record<string, EngineeringWorkflowView>;
+  repositoryReadyByProblem: Record<string, boolean>;
+}) {
+  const [rankMode, setRankMode] = useState<PddRankMode>("readiness");
+  const [readinessFilter, setReadinessFilter] = useState<PddReadinessFilter>("all");
+  const rows = useMemo(() => problems.map((problem) => {
+    const investigation = investigations.find((item) => item.problemId === problem.id);
+    return {
+      problem,
+      preparation: pddPreparationState({
+        investigation,
+        workflow: workflows[problem.id],
+        repositoryReady: repositoryReadyByProblem[problem.id] ?? false,
+      }),
+    };
+  }), [investigations, problems, repositoryReadyByProblem, workflows]);
+  const visibleRows = useMemo(() => {
+    const filtered = readinessFilter === "all"
+      ? rows
+      : rows.filter((row) => row.preparation.category === readinessFilter);
+    return [...filtered].sort((left, right) => {
+      if (rankMode === "revenue") return right.problem.revenue - left.problem.revenue;
+      if (rankMode === "signals") return right.problem.count - left.problem.count;
+      if (rankMode === "severity") {
+        return (pddSeverityRank[right.problem.severity] ?? 0)
+          - (pddSeverityRank[left.problem.severity] ?? 0)
+          || right.problem.revenue - left.problem.revenue;
+      }
+      return left.preparation.readinessBucket - right.preparation.readinessBucket
+        || right.preparation.completed - left.preparation.completed
+        || right.problem.revenue - left.problem.revenue;
+    });
+  }, [rankMode, readinessFilter, rows]);
+
+  return (
+    <>
+      <PageTitle
+        title="Prompt-driven development"
+        description="Rank product problems by prompt-test readiness, then open one task for focused PDD evaluation."
+        action={
+          <div className="pdd-list-controls">
+            <CustomSelect
+              ariaLabel="Filter PDD tasks by readiness"
+              value={readinessFilter}
+              onValueChange={(value) => setReadinessFilter(value as PddReadinessFilter)}
+              options={[
+                { value: "all", label: "All readiness states" },
+                { value: "ready", label: "Ready to test" },
+                { value: "preparing", label: "Needs preparation" },
+                { value: "active", label: "PDD active" },
+                { value: "approval", label: "Approval ready" },
+              ]}
+            />
+            <CustomSelect
+              ariaLabel="Rank PDD tasks by"
+              value={rankMode}
+              onValueChange={(value) => setRankMode(value as PddRankMode)}
+              options={[
+                { value: "readiness", label: "Rank: prompt-test readiness" },
+                { value: "revenue", label: "Rank: affected ARR" },
+                { value: "signals", label: "Rank: signal volume" },
+                { value: "severity", label: "Rank: severity" },
+              ]}
+            />
+          </div>
+        }
+      />
+
+      <section className="pdd-priority-workspace">
+        <div className="pdd-priority-head">
+          <div>
+            <h2>PDD prioritization</h2>
+            <p>{visibleRows.length} task{visibleRows.length === 1 ? "" : "s"} ranked for prompt preparation and testing.</p>
+          </div>
+          <span className="badge brand">{rows.filter((row) => row.preparation.category === "ready").length} ready to test</span>
+        </div>
+
+        {visibleRows.length ? (
+          <ol className="pdd-priority-list">
+            {visibleRows.map(({ problem, preparation }, index) => (
+              <li key={problem.id}>
+                <Link
+                  className="pdd-priority-row"
+                  href={`/pdd/${encodeURIComponent(problem.id)}#engineering-ticket`}
+                >
+                  <div className="pdd-priority-row-head">
+                    <span className="prioritization-rank" aria-label={`Rank ${index + 1}`}>{index + 1}</span>
+                    <div className="pdd-priority-copy">
+                      <div className="pdd-priority-title">
+                        <h3>{problem.title}</h3>
+                        <span className={`badge ${pddQueueTone(preparation.label)}`}>{preparation.label}</span>
+                      </div>
+                      <p>
+                        {problem.productArea} · {problem.severity} severity · {compactMoney(problem.revenue)} ARR · {problem.count} signal{problem.count === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <span className="pdd-priority-open">
+                      Open PDD task
+                      <ChevronRight size={15} aria-hidden="true" />
+                    </span>
+                  </div>
+                  <div className="pdd-priority-tracker" aria-label={`${problem.title} preparation progress`}>
+                    <EngineeringPreparationSteps steps={preparation.steps} />
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <div className="empty pdd-priority-empty">
+            <strong>{rows.length ? "No tasks match this readiness filter" : "No open PDD tasks"}</strong>
+            <p>
+              {rows.length
+                ? "Choose another readiness state to return tasks to the list."
+                : "Open product problems will appear here when they are available for preparation."}
+            </p>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+export function PddScreen({
+  problems,
+  investigations,
+  workflows,
+  selectedProblemId,
+  engineeringPanel,
+}: {
+  problems: OverviewAnalytics["problems"];
+  investigations: InvestigationWorkspaceItem[];
+  workflows: Record<string, EngineeringWorkflowView>;
+  selectedProblemId: string | null;
+  engineeringPanel?: React.ReactNode;
+}) {
+  const selectedProblem = problems.find((item) => item.id === selectedProblemId);
+  const selected = investigations.find((item) => item.problemId === selectedProblemId);
+  const selectedIssueVerified = selected?.verification.status === "Confirmed current";
+  const selectedRuntimeVerificationActive = selected?.runtimeVerification?.status === "Queued"
+    || selected?.runtimeVerification?.status === "Running";
+  const selectedWorkflow = selectedProblemId ? workflows[selectedProblemId] : undefined;
+
+  if (!selectedProblem) {
     return (
       <>
         <PageTitle
-          title="Investigations"
-          description="Turn reviewed product problems into evidence-backed engineering recommendations."
+          title="Prompt-driven development"
+          description="Turn an investigated product problem into a tested, approval-ready implementation contract."
         />
         <EmptyWorkspaceState
-          title="No engineering investigations yet"
-          description="Investigations appear after a product problem has enough reviewed evidence for engineering analysis."
+          title="Nothing is ready for PDD"
+          description="Review customer evidence and create a product problem before preparing implementation work."
           actionHref="/problems"
           actionLabel="Review product problems"
         />
@@ -2632,160 +3602,87 @@ export function InvestigationsScreen({
     );
   }
 
-  const confidence = Math.round(selected.confidence * 100);
-  const updatedAt = new Date(selected.updatedAt);
-  const updatedLabel = Number.isNaN(updatedAt.getTime())
-    ? "Recently updated"
-    : `Updated ${updatedAt.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-      })}`;
+  const currentPhase = !selectedWorkflow?.prompt
+    ? 0
+    : selectedWorkflow.approval || selectedWorkflow.verification?.status === "Ready for approval"
+      ? 2
+      : 1;
+  const phases = ["Prompt preparation", "PDD evaluation", "Approval readiness"];
 
   return (
     <>
       <PageTitle
-        title="Investigations"
-        description="Review hypotheses, close evidence gaps, and return a test-ready recommendation to the product problem."
+        title="Prompt-driven development"
+        description="Improve the immutable prompt, generate acceptance tests, and prepare investigated work for approval."
         action={
-          <span className="badge brand">
-            {investigations.length} active investigation
-            {investigations.length === 1 ? "" : "s"}
-          </span>
+          <Link className="btn" href="/pdd">
+            <ChevronLeft size={14} aria-hidden="true" /> Back to PDD prioritization
+          </Link>
         }
       />
 
-      <div className="investigation-workspace">
-        <aside className="card investigation-queue-card">
-          <div className="card-head investigation-queue-head">
+      <div className="pdd-task-workspace">
+        <div className="pdd-detail-stack">
+          <section className="card pdd-selected-context">
             <div>
-              <h2>Engineering queue</h2>
-              <p className="subtle">Select a problem to investigate.</p>
+              <h2>{selectedProblem.title}</h2>
+              <p>{selectedProblem.productArea} · {selectedProblem.severity} severity · {money(selectedProblem.revenue)} ARR</p>
             </div>
-            <span className="badge">{investigations.length}</span>
-          </div>
-          <nav
-            className="investigation-queue-list"
-            aria-label="Engineering investigations"
-          >
-            {investigations.map((item) => {
-              const active = item.id === selected.id;
-              const status = investigationStatusLabel(item.status);
-              return (
-                <Link
-                  key={item.id}
-                  href={`/investigations/${encodeURIComponent(item.id)}`}
-                  className={`investigation-queue-item${active ? " selected" : ""}`}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <span className="investigation-queue-copy">
-                    <strong>{item.problemTitle}</strong>
-                    <span>{item.productArea} · {item.team}</span>
-                  </span>
-                  <span className="investigation-queue-meta">
-                    <span className={`badge ${investigationStatusTone(item.status)}`}>
-                      {status}
-                    </span>
-                    <span>{Math.round(item.confidence * 100)}%</span>
-                  </span>
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="investigation-queue-foot">
-            <Link className="text-link" href="/problems">
-              View all product problems <ChevronRight size={13} />
+            <Link className="text-link" href={`/problems/${encodeURIComponent(selectedProblem.id)}#investigation`}>
+              View product problem <ChevronRight size={13} aria-hidden="true" />
             </Link>
-          </div>
-        </aside>
-
-        <article className="card investigation-detail-card">
-          <header className="investigation-detail-head">
-            <div className="investigation-detail-heading">
-              <div className="investigation-detail-kicker">
-                <span>{selected.productArea}</span>
-                <span aria-hidden="true">·</span>
-                <span>{selected.severity} severity</span>
-              </div>
-              <h2>{selected.problemTitle}</h2>
-              <p>{selected.title}</p>
-            </div>
-            <div className="investigation-detail-status">
-              <span className={`badge ${investigationStatusTone(selected.status)}`}>
-                {investigationStatusLabel(selected.status)}
-              </span>
-              <span className="subtle">{updatedLabel}</span>
-            </div>
-          </header>
-
-          <div className="investigation-detail-body">
-            <section className="investigation-readiness" aria-label="Investigation readiness">
-              <div>
-                <span>Investigation confidence</span>
-                <strong>{confidence}%</strong>
-              </div>
-              <div>
-                <span>Evidence gaps</span>
-                <strong>{selected.missingInformation.length}</strong>
-              </div>
-              <div>
-                <span>Validation checks</span>
-                <strong>{selected.recommendedTests.length}</strong>
-              </div>
-            </section>
-
-            <section className="callout warning investigation-hypothesis">
-              <div className="callout-title">
-                <AlertTriangle size={14} /> Hypothesis—not confirmed
-              </div>
-              <p>{selected.hypothesis}</p>
-            </section>
-
-            <div className="investigation-detail-grid">
-              <InvestigationList
-                title="Evidence to collect"
-                items={selected.missingInformation}
-                emptyLabel="No evidence gaps are recorded."
-              />
-              <InvestigationList
-                title="Recommended validation"
-                items={selected.recommendedTests}
-                emptyLabel="No validation checks are recorded."
-              />
-              <InvestigationList
-                title="Suspected code paths"
-                items={selected.suspectedFiles}
-                emptyLabel="No code paths are suspected yet."
-              />
-              <InvestigationList
-                title="Working assumptions"
-                items={selected.assumptions}
-                emptyLabel="No assumptions are recorded."
-              />
-            </div>
-
-            <section className="investigation-next-step">
-              <div>
-                <h3>Recommended next step</h3>
-                <p>{selected.proposedAction}</p>
-                <span className="subtle">
-                  Prompt drafting and PDD testing continue in the product problem after this evidence is reviewed.
+          </section>
+          <nav className="pdd-phase-rail card" aria-label="PDD preparation phases">
+            {phases.map((phase, index) => (
+              <span
+                className={`pdd-phase is-${index < currentPhase ? "complete" : index === currentPhase ? "current" : "upcoming"}`}
+                aria-current={index === currentPhase ? "step" : undefined}
+                key={phase}
+              >
+                <span className="pdd-phase-marker" aria-hidden="true">
+                  {index < currentPhase ? <Check size={13} /> : index + 1}
                 </span>
-              </div>
-              <Link className="btn primary" href={`/problems/${selected.problemId}`}>
-                Open product problem <ChevronRight size={14} />
-              </Link>
-            </section>
+                <strong>{phase}</strong>
+              </span>
+            ))}
+          </nav>
 
-            <footer className="investigation-context-line">
-              <GitBranch size={15} aria-hidden="true" />
-              <span>{selected.repository}</span>
-              <span aria-hidden="true">·</span>
-              <span>{selected.team}</span>
-              <span aria-hidden="true">·</span>
-              <span>{Math.round(selected.signalConfidence * 100)}% signal match</span>
-            </footer>
-          </div>
-        </article>
+          {selected && selectedIssueVerified ? (
+            engineeringPanel
+          ) : (
+            <section className="card pdd-investigation-gate">
+              <div className="card-head">
+                <div>
+                  <h2>{!selected
+                    ? "Investigation required"
+                    : selectedRuntimeVerificationActive
+                      ? "Runtime verification in progress"
+                      : selected.verification.status === "Verification blocked"
+                        ? "Current issue verification blocked"
+                        : "Current issue verification required"}</h2>
+                  <p className="subtle">{!selected
+                    ? "Confirm the problem hypothesis and evidence boundary before testing an implementation prompt."
+                    : selectedRuntimeVerificationActive
+                      ? "CloseSpan is checking the reported behavior. Prompt testing will unlock when the current issue is confirmed."
+                      : selected.verification.status === "Verification blocked"
+                        ? "Prompt testing is paused because the last verification could not confirm or disprove the reported behavior. Resolve the recorded blocker, then run verification again."
+                        : "Reproduce the reported behavior and record the result before testing an implementation prompt."}</p>
+                </div>
+                <span className="badge high">Blocked</span>
+              </div>
+              <div className="card-body">
+                <Link className="btn primary" href={`/problems/${encodeURIComponent(selectedProblem.id)}#investigation`}>
+                  {selectedRuntimeVerificationActive
+                    ? "View runtime verification"
+                    : selected?.verification.status === "Verification blocked"
+                      ? "Resolve verification blocker"
+                      : "Open product problem"}
+                  <ChevronRight size={14} aria-hidden="true" />
+                </Link>
+              </div>
+            </section>
+          )}
+        </div>
       </div>
     </>
   );
@@ -4430,24 +5327,22 @@ export function SettingsScreen({
                 <CustomSelect
                   ariaLabel="Autonomy level"
                   value={autonomy}
-                  options={[
-                    "Observe",
-                    "Recommend",
-                    "Organize",
-                    "Execute with approval",
-                    "Limited autonomy",
-                  ]}
+                  options={[...autonomyLevels]}
                   onValueChange={(value) => {
-                    setAutonomy(value);
+                    setAutonomy(value as AutonomyLevel);
                     setSaved(false);
                   }}
                 />
+                <span className="subtle">{autonomyDescription(autonomy as AutonomyLevel)}</span>
               </div>
               <div className="callout section-gap-sm">
-                <div className="callout-title">Protected actions</div>
+                <div className="callout-title">Execution boundary</div>
                 <p className="subtle">
-                  Production code merges and deployments always require a human.
-                  This cannot be overridden by workspace autonomy.
+                  {autonomy === "Full autonomy"
+                    ? "Configured execution, merge or deployment, and production verification run automatically with immutable audit records."
+                    : autonomy === "Execute with approval"
+                      ? "A human must approve the Tenki run and the commit-locked merge or deployment."
+                      : "Tenki runs, merge, and deployment are blocked at this level."}
                 </p>
               </div>
             </div>
@@ -4668,91 +5563,70 @@ export function SettingsScreen({
 export function GenericProblemScreen({
   problem,
   promptDraftReadiness,
+  investigation,
 }: {
   problem: OverviewAnalytics["problems"][number];
   promptDraftReadiness: PromptDraftReadiness;
+  investigation?: InvestigationWorkspaceItem;
 }) {
-  const router = useRouter();
-  const [generatingPrompt, setGeneratingPrompt] = useState(false);
-  const [startingInvestigation, setStartingInvestigation] = useState(false);
-  const [promptActionError, setPromptActionError] = useState<string>();
-
-  async function generateSuggestedPrompt() {
-    setGeneratingPrompt(true);
-    setPromptActionError(undefined);
-    try {
-      const response = await fetch(`/api/problems/${problem.id}/engineering/draft`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": crypto.randomUUID(),
-          "x-request-id": crypto.randomUUID(),
-        },
-      });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "The suggested prompt could not be generated.");
-      router.refresh();
-    } catch (cause) {
-      setPromptActionError(cause instanceof Error ? cause.message : "The suggested prompt could not be generated.");
-    } finally {
-      setGeneratingPrompt(false);
-    }
-  }
-
-  async function startInvestigation() {
-    setStartingInvestigation(true);
-    setPromptActionError(undefined);
-    try {
-      const response = await fetch(`/api/problems/${problem.id}/investigation`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": crypto.randomUUID(),
-          "x-request-id": crypto.randomUUID(),
-        },
-      });
-      const payload = await response.json() as {
-        error?: string;
-        result?: { investigationId?: string | null };
-      };
-      if (!response.ok && response.status !== 409) {
-        throw new Error(payload.error ?? "The investigation could not be started.");
-      }
-      router.refresh();
-    } catch (cause) {
-      setPromptActionError(cause instanceof Error ? cause.message : "The investigation could not be started.");
-    } finally {
-      setStartingInvestigation(false);
-    }
-  }
-
+  const signalConfidenceHelpId = useId();
+  const promptThresholdHelpId = useId();
+  const relatedSignalsHelpId = useId();
+  const evidenceNeededHelpId = useId();
+  const recommendedChecksHelpId = useId();
   const investigationPercent = promptDraftReadiness.investigationConfidence === null
     ? null
     : Math.round(promptDraftReadiness.investigationConfidence * 100);
   const requiredPercent = Math.round(promptDraftReadiness.requiredConfidence * 100);
+  const promptAlreadyCreated = promptDraftReadiness.hasExistingWorkflow;
+  const issueVerified = promptDraftReadiness.verificationStatus === "Confirmed current";
   const needsInvestigationReview = investigationPercent === null || investigationPercent < requiredPercent;
-  const promptBlockedReason = needsInvestigationReview
-    ? investigationPercent === null
-      ? `Complete the investigation and reach ${requiredPercent}% confidence before generating a prompt.`
-      : `Investigation confidence is ${investigationPercent}%. Reach ${requiredPercent}% before generating a prompt.`
-    : promptDraftReadiness.reason;
-
+  const promptBlockedReason = !issueVerified
+    ? promptDraftReadiness.reason
+    : promptAlreadyCreated
+    ? "The suggested prompt is ready in PDD. Review the investigation below before continuing to testing."
+    : needsInvestigationReview
+      ? investigationPercent === null
+        ? "Complete the investigation before generating a prompt."
+        : "Review the open evidence gaps below before generating a prompt."
+      : promptDraftReadiness.reason;
+  const confidenceFactors = promptDraftReadiness.signalConfidenceFactors;
+  const confidenceFactorRows = [
+    ["Semantic match", confidenceFactors?.clusterMatch ?? null, 0.65],
+    ["Evidence quality", confidenceFactors?.evidenceQuality ?? null, 0.2],
+    ["Low ambiguity", confidenceFactors?.lowAmbiguity ?? null, 0.15],
+  ] as const;
+  const investigationUpdatedAt = investigation ? new Date(investigation.updatedAt) : null;
+  const investigationUpdatedLabel = !investigationUpdatedAt || Number.isNaN(investigationUpdatedAt.getTime())
+    ? "Awaiting investigation"
+    : `Updated ${investigationUpdatedAt.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
   return (
     <>
       <PageTitle
         eyebrow={`Product problem · ${problem.id.replace("prob_", "CS-").toUpperCase()}`}
         title={problem.title}
         description="Database-backed problem summary with explicit limited-evidence state."
-        action={
+        action={<div className="page-title-actions">
+          <Link className="btn" href="/problems">
+            <ChevronLeft size={14} aria-hidden="true" /> Back to problems
+          </Link>
           <span className={`badge ${problem.severity.toLowerCase()}`}>
             {problem.severity}
           </span>
-        }
+        </div>}
       />
-      <div className="grid cols-3">
-        <section className="card span-2">
+      <section className="card prompt-readiness-card">
           <div className="card-head">
-            <h2>Available evidence</h2>
+            <div>
+              <h2>Available evidence</h2>
+              <p className="subtle">Investigation evidence and prompt-drafting gates for this problem.</p>
+            </div>
+            <div className="investigation-detail-status">
+              <span className={`badge ${investigation ? investigationStatusTone(investigation.status) : "high"}`}>
+                {investigation ? investigationStatusLabel(investigation.status) : "Not started"}
+              </span>
+              <span className="subtle">{investigationUpdatedLabel}</span>
+            </div>
           </div>
           <div className="card-body detail-stack">
             <p className="summary">
@@ -4762,81 +5636,185 @@ export function GenericProblemScreen({
             <div className="prompt-readiness-grid" aria-label="Prompt drafting confidence">
               <div className="prompt-readiness-metric">
                 <strong>{problem.confidence}%</strong>
-                <span>Signal match confidence</span>
-              </div>
-              <div className="prompt-readiness-metric">
-                <strong>{investigationPercent === null ? "Not ready" : `${investigationPercent}%`}</strong>
-                <span>Investigation confidence</span>
+                <span className="prompt-readiness-metric-label">
+                  Signal match confidence
+                  <span className="investigation-metric-help">
+                    <button
+                      type="button"
+                      className="investigation-metric-help-trigger"
+                      aria-label="What signal match confidence means"
+                      aria-describedby={signalConfidenceHelpId}
+                    >
+                      <Info size={14} aria-hidden="true" />
+                    </button>
+                    <span
+                      id={signalConfidenceHelpId}
+                      role="tooltip"
+                      className="investigation-metric-tooltip"
+                    >
+                      <strong className="prompt-tooltip-title">Signal evaluation</strong>
+                      <span className="prompt-tooltip-breakdown">
+                        {confidenceFactorRows.map(([label, score, weight]) => (
+                          <span className="prompt-tooltip-row" key={label}>
+                            <span>{label}</span>
+                            <span>
+                              {score === null
+                                ? `Not stored × ${Math.round(weight * 100)}%`
+                                : `${Math.round(score * 100)}% × ${Math.round(weight * 100)}% = `}
+                              {score !== null && (
+                                <strong>{Math.round(score * weight * 100)} pts</strong>
+                              )}
+                            </span>
+                          </span>
+                        ))}
+                        <span className="prompt-tooltip-total">
+                          <span>Total</span>
+                          <strong>{problem.confidence}%</strong>
+                        </span>
+                      </span>
+                      {!confidenceFactors && (
+                        <span className="prompt-tooltip-note">
+                          This older record stores only the final score; new evaluations retain
+                          each factor.
+                        </span>
+                      )}
+                      <span className="prompt-tooltip-note">
+                        This evaluates the initial report, not the number of similar reports.
+                      </span>
+                    </span>
+                  </span>
+                </span>
               </div>
               <div className="prompt-readiness-metric prompt-readiness-threshold">
                 <strong>{requiredPercent}%</strong>
-                <span>Required for prompt drafting</span>
+                <span className="prompt-readiness-metric-label">
+                  Required for prompt drafting
+                  <span className="investigation-metric-help">
+                    <button
+                      type="button"
+                      className="investigation-metric-help-trigger"
+                      aria-label="What the prompt drafting requirement means"
+                      aria-describedby={promptThresholdHelpId}
+                    >
+                      <Info size={14} aria-hidden="true" />
+                    </button>
+                    <span
+                      id={promptThresholdHelpId}
+                      role="tooltip"
+                      className="investigation-metric-tooltip prompt-readiness-tooltip-end"
+                    >
+                      <strong className="prompt-tooltip-title">Prompt drafting gates</strong>
+                      <span className="prompt-tooltip-breakdown">
+                        <span className="prompt-tooltip-row">
+                          <span>Confidence</span>
+                          <strong>{requiredPercent}% minimum</strong>
+                        </span>
+                        <span className="prompt-tooltip-row">
+                          <span>Linked evidence</span>
+                          <strong>
+                            {promptDraftReadiness.evidenceCount} / {promptDraftReadiness.requiredEvidence}
+                          </strong>
+                        </span>
+                        <span className="prompt-tooltip-row">
+                          <span>Investigation</span>
+                          <strong>{promptDraftReadiness.hasInvestigation ? "Present" : "Required"}</strong>
+                        </span>
+                        <span className="prompt-tooltip-row">
+                          <span>Current issue</span>
+                          <strong>{issueVerified ? "Confirmed" : "Verification required"}</strong>
+                        </span>
+                        <span className="prompt-tooltip-row">
+                          <span>Repository</span>
+                          <strong>{promptDraftReadiness.repositoryReady ? "Confirmed" : "Required"}</strong>
+                        </span>
+                      </span>
+                      <span className="prompt-tooltip-note">
+                        All gates must pass before a prompt can be generated.
+                      </span>
+                    </span>
+                  </span>
+                </span>
+              </div>
+              <div className="prompt-readiness-metric">
+                <strong>{investigation?.relatedSignalCount ?? problem.count}</strong>
+                <span className="prompt-readiness-metric-label">
+                  Related signals
+                  <span className="investigation-metric-help">
+                    <button
+                      type="button"
+                      className="investigation-metric-help-trigger"
+                      aria-label="What related signals means"
+                      aria-describedby={relatedSignalsHelpId}
+                    >
+                      <Info size={14} aria-hidden="true" />
+                    </button>
+                    <span id={relatedSignalsHelpId} role="tooltip" className="investigation-metric-tooltip">
+                      Customer feedback records currently linked to this product problem.
+                    </span>
+                  </span>
+                </span>
+              </div>
+              <div className="prompt-readiness-metric">
+                <strong>{investigation?.missingInformation.length ?? "—"}</strong>
+                <span className="prompt-readiness-metric-label">
+                  Evidence still needed
+                  <span className="investigation-metric-help">
+                    <button
+                      type="button"
+                      className="investigation-metric-help-trigger"
+                      aria-label="What evidence still needed means"
+                      aria-describedby={evidenceNeededHelpId}
+                    >
+                      <Info size={14} aria-hidden="true" />
+                    </button>
+                    <span id={evidenceNeededHelpId} role="tooltip" className="investigation-metric-tooltip">
+                      Open evidence gaps that should be resolved before treating the hypothesis as confirmed.
+                    </span>
+                  </span>
+                </span>
+              </div>
+              <div className="prompt-readiness-metric">
+                <strong>{investigation?.recommendedTests.length ?? "—"}</strong>
+                <span className="prompt-readiness-metric-label">
+                  Recommended checks
+                  <span className="investigation-metric-help">
+                    <button
+                      type="button"
+                      className="investigation-metric-help-trigger"
+                      aria-label="What recommended checks means"
+                      aria-describedby={recommendedChecksHelpId}
+                    >
+                      <Info size={14} aria-hidden="true" />
+                    </button>
+                    <span
+                      id={recommendedChecksHelpId}
+                      role="tooltip"
+                      className="investigation-metric-tooltip prompt-readiness-tooltip-end"
+                    >
+                      Proposed verification checks from the investigation. These have not been completed yet.
+                    </span>
+                  </span>
+                </span>
               </div>
             </div>
-            <div className={`callout prompt-readiness-callout ${promptDraftReadiness.canGenerate ? "success" : "warning"}`}>
+            <div className={`callout prompt-readiness-callout ${issueVerified && (promptDraftReadiness.canGenerate || promptAlreadyCreated) ? "success" : "warning"}`}>
               <div className="callout-title">
-                {promptDraftReadiness.canGenerate
-                  ? "Ready to create a suggested prompt"
-                  : needsInvestigationReview
-                    ? "Investigation required"
-                    : "Prompt context needs review"}
+                {!issueVerified
+                  ? "Current issue verification required"
+                  : promptAlreadyCreated
+                  ? "Suggested prompt created"
+                  : promptDraftReadiness.canGenerate
+                    ? "Ready to create a suggested prompt"
+                    : needsInvestigationReview
+                      ? "Investigation required"
+                      : "Prompt context needs review"}
               </div>
               <p className="subtle" id="prompt-generation-status">
                 {promptBlockedReason}
               </p>
-              <div className="top-actions prompt-readiness-actions">
-                {!promptDraftReadiness.canGenerate && (
-                  investigationPercent === null ? (
-                    <button
-                      type="button"
-                      className="btn primary"
-                      disabled={startingInvestigation}
-                      onClick={startInvestigation}
-                    >
-                      {startingInvestigation ? "Starting investigation…" : "Start investigation"}
-                    </button>
-                  ) : (
-                    <Link
-                      className="btn primary"
-                      href={needsInvestigationReview && promptDraftReadiness.investigationId
-                        ? `/investigations/${encodeURIComponent(promptDraftReadiness.investigationId)}`
-                        : "/settings#execution-profiles"}
-                    >
-                      {needsInvestigationReview ? "Review investigation" : "Review prompt context"}
-                    </Link>
-                  )
-                )}
-                <button
-                  type="button"
-                  className={promptDraftReadiness.canGenerate ? "btn primary" : "btn secondary"}
-                  disabled={!promptDraftReadiness.canGenerate || generatingPrompt}
-                  onClick={generateSuggestedPrompt}
-                  aria-describedby={!promptDraftReadiness.canGenerate ? "prompt-generation-status" : undefined}
-                  title={!promptDraftReadiness.canGenerate ? promptBlockedReason : undefined}
-                >
-                  <Sparkles size={16} />
-                  {generatingPrompt ? "Generating…" : "Generate suggested prompt"}
-                </button>
-              </div>
             </div>
-            {promptActionError && <p className="toast error" role="alert">{promptActionError}</p>}
           </div>
-        </section>
-        <section className="card problem-lifecycle-card">
-          <div className="card-head">
-            <h2>Lifecycle</h2>
-          </div>
-          <div className="card-body problem-lifecycle-body">
-            <span className="badge brand">{problem.stage}</span>
-            <p className="subtle">
-              Trend {formatTrend(problem.trend)} · {problem.count} signals
-            </p>
-            <Link className="btn full-width" href="/problems">
-              Back to problems
-            </Link>
-          </div>
-        </section>
-      </div>
+      </section>
     </>
   );
 }

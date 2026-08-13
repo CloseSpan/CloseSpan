@@ -6,6 +6,7 @@ import { deliverBillingShadow } from "@/lib/billing-outbox";
 import { noStoreHeaders } from "@/lib/request-security";
 import { processQueuedFinalExecutions } from "@/lib/final-execution-repository";
 import { dispatchQueuedReleaseVerifications } from "@/lib/release-lifecycle-repository";
+import { reconcileStaleIssueRuntimeVerifications } from "@/lib/issue-runtime-verification";
 
 export const maxDuration = 300;
 const BILLING_DELIVERY_BUDGET_MS = 20_000;
@@ -33,6 +34,15 @@ export async function GET(request: NextRequest) {
     );
   }
   try {
+    const runtimeVerifications = await reconcileStaleIssueRuntimeVerifications()
+      .catch((error: unknown) => {
+        console.error("[runtime-verification:timeout-reconciliation]", {
+          message: error instanceof Error
+            ? error.message
+            : "Runtime verification timeout reconciliation failed",
+        });
+        return { error: "Runtime verification timeout reconciliation failed" };
+      });
     const releaseExecutions = await processQueuedFinalExecutions();
     const releaseVerifications = await dispatchQueuedReleaseVerifications();
     const slack = await runSlackAutomationForAllOrganizations();
@@ -59,7 +69,7 @@ export async function GET(request: NextRequest) {
       if (timer) clearTimeout(timer);
     });
     return NextResponse.json(
-      { billing, releaseExecutions, releaseVerifications, slack, results },
+      { billing, runtimeVerifications, releaseExecutions, releaseVerifications, slack, results },
       { headers: noStoreHeaders },
     );
   } catch {

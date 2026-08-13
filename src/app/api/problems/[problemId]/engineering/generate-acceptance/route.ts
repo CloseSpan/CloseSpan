@@ -18,6 +18,11 @@ import {
   errorResponse,
   noStoreHeaders,
 } from "@/lib/request-security";
+import { readAutonomyLevel } from "@/lib/workspace-settings-repository";
+import {
+  clearPddAcceptancePreparationFailure,
+  recordPddAcceptancePreparationFailure,
+} from "@/lib/pdd-prompt-evaluation-repository";
 
 const MAX_BODY_BYTES = 8_192;
 
@@ -25,6 +30,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ problemId: string }> },
 ) {
+  let preparationFailureTarget: {
+    orgId: string;
+    problemId: string;
+    evaluationId: string;
+    promptRevisionId: string;
+  } | null = null;
   try {
     const context = await authorizeMutation(request);
     const declaredLength = Number(request.headers.get("content-length") ?? 0);
@@ -39,7 +50,11 @@ export async function POST(
         { error: "User story is too large" },
         { status: 413, headers: noStoreHeaders },
       );
-    let body: { userStory?: unknown; alignmentReceipt?: unknown };
+    let body: {
+      evaluationId?: unknown;
+      userStory?: unknown;
+      alignmentReceipt?: unknown;
+    };
     try {
       body = JSON.parse(text) as typeof body;
     } catch {
@@ -49,6 +64,10 @@ export async function POST(
       );
     }
     const { problemId } = await params;
+    if (
+      typeof body.evaluationId !== "string"
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.evaluationId)
+    ) throw new Error("A valid prompt evaluation is required");
     if (typeof body.userStory !== "string")
       throw new Error("A valid user story is required");
     const current = await getEngineeringWorkflow(context.orgId, problemId);
@@ -60,6 +79,12 @@ export async function POST(
       promptHash: current.prompt.contentHash,
       storyHash: sha256(body.userStory.replace(/\s+/g, " ").trim()),
     });
+    preparationFailureTarget = {
+      orgId: context.orgId,
+      problemId,
+      evaluationId: body.evaluationId,
+      promptRevisionId: current.prompt.id,
+    };
     if (process.env.APP_MODE === "production") assertPddRunnerConfigured();
     const result = await generatePddAcceptanceContract(
       context.orgId,
@@ -90,8 +115,27 @@ export async function POST(
         result.storyTest = { ...result.storyTest, status: "Failed", message };
       }
     }
-    return NextResponse.json(result, { headers: noStoreHeaders });
+    await clearPddAcceptancePreparationFailure(preparationFailureTarget);
+    preparationFailureTarget = null;
+    return NextResponse.json(
+      { ...result, autonomyLevel: await readAutonomyLevel(context.orgId) },
+      { headers: noStoreHeaders },
+    );
   } catch (error) {
+    if (preparationFailureTarget) {
+      await recordPddAcceptancePreparationFailure({
+        ...preparationFailureTarget,
+        message: error instanceof Error
+          ? error.message
+          : "Agent approval preparation failed",
+      }).catch((persistenceError: unknown) => {
+        console.error("[pdd:acceptance-preparation] Failure state could not be saved", {
+          errorType: persistenceError instanceof Error
+            ? persistenceError.name
+            : "UnknownError",
+        });
+      });
+    }
     return errorResponse(error);
   }
 }

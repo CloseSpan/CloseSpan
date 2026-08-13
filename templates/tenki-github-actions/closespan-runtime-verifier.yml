@@ -1,0 +1,235 @@
+name: CloseSpan current-issue verifier
+
+on:
+  workflow_dispatch:
+    inputs:
+      closespan_run_id:
+        required: true
+        type: string
+      closespan_org_id:
+        required: true
+        type: string
+      closespan_callback_url:
+        required: true
+        type: string
+      closespan_profile_hash:
+        required: true
+        type: string
+      closespan_workflow_hash:
+        required: true
+        type: string
+      closespan_control_runner_label:
+        required: true
+        type: string
+      closespan_runner_label:
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: closespan-runtime-verification-${{ inputs.closespan_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Fetch immutable verification job
+    runs-on: ${{ inputs.closespan_control_runner_label }}
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    steps:
+      - name: Fetch job from CloseSpan
+        env:
+          CALLBACK_URL: ${{ inputs.closespan_callback_url }}
+          ORG_ID: ${{ inputs.closespan_org_id }}
+          RUN_ID: ${{ inputs.closespan_run_id }}
+          PROFILE_HASH: ${{ inputs.closespan_profile_hash }}
+          WORKFLOW_HASH: ${{ inputs.closespan_workflow_hash }}
+        run: |
+          set -euo pipefail
+          oidc_json="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=closespan-agent-run")"
+          oidc_token="$(OIDC_JSON="$oidc_json" node -e 'process.stdout.write(JSON.parse(process.env.OIDC_JSON).value)')"
+          echo "::add-mask::$oidc_token"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $oidc_token" \
+            "$CALLBACK_URL?orgId=$ORG_ID" \
+            --output closespan-runtime-job.json
+          JOB_PATH="$PWD/closespan-runtime-job.json" RUN_ID="$RUN_ID" PROFILE_HASH="$PROFILE_HASH" WORKFLOW_HASH="$WORKFLOW_HASH" node <<'NODE'
+          const fs = require("node:fs");
+          const job = JSON.parse(fs.readFileSync(process.env.JOB_PATH, "utf8"));
+          if (job.schemaVersion !== 1 || job.kind !== "issue_runtime_verification") throw new Error("CloseSpan runtime job schema mismatch");
+          if (job.runId !== process.env.RUN_ID) throw new Error("CloseSpan runtime job identity mismatch");
+          if (job.executionProfileHash !== process.env.PROFILE_HASH) throw new Error("CloseSpan profile hash mismatch");
+          if (job.workflowHash !== process.env.WORKFLOW_HASH) throw new Error("CloseSpan workflow hash mismatch");
+          if (job.baseSha.toLowerCase() !== process.env.GITHUB_SHA.toLowerCase()) throw new Error("CloseSpan base commit mismatch");
+          if (new Date(job.expiresAt).getTime() <= Date.now()) throw new Error("CloseSpan runtime verification expired");
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: closespan-runtime-job
+          path: closespan-runtime-job.json
+          if-no-files-found: error
+          retention-days: 1
+
+  verify:
+    name: Reproduce reported issue
+    needs: bootstrap
+    runs-on: ${{ inputs.closespan_runner_label }}
+    timeout-minutes: 70
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: closespan-runtime-job
+          path: .closespan-run
+      - name: Prepare approved runtime environment
+        id: prepare
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const cp = require("node:child_process");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-runtime-job.json", "utf8"));
+          const config = job.executionProfileSnapshot.config;
+          const safe = value => typeof value === "string" && value.length > 0 && !path.isAbsolute(value) && !value.split(/[\\/]/).includes("..");
+          if (config.workingDirectory !== "." && !safe(config.workingDirectory)) throw new Error("Unsafe runtime working directory");
+          fs.writeFileSync(".closespan-run/runtime-verification.prompt.md", job.verificationPrompt);
+          for (const item of config.publicEnvironment) {
+            const delimiter = `CLOSESPAN_${require("node:crypto").randomBytes(12).toString("hex")}`;
+            fs.appendFileSync(process.env.GITHUB_ENV, `${item.name}<<${delimiter}\n${item.value}\n${delimiter}\n`);
+          }
+          for (const command of config.installCommands) {
+            const result = cp.spawnSync("/bin/bash", ["-lc", command], { cwd: config.workingDirectory, stdio: "inherit", timeout: config.maxDurationMs });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+          }
+          const mobile = job.runner;
+          if (mobile.xcode) {
+            const result = cp.spawnSync("xcodebuild", ["-version"], { encoding: "utf8" });
+            if (result.status !== 0 || !`${result.stdout}${result.stderr}`.includes(`Xcode ${mobile.xcode.version}`)) throw new Error(`Tenki runner does not provide approved Xcode ${mobile.xcode.version}`);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, "working-directory=.\n");
+          NODE
+      - name: Mark verification running
+        env:
+          CALLBACK_URL: ${{ inputs.closespan_callback_url }}
+          ORG_ID: ${{ inputs.closespan_org_id }}
+        run: |
+          set -euo pipefail
+          oidc_json="$(curl --fail --silent --show-error -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=closespan-agent-run")"
+          oidc_token="$(OIDC_JSON="$oidc_json" node -e 'process.stdout.write(JSON.parse(process.env.OIDC_JSON).value)')"
+          echo "::add-mask::$oidc_token"
+          curl --fail --silent --show-error -X POST \
+            -H "Authorization: Bearer $oidc_token" -H "Content-Type: application/json" \
+            --data "{\"event\":\"started\",\"orgId\":\"$ORG_ID\"}" "$CALLBACK_URL"
+      - name: Obtain run-scoped model access
+        id: model
+        env:
+          CALLBACK_URL: ${{ inputs.closespan_callback_url }}
+          ORG_ID: ${{ inputs.closespan_org_id }}
+        run: |
+          set -euo pipefail
+          oidc_json="$(curl --fail --silent --show-error -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=closespan-agent-run")"
+          oidc_token="$(OIDC_JSON="$oidc_json" node -e 'process.stdout.write(JSON.parse(process.env.OIDC_JSON).value)')"
+          echo "::add-mask::$oidc_token"
+          model_json="$(curl --fail --silent --show-error -X POST \
+            -H "Authorization: Bearer $oidc_token" -H "Content-Type: application/json" \
+            --data "{\"orgId\":\"$ORG_ID\"}" "$CALLBACK_URL/model-token")"
+          MODEL_JSON="$model_json" node <<'NODE'
+          const fs = require("node:fs");
+          const value = JSON.parse(process.env.MODEL_JSON);
+          if (typeof value.token !== "string" || typeof value.model !== "string" || typeof value.responsesApiEndpoint !== "string") throw new Error("CloseSpan returned an invalid model credential");
+          process.stdout.write(`::add-mask::${value.token}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `token=${value.token}\nmodel=${value.model}\nendpoint=${value.responsesApiEndpoint}\n`);
+          NODE
+      - name: Run current-issue verifier
+        id: codex
+        continue-on-error: true
+        uses: openai/codex-action@b11346a6fa031e2e164ab4b7c7ea201afffd7d59
+        with:
+          openai-api-key: ${{ steps.model.outputs.token }}
+          responses-api-endpoint: ${{ steps.model.outputs.endpoint }}
+          model: ${{ steps.model.outputs.model }}
+          prompt-file: .closespan-run/runtime-verification.prompt.md
+          working-directory: ${{ steps.prepare.outputs.working-directory }}
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          allow-bot-users: ${{ github.actor }}
+      - name: Validate and attest verification report
+        if: always()
+        env:
+          RUNNER_LABEL: ${{ inputs.closespan_runner_label }}
+          CODEX_OUTCOME: ${{ steps.codex.outcome }}
+        run: |
+          node <<'NODE'
+          const cp = require("node:child_process");
+          const fs = require("node:fs");
+          const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-runtime-job.json", "utf8"));
+          const reportPath = ".closespan-run/runtime-verification.json";
+          let report;
+          try { report = JSON.parse(fs.readFileSync(reportPath, "utf8")); }
+          catch { report = { schemaVersion: 1, runId: job.runId, baseSha: job.baseSha, outcome: "Verification blocked", summary: "The Tenki verification agent did not produce a valid runtime report.", expectedBehavior: "The reported product path should complete with the expected behavior.", actualBehavior: `Verifier outcome: ${process.env.CODEX_OUTCOME || "unknown"}.`, reproductionSteps: ["Attempted the repository-scoped runtime verification plan."], commands: [], observations: ["No parseable runtime report was produced."], artifacts: [] }; }
+          const allowed = new Set(["Confirmed current", "Not reproduced", "Verification blocked"]);
+          const strings = [report.summary, report.expectedBehavior, report.actualBehavior];
+          if (report.schemaVersion !== 1 || report.runId !== job.runId || report.baseSha !== job.baseSha || !allowed.has(report.outcome) || strings.some(value => typeof value !== "string" || !value.trim())) throw new Error("Runtime verification report failed identity or outcome validation");
+          if (!Array.isArray(report.reproductionSteps) || !report.reproductionSteps.length || !Array.isArray(report.commands) || !Array.isArray(report.observations) || !Array.isArray(report.artifacts)) throw new Error("Runtime verification report is incomplete");
+          const changed = cp.execFileSync("git", ["status", "--short"], { encoding: "utf8" }).split("\n").filter(line => line && !line.includes(".closespan-run/"));
+          if (changed.length) report.observations.push(`Ephemeral verifier changes (not pushed): ${changed.slice(0, 30).join(", ")}`);
+          const xcode = cp.spawnSync("xcodebuild", ["-version"], { encoding: "utf8" });
+          const devices = process.platform === "darwin" ? cp.spawnSync("xcrun", ["simctl", "list", "devices", "booted", "-j"], { encoding: "utf8" }) : { status: 1, stdout: "" };
+          report.environment = { platform: process.platform === "darwin" ? "macos" : process.platform, runnerLabel: process.env.RUNNER_LABEL, xcodeVersion: xcode.status === 0 ? xcode.stdout.trim().slice(0, 120) : null, simulator: devices.status === 0 ? devices.stdout.trim().slice(0, 200) : null, workflowRunId: Number(process.env.GITHUB_RUN_ID) };
+          fs.writeFileSync(reportPath, JSON.stringify(report));
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: closespan-runtime-verification
+          path: |
+            .closespan-run/runtime-verification.json
+            .closespan-run/artifacts
+          if-no-files-found: error
+          retention-days: 7
+
+  callback:
+    name: Return runtime evidence to CloseSpan
+    needs: verify
+    if: always()
+    runs-on: ${{ inputs.closespan_control_runner_label }}
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        continue-on-error: true
+        with:
+          name: closespan-runtime-verification
+          path: .closespan-run
+      - name: Return authenticated result
+        env:
+          CALLBACK_URL: ${{ inputs.closespan_callback_url }}
+          ORG_ID: ${{ inputs.closespan_org_id }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = ".closespan-run/runtime-verification.json";
+          const payload = fs.existsSync(path)
+            ? { event: "completed", orgId: process.env.ORG_ID, report: JSON.parse(fs.readFileSync(path, "utf8")) }
+            : { event: "failed", orgId: process.env.ORG_ID, message: "The Tenki runner did not produce runtime verification evidence." };
+          fs.writeFileSync(".closespan-run/callback.json", JSON.stringify(payload));
+          NODE
+          oidc_json="$(curl --fail --silent --show-error -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=closespan-agent-run")"
+          oidc_token="$(OIDC_JSON="$oidc_json" node -e 'process.stdout.write(JSON.parse(process.env.OIDC_JSON).value)')"
+          echo "::add-mask::$oidc_token"
+          curl --fail --silent --show-error -X POST \
+            -H "Authorization: Bearer $oidc_token" -H "Content-Type: application/json" \
+            --data-binary @.closespan-run/callback.json "$CALLBACK_URL"

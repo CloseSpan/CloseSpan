@@ -34,7 +34,23 @@ export interface StoredAiRun {
   analyses: AiAnalysisResult["analyses"];
 }
 
-export type StoredFeedbackAnalysis = AiAnalysisResult["analyses"][number] & {
+export type StoredFeedbackAnalysis = Omit<
+  AiAnalysisResult["analyses"][number],
+  | "sentiment"
+  | "sentimentIntensity"
+  | "sentimentConfidence"
+  | "sentimentClarity"
+  | "sentimentEvidenceQuality"
+  | "sentimentEvidence"
+  | "sentimentRationale"
+> & {
+  sentiment: AiAnalysisResult["analyses"][number]["sentiment"] | null;
+  sentimentIntensity: number | null;
+  sentimentConfidence: number | null;
+  sentimentClarity: number | null;
+  sentimentEvidenceQuality: number | null;
+  sentimentEvidence: string[];
+  sentimentRationale: string | null;
   reviewStatus: "Proposed" | "Approved" | "Rejected";
 };
 
@@ -46,6 +62,15 @@ export async function listLatestFeedbackAnalyses(
     feedback_id: string;
     classification: AiAnalysisResult["analyses"][number]["classification"];
     severity: AiAnalysisResult["analyses"][number]["severity"];
+    sentiment: AiAnalysisResult["analyses"][number]["sentiment"] | null;
+    sentiment_intensity: number | null;
+    sentiment_confidence: number | null;
+    sentiment_factors: {
+      sentimentClarity?: number;
+      sentimentEvidenceQuality?: number;
+    } | null;
+    sentiment_evidence: string[] | null;
+    sentiment_rationale: string | null;
     redacted_summary: string;
     proposed_problem_id: string | null;
     classification_confidence: number;
@@ -62,6 +87,9 @@ export async function listLatestFeedbackAnalyses(
   }>(
     `SELECT DISTINCT ON (analysis.feedback_id)
        analysis.feedback_id,analysis.classification,analysis.severity,
+       analysis.sentiment,analysis.sentiment_intensity,
+       analysis.sentiment_confidence,analysis.sentiment_factors,
+       analysis.sentiment_evidence,analysis.sentiment_rationale,
        analysis.redacted_summary,analysis.proposed_problem_id,
        analysis.classification_confidence,analysis.cluster_confidence,
        analysis.confidence_factors,analysis.rationale,analysis.evidence,
@@ -76,6 +104,16 @@ export async function listLatestFeedbackAnalyses(
     feedbackId: row.feedback_id,
     classification: row.classification,
     severity: row.severity,
+    sentiment: row.sentiment,
+    sentimentIntensity: row.sentiment_intensity,
+    sentimentConfidence: row.sentiment_confidence,
+    sentimentClarity: row.sentiment_factors?.sentimentClarity ?? null,
+    sentimentEvidenceQuality:
+      row.sentiment_factors?.sentimentEvidenceQuality ?? null,
+    sentimentEvidence: Array.isArray(row.sentiment_evidence)
+      ? row.sentiment_evidence
+      : [],
+    sentimentRationale: row.sentiment_rationale,
     redactedSummary: row.redacted_summary,
     proposedProblemId: row.proposed_problem_id,
     classificationConfidence: row.classification_confidence,
@@ -166,14 +204,27 @@ export async function completeModelRun(input: {
     for (const analysis of input.result.analyses) {
       await client.query(
         `INSERT INTO ai_feedback_analyses(
-          id,org_id,model_run_id,feedback_id,classification,severity,redacted_summary,proposed_problem_id,
+          id,org_id,model_run_id,feedback_id,classification,severity,
+          sentiment,sentiment_intensity,sentiment_confidence,sentiment_factors,
+          sentiment_evidence,sentiment_rationale,redacted_summary,proposed_problem_id,
           classification_confidence,cluster_confidence,confidence_factors,rationale,evidence
-        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13::jsonb)`,
+        ) VALUES(
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13,$14,
+          $15,$16,$17::jsonb,$18,$19::jsonb
+        )`,
         [
-          randomUUID(),input.orgId,input.runId,analysis.feedbackId,analysis.classification,analysis.severity,
-          analysis.redactedSummary,analysis.proposedProblemId,analysis.classificationConfidence,analysis.clusterConfidence,
+          randomUUID(), input.orgId, input.runId, analysis.feedbackId,
+          analysis.classification, analysis.severity, analysis.sentiment,
+          analysis.sentimentIntensity, analysis.sentimentConfidence,
+          JSON.stringify({
+            sentimentClarity: analysis.sentimentClarity,
+            sentimentEvidenceQuality: analysis.sentimentEvidenceQuality,
+          }),
+          JSON.stringify(analysis.sentimentEvidence), analysis.sentimentRationale,
+          analysis.redactedSummary, analysis.proposedProblemId,
+          analysis.classificationConfidence, analysis.clusterConfidence,
           JSON.stringify({ evidenceQuality:analysis.evidenceQuality, classificationClarity:analysis.classificationClarity, clusterMatch:analysis.clusterMatch, ambiguityPenalty:analysis.ambiguityPenalty }),
-          analysis.rationale,JSON.stringify(analysis.evidence),
+          analysis.rationale, JSON.stringify(analysis.evidence),
         ],
       );
     }

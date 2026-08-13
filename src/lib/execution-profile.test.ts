@@ -4,6 +4,7 @@ import {
   TENKI_BROWSER_PREFLIGHT_COMMAND,
   assertExecutionProfileNarrowing,
   assertExecutionProfileScopeBoundary,
+  assertExecutionProfileReadyForActivation,
   canonicalExecutionProfileJson,
   executionProfileBrowserReadiness,
   hashExecutionProfileConfig,
@@ -130,6 +131,121 @@ describe("execution profile configuration", () => {
       runtimeTools: { http: false, browser: false, logs: false },
     });
     expect(hashExecutionProfileConfig(runtime)).not.toBe(hashExecutionProfileConfig(legacy));
+  });
+
+  it("binds Tenki macOS runner profiles to an immutable workflow and simulator-only Xcode contract", () => {
+    const workflowHash = "b".repeat(64);
+    const result = sanitizeExecutionProfileConfig({
+      schemaVersion: 3,
+      language: "swift",
+      framework: "SwiftUI",
+      packageManager: "xcode",
+      runtimeVersion: "xcode 16",
+      workingDirectory: ".",
+      buildCommands: ["xcodebuild build"],
+      testCommands: ["xcodebuild test"],
+      permittedPaths: ["**/*"],
+      executor: {
+        kind: "tenki_github_actions",
+        platform: "macos",
+        architecture: "arm64",
+        runnerLabel: "tenki-macos-xcode-16",
+        workflowPath: ".github/workflows/closespan-agent-runner.yml",
+        workflowSha256: workflowHash,
+        xcode: {
+          version: "16",
+          containerKind: "project",
+          containerPath: "./Zup.xcodeproj",
+          scheme: "Zup",
+          configuration: "Debug",
+          destination: "platform=iOS Simulator,name=iPhone 16",
+          sdk: "iphonesimulator",
+          signingPolicy: "simulator_only",
+        },
+        androidEmulator: null,
+      },
+    });
+
+    expect(result).toMatchObject({
+      schemaVersion: 3,
+      tenkiImage: null,
+      tenkiSnapshotId: null,
+      executor: {
+        kind: "tenki_github_actions",
+        platform: "macos",
+        architecture: "arm64",
+        workflowSha256: workflowHash,
+        xcode: { containerPath: "Zup.xcodeproj", signingPolicy: "simulator_only" },
+      },
+    });
+    expect(() => assertExecutionProfileReadyForActivation(result)).not.toThrow();
+  });
+
+  it("keeps unprobed mobile runner candidates inactive and rejects invalid platform capabilities", () => {
+    const candidate = sanitizeExecutionProfileConfig({
+      schemaVersion: 3,
+      language: "kotlin",
+      framework: "Android",
+      packageManager: "gradle",
+      executor: {
+        kind: "tenki_github_actions",
+        platform: "linux",
+        architecture: "x64",
+        runnerLabel: "tenki-standard-large-8c-16g",
+        workflowPath: ".github/workflows/closespan-agent-runner.yml",
+        workflowSha256: null,
+        xcode: null,
+        androidEmulator: {
+          apiLevel: 35,
+          target: "google_apis",
+          architecture: "x86_64",
+          deviceProfile: "pixel_7",
+          gradleTask: ":app:connectedDebugAndroidTest",
+        },
+      },
+    });
+    expect(() => assertExecutionProfileReadyForActivation(candidate))
+      .toThrow("immutable runner workflow SHA-256");
+    if (candidate.schemaVersion !== 3) throw new Error("Expected runner profile");
+    expect(() => sanitizeExecutionProfileConfig({
+      ...candidate,
+      executor: {
+        ...candidate.executor,
+        platform: "macos",
+        architecture: "x64",
+      },
+    })).toThrow("Apple Silicon arm64");
+    expect(() => sanitizeExecutionProfileConfig({
+      ...candidate,
+      secretBindings: [{
+        envName: "API_TOKEN",
+        secretId: "9e31aa95-7092-4ed4-b859-238ad6aec584",
+        secretVersion: 1,
+        exposure: "test",
+      }],
+    })).toThrow("must use explicitly reviewed GitHub Actions secrets");
+    expect(() => sanitizeExecutionProfileConfig({
+      schemaVersion: 3,
+      executor: {
+        kind: "tenki_github_actions",
+        platform: "macos",
+        architecture: "arm64",
+        runnerLabel: "tenki-macos",
+        workflowPath: ".github/workflows/closespan-agent-runner.yml",
+        workflowSha256: "c".repeat(64),
+        xcode: {
+          version: "16",
+          containerKind: "project",
+          containerPath: "../Injected.xcodeproj",
+          scheme: "App",
+          configuration: "Debug",
+          destination: "platform=iOS Simulator,name=iPhone 16",
+          sdk: "iphonesimulator",
+          signingPolicy: "simulator_only",
+        },
+        androidEmulator: null,
+      },
+    })).toThrow("Path must stay inside the repository");
   });
 
   it("normalizes a complete running-app contract without storing secret values", () => {

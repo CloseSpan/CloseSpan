@@ -59,6 +59,7 @@ export const PRIVATE_APP_PATHS = [
   "/onboarding",
   "/feedback",
   "/problems",
+  "/pdd",
   "/prioritization",
   "/investigations",
   "/approvals",

@@ -10,6 +10,15 @@ import {
 } from "@/lib/github-installation-state";
 import { authorizeAdminRead, HttpError } from "@/lib/request-security";
 import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
+import {
+  buildQueuedRepositoryContexts,
+  queueRepositoryContexts,
+} from "@/lib/repository-context-repository";
+import {
+  activateReadyDetectedExecutionProfiles,
+  prepareDetectedTenkiRunner,
+  prepareTenkiRunnerSizingProbes,
+} from "@/lib/tenki-runner-onboarding";
 
 function workspaceRedirect(
   request: NextRequest,
@@ -50,6 +59,7 @@ async function detectInstallationRepositories(input: {
   orgId: string;
   traceId: string;
   installationId: string;
+  callbackBaseUrl: string;
   repositories: Array<{ repository: string; defaultBranch: string }>;
 }): Promise<void> {
   let failed = 0;
@@ -57,8 +67,8 @@ async function detectInstallationRepositories(input: {
   // background pass later without changing detector or persistence contracts.
   for (let index = 0; index < input.repositories.length; index += 2) {
     const outcomes = await Promise.allSettled(
-      input.repositories.slice(index, index + 2).map((repository) =>
-        detectAndSaveGithubRepositoryProfiles({
+      input.repositories.slice(index, index + 2).map(async (repository) => {
+        const detection = await detectAndSaveGithubRepositoryProfiles({
           orgId: input.orgId,
           installationId: input.installationId,
           repository: repository.repository,
@@ -68,8 +78,30 @@ async function detectInstallationRepositories(input: {
             actorName: "Repository profile detector",
             traceId: input.traceId,
           },
-        })
-      ),
+        });
+        await prepareDetectedTenkiRunner({
+          orgId: input.orgId,
+          installationId: input.installationId,
+          repository: repository.repository,
+          defaultBranch: repository.defaultBranch,
+          detection,
+        });
+        await prepareTenkiRunnerSizingProbes({
+          orgId: input.orgId,
+          installationId: input.installationId,
+          repository: repository.repository,
+          callbackBaseUrl: input.callbackBaseUrl,
+        });
+        await activateReadyDetectedExecutionProfiles({
+          orgId: input.orgId,
+          repository: repository.repository,
+          actor: {
+            actorId: "system:github-installation-activator",
+            actorName: "Repository execution activator",
+            traceId: input.traceId,
+          },
+        });
+      }),
     );
     failed += outcomes.filter((outcome) => outcome.status === "rejected").length;
   }
@@ -94,13 +126,30 @@ export async function GET(request: NextRequest) {
       context,
       installation,
     );
+    await queueRepositoryContexts({
+      orgId: context.orgId,
+      installationId: installation.installationId,
+      repositories: installation.repositories,
+    });
     after(async () => {
-      await detectInstallationRepositories({
-        orgId: context.orgId,
-        traceId: context.traceId,
-        installationId: installation.installationId,
-        repositories: installation.repositories,
-      });
+      const outcomes = await Promise.allSettled([
+        detectInstallationRepositories({
+          orgId: context.orgId,
+          traceId: context.traceId,
+          installationId: installation.installationId,
+          callbackBaseUrl: request.nextUrl.origin,
+          repositories: installation.repositories,
+        }),
+        buildQueuedRepositoryContexts(
+          context.orgId,
+          installation.repositories.map((repository) => repository.repository),
+        ),
+      ]);
+      for (const outcome of outcomes) {
+        if (outcome.status === "rejected") {
+          console.error("GitHub post-connection setup needs retry", outcome.reason);
+        }
+      }
     });
     return workspaceRedirect(request, returnTo, {
       github: "connected",

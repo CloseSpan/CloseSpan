@@ -57,6 +57,9 @@ describe("automatic engineering prompt drafts", () => {
     expect(readinessQuery).toContain(
       "GROUP BY problem.org_id,problem.id,investigation.id,investigation.confidence",
     );
+    expect(readinessQuery).toContain("'clusterMatch',avg(");
+    expect(readinessQuery).toContain("'evidenceQuality',avg(");
+    expect(readinessQuery).toContain("'ambiguityPenalty',avg(");
   });
 
   it("builds a test-ready bug specification when repository context is available", () => {

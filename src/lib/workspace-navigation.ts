@@ -33,17 +33,10 @@ export const WORKSPACE_NAVIGATION = [
     group: "workflow",
   },
   {
-    id: "prioritization",
-    label: "Prioritization",
-    section: "Prioritization",
-    href: "/prioritization",
-    group: "workflow",
-  },
-  {
-    id: "investigations",
-    label: "Investigations",
-    section: "AI investigations",
-    href: "/investigations",
+    id: "pdd",
+    label: "PDD",
+    section: "Prompt-driven development",
+    href: "/pdd",
     group: "workflow",
   },
   {

@@ -95,17 +95,30 @@ export const agentImplementationReportSchema = z.object({
   logs: z.array(z.string().max(5_000)).max(200),
   runtimeEvidence: runtimeEvidenceSchema.optional(),
   uiBaseline: uiBaselineSchema.optional(),
-  independentVerification: z.object({
-    provider: z.literal("Tenki Sandbox"),
-    sessionId: z.string().trim().min(1).max(200),
-    sourceSnapshotId: z.string().trim().min(1).max(500).nullable().optional(),
-    sourceRegistryImageId: z.string().trim().min(1).max(500).nullable().optional(),
-    sourceRegistryWorkspaceId: z.string().trim().min(1).max(500).nullable().optional(),
-    sourceRegistryRef: z.string().trim().min(1).max(500).nullable().optional(),
-    status: z.enum(["passed", "failed"]),
-    completedAt: z.string().datetime(),
-    durationMs: z.number().int().nonnegative(),
-  }).optional(),
+  independentVerification: z.union([
+    z.object({
+      provider: z.literal("Tenki Sandbox"),
+      sessionId: z.string().trim().min(1).max(200),
+      sourceSnapshotId: z.string().trim().min(1).max(500).nullable().optional(),
+      sourceRegistryImageId: z.string().trim().min(1).max(500).nullable().optional(),
+      sourceRegistryWorkspaceId: z.string().trim().min(1).max(500).nullable().optional(),
+      sourceRegistryRef: z.string().trim().min(1).max(500).nullable().optional(),
+      status: z.enum(["passed", "failed"]),
+      completedAt: z.string().datetime(),
+      durationMs: z.number().int().nonnegative(),
+    }).strict(),
+    z.object({
+      provider: z.literal("Tenki GitHub Actions"),
+      workflowRunId: z.number().int().positive(),
+      runnerLabel: z.string().trim().min(1).max(120),
+      platform: z.enum(["linux", "macos"]),
+      implementationJobId: z.string().trim().min(1).max(200),
+      verificationJobId: z.string().trim().min(1).max(200),
+      status: z.enum(["passed", "failed"]),
+      completedAt: z.string().datetime(),
+      durationMs: z.number().int().nonnegative(),
+    }).strict(),
+  ]).optional(),
 });
 
 export type AgentImplementationReport = z.infer<typeof agentImplementationReportSchema>;

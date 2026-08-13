@@ -14,8 +14,11 @@ policy is used for new jobs.
    manifest blobs through the GitHub API. Detection never clones the repository
    and never executes repository code.
 3. Each repository or monorepo root produces an inactive `detected` profile.
-   An administrator confirms it or saves an override, creating a new immutable
-   version and making that version active for the scope.
+   GitHub Actions runner profiles remain inactive while a bounded onboarding
+   probe measures the selected baseline size. CloseSpan stores the telemetry,
+   applies a same-platform next-tier recommendation for resource pressure, and
+   creates the immutable active profile. An administrator can save a documented
+   runner-size override as another immutable version.
 4. Problem evidence is ranked against only the workspace's active authorized
    repositories. Exact and unambiguous matches can advance automatically;
    ambiguous matches wait for product-manager review.
@@ -31,9 +34,15 @@ policy is used for new jobs.
 
 A version records language, framework, package manager, runtime, working
 directory, permitted path ceiling, exact install/build/test/typecheck command
-allowlists, Tenki image or snapshot, CPU, memory, network policy, maximum
-duration, and idle timeout. A ticket may narrow paths and commands but cannot
-widen its selected profile.
+allowlists, executor backend, CPU, memory, network policy, maximum duration,
+and idle timeout. Sandbox profiles bind a Tenki image or snapshot. Runner
+profiles bind the repository workflow SHA-256, Tenki runner label and platform
+contract, including Xcode/Simulator or Android Emulator settings. A ticket may
+narrow paths and commands but cannot widen its selected profile.
+
+See [Tenki GitHub Actions runner backend](./tenki-github-actions-runners.md) for
+the retained Tenki x64, macOS/Xcode and Android Emulator references and the
+immutable workflow-dispatch contract.
 
 The executor currently keeps implementation and verification inside the hosted
 request ceilings (four and three minutes respectively), even when a stored
@@ -46,8 +55,7 @@ complete.
 
 Deploy these changes as one compatibility boundary:
 
-1. Apply migrations `033_execution_profiles.sql` and
-   `034_github_multi_workspace.sql`.
+1. Apply migrations through `061_tenki_runner_sizing_probes.sql`.
 2. Deploy the PDD runner that accepts signed payload schema version 2.
 3. Deploy the Next.js app and the Tenki proxy Worker together.
 4. Reconnect or synchronize each GitHub installation, explicitly select the

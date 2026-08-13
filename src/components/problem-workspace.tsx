@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, ChevronDown, ChevronRight, CircleHelp, Download, History, LockKeyhole, Sparkles } from "lucide-react";
-import { calculateImpact, type FeedbackItem, type ProductProblem, type Recommendation, type Stage } from "@/lib/domain";
+import { Check, ChevronDown, Download, History, LockKeyhole, Sparkles } from "lucide-react";
+import { calculateImpact, type FeedbackItem, type ProductProblem, type Stage } from "@/lib/domain";
 import type { DemoState } from "@/lib/store";
 
 const stages: Stage[] = ["Detected", "Needs review", "Approved", "Planned", "In progress", "Released", "Verified", "Closed"];
 
-export function ProblemWorkspace({ initialState, problem: primaryProblem, feedbackItems: feedback, investigation: recommendation, engineeringPanel }: { initialState: DemoState; problem: ProductProblem; feedbackItems: FeedbackItem[]; investigation: Recommendation; engineeringPanel: ReactNode }) {
+export function ProblemWorkspace({ initialState, problem: primaryProblem, feedbackItems: feedback }: { initialState: DemoState; problem: ProductProblem; feedbackItems: FeedbackItem[] }) {
   const state = initialState;
   const [showRationale, setShowRationale] = useState(false);
   const impact = calculateImpact(primaryProblem.impactFactors);
@@ -41,26 +41,10 @@ export function ProblemWorkspace({ initialState, problem: primaryProblem, feedba
 
       <section className="card"><div className="card-head"><div><h2>Supporting evidence</h2><p className="subtle">Why these reports belong together</p></div><button type="button" className="btn" aria-expanded={showRationale} onClick={() => setShowRationale((value) => !value)}>{showRationale ? "Hide rationale" : "Review membership"}</button></div><div className="card-body">{showRationale && <div className="callout membership-rationale"><div className="callout-title">Cluster membership rationale</div><p className="subtle">These {evidence.length} signal{evidence.length === 1 ? "" : "s"} support the same reviewed problem statement: {primaryProblem.statement} The current evidence confidence is {evidenceConfidence}%.</p></div>}{evidence.map((item) => <article className="evidence" key={item.id}><div className="split"><div className="evidence-meta"><span className="badge">{item.source}</span><strong>{item.customer}</strong><span>{item.observedAt}</span></div><span className="badge brand">{Math.round(item.confidence * 100)}% match</span></div><blockquote className="quote">“{item.quote}”</blockquote><div className="evidence-meta evidence-environment"><LockKeyhole size={11}/> PII scan complete · {item.environment}</div></article>)}</div></section>
 
-      {engineeringPanel}
     </div>
 
     <aside className="detail-stack">
       <section className="card"><div className="card-head"><h2>Impact score</h2><div className="score-ring" aria-label={`Impact score ${impact.score} out of 100`}><span>{impact.score}</span></div></div><div className="card-body">{primaryProblem.impactFactors.map((factor) => <div className="factor" key={factor.key}><span>{factor.label} · {factor.weight}%</span><div className="bar" role="meter" aria-label={`${factor.label} score`} aria-valuenow={factor.value} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${factor.value}%` }}/></div><strong>{factor.value}</strong></div>)}<div className="callout section-gap-sm"><div className="callout-title">Why this score</div><p className="subtle">{impact.explanation}</p></div><Link className="btn full-width section-gap-xs" href="/settings#priority">Configure weights</Link></div></section>
-
-      <section className="card problem-investigation-compact">
-        <div className="card-head problem-investigation-head">
-          <h2>Investigation</h2>
-          <span className="badge medium"><CircleHelp size={12} aria-hidden="true" /> {Math.round(recommendation.confidence * 100)}%</span>
-        </div>
-        <div className="card-body">
-          <div className="problem-investigation-status"><AlertTriangle size={14} aria-hidden="true" /><strong>Working hypothesis—not confirmed</strong></div>
-          <p className="problem-investigation-summary">{recommendation.hypothesis}</p>
-          <p className="problem-investigation-meta">{recommendation.missingInformation.length} evidence gap{recommendation.missingInformation.length === 1 ? "" : "s"} · {recommendation.tests.length} validation check{recommendation.tests.length === 1 ? "" : "s"}</p>
-          <Link className="btn primary full-width" href={`/investigations/${encodeURIComponent(recommendation.id)}`}>
-            Open investigation <ChevronRight size={14} aria-hidden="true" />
-          </Link>
-        </div>
-      </section>
 
       <section className="card"><div className="card-head"><h2>Existing work</h2></div><div className="card-body"><p className="subtle">No matching open issue was found in the current workspace index.</p></div></section>
     </aside></div>

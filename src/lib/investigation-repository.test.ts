@@ -16,7 +16,9 @@ import {
   isCustomerVisibleInvestigationTitle,
   listWorkspaceInvestigations,
   mapInvestigationWorkspaceRow,
+  recordInvestigationVerification,
 } from "./investigation-repository";
+import { RUNTIME_VERIFIER_WORKFLOW_NOT_INSTALLED_MESSAGE } from "./runtime-verifier-errors";
 
 const row = {
   id: "inv-1",
@@ -26,6 +28,7 @@ const row = {
   status: "Gathering evidence",
   confidence: 0.68,
   signal_confidence: 0.92,
+  related_signal_count: 1,
   severity: "High" as const,
   stage: "Needs review" as const,
   product_area: "Exports",
@@ -37,6 +40,11 @@ const row = {
   proposed_action: "Trace finalization order.",
   recommended_tests: ["Reproduce at the row boundary"],
   suspected_files: ["src/export.ts"],
+  verification_status: "Unverified" as const,
+  verification_method: null,
+  verification_summary: null,
+  verification_actor_name: null,
+  verified_at: null,
   updated_at: new Date("2026-08-09T00:00:00.000Z"),
 };
 
@@ -52,8 +60,38 @@ describe("investigation workspace repository", () => {
       problemId: "prob-1",
       problemTitle: "Large exports are empty",
       signalConfidence: 0.92,
+      relatedSignalCount: 1,
       missingInformation: ["A failing worker trace"],
       updatedAt: "2026-08-09T00:00:00.000Z",
+    });
+  });
+
+  it("replaces a stored GitHub Contents 404 with the runtime-verifier recovery step", () => {
+    const githubContentsError =
+      "Not Found - https://docs.github.com/rest/repos/contents#get-repository-content";
+    expect(mapInvestigationWorkspaceRow({
+      ...row,
+      verification_status: "Verification blocked",
+      verification_method: "Automated check",
+      verification_summary: githubContentsError,
+      runtime_run_id: "run-1",
+      runtime_status: "Failed",
+      runtime_outcome: "Verification blocked",
+      runtime_repository: "acme/app",
+      runtime_base_sha: "a".repeat(40),
+      runtime_summary: githubContentsError,
+      runtime_failure_message: githubContentsError,
+      runtime_requested_by_name: "Avery Chen",
+      runtime_requested_at: new Date("2026-08-12T00:00:00.000Z"),
+      runtime_started_at: null,
+      runtime_completed_at: new Date("2026-08-12T00:01:00.000Z"),
+      runtime_workflow_run_id: null,
+    })).toMatchObject({
+      verification: { summary: RUNTIME_VERIFIER_WORKFLOW_NOT_INSTALLED_MESSAGE },
+      runtimeVerification: {
+        summary: RUNTIME_VERIFIER_WORKFLOW_NOT_INSTALLED_MESSAGE,
+        failureMessage: RUNTIME_VERIFIER_WORKFLOW_NOT_INSTALLED_MESSAGE,
+      },
     });
   });
 
@@ -128,5 +166,54 @@ describe("investigation workspace repository", () => {
         expect.stringContaining("root cause is not yet confirmed"),
       ]),
     );
+  });
+
+  it("records a tenant-scoped current-issue verification with audit evidence", async () => {
+    database.query.mockImplementation(async (query: string) => {
+      if (query.includes("UPDATE investigations investigation")) {
+        return { rows: [{ id: "inv-1" }] };
+      }
+      return { rows: [] };
+    });
+
+    await recordInvestigationVerification({
+      orgId: "org-1",
+      problemId: "prob-1",
+      status: "Confirmed current",
+      method: "Product reproduction",
+      summary: "Reproduced on the current iOS build after entering post context.",
+      actor: { actorId: "user-1", actorName: "Avery Chen", traceId: "trace-1" },
+    });
+
+    expect(database.query).toHaveBeenCalledWith(
+      expect.stringContaining("verification_status=$3"),
+      expect.arrayContaining([
+        "org-1",
+        "prob-1",
+        "Confirmed current",
+        "Product reproduction",
+      ]),
+    );
+    expect(database.query).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO audit_events"),
+      expect.arrayContaining([
+        "org-1",
+        "user-1",
+        "Avery Chen",
+        expect.stringContaining("Recorded issue verification"),
+      ]),
+    );
+  });
+
+  it("rejects verification without meaningful observed evidence", async () => {
+    await expect(recordInvestigationVerification({
+      orgId: "org-1",
+      problemId: "prob-1",
+      status: "Confirmed current",
+      method: "Product reproduction",
+      summary: "It failed.",
+      actor: { actorId: "user-1", actorName: "Avery Chen", traceId: "trace-1" },
+    })).rejects.toMatchObject({ status: 400 });
+    expect(database.query).not.toHaveBeenCalled();
   });
 });

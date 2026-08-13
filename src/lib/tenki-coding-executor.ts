@@ -25,6 +25,7 @@ import {
   assertExecutionProfileNarrowing,
   assertExecutionProfileScopeBoundary,
   hashExecutionProfileConfig,
+  executionProfileExecutor,
   sanitizeExecutionProfileConfig,
   type ExecutionProfileConfig,
   type ExecutionProfileConfigV2,
@@ -1064,6 +1065,12 @@ export async function executeTenkiCodingJob(
   const ai = resolveExecutorAiConfiguration(dependencies);
   if (!apiKey) throw new Error("TENKI_API_KEY is required for coding execution");
   const executionProfile = executionProfileForJob(job);
+  if (
+    executionProfile
+    && executionProfileExecutor(executionProfile).kind !== "tenki_sandbox"
+  ) {
+    throw new Error("Tenki GitHub Actions profiles cannot execute through the Tenki Sandbox backend");
+  }
   if (executionProfile) assertTenkiProviderResourceLimits(executionProfile);
   if (
     strictManagedEnvironment

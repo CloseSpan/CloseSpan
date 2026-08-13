@@ -1,10 +1,12 @@
 import { otherProblems, primaryProblem } from "./seed";
 import type { FeedbackType } from "./domain";
+import type { ProblemActiveWork } from "./problem-active-work";
 
 export interface AccountImpactRecord { accountId: string; accountName: string; arr: number }
 export interface ProblemAnalyticsRecord {
   id: string; title: string; severity: string; stage: string; type: FeedbackType; productArea: string;
   currentSignals: number; previousSignals: number; membershipScores: number[]; accounts: AccountImpactRecord[];
+  activeWork?: ProblemActiveWork | null;
 }
 
 export interface FeedbackWeekDescriptor {

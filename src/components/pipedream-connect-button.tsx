@@ -2,7 +2,7 @@
 
 import { Check, LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ConnectorInputGuidance,
   type ConnectorGuidanceMode,
@@ -75,6 +75,9 @@ export function PipedreamConnectButton({
   ariaLabel,
   idleLabel = "Connect",
   onStateChange,
+  leadingIcon,
+  iconOnly = false,
+  showStatusDetails = true,
 }: {
   orgId: string;
   integrationId: PipedreamConnectorId;
@@ -88,6 +91,9 @@ export function PipedreamConnectButton({
   ariaLabel?: string;
   idleLabel?: string;
   onStateChange?: (state: PipedreamConnectState) => void;
+  leadingIcon?: ReactNode;
+  iconOnly?: boolean;
+  showStatusDetails?: boolean;
 }) {
   const router = useRouter();
   const runRef = useRef(0);
@@ -181,22 +187,39 @@ export function PipedreamConnectButton({
           ? "+ Add another account"
           : connectionState === "Needs reconnect" ? "Reconnect" : idleLabel;
 
+  const accessibleLabel = ariaLabel
+    ? state === "error" || busy
+      ? `${ariaLabel}: ${label}`
+      : ariaLabel
+    : undefined;
+
   return (
     <div className="connector-connect-control" aria-busy={busy}>
       {showGuidance && integrationId === "int_zendesk" && !connected && (
         <ConnectorInputGuidance mode={guidance} />
       )}
-      <button type="button" className={className} aria-label={ariaLabel} disabled={busy} onClick={() => void connect()}>
-        {busy && <LoaderCircle className="spin" size={14} aria-hidden="true" />}
-        {label}
+      <button
+        type="button"
+        className={className}
+        aria-label={accessibleLabel}
+        title={iconOnly ? accessibleLabel : undefined}
+        disabled={busy}
+        onClick={() => void connect()}
+      >
+        {busy ? (
+          <LoaderCircle className="spin" size={14} aria-hidden="true" />
+        ) : (
+          leadingIcon
+        )}
+        <span className={iconOnly ? "sr-only" : undefined}>{label}</span>
       </button>
-      {state === "waiting" && (
+      {showStatusDetails && state === "waiting" && (
         <div className="connector-waiting-help" role="status">
           <p className="subtle">Finish signing in in the secure window. You can keep using CloseSpan while it completes.</p>
           <button className="text-link" type="button" onClick={cancelConnection}>Cancel and retry</button>
         </div>
       )}
-      {state === "error" && <p className="subtle" role="status">{integrationId === "int_zendesk" ? "The connection did not finish. Retry and enter only the Zendesk subdomain, such as miraai." : "The connection did not finish. Try again, or connect another source and return to this one later."}</p>}
+      {showStatusDetails && state === "error" && <p className="subtle" role="status">{integrationId === "int_zendesk" ? "The connection did not finish. Retry and enter only the Zendesk subdomain, such as miraai." : "The connection did not finish. Try again, or connect another source and return to this one later."}</p>}
     </div>
   );
 }

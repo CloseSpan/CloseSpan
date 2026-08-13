@@ -20,6 +20,12 @@ import {
   createNextAutomatedInvestigation,
   type AutomatedInvestigationResult,
 } from "./investigation-repository";
+import { autonomyCapabilities } from "./autonomy-policy";
+import { readAutonomyLevel } from "./workspace-settings-repository";
+import {
+  reconcileFullAutonomy,
+  type AutonomyAutomationResult,
+} from "./autonomy-automation-repository";
 
 export interface StageEvidence {
   hasFeedback: boolean;
@@ -46,6 +52,7 @@ export interface AutomationTickResult {
   investigation?: AutomatedInvestigationResult;
   promptDraft?: AutomatedPromptDraftResult;
   emailDelivery?: PromptReviewEmailDeliveryResult;
+  autonomy?: AutonomyAutomationResult;
 }
 
 export function assessAutomatedStage(
@@ -377,14 +384,35 @@ async function runPostgresTick(orgId: string): Promise<AutomationTickResult> {
 export async function runProblemAutomationTick(
   orgId: string,
 ): Promise<AutomationTickResult> {
+  const autonomyLevel = await readAutonomyLevel(orgId);
+  const policy = autonomyCapabilities(autonomyLevel);
+  if (!policy.investigate) {
+    return {
+      moved: false,
+      problemId: null,
+      fromStage: null,
+      toStage: null,
+      reason: "Observe mode records and classifies feedback without starting workflow automation.",
+      autonomy: { action: "not_enabled", problemId: null, message: "Execution automation is disabled in Observe mode." },
+    };
+  }
   const investigation = await createNextAutomatedInvestigation(orgId);
-  const promptDraft = await createNextAutomatedPromptDraft(orgId);
+  const promptDraft = policy.preparePrompt
+    ? await createNextAutomatedPromptDraft(orgId)
+    : undefined;
   const stageResult = workspacePersistenceMode(orgId) === "memory"
     ? runMemoryTick(orgId)
     : runPostgresTick(orgId);
   const completedStage = await stageResult;
   const emailDelivery = await deliverPromptReviewEmails(orgId);
-  return { ...completedStage, investigation, promptDraft, emailDelivery };
+  const autonomy = autonomyLevel === "Full autonomy"
+    ? await reconcileFullAutonomy(orgId).catch((error: unknown) => ({
+        action: "blocked" as const,
+        problemId: promptDraft?.problemId ?? null,
+        message: error instanceof Error ? error.message : "Full-autonomy reconciliation failed.",
+      }))
+    : { action: "not_enabled" as const, problemId: null, message: `${autonomyLevel} does not auto-authorize execution.` };
+  return { ...completedStage, investigation, promptDraft, emailDelivery, autonomy };
 }
 
 export async function runProblemAutomationForAllOrganizations(): Promise<

@@ -115,7 +115,24 @@ def prompt_evaluation():
         "userStory": "As an analyst, I want a complete export, so that reporting succeeds.",
         "implementationPrompt": "Make large exports complete and verifiable.",
         "pddVersion": "0.0.309",
+        "evaluationMode": "pdd_cloud_with_local_fallback",
         "budgetUsd": 0.25,
+    }
+
+
+def local_runtime():
+    return {
+        "provider": "openai",
+        "model": "gpt-5.6-sol",
+        "apiKey": "workspace-openai-secret",
+    }
+
+
+def runner_local_runtime():
+    return {
+        "provider": "openai",
+        "model": "gpt-5.6-sol",
+        "credentialSource": "runner",
     }
 
 
@@ -138,9 +155,60 @@ class PddJobV2ValidationTest(unittest.TestCase):
             "userStory": "As an analyst, I want a complete export, so that reporting succeeds.",
             "implementationPrompt": "Make large exports complete and verifiable.",
             "pddVersion": "0.0.309",
+            "evaluationMode": "pdd_local",
+            "localRuntime": local_runtime(),
             "budgetUsd": 0.25,
         })
         self.assertEqual(value["budgetUsd"], 0.25)
+        self.assertEqual(value["evaluationMode"], "pdd_local")
+        self.assertEqual(value["localRuntime"]["provider"], "openai")
+
+    def test_accepts_a_runner_credential_reference_without_a_transmitted_key(self):
+        value = prompt_evaluation()
+        value["evaluationMode"] = "pdd_local"
+        value["localRuntime"] = runner_local_runtime()
+
+        validated = server.validate_prompt_evaluation(value)
+
+        self.assertEqual(validated["localRuntime"]["credentialSource"], "runner")
+        self.assertNotIn("apiKey", validated["localRuntime"])
+
+    def test_accepts_an_immutable_complete_contract_for_a_retest(self):
+        value = prompt_evaluation()
+        value["acceptanceContract"] = "\n\n".join(
+            f"## {heading}\nBound {heading}."
+            for heading in server.PROMPT_CONTRACT_CHANGE_SECTIONS
+        )
+
+        validated = server.validate_prompt_evaluation(value)
+
+        self.assertIn("## Acceptance Criteria", validated["acceptanceContract"])
+
+    def test_rejects_an_incomplete_retest_contract(self):
+        value = prompt_evaluation()
+        value["acceptanceContract"] = "## Context\nOnly one section."
+
+        with self.assertRaisesRegex(ValueError, "contract is incomplete"):
+            server.validate_prompt_evaluation(value)
+
+    def test_rejects_local_prompt_evaluation_without_workspace_runtime(self):
+        value = prompt_evaluation()
+        value["evaluationMode"] = "pdd_local"
+        with self.assertRaisesRegex(ValueError, "local runtime is required"):
+            server.validate_prompt_evaluation(value)
+
+    def test_rejects_workspace_runtime_for_pdd_cloud(self):
+        value = prompt_evaluation()
+        value["evaluationMode"] = "pdd_cloud"
+        value["localRuntime"] = local_runtime()
+        with self.assertRaisesRegex(ValueError, "cannot receive local credentials"):
+            server.validate_prompt_evaluation(value)
+
+    def test_rejects_unknown_prompt_evaluation_mode(self):
+        value = prompt_evaluation()
+        value["evaluationMode"] = "direct_openai"
+        with self.assertRaisesRegex(ValueError, "mode is invalid"):
+            server.validate_prompt_evaluation(value)
 
     def test_parses_actionable_story_detection(self):
         verdict, changes = server.parse_story_detection(json.dumps({
@@ -156,6 +224,60 @@ class PddJobV2ValidationTest(unittest.TestCase):
         }))
         self.assertEqual(verdict, "Needs revision")
         self.assertEqual(changes, ["Require the downloaded CSV to contain every expected row."])
+
+    def test_preserves_every_numbered_story_change_without_clipping_the_last_item(self):
+        fourth = "Verify the Oracle payload includes every submitted name and the expected workflow metadata."
+        detail = " Keep the instruction explicit, testable, repository-bound, and safe for an immutable prompt revision."
+        packed = " ".join([
+            "1. Update the opening sentence to name the affected input." + detail,
+            "2. Update the first acceptance criterion to verify submitted names." + detail,
+            "3. Retain the no-Post-Context regression criterion." + detail,
+            f"4. {fourth}",
+        ])
+        self.assertGreater(len(packed), 500)
+        verdict, changes = server.parse_story_detection(json.dumps({
+            "schema_version": "pdd.detect.stories.v1",
+            "outcome": "STORY_FAILURE",
+            "results": [{
+                "verdict": "FAIL",
+                "changes": [{"change_instructions": packed}],
+            }],
+        }))
+        self.assertEqual(verdict, "Needs revision")
+        self.assertEqual(len(changes), 4)
+        self.assertEqual(changes[3], fourth)
+
+    def test_recovers_complete_contract_sections_when_detector_text_is_cut_off(self):
+        contract = """# Requested outcome
+
+## Context
+The affected workflow accepts a Post Context value containing names.
+
+## Acceptance Criteria
+1. Given valid names, when the workflow is submitted, then every name is present in the payload.
+
+## Oracle
+- The submitted payload contains every entered name.
+
+## Non-Oracle
+- Internal component structure does not determine the result.
+
+## Negative Cases
+- The workflow must not silently omit a valid name.
+
+## Non-Goals
+- Redesigning unrelated inputs is out of scope.
+"""
+        changes = server.complete_story_changes([
+            "Retain the existing safety constraints.",
+            'Insert the generated contract sections, including "Negative Cases" (the bullet',
+        ], contract)
+
+        self.assertEqual(len(changes), 6)
+        self.assertIn("## Acceptance Criteria", changes[1])
+        self.assertIn("every name is present in the payload", changes[1])
+        self.assertIn("must not silently omit a valid name", changes[4])
+        self.assertTrue(all(server.prompt_change_is_complete(change) for change in changes))
 
     def test_surfaces_story_detection_infrastructure_failure(self):
         with self.assertRaisesRegex(RuntimeError, "provider:UNAVAILABLE"):
@@ -365,6 +487,27 @@ class PddJobV2ValidationTest(unittest.TestCase):
         value["executionProfileSnapshot"]["config"]["allowOutbound"] = "false"
         with self.assertRaisesRegex(ValueError, "network policy"):
             server.validate_job(value)
+
+
+class SwiftPddTargetTest(unittest.TestCase):
+    def test_places_a_standalone_swift_acceptance_script_at_the_xcode_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            project = root / "ZupNative" / "Zup.xcodeproj"
+            target = root / "ZupNative" / "Zup" / "AppModel.swift"
+            project.mkdir(parents=True)
+            target.parent.mkdir(parents=True)
+            target.write_text("struct AppModel {}", encoding="utf-8")
+
+            selected, language, output = server.choose_target(
+                root, ["ZupNative/Zup/AppModel.swift"]
+            )
+
+            self.assertEqual(selected, target)
+            self.assertEqual(language, "Swift")
+            self.assertEqual(
+                output, pathlib.Path("ZupNative/tests/CloseSpanPDDTests.swift")
+            )
 
 
 class PddVersionDetectionTest(unittest.TestCase):
@@ -633,6 +776,68 @@ class PddHandlerV2ValidationTest(unittest.TestCase):
 
 
 class PddExecutionModeTests(unittest.TestCase):
+    def test_prompt_evaluation_honors_local_mode_without_cloud(self):
+        payload = prompt_evaluation()
+        payload["evaluationMode"] = "pdd_local"
+        payload["localRuntime"] = local_runtime()
+        payload["budgetUsd"] = 5
+        completed = subprocess.CompletedProcess(
+            ["pdd"], 0,
+            json.dumps({
+                "schema_version": "pdd.detect.stories.v1",
+                "outcome": "PASS",
+                "results": [],
+            }), "",
+        )
+        with mock.patch.object(
+            server, "run_prompt_evaluation_pipeline", return_value=completed,
+        ) as run:
+            result = server.evaluate_prompt_with_pdd(payload)
+
+        self.assertEqual(result["executionMode"], "local")
+        self.assertEqual(run.call_args.kwargs["mode"], "local")
+        self.assertEqual(run.call_args.kwargs["budget_usd"], 5)
+        self.assertEqual(run.call_args.kwargs["local_runtime"], local_runtime())
+
+    def test_prompt_evaluation_falls_back_only_when_selected(self):
+        payload = prompt_evaluation()
+        payload["localRuntime"] = local_runtime()
+        payload["budgetUsd"] = 5
+        completed = subprocess.CompletedProcess(
+            ["pdd"], 0,
+            json.dumps({
+                "schema_version": "pdd.detect.stories.v1",
+                "outcome": "PASS",
+                "results": [],
+            }), "",
+        )
+        with mock.patch.object(
+            server,
+            "run_prompt_evaluation_pipeline",
+            side_effect=[RuntimeError("cloud unavailable"), completed],
+        ) as run:
+            result = server.evaluate_prompt_with_pdd(payload)
+
+        self.assertEqual(result["executionMode"], "local")
+        self.assertEqual(
+            [call.kwargs["mode"] for call in run.call_args_list],
+            ["cloud", "local"],
+        )
+        self.assertEqual(
+            [call.kwargs["budget_usd"] for call in run.call_args_list],
+            [0.25, 5],
+        )
+
+        payload["evaluationMode"] = "pdd_cloud"
+        with mock.patch.object(
+            server,
+            "run_prompt_evaluation_pipeline",
+            side_effect=RuntimeError("cloud unavailable"),
+        ) as run:
+            with self.assertRaisesRegex(RuntimeError, "cloud unavailable"):
+                server.evaluate_prompt_with_pdd(payload)
+        run.assert_called_once()
+
     def test_cloud_environment_uses_pddc_and_strips_direct_provider_keys(self):
         with (
             mock.patch.object(server, "PDD_REFRESH_TOKEN", "durable-refresh-token"),
@@ -688,6 +893,90 @@ class PddExecutionModeTests(unittest.TestCase):
         self.assertEqual(environment["PDD_FORCE_LOCAL"], "1")
         self.assertEqual(environment["OPENAI_API_KEY"], "direct-openai-key")
 
+    def test_workspace_local_environment_isolates_one_provider_credential(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "runner-openai-key",
+                "ANTHROPIC_API_KEY": "runner-anthropic-key",
+                "PDD_MODEL_DEFAULT": "anthropic/runner-model",
+            },
+            clear=False,
+        ):
+            environment = server.pdd_environment(
+                "local",
+                0.10,
+                local_runtime=local_runtime(),
+                isolate_local_credentials=True,
+            )
+
+        self.assertEqual(environment["OPENAI_API_KEY"], "workspace-openai-secret")
+        self.assertEqual(environment["PDD_MODEL_DEFAULT"], "openai/gpt-5.6")
+        self.assertNotIn("ANTHROPIC_API_KEY", environment)
+
+    def test_workspace_local_environment_can_reference_the_runner_credential(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "runner-openai-key",
+                "ANTHROPIC_API_KEY": "runner-anthropic-key",
+            },
+            clear=False,
+        ):
+            environment = server.pdd_environment(
+                "local",
+                5,
+                local_runtime=runner_local_runtime(),
+                isolate_local_credentials=True,
+                output_token_cap=server.PROMPT_EVALUATION_MAX_OUTPUT_TOKENS,
+            )
+
+        self.assertEqual(environment["OPENAI_API_KEY"], "runner-openai-key")
+        self.assertEqual(environment["PDD_MODEL_DEFAULT"], "openai/gpt-5.6")
+        self.assertNotIn("ANTHROPIC_API_KEY", environment)
+
+    def test_prompt_review_environment_caps_reserved_model_output(self):
+        environment = server.pdd_environment(
+            "local",
+            5,
+            local_runtime=local_runtime(),
+            isolate_local_credentials=True,
+            output_token_cap=server.PROMPT_EVALUATION_MAX_OUTPUT_TOKENS,
+        )
+
+        self.assertEqual(environment["PDD_COMMAND_MAX_COST_USD"], "5.000000")
+        self.assertEqual(environment["PDD_COMMAND_MAX_OUTPUT_TOKENS"], "4096")
+
+    def test_unrelated_pdd_commands_do_not_inherit_an_output_token_cap(self):
+        with mock.patch.dict(
+            os.environ,
+            {"PDD_COMMAND_MAX_OUTPUT_TOKENS": "999999"},
+            clear=False,
+        ):
+            environment = server.pdd_environment("local", 0.10)
+
+        self.assertNotIn("PDD_COMMAND_MAX_OUTPUT_TOKENS", environment)
+
+    def test_workspace_local_model_maps_codex_service_tier_to_pdd_api_family(self):
+        self.assertEqual(
+            server.local_pdd_model({
+                "provider": "openai",
+                "model": "openai/gpt-5.6-terra",
+                "apiKey": "workspace-openai-secret",
+            }),
+            "openai/gpt-5.6",
+        )
+
+    def test_workspace_local_model_preserves_catalog_model_names(self):
+        self.assertEqual(
+            server.local_pdd_model({
+                "provider": "openai",
+                "model": "gpt-5.3-codex",
+                "apiKey": "workspace-openai-secret",
+            }),
+            "openai/gpt-5.3-codex",
+        )
+
     def test_cloud_command_does_not_force_local_mode(self):
         command = server.pdd_command(
             mode="cloud",
@@ -738,6 +1027,10 @@ class PddExecutionModeTests(unittest.TestCase):
                     contract.parent.mkdir(parents=True)
                     story.write_text("# User Story: Requested outcome\n", encoding="utf-8")
                     contract.write_text("# Contract: Requested outcome\n", encoding="utf-8")
+                    costs.write_text(
+                        "cost,resolved_model\n0.0625,pdd-cloud\n",
+                        encoding="utf-8",
+                    )
                     return subprocess.CompletedProcess(command, 0, "generated", "")
                 return subprocess.CompletedProcess(
                     command,
@@ -765,8 +1058,8 @@ class PddExecutionModeTests(unittest.TestCase):
         self.assertEqual(calls[1][0][calls[1][0].index("story"):][:2], ["story", "add"])
         self.assertIn("detect", calls[2][0])
         self.assertEqual(json.loads(detection.stdout)["outcome"], "STORY_FAILURE")
-        self.assertEqual(calls[1][1]["env"]["PDD_COMMAND_MAX_COST_USD"], "0.175000")
-        self.assertEqual(calls[2][1]["env"]["PDD_COMMAND_MAX_COST_USD"], "0.075000")
+        self.assertEqual(calls[1][1]["env"]["PDD_COMMAND_MAX_COST_USD"], "0.062500")
+        self.assertEqual(calls[2][1]["env"]["PDD_COMMAND_MAX_COST_USD"], "0.187500")
 
     def test_prompt_review_rejects_unpaired_contract_artifacts(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -798,6 +1091,114 @@ class PddExecutionModeTests(unittest.TestCase):
 
         self.assertEqual(str(error), "PDD could not complete the contract-generation stage")
 
+    def test_prompt_review_maps_unsupported_local_model(self):
+        process = subprocess.CompletedProcess(
+            ["pdd"], 1, "", (
+                "Provider-qualified base model 'openai/example' has no matching row "
+                "under provider 'OpenAI'. Choose an available model."
+            ),
+        )
+
+        error = server.pdd_prompt_stage_error(
+            "contract-generation", process, mode="local",
+        )
+
+        self.assertEqual(
+            str(error),
+            "The configured AI model is not supported by Prompt Driven; choose a compatible model in AI Settings",
+        )
+
+    def test_prompt_review_maps_local_preflight_budget_exhaustion(self):
+        process = subprocess.CompletedProcess(
+            ["pdd"], 3, "", (
+                "Required environment value for model 'claude-fable-5' is not set. "
+                "All candidate models failed. Last error: Hosted command budget "
+                "exhausted before provider invocation"
+            ),
+        )
+
+        error = server.pdd_prompt_stage_error(
+            "prompt-detection", process, mode="local",
+        )
+
+        self.assertEqual(
+            str(error),
+            "Local Prompt Driven evaluation could not complete within its bounded review budget",
+        )
+
+    def test_prompt_review_reserves_the_local_ceiling_for_detection(self):
+        self.assertEqual(
+            server.prompt_evaluation_stage_budgets(5),
+            (0.25, 0.25, 4.5),
+        )
+        self.assertEqual(
+            server.prompt_evaluation_stage_budgets(0.25),
+            (0.0625, 0.0375, 0.15),
+        )
+
+    def test_prompt_review_returns_unused_repair_budget_to_detection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "user_stories" / "contracts").mkdir(parents=True)
+            (root / "prompts").mkdir()
+            (root / "requested-outcome.md").write_text(
+                "# Outcome\n", encoding="utf-8",
+            )
+            (root / "prompts" / "suggested.prompt").write_text(
+                "Correct the workflow.\n", encoding="utf-8",
+            )
+            (root / "user_stories" / "story__outcome.md").write_text(
+                "# User Story: Outcome\n", encoding="utf-8",
+            )
+            (root / "user_stories" / "contracts" / "outcome.contract.md").write_text(
+                "# Contract: Outcome\n", encoding="utf-8",
+            )
+            costs = root / "costs.csv"
+            calls = []
+
+            def fake_run(command, **kwargs):
+                calls.append((command, kwargs))
+                if "story" in command:
+                    costs.write_text(
+                        "cost,resolved_model\n0.125,openai/gpt-5.6\n",
+                        encoding="utf-8",
+                    )
+                    return subprocess.CompletedProcess(command, 0, "generated", "")
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    json.dumps({
+                        "schema_version": "pdd.detect.stories.v1",
+                        "outcome": "STORY_PASS",
+                        "results": [{"verdict": "PASS", "changes": []}],
+                    }),
+                    "",
+                )
+
+            with mock.patch.object(server.subprocess, "run", side_effect=fake_run):
+                server.run_prompt_evaluation_pipeline(
+                    root=root,
+                    mode="local",
+                    budget_usd=5,
+                    costs=costs,
+                    local_runtime={
+                        "provider": "openai",
+                        "model": "gpt-5.6-sol",
+                        "apiKey": "workspace-openai-secret",
+                    },
+                )
+
+            detection_call = calls[-1]
+            self.assertIn("detect", detection_call[0])
+            self.assertEqual(
+                detection_call[1]["env"]["PDD_COMMAND_MAX_COST_USD"],
+                "4.875000",
+            )
+            self.assertEqual(
+                detection_call[1]["env"]["PDD_COMMAND_MAX_OUTPUT_TOKENS"],
+                "8192",
+            )
+
     def test_cloud_authentication_is_verified_before_an_unattended_run(self):
         with mock.patch.object(
             server.subprocess,
@@ -825,18 +1226,106 @@ class PddExecutionModeTests(unittest.TestCase):
             root = pathlib.Path(temporary)
             (root / "user_stories").mkdir()
             (root / "requested-outcome.md").write_text("# Outcome\n", encoding="utf-8")
+            (root / "prompts").mkdir()
+            (root / "prompts" / "suggested.prompt").write_text(
+                "Correct the workflow.\n", encoding="utf-8",
+            )
+
+            def fake_run(command, **_kwargs):
+                if command[-3:] == ["auth", "status", "--verify"]:
+                    return subprocess.CompletedProcess(command, 0, "Authenticated", "")
+                if "story" in command:
+                    (root / "user_stories" / "story__outcome.md").write_text(
+                        "# User Story: Outcome\n", encoding="utf-8",
+                    )
+                    return subprocess.CompletedProcess(command, 0, "generated", "")
+                return subprocess.CompletedProcess(
+                    command, 1, "Contract regeneration failed", "",
+                )
+
             with mock.patch.object(
                 server.subprocess,
                 "run",
-                return_value=subprocess.CompletedProcess(["pdd"], 0, "generated", ""),
+                side_effect=fake_run,
             ):
-                with self.assertRaisesRegex(RuntimeError, "required prompt-evaluation contract"):
+                with self.assertRaisesRegex(RuntimeError, "contract-regeneration"):
                     server.run_prompt_evaluation_pipeline(
                         root=root,
                         mode="cloud",
                         budget_usd=0.25,
                         costs=root / "costs.csv",
                     )
+
+    def test_prompt_review_repairs_a_contract_skipped_by_story_add(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "user_stories").mkdir()
+            (root / "prompts").mkdir()
+            (root / "requested-outcome.md").write_text("# Outcome\n", encoding="utf-8")
+            (root / "prompts" / "suggested.prompt").write_text(
+                "Correct the workflow.\n", encoding="utf-8",
+            )
+            costs = root / "costs.csv"
+            calls = []
+
+            def fake_run(command, **kwargs):
+                calls.append((command, kwargs))
+                if command[-3:] == ["auth", "status", "--verify"]:
+                    return subprocess.CompletedProcess(command, 0, "Authenticated", "")
+                if "story" in command:
+                    (root / "user_stories" / "story__outcome.md").write_text(
+                        "# User Story: Outcome\n", encoding="utf-8",
+                    )
+                    return subprocess.CompletedProcess(command, 0, "generated without contract", "")
+                if command[0:2] == ["python", "-c"]:
+                    contract = root / "user_stories" / "contracts" / "outcome.contract.md"
+                    contract.parent.mkdir(parents=True)
+                    contract.write_text("# Contract: Outcome\n", encoding="utf-8")
+                    return subprocess.CompletedProcess(
+                        command,
+                        0,
+                        "Prompt Driven progress: CLOSESPAN_CONTRACT_REPAIR=" + json.dumps({
+                            "changed": True,
+                            "message": "Regenerated contract",
+                            "cost": 0.012,
+                            "model": "openai/gpt-5.6",
+                            "contractPath": str(contract),
+                        }) + "\x1b[0m",
+                        "",
+                    )
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    json.dumps({
+                        "schema_version": "pdd.detect.stories.v1",
+                        "outcome": "STORY_PASS",
+                        "results": [{"verdict": "PASS", "changes": []}],
+                    }),
+                    "",
+                )
+
+            with mock.patch.object(server.subprocess, "run", side_effect=fake_run):
+                detection = server.run_prompt_evaluation_pipeline(
+                    root=root, mode="cloud", budget_usd=0.25, costs=costs,
+                )
+
+            self.assertEqual(len(calls), 4)
+            self.assertEqual(calls[2][0][0:2], ["python", "-c"])
+            self.assertEqual(
+                calls[2][1]["env"]["PDD_COMMAND_MAX_COST_USD"], "0.037500",
+            )
+            self.assertEqual(json.loads(detection.stdout)["outcome"], "STORY_PASS")
+            self.assertEqual(server.cost_report(costs), (0.012, "openai/gpt-5.6"))
+
+    def test_contract_repair_command_contains_valid_python(self):
+        command = server.pdd_contract_repair_command(
+            story=pathlib.Path("user_stories/story__outcome.md"),
+            issue=pathlib.Path("requested-outcome.md"),
+            prompts=pathlib.Path("prompts"),
+        )
+
+        self.assertEqual(command[0:2], ["python", "-c"])
+        compile(command[2], "<pdd-contract-repair>", "exec")
 
     def test_story_generation_command_uses_official_pdd_story_flow(self):
         command = server.pdd_story_command(

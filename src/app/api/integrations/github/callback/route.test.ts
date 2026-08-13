@@ -4,6 +4,8 @@ const security = vi.hoisted(() => ({ adminRead: vi.fn() }));
 const github = vi.hoisted(() => ({ verify: vi.fn() }));
 const repository = vi.hoisted(() => ({ requireAttempt: vi.fn(), connect: vi.fn() }));
 const detector = vi.hoisted(() => ({ detect: vi.fn() }));
+const repositoryContext = vi.hoisted(() => ({ queue: vi.fn(), build: vi.fn() }));
+const activation = vi.hoisted(() => ({ prepare: vi.fn(), activate: vi.fn(), probes: vi.fn() }));
 const background = vi.hoisted(() => ({ tasks: [] as Promise<unknown>[] }));
 
 vi.mock("next/server", async (importOriginal) => {
@@ -27,6 +29,15 @@ vi.mock("@/lib/github-installation-repository", () => ({
 }));
 vi.mock("@/lib/repository-profile-detection", () => ({
   detectAndSaveGithubRepositoryProfiles: detector.detect,
+}));
+vi.mock("@/lib/repository-context-repository", () => ({
+  queueRepositoryContexts: repositoryContext.queue,
+  buildQueuedRepositoryContexts: repositoryContext.build,
+}));
+vi.mock("@/lib/tenki-runner-onboarding", () => ({
+  prepareDetectedTenkiRunner: activation.prepare,
+  prepareTenkiRunnerSizingProbes: activation.probes,
+  activateReadyDetectedExecutionProfiles: activation.activate,
 }));
 
 import { NextRequest } from "next/server";
@@ -78,6 +89,11 @@ describe("GitHub installation callback", () => {
     repository.requireAttempt.mockReset().mockResolvedValue(undefined);
     repository.connect.mockReset().mockResolvedValue({ repositoryCount: 1 });
     detector.detect.mockReset().mockResolvedValue({ profiles: [] });
+    repositoryContext.queue.mockReset().mockResolvedValue(undefined);
+    repositoryContext.build.mockReset().mockResolvedValue(undefined);
+    activation.prepare.mockReset().mockResolvedValue(null);
+    activation.activate.mockReset().mockResolvedValue(1);
+    activation.probes.mockReset().mockResolvedValue([]);
     background.tasks.length = 0;
   });
 
@@ -90,11 +106,28 @@ describe("GitHub installation callback", () => {
     expect(location.searchParams.get("repositories")).toBe("1");
     expect(repository.requireAttempt).toHaveBeenCalledWith(attemptId, "org-1", "admin-1");
     expect(repository.connect).toHaveBeenCalledWith(attemptId, "org-1", context, verified);
+    expect(repositoryContext.queue).toHaveBeenCalledWith({
+      orgId: "org-1",
+      installationId: "150109806",
+      repositories: verified.repositories,
+    });
     expect(detector.detect).toHaveBeenCalledWith(expect.objectContaining({
       orgId: "org-1",
       installationId: "150109806",
       repository: "acme/api",
       defaultBranch: "main",
+    }));
+    await Promise.all(background.tasks);
+    expect(activation.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      orgId: "org-1",
+      repository: "acme/api",
+    }));
+    expect(activation.activate).toHaveBeenCalledWith(expect.objectContaining({
+      orgId: "org-1",
+      repository: "acme/api",
+    }));
+    expect(activation.probes).toHaveBeenCalledWith(expect.objectContaining({
+      callbackBaseUrl: "https://closespan.com",
     }));
   });
 
@@ -139,5 +172,10 @@ describe("GitHub installation callback", () => {
     await Promise.all(background.tasks);
     expect(detector.detect).toHaveBeenCalledTimes(3);
     expect(maximum).toBe(2);
+    expect(repositoryContext.build).toHaveBeenCalledWith("org-1", [
+      "acme/api",
+      "acme/web",
+      "acme/worker",
+    ]);
   });
 });

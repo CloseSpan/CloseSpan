@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Activity,
   BadgeCheck,
   Bot,
   CircleGauge,
@@ -37,8 +36,7 @@ const navigationIcons: Record<WorkspaceNavigationId, typeof CircleGauge> = {
   overview: CircleGauge,
   feedback: Inbox,
   problems: Network,
-  prioritization: ListChecks,
-  investigations: Activity,
+  pdd: ListChecks,
   approvals: BadgeCheck,
   "agent-runs": Bot,
   "follow-up": GitPullRequest,

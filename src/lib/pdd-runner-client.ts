@@ -2,6 +2,8 @@ import { createHmac, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createRepositoryArchiveUrl } from "./github-agent-publisher";
 import type { PddVerificationExecutionContext } from "./engineering-workflow-repository";
+import type { AiProvider } from "./ai-config";
+import type { PromptEvaluationMode } from "./prompt-evaluation-policy";
 
 function promptEvaluationConfiguration(): { url: string; secret: string } | null {
   const url = process.env.PDD_RUNNER_URL?.trim().replace(/\/$/, "");
@@ -20,7 +22,8 @@ const promptEvaluationResultSchema = z.object({
   requestId: z.string().uuid(),
   promptHash: z.string().regex(/^[a-f0-9]{64}$/),
   verdict: z.enum(["Passed", "Needs revision"]),
-  changes: z.array(z.string().trim().min(1).max(500)).max(8),
+  changes: z.array(z.string().trim().min(1).max(16_000)).max(8),
+  acceptanceContract: z.string().trim().min(1).max(1_000_000).optional(),
   pddVersion: z.string().trim().min(1).max(64),
   executionMode: z.enum(["cloud", "local"]),
   model: z.string().trim().min(1).max(200).nullable(),
@@ -59,31 +62,69 @@ async function pddResponseError(response: Response): Promise<Error> {
   } else if (response.body) {
     await response.body.cancel().catch(() => undefined);
   }
-  return new Error(`PDD Cloud could not evaluate this prompt (HTTP ${response.status})`);
+  return new Error(`The prompt evaluation runner could not evaluate this prompt (HTTP ${response.status})`);
 }
 
 export type PddPromptEvaluationResult = z.infer<typeof promptEvaluationResultSchema>;
+
+interface LocalPddRuntimeBase {
+  provider: AiProvider;
+  model: string;
+}
+
+export type LocalPddRuntime = LocalPddRuntimeBase & (
+  | { apiKey: string; credentialSource?: never }
+  | { credentialSource: "runner"; apiKey?: never }
+);
+
+function assertCredentialTransport(url: string): void {
+  const parsed = new URL(url);
+  const localHost = ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+  if (parsed.protocol !== "https:" && !localHost) {
+    throw new Error(
+      "Local Prompt Driven evaluation requires an HTTPS runner connection",
+    );
+  }
+}
 
 export async function evaluatePromptWithPdd(input: {
   promptHash: string;
   userStory: string;
   implementationPrompt: string;
+  acceptanceContract?: string;
   pddVersion: string;
+  evaluationMode: PromptEvaluationMode;
+  localRuntime?: LocalPddRuntime;
   budgetUsd?: number;
 }): Promise<PddPromptEvaluationResult> {
   const config = promptEvaluationConfiguration();
   if (!config) {
-    throw new Error("PDD Cloud is not configured for prompt evaluation");
+    throw new Error("The prompt evaluation runner is not configured");
   }
+  if (input.localRuntime) assertCredentialTransport(config.url);
   const requestId = randomUUID();
+  // Local Prompt Driven evaluations build a contract and then evaluate it in
+  // separate bounded provider calls. The detector carries the complete PDD
+  // contract, so its input alone can legitimately cost more than the old
+  // $0.05 stage allocation. Prompt Driven's full detector contract can exceed
+  // 120k input tokens before the provider is invoked, so local and fallback
+  // runs need the runner's maximum bounded ceiling. This is a hard cap rather
+  // than a charge: actual provider usage is still measured and reported.
+  // Keep Cloud's existing lower cap because Cloud performs its own routing.
+  const defaultBudgetUsd = input.evaluationMode === "pdd_cloud" ? 0.25 : 5;
   const body = JSON.stringify({
     schemaVersion: 1,
     requestId,
     promptHash: input.promptHash,
     userStory: input.userStory,
     implementationPrompt: input.implementationPrompt,
+    ...(input.acceptanceContract
+      ? { acceptanceContract: input.acceptanceContract }
+      : {}),
     pddVersion: input.pddVersion,
-    budgetUsd: input.budgetUsd ?? 0.25,
+    evaluationMode: input.evaluationMode,
+    ...(input.localRuntime ? { localRuntime: input.localRuntime } : {}),
+    budgetUsd: input.budgetUsd ?? defaultBudgetUsd,
   });
   const response = await fetch(`${config.url}/prompt-evaluations`, {
     method: "POST",
@@ -95,7 +136,7 @@ export async function evaluatePromptWithPdd(input: {
   if (response.status === 200) {
     const legacyResult = promptEvaluationResultSchema.parse(await response.json());
     if (legacyResult.requestId !== requestId || legacyResult.promptHash !== input.promptHash) {
-      throw new Error("PDD Cloud returned a result for a different prompt");
+      throw new Error("The prompt evaluation runner returned a result for a different prompt");
     }
     return legacyResult;
   }
@@ -104,7 +145,7 @@ export async function evaluatePromptWithPdd(input: {
   }
   const accepted = promptEvaluationAcceptedSchema.parse(await response.json());
   if (accepted.requestId !== requestId || accepted.promptHash !== input.promptHash) {
-    throw new Error("PDD Cloud accepted a different prompt evaluation");
+    throw new Error("The prompt evaluation runner accepted a different prompt evaluation");
   }
 
   const deadline = Date.now() + 270_000;
@@ -124,7 +165,7 @@ export async function evaluatePromptWithPdd(input: {
     if (statusResponse.status === 200) {
       const result = promptEvaluationResultSchema.parse(await statusResponse.json());
       if (result.requestId !== requestId || result.promptHash !== input.promptHash) {
-        throw new Error("PDD Cloud returned a result for a different prompt");
+        throw new Error("The prompt evaluation runner returned a result for a different prompt");
       }
       return result;
     }
@@ -133,11 +174,11 @@ export async function evaluatePromptWithPdd(input: {
     }
     const pending = promptEvaluationPendingSchema.parse(await statusResponse.json());
     if (pending.requestId !== requestId || pending.promptHash !== input.promptHash) {
-      throw new Error("PDD Cloud returned status for a different prompt");
+      throw new Error("The prompt evaluation runner returned status for a different prompt");
     }
     await new Promise((resolve) => setTimeout(resolve, 1_250));
   }
-  throw new Error("PDD Cloud prompt evaluation timed out; try again");
+  throw new Error("Prompt evaluation timed out; try again");
 }
 
 export function pddRunnerConfigured(): boolean {

@@ -3,11 +3,17 @@ import { describe, expect, it } from "vitest";
 import type { EngineeringWorkflowView } from "@/lib/engineering-workflow-repository";
 import {
   EngineeringTicketPanel,
+  engineeringPreparationSteps,
   estimatedPddProgress,
   formatPddDuration,
+  pddRecommendationIsComplete,
+  pddSuggestedRevisionDiffers,
+  shouldAutomaticallyPreparePrompt,
+  shouldOfferManualPromptRevision,
   structurePddChange,
   structurePddChanges,
 } from "./engineering-ticket-panel";
+import { BackgroundPromptTestProvider } from "./background-prompt-tests";
 
 function workflow(
   overrides: Partial<EngineeringWorkflowView> = {},
@@ -26,7 +32,250 @@ function workflow(
   };
 }
 
+function renderPanel(
+  initialWorkflow: EngineeringWorkflowView,
+  initialRepositoryProfileReady = true,
+): string {
+  return renderToStaticMarkup(
+    <BackgroundPromptTestProvider orgId="org_demo">
+      <EngineeringTicketPanel
+        orgId="org_demo"
+        problemId="prob_demo_export"
+        initialWorkflow={initialWorkflow}
+        autonomyLevel="Execute with approval"
+        initialRepositoryProfileReady={initialRepositoryProfileReady}
+      />
+    </BackgroundPromptTestProvider>,
+  );
+}
+
 describe("EngineeringTicketPanel prompt evaluation", () => {
+  const readyPromptWorkflow = () => workflow({
+    specification: {
+      id: "spec_1",
+      revision: 1,
+      userStory: "As a user, I want the input to work, so that I can finish.",
+      currentBehavior: "The input fails.",
+      expectedBehavior: "The input works.",
+      reproductionSteps: ["Submit the input."],
+      businessOutcome: "The workflow completes.",
+      acceptanceCriteria: [{ id: "AC-1", statement: "The workflow completes.", measurable: true }],
+      testScenarios: [],
+      regressionScenarios: [],
+      negativeScenarios: [],
+      qualityExpectations: [],
+      requiredTestLevels: ["integration"],
+      releaseVerification: "Verify the workflow.",
+      nonGoals: [],
+      permittedPaths: ["src/**"],
+      requiredCommands: ["npm test"],
+      repository: "closespan/app",
+      baseBranch: "main",
+      baseSha: "a".repeat(40),
+    },
+    readiness: { ready: true, issues: [] },
+    prompt: {
+      id: "prompt_1",
+      revision: 1,
+      status: "Ready",
+      artifactPath: "tickets/prompt.md",
+      content: "Fix the input.",
+      contentHash: "b".repeat(64),
+      repository: "closespan/app",
+      baseBranch: "main",
+      baseSha: "a".repeat(40),
+      createdAt: "2026-08-11T12:00:00.000Z",
+    },
+  });
+
+  it("keeps preparation checkpoints sequential even when later data already exists", () => {
+    expect(engineeringPreparationSteps({
+      repositoryProfileReady: false,
+      promptReady: true,
+      promptAligned: true,
+      acceptanceReady: false,
+      approvalReady: false,
+    }).map((step) => step.state)).toEqual([
+      "current",
+      "upcoming",
+      "upcoming",
+      "upcoming",
+      "upcoming",
+      "upcoming",
+    ]);
+
+    expect(engineeringPreparationSteps({
+      repositoryProfileReady: true,
+      promptReady: true,
+      promptAligned: true,
+      acceptanceReady: true,
+      approvalReady: true,
+    }).every((step) => step.state === "complete")).toBe(true);
+  });
+
+  it("does not repeat the PDD preparation tracker inside the focused prompt panel", () => {
+    const markup = renderPanel(readyPromptWorkflow());
+
+    expect(markup).not.toContain("Prepare this task for action");
+    expect(markup).not.toContain("3 of 6 complete");
+    expect(markup).not.toContain('aria-current="step"');
+    expect(markup).toContain("Agent-written prompt");
+  });
+
+  it("puts repository review first when this ticket has no confirmed active profile", () => {
+    const markup = renderPanel(readyPromptWorkflow(), false);
+
+    expect(markup).not.toContain("0 of 6 complete");
+    expect(markup).not.toContain("Prepare this task for action");
+    expect(markup).toContain("Confirm the repository execution context");
+  });
+
+  it("starts automatic PDD only for an eligible autonomy level and only once", () => {
+    const candidate = readyPromptWorkflow();
+    expect(shouldAutomaticallyPreparePrompt({
+      autonomyLevel: "Execute with approval",
+      workflow: candidate,
+      userStory: candidate.specification!.userStory,
+      ticketContextMissing: false,
+      hasBackgroundTask: false,
+    })).toBe(true);
+    expect(shouldAutomaticallyPreparePrompt({
+      autonomyLevel: "Observe",
+      workflow: candidate,
+      userStory: candidate.specification!.userStory,
+      ticketContextMissing: false,
+      hasBackgroundTask: false,
+    })).toBe(false);
+    expect(shouldAutomaticallyPreparePrompt({
+      autonomyLevel: "Execute with approval",
+      workflow: {
+        ...candidate,
+        promptEvaluation: {
+          id: "evaluation_1",
+          triggerSource: "automatic",
+          status: "Succeeded",
+          promptRevisionId: "prompt_1",
+          promptHash: "b".repeat(64),
+          userStory: candidate.specification!.userStory,
+          review: null,
+          failureMessage: null,
+          acceptancePreparationFailureMessage: null,
+          appliedPromptRevisionId: null,
+          applied: false,
+          automaticAttempted: true,
+          createdAt: "2026-08-11T12:00:00.000Z",
+          completedAt: "2026-08-11T12:01:00.000Z",
+        },
+      },
+      userStory: candidate.specification!.userStory,
+      ticketContextMissing: false,
+      hasBackgroundTask: false,
+    })).toBe(false);
+  });
+
+  it("offers Apply only for a live manual evaluation of the current immutable prompt", () => {
+    const valid = {
+      triggerSource: "manual" as const,
+      verdict: "Needs revision" as const,
+      currentPromptHash: "a".repeat(64),
+      evaluatedPromptHash: "a".repeat(64),
+      suggestedRevision: "Improved prompt",
+      revisionReceipt: "signed.receipt",
+    };
+    expect(shouldOfferManualPromptRevision(valid)).toBe(true);
+    expect(shouldOfferManualPromptRevision({
+      ...valid,
+      currentPromptHash: "b".repeat(64),
+    })).toBe(false);
+    expect(shouldOfferManualPromptRevision({
+      ...valid,
+      triggerSource: "automatic",
+    })).toBe(false);
+  });
+
+  it("does not offer a no-op prompt revision as an improvement", () => {
+    expect(pddSuggestedRevisionDiffers(
+      "Fix the input.",
+      "Fix the input.",
+    )).toBe(false);
+    expect(pddSuggestedRevisionDiffers(
+      "Fix the input.",
+      "Fix the input and preserve the existing workflow.",
+    )).toBe(true);
+  });
+
+  it("places the tested and proposed prompts side by side before the user story", () => {
+    const candidate = readyPromptWorkflow();
+    const markup = renderPanel({
+      ...candidate,
+      promptEvaluation: {
+        id: "evaluation_1",
+        triggerSource: "manual",
+        status: "Succeeded",
+        promptRevisionId: "prompt_1",
+        promptHash: "b".repeat(64),
+        userStory: candidate.specification!.userStory,
+        review: {
+          verdict: "Needs revision",
+          summary: "Clarify the expected behavior before approval.",
+          changes: ["Preserve the existing workflow while correcting the input."],
+          suggestedRevision: "Fix the input and preserve the existing workflow.",
+          pddVersion: "0.0.309",
+          executionMode: "local",
+          model: null,
+          costUsd: 0.01,
+          promptHash: "b".repeat(64),
+          alignmentReceipt: null,
+          revisionReceipt: null,
+        },
+        failureMessage: null,
+        acceptancePreparationFailureMessage: null,
+        appliedPromptRevisionId: null,
+        applied: false,
+        automaticAttempted: false,
+        createdAt: "2026-08-11T12:00:00.000Z",
+        completedAt: "2026-08-11T12:01:00.000Z",
+      },
+    });
+
+    expect(markup).toContain("Review the proposed prompt");
+    expect(markup).toContain("Tested prompt");
+    expect(markup).toContain("Proposed prompt");
+    expect(markup).toContain("Fix the input.");
+    expect(markup).toContain("Fix the input and preserve the existing workflow.");
+    expect(markup.indexOf("Review the proposed prompt")).toBeLessThan(
+      markup.indexOf("User story"),
+    );
+    expect(markup).not.toContain("Test again");
+  });
+
+  it("shows a durable automatic result as review-ready instead of restarting it", () => {
+    const candidate = readyPromptWorkflow();
+    const markup = renderPanel({
+      ...candidate,
+      promptEvaluation: {
+        id: "evaluation_1",
+        triggerSource: "automatic",
+        status: "Succeeded",
+        promptRevisionId: "prompt_1",
+        promptHash: "b".repeat(64),
+        userStory: candidate.specification!.userStory,
+        review: null,
+        failureMessage: null,
+        acceptancePreparationFailureMessage: null,
+        appliedPromptRevisionId: null,
+        applied: false,
+        automaticAttempted: true,
+        createdAt: "2026-08-11T12:00:00.000Z",
+        completedAt: "2026-08-11T12:01:00.000Z",
+      },
+    });
+    expect(markup).toContain("Automatic PDD check complete");
+    expect(markup).toContain("existing revision is marked complete");
+    expect(markup).toContain("Test with PDD");
+    expect(markup).not.toContain("Preparing agent approval");
+  });
+
   it("fills toward completion using the observed PDD duration without claiming completion early", () => {
     expect(estimatedPddProgress(0, 40_000)).toBe(4);
     expect(estimatedPddProgress(20_000, 40_000)).toBe(50);
@@ -34,6 +283,73 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(estimatedPddProgress(80_000, 40_000)).toBeLessThan(100);
     expect(formatPddDuration(45_000)).toBe("45 seconds");
     expect(formatPddDuration(75_000)).toBe("1m 15s");
+  });
+
+  it("shimmers the PDD button label only while testing is in progress", () => {
+    const candidate = readyPromptWorkflow();
+    const markup = renderPanel({
+      ...candidate,
+      promptEvaluation: {
+        id: "evaluation_1",
+        triggerSource: "manual",
+        status: "Running",
+        promptRevisionId: "prompt_1",
+        promptHash: "b".repeat(64),
+        userStory: candidate.specification!.userStory,
+        review: null,
+        failureMessage: null,
+        acceptancePreparationFailureMessage: null,
+        appliedPromptRevisionId: null,
+        applied: false,
+        automaticAttempted: false,
+        createdAt: "2026-08-11T12:00:00.000Z",
+        completedAt: null,
+      },
+    });
+
+    expect(markup).toContain('<span class="pdd-testing-shimmer-text">Testing with PDD</span>');
+  });
+
+  it("keeps the execution-profile blocker visible beside a passed alignment result", () => {
+    const candidate = readyPromptWorkflow();
+    const blocker = "Confirm this ticket's repository and an active execution profile before PDD testing.";
+    const markup = renderPanel({
+      ...candidate,
+      promptEvaluation: {
+        id: "evaluation_1",
+        triggerSource: "manual",
+        status: "Succeeded",
+        promptRevisionId: "prompt_1",
+        promptHash: "b".repeat(64),
+        userStory: candidate.specification!.userStory,
+        review: {
+          verdict: "Passed",
+          summary: "The prompt and user story are aligned.",
+          changes: [],
+          suggestedRevision: null,
+          pddVersion: "0.0.309",
+          executionMode: "local",
+          model: null,
+          costUsd: 0,
+          promptHash: "b".repeat(64),
+          alignmentReceipt: null,
+          revisionReceipt: null,
+        },
+        failureMessage: null,
+        acceptancePreparationFailureMessage: blocker,
+        appliedPromptRevisionId: null,
+        applied: false,
+        automaticAttempted: false,
+        createdAt: "2026-08-11T12:00:00.000Z",
+        completedAt: "2026-08-11T12:01:00.000Z",
+      },
+    });
+
+    expect(markup).toContain("Prompt alignment passed");
+    expect(markup).not.toContain("PDD passed");
+    expect(markup).toContain("Execution setup blocked");
+    expect(markup).toContain(blocker.replaceAll("'", "&#x27;"));
+    expect(markup).toContain("Confirm the repository execution context");
   });
 
   it("turns a dense PDD recommendation into a readable summary and steps", () => {
@@ -60,27 +376,26 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     ]);
   });
 
+  it("detects a detector response that ends mid-sentence", () => {
+    expect(pddRecommendationIsComplete(
+      'Insert the generated contract sections, including "Negative Cases" (the bullet',
+    )).toBe(false);
+    expect(pddRecommendationIsComplete(
+      "Insert every generated contract section in full.",
+    )).toBe(true);
+  });
+
   it("requires a suggested prompt without presenting repository review first", () => {
-    const markup = renderToStaticMarkup(
-      <EngineeringTicketPanel
-        orgId="org_demo"
-        problemId="prob_demo_export"
-        initialWorkflow={workflow()}
-      />,
-    );
+    const markup = renderPanel(workflow());
 
     expect(markup).toContain("Suggested prompt required");
-    expect(markup).toContain("No repository or Tenki VM runs here");
+    expect(markup).toContain("leaves the saved result ready for review");
     expect(markup).not.toContain("Repository execution context");
     expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>.*Suggested prompt required/s);
   });
 
   it("does not confuse incomplete ticket context with prompt evaluation", () => {
-    const markup = renderToStaticMarkup(
-      <EngineeringTicketPanel
-        orgId="org_demo"
-        problemId="prob_demo_export"
-        initialWorkflow={workflow({
+    const markup = renderPanel(workflow({
           specification: {
             userStory: "As an analyst, I want a complete export, so that I can finish reporting.",
             currentBehavior: "Large exports are empty.",
@@ -108,9 +423,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
               "Add measurable acceptance criteria",
             ],
           },
-        })}
-      />,
-    );
+        }));
 
     expect(markup).toContain("Suggested prompt required");
     expect(markup).not.toContain("Complete the engineering ticket");
@@ -118,11 +431,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
   });
 
   it("identifies the exact agent prompt that will be tested", () => {
-    const markup = renderToStaticMarkup(
-      <EngineeringTicketPanel
-        orgId="org_demo"
-        problemId="prob_demo_export"
-        initialWorkflow={workflow({
+    const markup = renderPanel(workflow({
           prompt: {
             id: "prompt_1",
             revision: 2,
@@ -135,22 +444,20 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
             baseSha: "b".repeat(40),
             createdAt: "2026-08-09T00:00:00.000Z",
           },
-        })}
-      />,
-    );
+        }));
 
     expect(markup).toContain("Agent-written prompt");
     expect(markup).toContain("Revision 2");
-    expect(markup).toContain("View prompt under test");
+    expect(markup).toContain("English");
+    expect(markup).toContain(".prompt");
+    expect(markup).toContain("# Correct large exports");
     expect(markup).toContain("This is the exact prompt PDD will compare");
+    expect(markup).toContain("Agent-created prompt queued for PDD");
+    expect(markup).toContain("will not restart the check when you revisit this page");
   });
 
   it("shows backend and frontend production verification independently", () => {
-    const markup = renderToStaticMarkup(
-      <EngineeringTicketPanel
-        orgId="org_demo"
-        problemId="prob_demo_export"
-        initialWorkflow={workflow({
+    const markup = renderPanel(workflow({
           releaseEvidence: {
             id: "verification-1",
             status: "Passed",
@@ -166,9 +473,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
               captures: [{ key: "home:desktop", viewport: "desktop" }],
             },
           },
-        })}
-      />,
-    );
+        }));
     expect(markup).toContain("Backend");
     expect(markup).toContain("2 of 2 checks passed");
     expect(markup).toContain("Frontend");

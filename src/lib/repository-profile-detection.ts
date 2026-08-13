@@ -15,8 +15,15 @@ import type {
   ManagedTenkiEnvironmentArtifact,
   ManagedTenkiEnvironmentRequest,
 } from "./tenki-environment-catalog";
+import {
+  assessTenkiRunnerWorkload,
+  assertTenkiRunnerLabel,
+  tenkiRunnerSize,
+} from "./tenki-runner-sizing";
 
-const DETECTOR_VERSION = 4;
+const DETECTOR_VERSION = 6;
+const TENKI_RUNNER_WORKFLOW_PATH = ".github/workflows/closespan-agent-runner.yml";
+const TENKI_RUNNER_PROBE_WORKFLOW_PATH = ".github/workflows/closespan-runner-sizing.yml";
 const PRIMARY_MANIFESTS = new Set([
   "package.json",
   "deno.json",
@@ -32,6 +39,9 @@ const PRIMARY_MANIFESTS = new Set([
   "build.gradle",
   "build.gradle.kts",
   "mix.exs",
+  "Package.swift",
+  "Podfile",
+  "project.pbxproj",
 ]);
 const AUXILIARY_MANIFESTS = new Set([
   "package-lock.json",
@@ -51,6 +61,13 @@ const AUXILIARY_MANIFESTS = new Set([
   "gradle.properties",
   "settings.gradle",
   "settings.gradle.kts",
+  "Package.resolved",
+  "Podfile.lock",
+  "contents.xcworkspacedata",
+  "closespan-agent-runner.yml",
+  "closespan-agent-runner.yaml",
+  "closespan-runner-sizing.yml",
+  "closespan-runner-sizing.yaml",
 ]);
 const IGNORED_DIRECTORIES = new Set([
   ".git",
@@ -121,7 +138,10 @@ export type DetectedLanguage =
   | "java"
   | "kotlin"
   | "elixir"
+  | "swift"
   | "unknown";
+
+export type DetectedExecutionPlatform = "generic" | "ios" | "android";
 
 export interface SuggestedExecutionCommands {
   install: string | null;
@@ -143,6 +163,7 @@ export interface DetectedRepositoryProfileSuggestion {
   defaultBranch: string;
   sourceSha: string;
   language: DetectedLanguage;
+  platform: DetectedExecutionPlatform;
   framework: string | null;
   packageManager: string | null;
   runtime: string | null;
@@ -160,6 +181,22 @@ export interface DetectedRepositoryProfileSuggestion {
   detectorVersion: number;
   dependencyFingerprint: string;
   detectionHash: string;
+  runnerWorkflowSha256: string | null;
+  runnerProbeWorkflowSha256: string | null;
+  xcode: {
+    containerKind: "workspace" | "project" | "package";
+    containerPath: string;
+    scheme: string;
+    configuration: "Debug";
+    destination: string;
+  } | null;
+  androidEmulator: {
+    apiLevel: number;
+    target: "google_apis";
+    architecture: "x86_64";
+    deviceProfile: string;
+    gradleTask: string;
+  } | null;
 }
 
 export interface GithubRepositoryProfileDetection {
@@ -206,6 +243,7 @@ interface ReadManifest extends ManifestMetadata {
 
 interface ProfileDraft {
   language: DetectedLanguage;
+  platform: DetectedExecutionPlatform;
   framework: string | null;
   packageManager: string | null;
   runtime: string | null;
@@ -213,6 +251,8 @@ interface ProfileDraft {
   application?: SuggestedRunningApplication | null;
   runtimeFamily: string | null;
   confidence: number;
+  xcode?: DetectedRepositoryProfileSuggestion["xcode"];
+  androidEmulator?: DetectedRepositoryProfileSuggestion["androidEmulator"];
 }
 
 function repositoryCoordinates(repository: string): { owner: string; repo: string } {
@@ -231,7 +271,24 @@ function joinedPath(parent: string, child: string): string {
 }
 
 function manifestName(name: string): boolean {
-  return PRIMARY_MANIFESTS.has(name) || AUXILIARY_MANIFESTS.has(name);
+  return PRIMARY_MANIFESTS.has(name)
+    || AUXILIARY_MANIFESTS.has(name)
+    || name.endsWith(".xcscheme");
+}
+
+function manifestRoot(directory: string, name: string): string {
+  if (name === "project.pbxproj" && directory.endsWith(".xcodeproj")) {
+    return directory.split("/").slice(0, -1).join("/") || ".";
+  }
+  if (
+    (name === "contents.xcworkspacedata" || name.endsWith(".xcscheme"))
+    && /\.(?:xcodeproj|xcworkspace)(?:\/|$)/.test(directory)
+  ) {
+    const segments = directory.split("/");
+    const containerIndex = segments.findIndex((segment) => /\.(?:xcodeproj|xcworkspace)$/.test(segment));
+    return segments.slice(0, Math.max(containerIndex, 0)).join("/") || ".";
+  }
+  return directory || ".";
 }
 
 function safeLimits(overrides: Partial<RepositoryDetectionLimits> = {}): RepositoryDetectionLimits {
@@ -296,7 +353,7 @@ async function inspectManifestTree(
         manifests.push({
           path,
           name: entry.path,
-          root: directory.path || ".",
+          root: manifestRoot(directory.path, entry.path),
           sha: entry.sha,
           size: typeof entry.size === "number" ? entry.size : 0,
         });
@@ -445,6 +502,7 @@ function detectJavascript(files: ReadManifest[]): ProfileDraft {
     }
     const tasks = record(deno.tasks);
     return {
+      platform: "generic",
       language: "typescript",
       framework: null,
       packageManager: "deno",
@@ -486,6 +544,7 @@ function detectJavascript(files: ReadManifest[]): ProfileDraft {
   const nodeVersion = stringField(engines.node);
   const usesTypescript = dependencies.has("typescript") || Boolean(typecheckScript);
   return {
+    platform: "generic",
     language: usesTypescript ? "typescript" : "javascript",
     framework,
     packageManager,
@@ -540,6 +599,7 @@ function detectPython(files: ReadManifest[]): ProfileDraft {
           ? "python -m pip install --requirement requirements.txt"
           : "python -m pip install --editable . --no-deps";
   return {
+    platform: "generic",
     language: "python",
     framework,
     packageManager,
@@ -563,6 +623,7 @@ function detectCompiled(files: ReadManifest[]): ProfileDraft {
   if (names.has("Cargo.toml")) {
     const version = /rust-version\s*=\s*["']([^"']{1,40})["']/i.exec(content)?.[1];
     return {
+      platform: "generic",
       language: "rust", framework: null, packageManager: "cargo",
       runtime: version ? `rust ${version}` : "rust",
       commands: {
@@ -577,6 +638,7 @@ function detectCompiled(files: ReadManifest[]): ProfileDraft {
   if (names.has("go.mod")) {
     const version = /^go\s+([^\s]+)$/m.exec(content)?.[1];
     return {
+      platform: "generic",
       language: "go", framework: null, packageManager: "go modules",
       runtime: version ? `go ${version}` : "go",
       commands: {
@@ -585,9 +647,35 @@ function detectCompiled(files: ReadManifest[]): ProfileDraft {
       runtimeFamily: "go", confidence: 0.93,
     };
   }
+  const android = /com\.android\.(?:application|library)|id\s*[('\"]+com\.android\./i.test(content);
   const kotlin = /org\.jetbrains\.kotlin|kotlin\s*\(/i.test(content);
   const maven = names.has("pom.xml");
+  if (android) {
+    return {
+      platform: "android",
+      language: kotlin ? "kotlin" : "java",
+      framework: "Android",
+      packageManager: "gradle",
+      runtime: "android",
+      commands: {
+        install: "./gradlew dependencies",
+        build: "./gradlew assembleDebug",
+        test: "./gradlew testDebugUnitTest",
+        typecheck: "./gradlew lintDebug",
+      },
+      runtimeFamily: "android",
+      confidence: 0.96,
+      androidEmulator: {
+        apiLevel: 35,
+        target: "google_apis",
+        architecture: "x86_64",
+        deviceProfile: "pixel_7",
+        gradleTask: ":app:connectedDebugAndroidTest",
+      },
+    };
+  }
   return {
+    platform: "generic",
     language: kotlin ? "kotlin" : "java",
     framework: /spring-boot/i.test(content) ? "Spring Boot" : null,
     packageManager: maven ? "maven" : "gradle",
@@ -604,32 +692,111 @@ function detectOther(files: ReadManifest[]): ProfileDraft {
   const names = new Set(files.map((file) => file.name));
   const content = files.map((file) => file.content).join("\n");
   if (names.has("Gemfile")) return {
+    platform: "generic",
     language: "ruby", framework: containsDependency(content, "rails") ? "Rails" : null,
     packageManager: "bundler", runtime: "ruby",
     commands: { install: "bundle install", build: null, test: "bundle exec rake test", typecheck: null },
     runtimeFamily: "ruby", confidence: 0.86,
   };
   if (names.has("composer.json")) return {
+    platform: "generic",
     language: "php", framework: /laravel\/framework/i.test(content) ? "Laravel" : null,
     packageManager: "composer", runtime: "php",
     commands: { install: "composer install --no-interaction --no-scripts", build: null, test: "composer test", typecheck: null },
     runtimeFamily: "php", confidence: 0.86,
   };
   if (names.has("mix.exs")) return {
+    platform: "generic",
     language: "elixir", framework: /phoenix/i.test(content) ? "Phoenix" : null,
     packageManager: "mix", runtime: "elixir",
     commands: { install: "mix deps.get", build: "mix compile --warnings-as-errors", test: "mix test", typecheck: null },
     runtimeFamily: "elixir", confidence: 0.86,
   };
   return {
+    platform: "generic",
     language: "unknown", framework: null, packageManager: null, runtime: null,
     commands: { install: null, build: null, test: null, typecheck: null },
     runtimeFamily: null, confidence: 0.35,
   };
 }
 
+function xcodeContainer(files: ReadManifest[]): {
+  kind: "workspace" | "project" | "package";
+  path: string;
+} {
+  const workspace = files.find(
+    (file) => file.name === "contents.xcworkspacedata"
+      && !file.path.includes(".xcodeproj/"),
+  );
+  if (workspace) {
+    const marker = ".xcworkspace/";
+    return { kind: "workspace", path: `${workspace.path.split(marker)[0]}.xcworkspace` };
+  }
+  const project = files.find((file) => file.name === "project.pbxproj");
+  if (project) {
+    const marker = ".xcodeproj/";
+    return { kind: "project", path: `${project.path.split(marker)[0]}.xcodeproj` };
+  }
+  return { kind: "package", path: "Package.swift" };
+}
+
+function shellArgument(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function detectSwift(files: ReadManifest[]): ProfileDraft {
+  const names = new Set(files.map((file) => file.name));
+  const content = files.map((file) => file.content).join("\n");
+  const container = xcodeContainer(files);
+  const projectName = container.path.split("/").at(-1)?.replace(/\.(?:xcodeproj|xcworkspace)$/, "") || "App";
+  const schemeFile = files.find((file) => file.name.endsWith(".xcscheme"));
+  const scheme = schemeFile?.name.replace(/\.xcscheme$/, "") || projectName;
+  const ios = container.kind !== "package" && /IPHONEOS_DEPLOYMENT_TARGET|SDKROOT\s*=\s*iphoneos|TARGETED_DEVICE_FAMILY/i.test(content);
+  if (!ios) {
+    return {
+      platform: "generic",
+      language: "swift",
+      framework: "Swift Package",
+      packageManager: "swiftpm",
+      runtime: "swift",
+      commands: { install: "swift package resolve", build: "swift build", test: "swift test", typecheck: null },
+      runtimeFamily: "swift",
+      confidence: names.has("Package.swift") ? 0.9 : 0.7,
+    };
+  }
+  const containerFlag = container.kind === "workspace" ? "-workspace" : "-project";
+  const base = `xcodebuild ${containerFlag} ${shellArgument(container.path)} -scheme ${shellArgument(scheme)} -configuration Debug -sdk iphonesimulator -destination ${shellArgument("platform=iOS Simulator,name=iPhone 16")} CODE_SIGNING_ALLOWED=NO`;
+  return {
+    platform: "ios",
+    language: "swift",
+    framework: /SwiftUI/i.test(content) ? "SwiftUI" : "iOS",
+    packageManager: names.has("Podfile") ? "cocoapods" : "xcode",
+    runtime: "xcode",
+    commands: {
+      install: names.has("Podfile") ? "bundle exec pod install" : null,
+      build: `${base} build`,
+      // PDD materializes this immutable, standalone Swift acceptance script
+      // before implementation and verification commands run. It does not
+      // require a repository to already maintain an XCTest target.
+      test: "swift tests/CloseSpanPDDTests.swift",
+      typecheck: null,
+    },
+    runtimeFamily: "ios",
+    confidence: 0.96,
+    xcode: {
+      containerKind: container.kind,
+      containerPath: container.path,
+      scheme,
+      configuration: "Debug",
+      destination: "platform=iOS Simulator,name=iPhone 16",
+    },
+  };
+}
+
 function profileDraft(files: ReadManifest[]): ProfileDraft {
   const names = new Set(files.map((file) => file.name));
+  if (names.has("project.pbxproj") || names.has("Package.swift"))
+    return detectSwift(files);
   if (names.has("package.json") || names.has("deno.json") || names.has("deno.jsonc"))
     return detectJavascript(files);
   if (names.has("pyproject.toml") || names.has("requirements.txt") || names.has("Pipfile"))
@@ -649,8 +816,18 @@ function suggestion(input: {
   defaultBranch: string;
   sourceSha: string;
   files: ReadManifest[];
+  runnerWorkflowSha256: string | null;
+  runnerProbeWorkflowSha256: string | null;
 }): DetectedRepositoryProfileSuggestion {
-  const draft = profileDraft(input.files);
+  const draftFiles = input.root === "."
+    ? input.files
+    : input.files.map((file) => ({
+        ...file,
+        path: file.path.startsWith(`${input.root}/`)
+          ? file.path.slice(input.root.length + 1)
+          : file.path,
+      }));
+  const draft = profileDraft(draftFiles);
   const dependencyFingerprint = createHash("sha256")
     .update(JSON.stringify(input.files
       .filter((file) => PRIMARY_MANIFESTS.has(file.name) || AUXILIARY_MANIFESTS.has(file.name))
@@ -663,6 +840,7 @@ function suggestion(input: {
     defaultBranch: input.defaultBranch,
     sourceSha: input.sourceSha,
     language: draft.language,
+    platform: draft.platform,
     framework: draft.framework,
     packageManager: draft.packageManager,
     runtime: draft.runtime,
@@ -679,6 +857,10 @@ function suggestion(input: {
     active: false as const,
     detectorVersion: DETECTOR_VERSION,
     dependencyFingerprint,
+    runnerWorkflowSha256: input.runnerWorkflowSha256,
+    runnerProbeWorkflowSha256: input.runnerProbeWorkflowSha256,
+    xcode: draft.xcode ?? null,
+    androidEmulator: draft.androidEmulator ?? null,
   };
   return { ...base, detectionHash: detectionHash(base) };
 }
@@ -727,6 +909,16 @@ export async function detectGithubRepositoryProfiles(
   const rootTreeSha = validSha(commit.data.tree.sha);
   const tree = await inspectManifestTree(github, repository, rootTreeSha, limits);
   const read = await readManifests(github, repository, tree.manifests, limits);
+  const runnerWorkflow = read.files.find((file) => file.path === TENKI_RUNNER_WORKFLOW_PATH);
+  const runnerWorkflowSha256 = runnerWorkflow
+    ? createHash("sha256").update(runnerWorkflow.content, "utf8").digest("hex")
+    : null;
+  const runnerProbeWorkflow = read.files.find(
+    (file) => file.path === TENKI_RUNNER_PROBE_WORKFLOW_PATH,
+  );
+  const runnerProbeWorkflowSha256 = runnerProbeWorkflow
+    ? createHash("sha256").update(runnerProbeWorkflow.content, "utf8").digest("hex")
+    : null;
   const roots = [...new Set(
     read.files.filter((file) => PRIMARY_MANIFESTS.has(file.name)).map((file) => file.root),
   )].sort((left, right) => left === "." ? -1 : right === "." ? 1 : left.localeCompare(right));
@@ -737,6 +929,8 @@ export async function detectGithubRepositoryProfiles(
     defaultBranch: input.defaultBranch,
     sourceSha,
     files: filesForRoot(read.files, root),
+    runnerWorkflowSha256,
+    runnerProbeWorkflowSha256,
   }));
   return {
     repository: input.repository,
@@ -806,7 +1000,17 @@ export function executionProfileSuggestionStore(
 ): RepositoryProfileSuggestionStore {
   return {
     async saveDetectedSuggestion({ orgId, suggestion: detected, evidence }) {
-      const managedEnvironment = await (
+      const runnerExecution = detected.platform === "ios" || detected.platform === "android";
+      const workload = assessTenkiRunnerWorkload(detected);
+      const configuredRunnerLabel = detected.platform === "ios"
+        ? process.env.TENKI_MACOS_RUNNER_LABEL?.trim()
+        : detected.platform === "android"
+          ? process.env.TENKI_ANDROID_RUNNER_LABEL?.trim()
+          : undefined;
+      const runnerLabel = configuredRunnerLabel || workload.baselineRunnerLabel;
+      if (runnerExecution) assertTenkiRunnerLabel(runnerLabel, workload.platform);
+      const runnerSize = runnerExecution ? tenkiRunnerSize(runnerLabel) : null;
+      const managedEnvironment = runnerExecution ? null : await (
         dependencies.managedEnvironmentResolver?.resolve({
           orgId,
           repository: detected.repository,
@@ -843,62 +1047,81 @@ export function executionProfileSuggestionStore(
           || playwrightChromiumInstallCommand(detected.packageManager ?? "unknown")
         ),
       );
+      const commonConfig = {
+        language: detected.language,
+        framework: detected.framework,
+        packageManager: detected.packageManager ?? "unknown",
+        runtimeVersion: detected.runtime,
+        workingDirectory: detected.root,
+        installCommands,
+        buildCommands: optionalCommand(detected.commands.build),
+        testCommands: optionalCommand(detected.commands.test),
+        typecheckCommands: optionalCommand(detected.commands.typecheck),
+        automaticInstall: installCommands.length > 0,
+        automaticBuild: Boolean(detected.commands.build),
+        publicEnvironment: [],
+        secretBindings: [],
+        startCommand: detected.application?.startCommand ?? null,
+        applicationPort: detected.application?.port ?? null,
+        healthCheckPath: detected.application?.healthPath ?? null,
+        healthCheckTimeoutMs: 90_000,
+        previewEnabled: false,
+        previewTtlMs: 600_000,
+        runtimeTools: {
+          http: Boolean(detected.application),
+          browser: browserProvisioned,
+          logs: Boolean(detected.application),
+        },
+        permittedPaths: detected.root === "." ? ["**/*"] : [`${detected.root}/**`],
+        tenkiImage: managedEnvironment?.registryDigestRef ?? null,
+        tenkiSnapshotId: null,
+        cpuCores: runnerSize?.cpuCores ?? 2,
+        memoryMb: runnerSize?.memoryMb ?? 4_096,
+        allowInbound: false,
+        allowOutbound: managedEnvironment?.scopeType === "repository_private"
+          ? false
+          : installCommands.length > 0,
+        maxDurationMs: runnerExecution ? 3_600_000 : 1_800_000,
+        idleTimeoutMinutes: 2,
+      };
+      const config = runnerExecution ? {
+        schemaVersion: 3 as const,
+        ...commonConfig,
+        executor: detected.platform === "ios"
+          ? {
+              kind: "tenki_github_actions" as const,
+              platform: "macos" as const,
+              architecture: "arm64" as const,
+              runnerLabel,
+              workflowPath: TENKI_RUNNER_WORKFLOW_PATH,
+              workflowSha256: detected.runnerWorkflowSha256,
+              xcode: detected.xcode ? {
+                version: process.env.TENKI_XCODE_VERSION?.trim() || "16",
+                ...detected.xcode,
+                sdk: "iphonesimulator" as const,
+                signingPolicy: "simulator_only" as const,
+              } : null,
+              androidEmulator: null,
+            }
+          : {
+              kind: "tenki_github_actions" as const,
+              platform: "linux" as const,
+              architecture: "x64" as const,
+              runnerLabel,
+              workflowPath: TENKI_RUNNER_WORKFLOW_PATH,
+              workflowSha256: detected.runnerWorkflowSha256,
+              xcode: null,
+              androidEmulator: detected.androidEmulator,
+            },
+      } : {
+        schemaVersion: 2 as const,
+        ...commonConfig,
+      };
       return saveDetectedExecutionProfileSuggestion({
         orgId,
         repository: detected.repository,
         workspaceRoot: detected.root,
-        config: {
-          schemaVersion: 2,
-          language: detected.language,
-          framework: detected.framework,
-          packageManager: detected.packageManager ?? "unknown",
-          runtimeVersion: detected.runtime,
-          workingDirectory: detected.root,
-          installCommands,
-          buildCommands: optionalCommand(detected.commands.build),
-          testCommands: optionalCommand(detected.commands.test),
-          typecheckCommands: optionalCommand(detected.commands.typecheck),
-          automaticInstall: installCommands.length > 0,
-          automaticBuild: Boolean(detected.commands.build),
-          publicEnvironment: [],
-          secretBindings: [],
-          startCommand: detected.application?.startCommand ?? null,
-          applicationPort: detected.application?.port ?? null,
-          healthCheckPath: detected.application?.healthPath ?? null,
-          healthCheckTimeoutMs: 90_000,
-          previewEnabled: false,
-          previewTtlMs: 600_000,
-          runtimeTools: {
-            http: Boolean(detected.application),
-            browser: browserProvisioned,
-            logs: Boolean(detected.application),
-          },
-          // This is only the suggested root boundary. Ticket-level paths must
-          // narrow it, and detected profiles cannot execute until confirmed.
-          permittedPaths: detected.root === "." ? ["**/*"] : [`${detected.root}/**`],
-          // "sandbox" means Tenki's safe generic base. Keep the stored image
-          // unset so a workspace-owned immutable image/snapshot can be chosen
-          // during review without creating one global runtime dependency.
-          tenkiImage: managedEnvironment?.registryDigestRef ?? null,
-          // Managed artifacts always execute through the private immutable
-          // registry digest. The backing snapshot remains lifecycle metadata.
-          tenkiSnapshotId: null,
-          cpuCores: 2,
-          memoryMb: 4_096,
-          allowInbound: false,
-          // A detected Playwright profile downloads its exact Chromium build
-          // during setup. The profile contains no runtime or test secret
-          // bindings, and an admin must review it before activation.
-          // Toolchain-only images intentionally contain no customer
-          // dependencies, so their reviewed install still needs outbound
-          // access. A repository-private dependency snapshot restores its
-          // sealed cache and remains fully network isolated.
-          allowOutbound: managedEnvironment?.scopeType === "repository_private"
-            ? false
-            : installCommands.length > 0,
-          maxDurationMs: 1_800_000,
-          idleTimeoutMinutes: 2,
-        },
+        config,
         detectionEvidence: {
           defaultBranch: detected.defaultBranch,
           sourceSha: detected.sourceSha,
@@ -908,6 +1131,16 @@ export function executionProfileSuggestionStore(
           detectorVersion: detected.detectorVersion,
           detectionHash: detected.detectionHash,
           dependencyFingerprint: detected.dependencyFingerprint,
+          platform: detected.platform,
+          runnerWorkflowSha256: detected.runnerWorkflowSha256,
+          runnerProbeWorkflowSha256: detected.runnerProbeWorkflowSha256,
+          runnerSizing: runnerExecution ? {
+            workloadClass: workload.workloadClass,
+            baselineRunnerLabel: workload.baselineRunnerLabel,
+            selectedRunnerLabel: runnerLabel,
+            selectionSource: configuredRunnerLabel ? "deployment_override" : "detected_workload",
+            reasons: workload.reasons,
+          } : null,
           managedEnvironment: managedEnvironment ? {
             artifactId: managedEnvironment.id,
             catalogKey: managedEnvironment.catalogKey,

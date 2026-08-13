@@ -2,17 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getPromptAlignmentContext,
 } from "@/lib/engineering-workflow-repository";
-import { getAiRuntimeConfiguration } from "@/lib/ai-config";
-import { evaluatePromptAlignment } from "@/lib/prompt-alignment-evaluation";
 import { createPromptAlignmentReceipt } from "@/lib/prompt-alignment-receipt";
 import { PDD_CLI_VERSION, sha256 } from "@/lib/pdd-verification";
-import { evaluatePromptWithPdd } from "@/lib/pdd-runner-client";
-import { pddPromptReviewSchema } from "@/lib/pdd-prompt-review";
+import { evaluateWorkspacePrompt } from "@/lib/workspace-prompt-evaluation";
+import {
+  buildPddRequiredRevision,
+  pddPromptReviewSchema,
+} from "@/lib/pdd-prompt-review";
 import {
   readPddPromptTimingSummary,
   recordPddPromptEvaluationTiming,
 } from "@/lib/pdd-prompt-timing-repository";
 import { createPddPromptRevisionReceipt } from "@/lib/pdd-prompt-revision-receipt";
+import {
+  beginPddPromptEvaluation,
+  completePddPromptEvaluation,
+  failPddPromptEvaluation,
+  readPddAcceptanceContract,
+  type PddPromptEvaluationTrigger,
+} from "@/lib/pdd-prompt-evaluation-repository";
 import {
   authorizeMutation,
   errorResponse,
@@ -55,6 +63,13 @@ export async function POST(
       typeof body === "object" && body !== null && "userStory" in body
         ? (body as { userStory: unknown }).userStory
         : undefined;
+    const triggerSource: PddPromptEvaluationTrigger =
+      typeof body === "object"
+      && body !== null
+      && "triggerSource" in body
+      && (body as { triggerSource?: unknown }).triggerSource === "automatic"
+        ? "automatic"
+        : "manual";
     const { problemId } = await params;
     const promptContext = await getPromptAlignmentContext(
       context.orgId,
@@ -62,60 +77,68 @@ export async function POST(
       userStory,
       context,
     );
+    const specification = promptContext.workflow.specification;
+    if (!specification) {
+      return NextResponse.json(
+        { error: "The engineering specification is not ready for prompt evaluation" },
+        { status: 409, headers: noStoreHeaders },
+      );
+    }
+    const storyHash = sha256(
+      promptContext.userStory.replace(/\s+/g, " ").trim(),
+    );
+    const evaluationRun = await beginPddPromptEvaluation({
+      orgId: context.orgId,
+      problemId,
+      specificationId: specification.id ?? problemId,
+      specificationRevision: specification.revision ?? 1,
+      promptRevisionId: promptContext.promptId,
+      promptHash: promptContext.promptHash,
+      userStory: promptContext.userStory,
+      storyHash,
+      triggerSource,
+    });
+    if (!evaluationRun.shouldRun) {
+      const message = evaluationRun.evaluation.status === "Running"
+        ? "The automatic PDD evaluation is already running for this ticket revision."
+        : "PDD already ran automatically for this ticket revision. Review the saved result or choose Test with PDD to run it manually.";
+      return NextResponse.json(
+        { error: message, evaluation: evaluationRun.evaluation },
+        { status: 409, headers: noStoreHeaders },
+      );
+    }
     const timingStartedAt = Date.now();
-    let evaluation;
     try {
-      evaluation = await evaluatePromptWithPdd({
+      const acceptanceContract =
+        promptContext.workflow.promptEvaluation?.review?.acceptanceContract
+        ?? await readPddAcceptanceContract(
+          context.orgId,
+          problemId,
+          promptContext.promptId,
+        );
+      const evaluation = await evaluateWorkspacePrompt({
+        orgId: context.orgId,
         promptHash: promptContext.promptHash,
         userStory: promptContext.userStory,
         implementationPrompt: promptContext.implementationPrompt,
+        acceptanceContract,
         pddVersion: PDD_CLI_VERSION,
       });
-    } catch (error) {
-      await recordPddPromptEvaluationTiming({
-        orgId: context.orgId,
-        problemId,
-        status: "Failed",
-        durationMs: Date.now() - timingStartedAt,
-      }).catch(() => undefined);
-      throw error;
-    }
-    const alignmentReceipt =
+      const alignmentReceipt =
       evaluation.verdict === "Passed"
         ? createPromptAlignmentReceipt({
             orgId: context.orgId,
             problemId,
             promptHash: promptContext.promptHash,
-            storyHash: sha256(
-              promptContext.userStory.replace(/\s+/g, " ").trim(),
-            ),
+            storyHash,
           })
         : null;
     let suggestedRevision: string | null = null;
     if (evaluation.verdict === "Needs revision") {
-      const deterministicRevision = [
-        promptContext.implementationPrompt.trim(),
-        "",
-        "## PDD-required outcomes",
-        ...evaluation.changes.map((change) => `- ${change}`),
-        "",
-        `Product-manager user story: ${promptContext.userStory}`,
-      ].join("\n");
-      suggestedRevision = deterministicRevision;
-      try {
-        const configuration = await getAiRuntimeConfiguration(context.orgId);
-        if (configuration.apiKey) {
-          const revision = await evaluatePromptAlignment({
-            configuration,
-            userStory: promptContext.userStory,
-            implementationPrompt: deterministicRevision,
-          });
-          suggestedRevision = revision.suggestedRevision ?? deterministicRevision;
-        }
-      } catch {
-        // PDD owns the verdict and required changes. A model-assisted rewrite
-        // is optional, so provider downtime must not discard a valid PDD review.
-      }
+      suggestedRevision = buildPddRequiredRevision(
+        promptContext.implementationPrompt,
+        evaluation.changes,
+      );
     }
     const promptEvaluation = pddPromptReviewSchema.parse({
       ...evaluation,
@@ -130,10 +153,15 @@ export async function POST(
             problemId,
             promptHash: promptContext.promptHash,
             revisionHash: sha256(suggestedRevision),
-            storyHash: sha256(promptContext.userStory.replace(/\s+/g, " ").trim()),
+            storyHash,
           })
         : null,
     });
+    await completePddPromptEvaluation(
+      context.orgId,
+      evaluationRun.evaluation.id,
+      promptEvaluation,
+    );
     const durationMs = Date.now() - timingStartedAt;
     await recordPddPromptEvaluationTiming({
       orgId: context.orgId,
@@ -146,14 +174,29 @@ export async function POST(
       averageDurationMs: durationMs,
       sampleCount: 1,
     }));
-    return NextResponse.json(
-      {
-        workflow: promptContext.workflow,
-        promptEvaluation,
-        timing: { ...timing, durationMs },
-      },
-      { headers: noStoreHeaders },
-    );
+      return NextResponse.json(
+        {
+          workflow: promptContext.workflow,
+          evaluationId: evaluationRun.evaluation.id,
+          promptEvaluation,
+          timing: { ...timing, durationMs },
+        },
+        { headers: noStoreHeaders },
+      );
+    } catch (error) {
+      await failPddPromptEvaluation(
+        context.orgId,
+        evaluationRun.evaluation.id,
+        error instanceof Error ? error.message : "PDD prompt evaluation failed",
+      ).catch(() => undefined);
+      await recordPddPromptEvaluationTiming({
+        orgId: context.orgId,
+        problemId,
+        status: "Failed",
+        durationMs: Date.now() - timingStartedAt,
+      }).catch(() => undefined);
+      throw error;
+    }
   } catch (error) {
     return errorResponse(error);
   }

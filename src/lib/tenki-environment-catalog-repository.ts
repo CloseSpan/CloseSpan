@@ -1,5 +1,8 @@
 import { databasePool, transaction } from "./db";
-import type { ExecutionProfileConfig } from "./execution-profile";
+import {
+  executionProfileExecutor,
+  type ExecutionProfileConfig,
+} from "./execution-profile";
 import {
   isManagedTenkiArtifactRegistryRef,
   runtimeFamilyForExecutionProfile,
@@ -132,6 +135,9 @@ export async function assertManagedTenkiBootSourceAllowed(input: {
   config: ExecutionProfileConfig;
   permitDeprecated?: boolean;
 }): Promise<ManagedTenkiEnvironmentArtifact | null> {
+  if (executionProfileExecutor(input.config).kind === "tenki_github_actions") {
+    return null;
+  }
   if (!strictManagedTenkiCatalogEnabled()) return null;
   if (!input.config.tenkiImage && !input.config.tenkiSnapshotId) {
     throw new Error(

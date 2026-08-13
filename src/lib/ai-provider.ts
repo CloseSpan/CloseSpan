@@ -23,6 +23,12 @@ const feedbackAnalysisSchema = z.object({
           "Noise",
         ]),
         severity: z.enum(["Critical", "High", "Medium", "Low"]),
+        sentiment: z.enum(["Positive", "Neutral", "Negative", "Mixed"]),
+        sentimentIntensity: z.number().min(0).max(1),
+        sentimentClarity: z.number().min(0).max(1),
+        sentimentEvidenceQuality: z.number().min(0).max(1),
+        sentimentEvidence: z.array(z.string().min(1).max(280)).min(1).max(3),
+        sentimentRationale: z.string().min(1).max(500),
         redactedSummary: z.string().min(1).max(500),
         proposedProblemId: z.string().min(1).max(128).nullable(),
         evidenceQuality: z.number().min(0).max(1),
@@ -65,6 +71,7 @@ export interface AiAnalysisResult {
     RawFeedbackAnalysis & {
       classificationConfidence: number;
       clusterConfidence: number;
+      sentimentConfidence: number;
     }
   >;
 }
@@ -102,6 +109,18 @@ export function clusterConfidence(
     analysis.clusterMatch * 0.65 +
       analysis.evidenceQuality * 0.2 +
       (1 - analysis.ambiguityPenalty) * 0.15,
+  );
+}
+
+export function sentimentConfidence(
+  analysis: Pick<
+    RawFeedbackAnalysis,
+    "sentimentClarity" | "sentimentEvidenceQuality"
+  >,
+): number {
+  return rounded(
+    analysis.sentimentClarity * 0.65 +
+      analysis.sentimentEvidenceQuality * 0.35,
   );
 }
 
@@ -151,6 +170,7 @@ function validateModelOutput(
       ...guarded,
       classificationConfidence: classificationConfidence(guarded),
       clusterConfidence: clusterConfidence(guarded),
+      sentimentConfidence: sentimentConfidence(guarded),
     };
   });
 }
@@ -206,7 +226,7 @@ async function callResponsesApi(
       { role: "user", content: untrustedPayload },
     ],
     text: {
-      format: zodTextFormat(feedbackAnalysisSchema, "feedback_analysis_v1"),
+      format: zodTextFormat(feedbackAnalysisSchema, "feedback_analysis_v2"),
     },
   });
   if (!response.output_parsed)
@@ -280,7 +300,7 @@ async function callOpenRouter(
       ],
       response_format: zodResponseFormat(
         feedbackAnalysisSchema,
-        "feedback_analysis_v1",
+        "feedback_analysis_v2",
       ),
     },
     { body: { provider: { require_parameters: true } } },

@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const security = vi.hoisted(() => ({ read: vi.fn(), admin: vi.fn() }));
 const repositories = vi.hoisted(() => ({ list: vi.fn() }));
 const detector = vi.hoisted(() => ({ detect: vi.fn() }));
+const repositoryContext = vi.hoisted(() => ({ queue: vi.fn(), build: vi.fn() }));
+const activation = vi.hoisted(() => ({ prepare: vi.fn(), activate: vi.fn(), probes: vi.fn() }));
 
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -27,6 +29,15 @@ vi.mock("@/lib/repository-profile-detection", () => ({
 vi.mock("@/lib/github-installation-repository", () => ({
   setGithubWorkspaceRepositoryBindings: installations.select,
 }));
+vi.mock("@/lib/repository-context-repository", () => ({
+  queueRepositoryContexts: repositoryContext.queue,
+  buildQueuedRepositoryContexts: repositoryContext.build,
+}));
+vi.mock("@/lib/tenki-runner-onboarding", () => ({
+  prepareDetectedTenkiRunner: activation.prepare,
+  prepareTenkiRunnerSizingProbes: activation.probes,
+  activateReadyDetectedExecutionProfiles: activation.activate,
+}));
 
 import { NextRequest } from "next/server";
 import { GET, PUT } from "./route";
@@ -46,6 +57,11 @@ describe("GitHub repository authorization API", () => {
     repositories.list.mockReset().mockResolvedValue([]);
     installations.select.mockReset().mockResolvedValue({ repositoryCount: 1 });
     detector.detect.mockReset().mockResolvedValue({ profiles: [] });
+    repositoryContext.queue.mockReset().mockResolvedValue(undefined);
+    repositoryContext.build.mockReset().mockResolvedValue(undefined);
+    activation.prepare.mockReset().mockResolvedValue(null);
+    activation.activate.mockReset().mockResolvedValue(1);
+    activation.probes.mockReset().mockResolvedValue([]);
   });
 
   it("lists repositories synchronized from the GitHub App", async () => {
@@ -91,6 +107,18 @@ describe("GitHub repository authorization API", () => {
       orgId: "org-1",
       repository: "acme/api",
       defaultBranch: "main",
+    }));
+    expect(repositoryContext.queue).toHaveBeenCalledWith({
+      orgId: "org-1",
+      installationId: "150109806",
+      repositories: [{ repository: "acme/api", defaultBranch: "main" }],
+    });
+    expect(repositoryContext.build).toHaveBeenCalledWith("org-1", ["acme/api"]);
+    expect(activation.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      repository: "acme/api",
+    }));
+    expect(activation.activate).toHaveBeenCalledWith(expect.objectContaining({
+      repository: "acme/api",
     }));
   });
 });

@@ -16,6 +16,7 @@ vi.mock("./workspace-persistence", () => ({
 }));
 
 import {
+  applyPddPromptRevision,
   approveImplementationRun,
   claimQueuedAgentRun,
   getAgentRunExecutionContext,
@@ -212,6 +213,43 @@ describe("PostgreSQL engineering workflow state guards", () => {
       expect.stringContaining("UPDATE implementation_prompts SET status='Ready'"),
       ["org-1", "prompt-1"],
     );
+  });
+
+  it("reports a repeated PDD revision clearly instead of leaking a unique-constraint error", async () => {
+    const currentHash = "c".repeat(64);
+    database.client.query.mockImplementation(async (sql: unknown) => {
+      const normalized = normalizedSql(sql);
+      if (normalized.includes("status <> 'Superseded'") && normalized.includes("FOR UPDATE")) {
+        return {
+          rows: [{
+            id: "current-prompt",
+            specification_id: "specification-1",
+            specification_revision: 1,
+            revision: 4,
+            status: "Ready",
+            repository: "owner/repo",
+            base_branch: "main",
+            base_sha: "a".repeat(40),
+            artifact_path: ".closespan/prompts/problem-1.prompt.md",
+            structured_snapshot: {},
+            content_hash: currentHash,
+          }],
+          rowCount: 1,
+        };
+      }
+      if (normalized.includes("AND content_hash=$3")) {
+        return { rows: [{ id: "prior-prompt", revision: 3 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await expect(applyPddPromptRevision("org-1", "problem-1", {
+      currentPromptHash: currentHash,
+      revisedPrompt: "A previously tested immutable prompt revision.",
+    }, actor)).rejects.toThrow("was already tested");
+    expect(database.client.query.mock.calls.some(([sql]) =>
+      normalizedSql(sql).includes("INSERT INTO implementation_prompts"),
+    )).toBe(false);
   });
 
   it("stores the exact ready PDD verification on a new approval", async () => {

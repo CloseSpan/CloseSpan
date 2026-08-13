@@ -7,14 +7,18 @@ import {
   type PromptDraftPolicy,
 } from "./prompt-draft-policy";
 import { workspacePersistenceMode } from "./workspace-persistence";
-
-const autonomyLevels = [
-  "Observe",
-  "Recommend",
-  "Organize",
-  "Execute with approval",
-  "Limited autonomy",
-] as const;
+import {
+  autonomyLevels,
+  normalizeAutonomyLevel,
+  type AutonomyLevel,
+} from "./autonomy-policy";
+import {
+  DEFAULT_PROMPT_EVALUATION_MODE,
+  normalizePromptEvaluationMode,
+  promptEvaluationModeSchema,
+  type PromptEvaluationMode,
+} from "./prompt-evaluation-policy";
+import { getAiPublicConfiguration } from "./ai-config";
 
 const policySchema = z.object({
   autonomyLevel: z.enum(autonomyLevels),
@@ -22,17 +26,21 @@ const policySchema = z.object({
   retentionDays: z.number().int().min(1).max(3650),
   priorityWeights: z.record(z.string(), z.number().int().min(0).max(100)),
   promptDraftPolicy: z.unknown(),
+  promptEvaluationMode: promptEvaluationModeSchema.default(
+    DEFAULT_PROMPT_EVALUATION_MODE,
+  ),
 }).superRefine((value, context) => {
   const total = Object.values(value.priorityWeights).reduce((sum, weight) => sum + weight, 0);
   if (total !== 100) context.addIssue({ code: "custom", path: ["priorityWeights"], message: "Priority weights must total 100%." });
 });
 
 export interface WorkspacePolicyInput {
-  autonomyLevel: (typeof autonomyLevels)[number];
+  autonomyLevel: AutonomyLevel;
   piiRedaction: boolean;
   retentionDays: number;
   priorityWeights: Record<string, number>;
   promptDraftPolicy: PromptDraftPolicy;
+  promptEvaluationMode: PromptEvaluationMode;
 }
 
 export interface WorkspaceSettingsActor {
@@ -45,10 +53,41 @@ const memoryPolicies = new Map<string, WorkspacePolicyInput>();
 
 export function sanitizeWorkspacePolicy(input: unknown): WorkspacePolicyInput {
   const parsed = policySchema.parse(input);
+  const promptDraftPolicy = sanitizePromptDraftPolicy(parsed.promptDraftPolicy);
   return {
     ...parsed,
-    promptDraftPolicy: sanitizePromptDraftPolicy(parsed.promptDraftPolicy),
+    promptDraftPolicy: parsed.autonomyLevel === "Full autonomy"
+      ? { ...promptDraftPolicy, mode: "automatic" }
+      : promptDraftPolicy,
   };
+}
+
+export async function readAutonomyLevel(orgId: string): Promise<AutonomyLevel> {
+  if (workspacePersistenceMode(orgId) === "memory") {
+    return normalizeAutonomyLevel(
+      getMemoryWorkspacePolicy(orgId)?.autonomyLevel ?? "Execute with approval",
+    );
+  }
+  const result = await databasePool().query<{ autonomy_level: string }>(
+    "SELECT autonomy_level FROM workspace_settings WHERE org_id=$1",
+    [orgId],
+  );
+  return normalizeAutonomyLevel(result.rows[0]?.autonomy_level);
+}
+
+export async function readPromptEvaluationMode(
+  orgId: string,
+): Promise<PromptEvaluationMode> {
+  if (workspacePersistenceMode(orgId) === "memory") {
+    return normalizePromptEvaluationMode(
+      getMemoryWorkspacePolicy(orgId)?.promptEvaluationMode,
+    );
+  }
+  const result = await databasePool().query<{ prompt_evaluation_mode: string }>(
+    "SELECT prompt_evaluation_mode FROM workspace_settings WHERE org_id=$1",
+    [orgId],
+  );
+  return normalizePromptEvaluationMode(result.rows[0]?.prompt_evaluation_mode);
 }
 
 export function getMemoryWorkspacePolicy(orgId: string): WorkspacePolicyInput | null {
@@ -62,6 +101,15 @@ export async function updateWorkspacePolicy(
   actor: WorkspaceSettingsActor,
 ): Promise<WorkspacePolicyInput> {
   const policy = sanitizeWorkspacePolicy(input);
+  if (policy.promptEvaluationMode === "pdd_local") {
+    const ai = await getAiPublicConfiguration(orgId);
+    if (!ai.configured) {
+      throw new WorkspaceSettingsError(
+        "Configure a workspace AI provider before selecting local Prompt Driven evaluation.",
+        409,
+      );
+    }
+  }
   if (workspacePersistenceMode(orgId) === "memory") {
     memoryPolicies.set(orgId, structuredClone(policy));
     return policy;
@@ -80,7 +128,8 @@ export async function updateWorkspacePolicy(
          prompt_draft_mode=$6,prompt_draft_bug_reports=$7,
          prompt_draft_feature_requests=$8,prompt_draft_min_evidence=$9,
          prompt_draft_min_confidence=$10,prompt_draft_notify_in_app=$11,
-         prompt_draft_notify_email=$12,prompt_draft_reviewer_id=$13,updated_at=now()
+         prompt_draft_notify_email=$12,prompt_draft_reviewer_id=$13,
+         prompt_evaluation_mode=$14,updated_at=now()
        WHERE org_id=$1`,
       [
         orgId,
@@ -96,6 +145,7 @@ export async function updateWorkspacePolicy(
         policy.promptDraftPolicy.inAppNotifications,
         policy.promptDraftPolicy.emailNotifications,
         policy.promptDraftPolicy.reviewerId,
+        policy.promptEvaluationMode,
       ],
     );
     if (updated.rowCount !== 1) throw new WorkspaceSettingsError("Workspace settings were not found.", 404);
@@ -108,7 +158,7 @@ export async function updateWorkspacePolicy(
         orgId,
         actor.actorId,
         actor.actorName,
-        `Updated workspace policy; prompt drafting is ${policy.promptDraftPolicy.mode}`,
+        `Updated workspace policy to ${policy.autonomyLevel}; prompt drafting is ${policy.promptDraftPolicy.mode}; prompt evaluation is ${policy.promptEvaluationMode}`,
         `${actor.traceId}_workspace_policy`,
       ],
     );

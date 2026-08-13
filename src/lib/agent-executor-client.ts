@@ -3,24 +3,50 @@ import {
   createRepositoryArchiveUrl,
 } from "./github-agent-publisher";
 import type { AgentRunExecutionContext } from "./engineering-workflow-repository";
+import {
+  executionProfileExecutor,
+  sanitizeExecutionProfileConfig,
+} from "./execution-profile";
+import { dispatchTenkiGithubActionsRun } from "./tenki-github-actions-executor";
 
-function configuration(): { url: string; secret: string; callbackBaseUrl: string } | null {
+function callbackConfiguration(): { callbackBaseUrl: string } | null {
+  const callbackBaseUrl = process.env.CLOSESPAN_INTERNAL_BASE_URL?.trim().replace(/\/$/, "");
+  return callbackBaseUrl ? { callbackBaseUrl } : null;
+}
+
+function sandboxConfiguration(): { url: string; secret: string; callbackBaseUrl: string } | null {
   const url = process.env.AGENT_EXECUTOR_URL?.trim().replace(/\/$/, "");
   const secret = process.env.AGENT_EXECUTOR_SHARED_SECRET?.trim();
-  const callbackBaseUrl = process.env.CLOSESPAN_INTERNAL_BASE_URL?.trim().replace(/\/$/, "");
-  if (!url || !secret || !callbackBaseUrl) return null;
-  return { url, secret, callbackBaseUrl };
+  const callback = callbackConfiguration();
+  if (!url || !secret || !callback) return null;
+  return { url, secret, ...callback };
 }
 
 export function assertAgentExecutorConfigured(): void {
-  if (!configuration())
-    throw new Error("AGENT_EXECUTOR_URL, AGENT_EXECUTOR_SHARED_SECRET, and CLOSESPAN_INTERNAL_BASE_URL are required for live coding runs");
+  if (!callbackConfiguration()) {
+    throw new Error("CLOSESPAN_INTERNAL_BASE_URL is required for live coding runs");
+  }
+  if (!sandboxConfiguration() && process.env.TENKI_GITHUB_ACTIONS_ENABLED !== "true") {
+    throw new Error("Configure AGENT_EXECUTOR_URL or enable Tenki GitHub Actions execution");
+  }
 }
 
 export async function dispatchAgentRun(context: AgentRunExecutionContext): Promise<void> {
-  const config = configuration();
+  const callback = callbackConfiguration();
+  const profile = sanitizeExecutionProfileConfig(context.executionProfileSnapshot.config);
+  if (executionProfileExecutor(profile).kind === "tenki_github_actions") {
+    if (!callback) assertAgentExecutorConfigured();
+    await dispatchTenkiGithubActionsRun(
+      context,
+      callback!.callbackBaseUrl,
+    );
+    return;
+  }
+  const config = sandboxConfiguration();
   if (!config) {
-    if (process.env.APP_MODE === "production") assertAgentExecutorConfigured();
+    if (process.env.APP_MODE === "production") {
+      throw new Error("AGENT_EXECUTOR_URL is required for Tenki Sandbox coding runs");
+    }
     return;
   }
   const archiveUrl = await createRepositoryArchiveUrl(context);

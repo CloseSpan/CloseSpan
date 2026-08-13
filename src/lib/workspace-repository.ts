@@ -9,6 +9,12 @@ import { getIntegrationExperience } from "./integration-ui";
 import { workspacePersistenceMode } from "./workspace-persistence";
 import { defaultPromptDraftPolicy, type PromptDraftPolicy } from "./prompt-draft-policy";
 import { getMemoryWorkspacePolicy } from "./workspace-settings-repository";
+import { normalizeAutonomyLevel, type AutonomyLevel } from "./autonomy-policy";
+import {
+  DEFAULT_PROMPT_EVALUATION_MODE,
+  normalizePromptEvaluationMode,
+  type PromptEvaluationMode,
+} from "./prompt-evaluation-policy";
 
 export interface IntegrationView { id: string; name: string; category: string; state: string; lastSync: string | null; dataScope: string; permissions: string[] }
 export interface InvestigationQueueItem { id: string; problemId: string; title: string; status: string }
@@ -27,11 +33,12 @@ export interface CustomerView {
   sourceNames: string[];
 }
 export interface SettingsView {
-  autonomyLevel: string; piiRedaction: boolean; retentionDays: number; priorityWeights: Record<string,number>;
+  autonomyLevel: AutonomyLevel; piiRedaction: boolean; retentionDays: number; priorityWeights: Record<string,number>;
   monthlyModelBudget: number; usedModelCost: number; hardStop: boolean; planName: string; planPrice: string;
   ai: AiPublicConfiguration & { promptVersion:string; lastRunStatus:string | null; lastRunAt:string | null };
   members: Array<{ id: string; name: string; email: string; role: string; team: string }>;
   promptDraftPolicy: PromptDraftPolicy;
+  promptEvaluationMode: PromptEvaluationMode;
 }
 export interface WorkspaceData {
   orgId: string; feedback: FeedbackItem[]; primaryProblem: ProductProblem | null; recommendation: Recommendation | null;
@@ -55,7 +62,7 @@ export function createDefaultWorkspaceSettings(
   members: SettingsView["members"] = [],
 ): SettingsView {
   return {
-    autonomyLevel: "Observe",
+    autonomyLevel: "Execute with approval",
     piiRedaction: true,
     retentionDays: 365,
     priorityWeights: { ...defaultPriorityWeights },
@@ -67,6 +74,7 @@ export function createDefaultWorkspaceSettings(
     ai,
     members,
     promptDraftPolicy: structuredClone(defaultPromptDraftPolicy),
+    promptEvaluationMode: DEFAULT_PROMPT_EVALUATION_MODE,
   };
 }
 
@@ -101,7 +109,7 @@ async function memoryData(orgId: string): Promise<WorkspaceData> {
   return { orgId, feedback: seedFeedback, primaryProblem: seedProblem, recommendation: seedRecommendation, analytics, integrations: memoryIntegrations,
     investigationQueue: [{id:"inv_sso",problemId:"prob_sso",title:"SAML role mapping",status:"Running"},{id:"inv_filters",problemId:"prob_filters",title:"Saved filter regression",status:"Queued"},{id:"inv_invites",problemId:"prob_invites",title:"Invite confirmation",status:"Needs context"}],
     customers: [...new Map(seedFeedback.map((item,index) => [item.customer,{id:item.id,name:item.customer,tier:item.accountTier,arr:item.arr,arrSource:"demo",customerSince:2021+index,customerSinceKnown:true,signals:1,openProblems:item.problemId?1:0,churnRisk:index<2?"Elevated":"Low",origin:"demo" as const,sourceNames:[]}])).values()],
-    settings: { autonomyLevel:savedPolicy?.autonomyLevel ?? "Execute with approval",piiRedaction:savedPolicy?.piiRedaction ?? true,retentionDays:savedPolicy?.retentionDays ?? 365,priorityWeights:savedPolicy?.priorityWeights ?? Object.fromEntries(seedProblem.impactFactors.map((factor) => [factor.key,factor.weight])),monthlyModelBudget:500,usedModelCost:128,hardStop:true,planName:"Sandbox",planPrice:"$0",ai:{...ai,promptVersion:"v1",lastRunStatus:null,lastRunAt:null},members:[{id:"user_avery",name:"Avery Chen",email:"avery@example.com",role:"Admin",team:"Product"}],promptDraftPolicy:savedPolicy?.promptDraftPolicy ?? structuredClone(defaultPromptDraftPolicy) } };
+    settings: { autonomyLevel:savedPolicy?.autonomyLevel ?? "Execute with approval",piiRedaction:savedPolicy?.piiRedaction ?? true,retentionDays:savedPolicy?.retentionDays ?? 365,priorityWeights:savedPolicy?.priorityWeights ?? Object.fromEntries(seedProblem.impactFactors.map((factor) => [factor.key,factor.weight])),monthlyModelBudget:500,usedModelCost:128,hardStop:true,planName:"Sandbox",planPrice:"$0",ai:{...ai,promptVersion:"v1",lastRunStatus:null,lastRunAt:null},members:[{id:"user_avery",name:"Avery Chen",email:"avery@example.com",role:"Admin",team:"Product"}],promptDraftPolicy:savedPolicy?.promptDraftPolicy ?? structuredClone(defaultPromptDraftPolicy),promptEvaluationMode:savedPolicy?.promptEvaluationMode ?? DEFAULT_PROMPT_EVALUATION_MODE } };
 }
 
 interface PrimaryProblemRow {
@@ -262,7 +270,7 @@ export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
           )
         )
       ORDER BY (a.arr_source='unknown'),a.arr DESC,a.name,a.id`,[orgId]),
-    pool.query<{ autonomy_level:string; pii_redaction:boolean; retention_days:number; priority_weights:Record<string,number>; monthly_model_budget:number; used_model_cost:number; hard_stop:boolean; plan_name:string; plan_price:string; prompt_draft_mode:PromptDraftPolicy["mode"]; prompt_draft_bug_reports:boolean; prompt_draft_feature_requests:boolean; prompt_draft_min_evidence:number; prompt_draft_min_confidence:number; prompt_draft_notify_in_app:boolean; prompt_draft_notify_email:boolean; prompt_draft_reviewer_id:string | null }>("SELECT * FROM workspace_settings WHERE org_id=$1",[orgId]),
+    pool.query<{ autonomy_level:string; pii_redaction:boolean; retention_days:number; priority_weights:Record<string,number>; monthly_model_budget:number; used_model_cost:number; hard_stop:boolean; plan_name:string; plan_price:string; prompt_draft_mode:PromptDraftPolicy["mode"]; prompt_draft_bug_reports:boolean; prompt_draft_feature_requests:boolean; prompt_draft_min_evidence:number; prompt_draft_min_confidence:number; prompt_draft_notify_in_app:boolean; prompt_draft_notify_email:boolean; prompt_draft_reviewer_id:string | null; prompt_evaluation_mode:string }>("SELECT * FROM workspace_settings WHERE org_id=$1",[orgId]),
     pool.query<{ id:string; display_name:string; email:string; role:string; team:string }>("SELECT id,display_name,email,role,team FROM workspace_members WHERE org_id=$1 ORDER BY display_name",[orgId]),
     pool.query<{ version:number }>("SELECT version FROM prompt_versions WHERE org_id=$1 AND name='feedback-intelligence' AND active=true",[orgId]),
     pool.query<{ status:string; started_at:Date }>("SELECT status,started_at FROM model_runs WHERE org_id=$1 ORDER BY started_at DESC LIMIT 1",[orgId]),
@@ -283,7 +291,7 @@ export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
   };
   const settings = settingsRow
     ? {
-        autonomyLevel:settingsRow.autonomy_level,
+        autonomyLevel:normalizeAutonomyLevel(settingsRow.autonomy_level),
         piiRedaction:settingsRow.pii_redaction,
         retentionDays:settingsRow.retention_days,
         priorityWeights:settingsRow.priority_weights,
@@ -302,6 +310,9 @@ export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
           emailNotifications: settingsRow.prompt_draft_notify_email,
           reviewerId: settingsRow.prompt_draft_reviewer_id,
         },
+        promptEvaluationMode: normalizePromptEvaluationMode(
+          settingsRow.prompt_evaluation_mode,
+        ),
         ai:aiSettings,
         members,
       }

@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { authorizeAdminMutation, errorResponse, noStoreHeaders } from "@/lib/request-security";
 import { updateWorkspacePolicy } from "@/lib/workspace-settings-repository";
 import { createNextAutomatedPromptDraft } from "@/lib/automated-prompt-draft-repository";
 import { deliverPromptReviewEmails } from "@/lib/prompt-review-email";
+import { reconcileFullAutonomy } from "@/lib/autonomy-automation-repository";
 
 export async function PUT(request: NextRequest) {
   try {
@@ -17,6 +18,9 @@ export async function PUT(request: NextRequest) {
     const emailDelivery = policy.promptDraftPolicy.emailNotifications
       ? await deliverPromptReviewEmails(context.orgId)
       : undefined;
+    if (policy.autonomyLevel === "Full autonomy") {
+      after(() => reconcileFullAutonomy(context.orgId).catch(() => undefined));
+    }
     return NextResponse.json({ policy, promptDraft, emailDelivery }, { headers: noStoreHeaders });
   } catch (error) {
     return errorResponse(error);

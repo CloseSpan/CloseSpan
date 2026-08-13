@@ -1,27 +1,249 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { AlertCircle, CheckCircle2, ExternalLink, MonitorCheck, ShieldCheck } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Circle,
+  ExternalLink,
+  LoaderCircle,
+  MonitorCheck,
+  ShieldCheck,
+} from "lucide-react";
 import type {
   EngineeringWorkflowView,
   ImplementationPromptView,
   UserStoryPromptTestView,
 } from "@/lib/engineering-workflow-repository";
-import type { PddPromptReview } from "@/lib/pdd-prompt-review";
 import type { PddPromptTimingSummary } from "@/lib/pdd-prompt-timing-repository";
 import { userStoryInputIssue } from "@/lib/user-story-prompt-test";
+import {
+  autonomyCapabilities,
+  type AutonomyLevel,
+} from "@/lib/autonomy-policy";
+import {
+  promptPreparationLabel,
+  useBackgroundPromptTests,
+} from "./background-prompt-tests";
 import { RepositoryMatchReview } from "./repository-match-review";
-
-interface AppliedPromptComparison {
-  agentPrompt: ImplementationPromptView;
-  improvedPrompt: ImplementationPromptView;
-  testedUserStory: string;
-}
 
 export interface StructuredPddChange {
   summary: string;
   steps: string[];
+}
+
+interface PromptComparisonSnapshot {
+  tested: ImplementationPromptView;
+  proposed: {
+    revision: number;
+    content: string;
+    contentHash: string | null;
+  };
+  applied: boolean;
+}
+
+export type PreparationStepState = "complete" | "current" | "upcoming";
+
+export interface PreparationStep {
+  id: "repository" | "profile" | "prompt" | "alignment" | "acceptance" | "approval";
+  label: string;
+  state: PreparationStepState;
+}
+
+export function EngineeringPreparationSteps({
+  steps,
+  busy = false,
+}: {
+  steps: PreparationStep[];
+  busy?: boolean;
+}) {
+  return (
+    <ol className="engineering-preparation-steps">
+      {steps.map((step) => (
+        <li
+          className={`engineering-preparation-step is-${step.state}`}
+          aria-current={step.state === "current" ? "step" : undefined}
+          key={step.id}
+        >
+          <span className="engineering-preparation-step-icon" aria-hidden="true">
+            {step.state === "complete" ? (
+              <CheckCircle2 size={18} />
+            ) : step.state === "current" && busy ? (
+              <LoaderCircle className="spin" size={18} />
+            ) : step.state === "current" ? (
+              <MonitorCheck size={18} />
+            ) : (
+              <Circle size={18} />
+            )}
+          </span>
+          <span>
+            <small>
+              {step.state === "complete"
+                ? "Complete"
+                : step.state === "current"
+                  ? "Current"
+                  : "Upcoming"}
+            </small>
+            <strong>{step.label}</strong>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function engineeringPreparationSteps(input: {
+  repositoryProfileReady: boolean;
+  promptReady: boolean;
+  promptAligned: boolean;
+  acceptanceReady: boolean;
+  approvalReady: boolean;
+}): PreparationStep[] {
+  const checkpoints = [
+    { id: "repository" as const, label: "Repository confirmed", reached: input.repositoryProfileReady },
+    { id: "profile" as const, label: "Execution profile active", reached: input.repositoryProfileReady },
+    { id: "prompt" as const, label: "Implementation prompt ready", reached: input.promptReady },
+    { id: "alignment" as const, label: "Prompt alignment passed", reached: input.promptAligned },
+    { id: "acceptance" as const, label: "Acceptance tests generated", reached: input.acceptanceReady },
+    { id: "approval" as const, label: "Action approval ready", reached: input.approvalReady },
+  ];
+  let waitingForFirstIncomplete = true;
+  let previousStepsComplete = true;
+  return checkpoints.map((checkpoint) => {
+    const complete = previousStepsComplete && checkpoint.reached;
+    if (!complete) previousStepsComplete = false;
+    if (complete) return { ...checkpoint, state: "complete" };
+    if (waitingForFirstIncomplete) {
+      waitingForFirstIncomplete = false;
+      return { ...checkpoint, state: "current" };
+    }
+    return { ...checkpoint, state: "upcoming" };
+  });
+}
+
+type PromptViewMode = "english" | "prompt";
+
+function PromptViewSwitcher({
+  ariaLabel,
+  english,
+  prompt,
+}: {
+  ariaLabel: string;
+  english: ReactNode;
+  prompt: string;
+}) {
+  const [mode, setMode] = useState<PromptViewMode>("english");
+  const id = useId();
+  const englishPanelId = `${id}-english`;
+  const promptPanelId = `${id}-prompt`;
+
+  return (
+    <section className="prompt-viewer" aria-label={ariaLabel}>
+      <div className="prompt-view-switcher" role="group" aria-label={`${ariaLabel} view`}>
+        <button
+          type="button"
+          aria-pressed={mode === "english"}
+          aria-controls={englishPanelId}
+          className={mode === "english" ? "is-active" : undefined}
+          onClick={() => setMode("english")}
+        >
+          English
+        </button>
+        <button
+          type="button"
+          aria-pressed={mode === "prompt"}
+          aria-controls={promptPanelId}
+          className={mode === "prompt" ? "is-active" : undefined}
+          onClick={() => setMode("prompt")}
+        >
+          .prompt
+        </button>
+      </div>
+      <div
+        id={englishPanelId}
+        className="prompt-view-english"
+        hidden={mode !== "english"}
+      >
+        {english}
+      </div>
+      <pre
+        id={promptPanelId}
+        className="prompt-view-code"
+        hidden={mode !== "prompt"}
+      >
+        {prompt}
+      </pre>
+    </section>
+  );
+}
+
+function TicketEnglishView({
+  specification,
+}: {
+  specification: NonNullable<EngineeringWorkflowView["specification"]>;
+}) {
+  return (
+    <div className="prompt-english-copy">
+      <p>{specification.userStory}</p>
+      <dl>
+        <div>
+          <dt>Current behavior</dt>
+          <dd>{specification.currentBehavior}</dd>
+        </div>
+        <div>
+          <dt>Expected behavior</dt>
+          <dd>{specification.expectedBehavior}</dd>
+        </div>
+      </dl>
+      {specification.acceptanceCriteria.length > 0 && (
+        <section>
+          <h4>Acceptance criteria</h4>
+          <ol>
+            {specification.acceptanceCriteria.map((criterion) => (
+              <li key={criterion.id}>{criterion.statement}</li>
+            ))}
+          </ol>
+        </section>
+      )}
+      {specification.businessOutcome && (
+        <p><strong>Outcome:</strong> {specification.businessOutcome}</p>
+      )}
+    </div>
+  );
+}
+
+function PddResultEnglishView({
+  aligned,
+  changes,
+  summary,
+}: {
+  aligned: boolean;
+  changes: StructuredPddChange[];
+  summary: string | null | undefined;
+}) {
+  return (
+    <div className="prompt-english-copy">
+      {summary && <p>{summary}</p>}
+      {changes.length > 0 ? (
+        <section>
+          <h4>What PDD recommends</h4>
+          <ol>
+            {changes.map((change, index) => (
+              <li key={`${index}-${change.summary}`}>
+                {change.summary}
+                {change.steps.length > 0 && (
+                  <ul>{change.steps.map((step) => <li key={step}>{step}</li>)}</ul>
+                )}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : aligned ? (
+        <p>The prompt matches the user story and is ready for the executable acceptance-contract step.</p>
+      ) : null}
+    </div>
+  );
 }
 
 function splitNumberedPddChanges(change: string): string[] {
@@ -73,6 +295,12 @@ export function structurePddChanges(changes: string[]): StructuredPddChange[] {
   });
 }
 
+export function pddRecommendationIsComplete(change: string): boolean {
+  const trimmed = change.trimEnd();
+  if (!trimmed || trimmed.endsWith("...") || trimmed.endsWith("…")) return false;
+  return /[.!?;:)}\]"'`]$/.test(trimmed);
+}
+
 export function estimatedPddProgress(
   elapsedMs: number,
   estimatedDurationMs: number,
@@ -95,30 +323,67 @@ export function formatPddDuration(durationMs: number): string {
     : `${minutes}m ${remainingSeconds}s`;
 }
 
-async function request<T>(
-  path: string,
-  orgId: string,
-  body?: unknown,
-): Promise<T> {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-org-id": orgId,
-      "idempotency-key": crypto.randomUUID(),
-      "x-request-id": crypto.randomUUID(),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const payload = (await response.json()) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error ?? "The prompt test failed");
-  return payload;
+export function shouldAutomaticallyPreparePrompt(input: {
+  autonomyLevel: AutonomyLevel;
+  workflow: EngineeringWorkflowView;
+  userStory: string;
+  ticketContextMissing: boolean;
+  hasBackgroundTask: boolean;
+}): boolean {
+  const prompt = input.workflow.prompt;
+  const hasReachedExecution = Boolean(input.workflow.approval || input.workflow.run);
+  const hasActiveContract = Boolean(
+    input.workflow.verification
+    && !["Failed", "Superseded"].includes(input.workflow.verification.status),
+  );
+  return Boolean(
+    autonomyCapabilities(input.autonomyLevel).preparePrompt
+    && prompt
+    && ["Draft", "Ready"].includes(prompt.status)
+    && !userStoryInputIssue(input.userStory)
+    && !input.ticketContextMissing
+    && !input.hasBackgroundTask
+    && !hasReachedExecution
+    && !hasActiveContract
+    && !input.workflow.promptEvaluation?.automaticAttempted,
+  );
+}
+
+export function shouldOfferManualPromptRevision(input: {
+  triggerSource?: "automatic" | "manual";
+  verdict?: "Passed" | "Needs revision";
+  currentPromptHash?: string;
+  evaluatedPromptHash?: string;
+  suggestedRevision?: string | null;
+  revisionReceipt?: string | null;
+}): boolean {
+  return Boolean(
+    input.triggerSource === "manual"
+    && input.verdict === "Needs revision"
+    && input.currentPromptHash
+    && input.currentPromptHash === input.evaluatedPromptHash
+    && input.suggestedRevision
+    && input.revisionReceipt,
+  );
+}
+
+export function pddSuggestedRevisionDiffers(
+  currentPrompt: string | undefined,
+  suggestedRevision: string | null | undefined,
+): boolean {
+  return Boolean(
+    currentPrompt
+    && suggestedRevision
+    && currentPrompt.trim() !== suggestedRevision.trim(),
+  );
 }
 
 export function EngineeringTicketPanel({
   orgId,
   problemId,
   initialWorkflow,
+  autonomyLevel,
+  initialRepositoryProfileReady = true,
   initialPddTiming = {
     estimatedDurationMs: 45_000,
     averageDurationMs: null,
@@ -128,38 +393,59 @@ export function EngineeringTicketPanel({
   orgId: string;
   problemId: string;
   initialWorkflow: EngineeringWorkflowView;
+  autonomyLevel: AutonomyLevel;
+  initialRepositoryProfileReady?: boolean;
   initialPddTiming?: PddPromptTimingSummary;
 }) {
-  const [workflow, setWorkflow] = useState(initialWorkflow);
+  const [storedWorkflow, setWorkflow] = useState(initialWorkflow);
+  const [repositoryProfileReady, setRepositoryProfileReady] = useState(
+    initialRepositoryProfileReady,
+  );
   const [userStory, setUserStory] = useState(
     initialWorkflow.specification?.userStory ?? "",
   );
   const [storyTest, setStoryTest] = useState<UserStoryPromptTestView>();
-  const [promptEvaluation, setPromptEvaluation] = useState<PddPromptReview>();
-  const [busy, setBusy] = useState(false);
-  const [pddProgress, setPddProgress] = useState(0);
-  const [pddTiming, setPddTiming] = useState(initialPddTiming);
-  const [pddBusy, setPddBusy] = useState(false);
+  const [storedError, setError] = useState<string>();
   const [revisionBusy, setRevisionBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const [notice, setNotice] = useState<string>();
-  const [pddProfileReady, setPddProfileReady] = useState(false);
-  const [appliedPromptComparison, setAppliedPromptComparison] = useState<AppliedPromptComparison>();
+  const [recentPromptComparison, setRecentPromptComparison] =
+    useState<PromptComparisonSnapshot>();
+  const { tasks, startPromptTest, discardProblemTasks } = useBackgroundPromptTests();
+  const backgroundPromptTask = tasks.find((task) => task.problemId === problemId);
+  const backgroundPromptResult = backgroundPromptTask?.status === "succeeded"
+    ? backgroundPromptTask.result
+    : undefined;
+  const workflow = backgroundPromptResult?.workflow ?? storedWorkflow;
+  const promptEvaluation = backgroundPromptResult?.promptEvaluation
+    ?? workflow.promptEvaluation?.review
+    ?? undefined;
+  const displayedStoryTest = backgroundPromptResult?.storyTest ?? storyTest;
+  const pddTiming = backgroundPromptResult?.timing ?? initialPddTiming;
+  const error = backgroundPromptTask?.status === "failed"
+    ? backgroundPromptTask.error ?? "The story could not be tested against the prompt."
+    : workflow.promptEvaluation?.status === "Failed"
+      ? workflow.promptEvaluation.failureMessage ?? "The automatic PDD check stopped. Run it manually when you are ready."
+      : storedError;
+  const acceptancePreparationBlocker =
+    !workflow.verification && !workflow.approval && !workflow.run
+      ? workflow.promptEvaluation?.acceptancePreparationFailureMessage ?? null
+      : null;
+  const durablePromptEvaluationRunning = workflow.promptEvaluation?.status === "Running";
+  const busy = backgroundPromptTask?.status === "running" || durablePromptEvaluationRunning;
+  const pddProgress = backgroundPromptTask?.progress ?? (durablePromptEvaluationRunning ? 4 : 0);
+  const preparationPhase = backgroundPromptTask?.phase ?? "evaluating";
+  const repositoryNeedsReview = !repositoryProfileReady || Boolean(
+    (error ?? acceptancePreparationBlocker)
+      && /repository|execution profile|workspace root/i.test(
+        error ?? acceptancePreparationBlocker ?? "",
+      ),
+  );
 
   useEffect(() => {
-    if (!busy) return;
-    const startedAt = performance.now();
-    const timer = window.setInterval(() => {
-      setPddProgress(estimatedPddProgress(
-        performance.now() - startedAt,
-        pddTiming.estimatedDurationMs,
-      ));
-    }, 200);
-    return () => window.clearInterval(timer);
-  }, [busy, pddTiming.estimatedDurationMs]);
-
-  useEffect(() => {
-    if (!workflow.verification || !["Queued", "Generating tests"].includes(workflow.verification.status)) return;
+    const contractRunning = Boolean(
+      workflow.verification
+      && ["Queued", "Generating tests"].includes(workflow.verification.status),
+    );
+    if (!contractRunning && !durablePromptEvaluationRunning) return;
     const timer = window.setInterval(async () => {
       try {
         const response = await fetch(`/api/problems/${problemId}/engineering`, {
@@ -184,76 +470,83 @@ export function EngineeringTicketPanel({
       }
     }, 2_000);
     return () => window.clearInterval(timer);
-  }, [orgId, problemId, workflow.verification]);
+  }, [durablePromptEvaluationRunning, orgId, problemId, workflow.verification]);
 
-  async function testAgainstPrompt() {
+  function testAgainstPrompt() {
     const issue = userStoryInputIssue(userStory);
     if (issue) {
       setStoryTest(undefined);
       setError(issue);
       return;
     }
-    setBusy(true);
     setError(undefined);
-    setNotice(undefined);
+    setRecentPromptComparison(undefined);
     setStoryTest(undefined);
-    setPromptEvaluation(undefined);
-    setPddProgress(4);
-    let nextTiming: PddPromptTimingSummary | undefined;
-    try {
-      const result = await request<{
-        workflow: EngineeringWorkflowView;
-        promptEvaluation: PddPromptReview;
-        timing: PddPromptTimingSummary & { durationMs: number };
-      }>(
-        `/api/problems/${problemId}/engineering/test-story`,
-        orgId,
-        { userStory: userStory.trim() },
-      );
-      setWorkflow(result.workflow);
-      setPromptEvaluation(result.promptEvaluation);
-      nextTiming = result.timing;
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "The story could not be tested against the prompt.",
-      );
-    } finally {
-      setPddProgress(100);
-      await new Promise((resolve) => window.setTimeout(resolve, 280));
-      setBusy(false);
-      if (nextTiming) setPddTiming(nextTiming);
-    }
+    startPromptTest({
+      problemId,
+      userStory: userStory.trim(),
+      estimatedDurationMs: pddTiming.estimatedDurationMs,
+      triggerSource: "manual",
+    });
   }
 
   async function applyImprovedPrompt() {
-    if (!promptEvaluation?.suggestedRevision || !promptEvaluation.revisionReceipt) return;
-    const agentPrompt = workflow.prompt;
+    const result = backgroundPromptResult;
+    const review = result?.promptEvaluation;
+    if (
+      !result
+      || backgroundPromptTask?.triggerSource !== "manual"
+      || review?.verdict !== "Needs revision"
+      || !review.suggestedRevision
+      || !review.revisionReceipt
+    ) return;
+
     setRevisionBusy(true);
     setError(undefined);
+    const testedPrompt = workflow.prompt;
     try {
-      const result = await request<{ workflow: EngineeringWorkflowView }>(
+      const response = await fetch(
         `/api/problems/${problemId}/engineering/apply-pdd-revision`,
-        orgId,
         {
-          userStory: userStory.trim(),
-          currentPromptHash: promptEvaluation.promptHash,
-          revisedPrompt: promptEvaluation.suggestedRevision,
-          revisionReceipt: promptEvaluation.revisionReceipt,
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-org-id": orgId,
+            "idempotency-key": crypto.randomUUID(),
+            "x-request-id": crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            evaluationId: result.evaluationId,
+            userStory: userStory.trim(),
+            currentPromptHash: review.promptHash,
+            revisedPrompt: review.suggestedRevision,
+            revisionReceipt: review.revisionReceipt,
+          }),
         },
       );
-      setWorkflow(result.workflow);
-      if (agentPrompt && result.workflow.prompt) {
-        setAppliedPromptComparison({
-          agentPrompt,
-          improvedPrompt: result.workflow.prompt,
-          testedUserStory: userStory.trim(),
-        });
+      const payload = await response.json() as {
+        workflow?: EngineeringWorkflowView;
+        error?: string;
+      };
+      if (!response.ok || !payload.workflow) {
+        throw new Error(payload.error ?? "The improved prompt could not be applied.");
       }
-      setPromptEvaluation(undefined);
+      const appliedPrompt = payload.workflow.prompt;
+      if (!testedPrompt || !appliedPrompt || appliedPrompt.contentHash === testedPrompt.contentHash) {
+        throw new Error("PDD did not produce a different immutable prompt revision. Test the prompt again before applying it.");
+      }
+      setRecentPromptComparison({
+        tested: testedPrompt,
+        proposed: {
+          revision: appliedPrompt.revision,
+          content: appliedPrompt.content,
+          contentHash: appliedPrompt.contentHash,
+        },
+        applied: true,
+      });
+      setWorkflow(payload.workflow);
       setStoryTest(undefined);
-      setNotice("Improved prompt applied. Test it with PDD again before approval.");
+      discardProblemTasks(problemId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The improved prompt could not be applied.");
     } finally {
@@ -261,52 +554,83 @@ export function EngineeringTicketPanel({
     }
   }
 
-  async function generateAcceptanceTests() {
-    setPddBusy(true);
-    setError(undefined);
-    setStoryTest(undefined);
-    try {
-      const result = await request<{
-        workflow: EngineeringWorkflowView;
-        storyTest: UserStoryPromptTestView;
-      }>(
-        `/api/problems/${problemId}/engineering/generate-acceptance`,
-        orgId,
-        {
-          userStory: userStory.trim(),
-          alignmentReceipt: promptEvaluation?.alignmentReceipt,
-        },
-      );
-      setWorkflow(result.workflow);
-      setStoryTest(result.storyTest);
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Repository acceptance tests could not be generated.",
-      );
-    } finally {
-      setPddBusy(false);
-    }
-  }
-
   const promptStatus = workflow.prompt?.status ?? "No prompt yet";
+  const preparesPromptAutomatically = autonomyCapabilities(autonomyLevel).preparePrompt;
   const verification = workflow.verification;
   const verificationReady = verification?.status === "Ready for approval";
   const ticketContextMissing = !workflow.specification || !workflow.readiness.ready;
-  const pddReady = pddProfileReady && !ticketContextMissing;
   const canTestPrompt = Boolean(workflow.prompt) || Boolean(
     workflow.specification && workflow.readiness.ready,
   );
   const promptAligned = promptEvaluation?.verdict === "Passed";
-  const recommendedChanges = promptEvaluation
+  const incompletePromptEvaluation = Boolean(
+    promptEvaluation?.verdict === "Needs revision"
+    && promptEvaluation.changes.some((change) => !pddRecommendationIsComplete(change)),
+  );
+  const recommendedChanges = promptEvaluation && !incompletePromptEvaluation
     ? structurePddChanges(promptEvaluation.changes)
     : [];
+  const suggestedRevisionDiffers = pddSuggestedRevisionDiffers(
+    workflow.prompt?.content,
+    promptEvaluation?.suggestedRevision,
+  );
+  const canApplyImprovedPrompt = !incompletePromptEvaluation && shouldOfferManualPromptRevision({
+    triggerSource: backgroundPromptTask?.triggerSource,
+    verdict: backgroundPromptResult?.promptEvaluation.verdict,
+    currentPromptHash: workflow.prompt?.contentHash,
+    evaluatedPromptHash: backgroundPromptResult?.promptEvaluation.promptHash,
+    suggestedRevision: backgroundPromptResult?.promptEvaluation.suggestedRevision,
+    revisionReceipt: backgroundPromptResult?.promptEvaluation.revisionReceipt,
+  }) && suggestedRevisionDiffers;
+  const promptEvaluationSummary = incompletePromptEvaluation
+    ? "The runner returned an incomplete recommendation. Run PDD again to rebuild it from the complete generated contract. This partial result cannot be applied."
+    : !promptAligned && recommendedChanges.length > 0
+      ? `PDD found ${recommendedChanges.length} ${recommendedChanges.length === 1 ? "change" : "changes"} to make before approval.`
+      : promptEvaluation?.summary;
   const displayedPromptStatus = promptEvaluation?.verdict ?? promptStatus;
-  const currentPromptLabel = appliedPromptComparison
-    && workflow.prompt?.id === appliedPromptComparison.improvedPrompt.id
-    ? "Current improved prompt"
-    : "Agent-written prompt";
+  const currentPromptLabel = "Agent-written prompt";
+  const pendingPromptComparison: PromptComparisonSnapshot | undefined =
+    promptEvaluation?.verdict === "Needs revision"
+    && workflow.prompt
+    && promptEvaluation.promptHash === workflow.prompt.contentHash
+    && promptEvaluation.suggestedRevision
+      ? {
+          tested: workflow.prompt,
+          proposed: {
+            revision: workflow.prompt.revision + 1,
+            content: promptEvaluation.suggestedRevision,
+            contentHash: null,
+          },
+          applied: false,
+        }
+      : undefined;
+  const promptComparison = recentPromptComparison ?? pendingPromptComparison;
+  useEffect(() => {
+    if (!repositoryProfileReady) return;
+    if (!shouldAutomaticallyPreparePrompt({
+      autonomyLevel,
+      workflow,
+      userStory,
+      ticketContextMissing,
+      hasBackgroundTask: Boolean(backgroundPromptTask),
+    })) return;
+    startPromptTest({
+      problemId,
+      userStory: userStory.trim(),
+      estimatedDurationMs: pddTiming.estimatedDurationMs,
+      triggerSource: "automatic",
+    });
+  }, [
+    autonomyLevel,
+    backgroundPromptTask,
+    pddTiming.estimatedDurationMs,
+    problemId,
+    repositoryProfileReady,
+    startPromptTest,
+    ticketContextMissing,
+    userStory,
+    workflow,
+  ]);
 
   return (
     <section className="card section-gap" id="engineering-ticket">
@@ -314,8 +638,9 @@ export function EngineeringTicketPanel({
         <div>
           <h2>Improve the suggested prompt</h2>
           <p className="subtle">
-            PDD compares the agent&apos;s prompt with your user story and identifies
-            what to change. No repository or Tenki VM runs here.
+            {preparesPromptAutomatically
+              ? "CloseSpan validates this immutable prompt once, applies at most one bounded improvement, then leaves the saved result ready for review."
+              : "Review the immutable suggested prompt, then run PDD manually when you are ready to evaluate it."}
           </p>
         </div>
         <span
@@ -328,8 +653,13 @@ export function EngineeringTicketPanel({
       <div className="card-body detail-stack">
         {workflow.prompt?.status === "Draft" && (
           <div className="callout" role="status">
-            <div className="callout-title">Agent-created draft ready for review</div>
-            <p className="subtle">{workflow.prompt.draftReason}</p>
+            <div className="callout-title">Agent-created prompt queued for PDD</div>
+            <p className="subtle">
+              {preparesPromptAutomatically
+                ? "CloseSpan will validate this draft once, apply at most one immutable improvement, and will not restart the check when you revisit this page."
+                : "This autonomy policy leaves prompt evaluation under your control. Choose Test with PDD when you are ready."}
+            </p>
+            {workflow.prompt.draftReason && <p className="subtle">{workflow.prompt.draftReason}</p>}
             {workflow.prompt.reviewerId && (
               <p className="subtle">
                 Reviewer: {workflow.prompt.reviewerName ?? workflow.prompt.reviewerId}
@@ -339,24 +669,227 @@ export function EngineeringTicketPanel({
             )}
           </div>
         )}
-        {workflow.prompt && (
+        {workflow.prompt?.evidenceBinding?.repositoryContext && (
+          <section className="prompt-evidence-binding" aria-label="Prompt evidence provenance">
+            <div>
+              <ShieldCheck size={16} aria-hidden="true" />
+              <span>
+                <strong>Exact repository context</strong>
+                {" · "}{workflow.prompt.evidenceBinding.repositoryContext.repository}
+                @{workflow.prompt.evidenceBinding.repositoryContext.commitSha.slice(0, 12)}
+              </span>
+            </div>
+            <div>
+              <span>
+                {workflow.prompt.evidenceBinding.repositoryContext.matchCount} cited source {workflow.prompt.evidenceBinding.repositoryContext.matchCount === 1 ? "match" : "matches"}
+              </span>
+              {workflow.prompt.evidenceBinding.runtimeVerification && (
+                <span className="badge success">
+                  Runtime {workflow.prompt.evidenceBinding.runtimeVerification.outcome.toLowerCase()}
+                </span>
+              )}
+            </div>
+          </section>
+        )}
+        {promptComparison ? (
+          <section
+            className={`prompt-comparison${promptComparison.applied ? " is-applied" : ""}`}
+            aria-labelledby="prompt-comparison-title"
+          >
+            <div className="prompt-comparison-heading">
+              <div className="prompt-comparison-heading-copy">
+                <h3 id="prompt-comparison-title">
+                  {promptComparison.applied
+                    ? "PDD revision applied · Improved prompt is now current"
+                    : "PDD comparison · Review the proposed prompt"}
+                </h3>
+                <p className="subtle">
+                  {promptComparison.applied
+                    ? `Revision ${promptComparison.proposed.revision} replaced the tested revision. Run PDD again only if you want to evaluate this new immutable prompt.`
+                    : "Compare the exact prompt PDD tested with the proposed immutable replacement before applying it."}
+                </p>
+              </div>
+              {!promptComparison.applied && canApplyImprovedPrompt && (
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={revisionBusy}
+                  onClick={applyImprovedPrompt}
+                >
+                  <CheckCircle2 size={14} />
+                  {revisionBusy ? "Applying…" : "Apply improved prompt"}
+                </button>
+              )}
+            </div>
+
+            <div className="prompt-comparison-grid">
+              <article className="prompt-comparison-version">
+                <div className="prompt-comparison-version-heading">
+                  <div>
+                    <h4>Tested prompt · Revision {promptComparison.tested.revision}</h4>
+                  </div>
+                  <span className="badge">SHA {promptComparison.tested.contentHash.slice(0, 10)}</span>
+                </div>
+                <PromptViewSwitcher
+                  ariaLabel={`Tested prompt revision ${promptComparison.tested.revision}`}
+                  english={workflow.specification
+                    ? <TicketEnglishView specification={workflow.specification} />
+                    : <p>This is the exact immutable prompt PDD evaluated.</p>}
+                  prompt={promptComparison.tested.content}
+                />
+              </article>
+
+              <article className={`prompt-comparison-version current${promptComparison.applied ? " applied" : ""}`}>
+                <div className="prompt-comparison-version-heading">
+                  <div>
+                    <h4>
+                      {promptComparison.applied ? "Current prompt" : "Proposed prompt"}
+                      {" · "}Revision {promptComparison.proposed.revision}
+                    </h4>
+                  </div>
+                  <span className={`badge ${promptComparison.applied ? "success" : "brand"}`}>
+                    {promptComparison.applied
+                      ? `SHA ${promptComparison.proposed.contentHash?.slice(0, 10)}`
+                      : "Ready to apply"}
+                  </span>
+                </div>
+                <PromptViewSwitcher
+                  ariaLabel={`${promptComparison.applied ? "Current" : "Proposed"} prompt revision ${promptComparison.proposed.revision}`}
+                  english={(
+                    <PddResultEnglishView
+                      aligned={promptAligned}
+                      changes={recommendedChanges}
+                      summary={promptEvaluationSummary}
+                    />
+                  )}
+                  prompt={promptComparison.proposed.content}
+                />
+              </article>
+            </div>
+
+            {!promptComparison.applied && !suggestedRevisionDiffers && (
+              <div className="callout warning" role="status">
+                <div className="callout-title"><AlertCircle size={14} />Nothing new to apply</div>
+                <p className="subtle">
+                  PDD returned the same prompt content. Run Test with PDD again to create a distinct revision.
+                </p>
+              </div>
+            )}
+
+            {!promptComparison.applied && recommendedChanges.length > 0 && (
+              <section className="prompt-comparison-changes" aria-labelledby="pdd-recommended-changes">
+                <div className="prompt-comparison-changes-heading">
+                  <strong id="pdd-recommended-changes">What PDD changed</strong>
+                  <span className="badge medium">
+                    {recommendedChanges.length} {recommendedChanges.length === 1 ? "change" : "changes"}
+                  </span>
+                </div>
+                <div className="pdd-change-list">
+                  {recommendedChanges.map((structured, index) => (
+                    <article className="pdd-change-card" key={`${index}-${structured.summary}`}>
+                      <span className="pdd-change-number">{index + 1}</span>
+                      <div>
+                        <h4>{structured.summary}</h4>
+                        {structured.steps.length > 0 && (
+                          <ol>
+                            {structured.steps.map((step) => <li key={step}>{step}</li>)}
+                          </ol>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {!promptComparison.applied && promptEvaluation && (
+              <details className="pdd-evaluation-technical">
+                <summary>Technical details</summary>
+                <p className="subtle">
+                  PDD {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "PDD Cloud" : "local fallback"}
+                  {promptEvaluation.model ? ` · ${promptEvaluation.model}` : ""}
+                  {promptEvaluation.costUsd !== null ? ` · $${promptEvaluation.costUsd.toFixed(4)}` : ""}
+                </p>
+              </details>
+            )}
+          </section>
+        ) : workflow.prompt ? (
           <section className="prompt-version-card" aria-label="Prompt currently under test">
             <div className="prompt-version-heading">
               <div>
-                <span className="eyebrow">{currentPromptLabel}</span>
-                <h3>Revision {workflow.prompt.revision}</h3>
+                <h3>{currentPromptLabel} · Revision {workflow.prompt.revision}</h3>
               </div>
               <span className="badge brand">SHA {workflow.prompt.contentHash.slice(0, 10)}</span>
             </div>
             <p className="subtle">
               This is the exact prompt PDD will compare with the user story below.
             </p>
-            <details className="prompt-content-disclosure">
-              <summary>View prompt under test</summary>
-              <pre className="prompt-evaluation-revision">{workflow.prompt.content}</pre>
-            </details>
+            <PromptViewSwitcher
+              ariaLabel="Prompt currently under test"
+              english={workflow.specification
+                ? <TicketEnglishView specification={workflow.specification} />
+                : <p>This is the exact immutable prompt PDD will evaluate.</p>}
+              prompt={workflow.prompt.content}
+            />
           </section>
+        ) : null}
+
+        {promptEvaluation && !promptComparison && (
+          <div
+            className={`callout pdd-evaluation-result ${promptAligned ? "success" : "warning"}`}
+            role="status"
+          >
+            <div className="callout-title">
+              {promptAligned ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+              {incompletePromptEvaluation
+                ? "PDD result incomplete"
+                : promptAligned
+                  ? "Prompt alignment passed"
+                  : "PDD needs another evaluation"}
+            </div>
+            {workflow.prompt ? (
+              <PromptViewSwitcher
+                ariaLabel="Saved PDD response"
+                english={(
+                  <PddResultEnglishView
+                    aligned={promptAligned}
+                    changes={recommendedChanges}
+                    summary={promptEvaluationSummary}
+                  />
+                )}
+                prompt={promptEvaluation.suggestedRevision ?? workflow.prompt.content}
+              />
+            ) : (
+              <p>{promptEvaluationSummary}</p>
+            )}
+            <details className="pdd-evaluation-technical">
+              <summary>Technical details</summary>
+              <p className="subtle">
+                PDD {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "PDD Cloud" : "local fallback"}
+                {promptEvaluation.model ? ` · ${promptEvaluation.model}` : ""}
+                {promptEvaluation.costUsd !== null ? ` · $${promptEvaluation.costUsd.toFixed(4)}` : ""}
+              </p>
+            </details>
+          </div>
         )}
+
+        {acceptancePreparationBlocker && (
+          <div
+            className="callout warning pdd-preparation-blocker"
+            role="alert"
+          >
+            <div className="callout-title">
+              <AlertCircle size={14} />
+              Execution setup blocked
+            </div>
+            <p>{acceptancePreparationBlocker}</p>
+            <p className="subtle">
+              Prompt alignment remains valid. Confirm the repository and active
+              execution profile, then run Test with PDD again.
+            </p>
+          </div>
+        )}
+
         <label className="field">
           User story
           <textarea
@@ -366,9 +899,8 @@ export function EngineeringTicketPanel({
             onChange={(event) => {
               setUserStory(event.target.value);
               setStoryTest(undefined);
-              setPromptEvaluation(undefined);
               setError(undefined);
-              setNotice(undefined);
+              setRecentPromptComparison(undefined);
             }}
           />
         </label>
@@ -376,7 +908,7 @@ export function EngineeringTicketPanel({
           Use the format: As a…, I want…, so that…
         </p>
 
-        <div className="top-actions">
+        <div className="top-actions" id="pdd-test-controls">
           <button
             type="button"
             className="btn primary"
@@ -384,24 +916,40 @@ export function EngineeringTicketPanel({
             onClick={testAgainstPrompt}
           >
             <CheckCircle2 size={14} />
-            <span className={busy ? "pdd-testing-button-shimmer" : undefined}>
+            <span className={busy ? "pdd-testing-shimmer-text" : undefined}>
               {busy
-                ? "Testing your prompt"
+                ? "Testing with PDD"
                 : canTestPrompt
-                  ? "Test with PDD"
+                  ? backgroundPromptTask?.status === "failed"
+                    ? "Test with PDD again"
+                    : "Test with PDD"
                   : "Suggested prompt required"}
             </span>
           </button>
         </div>
 
+        {ticketContextMissing && (
+          <div className="callout warning" role="status">
+            <div className="callout-title"><AlertCircle size={14} />Ticket context needs review</div>
+            <p className="subtle">
+              {preparesPromptAutomatically
+                ? "CloseSpan will start one automatic PDD check when the implementation scope is complete."
+                : "Complete the implementation scope, then choose Test with PDD when you are ready."}
+            </p>
+            <ul className="evidence-list">
+              {workflow.readiness.issues.slice(0, 4).map((issue) => <li key={issue}>{issue}</li>)}
+            </ul>
+          </div>
+        )}
+
         {busy && (
           <div className="pdd-testing-progress" role="status" aria-live="polite">
             <div className="pdd-testing-progress-copy">
-              <strong className="pdd-testing-shimmer-text">PDD is testing your prompt</strong>
+              <strong>{promptPreparationLabel(preparationPhase)}</strong>
               <span>{pddProgress}%</span>
             </div>
             <p className="pdd-testing-progress-detail">
-              Comparing the agent prompt with your user story. {pddTiming.sampleCount > 0
+              This continues in the background. Automatic mode runs once for this ticket revision. {pddTiming.sampleCount > 0
                 ? `Recent successful tests average ${formatPddDuration(pddTiming.estimatedDurationMs)}.`
                 : `The first run uses a ${formatPddDuration(pddTiming.estimatedDurationMs)} estimate.`}
             </p>
@@ -418,189 +966,39 @@ export function EngineeringTicketPanel({
           </div>
         )}
 
-        {promptEvaluation && (
-          <div
-            className={`callout pdd-evaluation-result ${promptAligned ? "success" : "warning"}`}
-            role="status"
-          >
+        {!busy && workflow.promptEvaluation?.triggerSource === "automatic" && (
+          <div className="callout pdd-automatic-review-ready" role="status">
             <div className="callout-title">
-              {promptAligned ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-              {promptAligned
-                ? "PDD passed"
-                : `PDD found ${recommendedChanges.length} ${recommendedChanges.length === 1 ? "change" : "changes"}`}
-            </div>
-            <p>{promptEvaluation.summary}</p>
-            {recommendedChanges.length > 0 && (
-              <section aria-labelledby="pdd-recommended-changes">
-                <strong id="pdd-recommended-changes">Recommended changes</strong>
-                <div className="pdd-change-list">
-                  {recommendedChanges.slice(0, 8).map((structured, index) => (
-                    <article className="pdd-change-card" key={`${index}-${structured.summary}`}>
-                      <span className="pdd-change-number">{index + 1}</span>
-                      <div>
-                        <h4>{structured.summary}</h4>
-                        {structured.steps.length > 0 && (
-                          <ol>
-                            {structured.steps.map((step) => <li key={step}>{step}</li>)}
-                          </ol>
-                        )}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            )}
-            {promptEvaluation.suggestedRevision && (
-              <div className="top-actions pdd-evaluation-actions">
-                <button type="button" className="btn primary" disabled={revisionBusy} onClick={applyImprovedPrompt}>
-                  <CheckCircle2 size={14} />
-                  {revisionBusy ? "Applying…" : "Apply improved prompt"}
-                </button>
-                <button type="button" className="btn secondary" disabled={busy || revisionBusy} onClick={testAgainstPrompt}>
-                  Test again
-                </button>
-              </div>
-            )}
-            <details className="pdd-evaluation-technical">
-              <summary>Technical details</summary>
-              <p className="subtle">
-                PDD {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "PDD Cloud" : "local fallback"}
-                {promptEvaluation.model ? ` · ${promptEvaluation.model}` : ""}
-                {promptEvaluation.costUsd !== null ? ` · $${promptEvaluation.costUsd.toFixed(4)}` : ""}
-              </p>
-            </details>
-          </div>
-        )}
-
-        {notice && (
-          <div className="callout success" role="status">
-            <div className="callout-title"><CheckCircle2 size={14} />Prompt updated</div>
-            <p>{notice}</p>
-          </div>
-        )}
-
-        {appliedPromptComparison && (
-          <section className="prompt-comparison" aria-labelledby="prompt-comparison-title">
-            <div className="prompt-comparison-heading">
-              <div>
-                <span className="eyebrow">PDD revision history</span>
-                <h3 id="prompt-comparison-title">Agent prompt and applied improvement</h3>
-              </div>
-              <span className="badge success">Improved prompt is current</span>
+              <CheckCircle2 size={14} />
+              Automatic PDD check complete
             </div>
             <p className="subtle">
-              Tested against: <strong>{appliedPromptComparison.testedUserStory}</strong>
+              {workflow.promptEvaluation.applied
+                ? "CloseSpan applied one immutable improvement and stopped. Review the current prompt; use Test with PDD only if you want to evaluate it again."
+                : workflow.promptEvaluation.review
+                  ? "The saved result is ready for review. CloseSpan will not rerun it when you revisit this page."
+                  : "This existing revision is marked complete and will not rerun automatically. Choose Test with PDD only if you want a fresh saved result."}
             </p>
-            <div className="prompt-comparison-grid">
-              <article className="prompt-comparison-version">
-                <div className="prompt-version-heading">
-                  <div>
-                    <span className="eyebrow">Original</span>
-                    <h4>Agent-written prompt · revision {appliedPromptComparison.agentPrompt.revision}</h4>
-                  </div>
-                  <span className="badge">Tested</span>
-                </div>
-                <pre className="prompt-evaluation-revision">{appliedPromptComparison.agentPrompt.content}</pre>
-              </article>
-              <article className="prompt-comparison-version current">
-                <div className="prompt-version-heading">
-                  <div>
-                    <span className="eyebrow">Applied</span>
-                    <h4>Improved prompt · revision {appliedPromptComparison.improvedPrompt.revision}</h4>
-                  </div>
-                  <span className="badge success">Current</span>
-                </div>
-                <pre className="prompt-evaluation-revision">{appliedPromptComparison.improvedPrompt.content}</pre>
-              </article>
-            </div>
-          </section>
+          </div>
         )}
 
-        {promptAligned && (
-          <section className="detail-stack" aria-label="Repository acceptance tests">
-            <div>
-              <h3>Generate repository acceptance tests</h3>
-              <p className="subtle">
-                After prompt alignment, bind the approved repository context and let PDD create executable tests. This is the first step that needs repository access.
-              </p>
-            </div>
-            <RepositoryMatchReview
-              orgId={orgId}
-              problemId={problemId}
-              onPddProfileReady={setPddProfileReady}
-            />
-            {ticketContextMissing && (
-              <div
-                className="callout warning"
-                id="ticket-context-readiness"
-                role="status"
-              >
-                <div className="callout-title">
-                  <AlertCircle size={14} />
-                  {workflow.specification
-                    ? "Complete the engineering ticket"
-                    : "Engineering ticket specification required"}
-                </div>
-                <p className="subtle">
-                  Repository-native PDD generation requires reviewed acceptance criteria, test commands, and code boundaries.
-                </p>
-                <ul className="evidence-list">
-                  {workflow.specification ? (
-                    workflow.readiness.issues.slice(0, 6).map((issue) => (
-                      <li key={issue}>{issue}</li>
-                    ))
-                  ) : (
-                    <>
-                      <li>Current behavior, expected behavior, reproduction steps, and business outcome</li>
-                      <li>Measurable acceptance criteria mapped to test scenarios</li>
-                      <li>Permitted code paths and required validation commands</li>
-                      <li>Repository, base branch, and exact base commit</li>
-                    </>
-                  )}
-                </ul>
-                <Link className="btn secondary" href="/settings#prompt-drafts">
-                  Review drafting policy
-                </Link>
-              </div>
-            )}
-            <div className="top-actions">
-              <button
-                type="button"
-                className="btn primary"
-                disabled={pddBusy || !pddReady}
-                aria-describedby={ticketContextMissing ? "ticket-context-readiness" : undefined}
-                onClick={generateAcceptanceTests}
-              >
-                <CheckCircle2 size={14} />
-                {pddBusy
-                  ? "Generating…"
-                  : pddReady
-                    ? "Generate repository acceptance tests"
-                    : ticketContextMissing
-                      ? "Complete ticket context"
-                      : "Review repository first"}
-              </button>
-            </div>
-          </section>
-        )}
-
-        {storyTest && (
+        {displayedStoryTest && (
           <div
-            className={`callout ${storyTest.status === "Failed" ? "warning" : ""}`}
+            className={`callout ${displayedStoryTest.status === "Failed" ? "warning" : ""}`}
             role="status"
           >
             <div className="callout-title">
-              {storyTest.status === "Ready for approval" ? (
+              {displayedStoryTest.status === "Ready for approval" ? (
                 <CheckCircle2 size={14} />
               ) : (
                 <AlertCircle size={14} />
               )}
-              {storyTest.status === "Ready for approval"
+              {displayedStoryTest.status === "Ready for approval"
                 ? "Executable contract ready"
-                : storyTest.status}
+                : displayedStoryTest.status}
             </div>
-            <p className="subtle">{storyTest.message}</p>
-            <p className="subtle">Prompt SHA-256: {storyTest.promptHash}</p>
+            <p className="subtle">{displayedStoryTest.message}</p>
+            <p className="subtle">Prompt SHA-256: {displayedStoryTest.promptHash}</p>
           </div>
         )}
 
@@ -718,11 +1116,25 @@ export function EngineeringTicketPanel({
           </div>
         )}
 
-        {error && (
-          <p className="toast error" role="alert">
-            {error}
-          </p>
+        {repositoryNeedsReview && (
+          <section
+            className="detail-stack"
+            id="repository-execution-context"
+            aria-label="Repository execution context"
+          >
+            <div>
+              <h3>Confirm the repository execution context</h3>
+              <p className="subtle">Resolve this exception, then retry approval preparation.</p>
+            </div>
+            <RepositoryMatchReview
+              orgId={orgId}
+              problemId={problemId}
+              onPddProfileReady={setRepositoryProfileReady}
+            />
+          </section>
         )}
+
+        {error && <p className="toast error" role="alert">{error}</p>}
       </div>
     </section>
   );

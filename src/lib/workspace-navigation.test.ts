@@ -15,7 +15,8 @@ describe("workspace navigation", () => {
 
   it("maps nested routes to their owning navigation item", () => {
     expect(workspaceRouteIndex("/problems/problem_123")).toBe(3);
-    expect(workspaceRouteIndex("/agent-runs/run_123")).toBe(7);
+    expect(workspaceRouteIndex("/pdd/problem_123")).toBe(4);
+    expect(workspaceRouteIndex("/agent-runs/run_123")).toBe(6);
     expect(workspaceRouteIndex("/unknown")).toBeNull();
   });
 
@@ -39,6 +40,9 @@ describe("workspace navigation", () => {
 
   it("provides stable breadcrumb labels", () => {
     expect(workspaceSection("/problems/problem_123")).toBe("Product problems");
+    expect(workspaceSection("/pdd/problem_123")).toBe(
+      "Prompt-driven development",
+    );
     expect(workspaceSection("/agent-runs/run_123")).toBe(
       "Agent runs & verification",
     );

@@ -26,6 +26,7 @@ import type {
   RecommendedConnector,
 } from "./onboarding-repository";
 import { defaultOnboardingState } from "./onboarding-repository";
+import { prioritizeOnboardingContinuation } from "./onboarding-guidance";
 
 export type OnboardingAction =
   | { type: "connect_webhook"; label: string }
@@ -736,12 +737,16 @@ export function onboardingGuidanceForWorkspace(input: {
     recommendedConnectors.find(
       (connector) => !connected.has(connector.integrationId),
     );
+  const canContinue =
+    input.workspaceStatus.githubConnected &&
+    input.workspaceStatus.feedbackConnected;
   return {
     recommendedConnectors,
     suggestedActions,
-    suggestedReplies: nextConnector
-      ? [`Connect ${nextConnector.provider}`, "Continue for now"]
-      : ["Continue to the workspace"],
+    suggestedReplies: prioritizeOnboardingContinuation(
+      nextConnector ? [`Connect ${nextConnector.provider}`] : [],
+      canContinue,
+    ),
   };
 }
 

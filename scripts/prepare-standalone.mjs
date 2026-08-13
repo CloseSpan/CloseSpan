@@ -20,3 +20,10 @@ if (existsSync(resolve("public"))) {
     force: true,
   });
 }
+
+if (existsSync(resolve("templates"))) {
+  cpSync(resolve("templates"), resolve(standaloneRoot, "templates"), {
+    recursive: true,
+    force: true,
+  });
+}

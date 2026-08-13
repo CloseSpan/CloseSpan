@@ -1,0 +1,381 @@
+name: CloseSpan approval-bound agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      closespan_run_id:
+        required: true
+        type: string
+      closespan_org_id:
+        required: true
+        type: string
+      closespan_callback_url:
+        required: true
+        type: string
+      closespan_profile_hash:
+        required: true
+        type: string
+      closespan_control_runner_label:
+        required: true
+        type: string
+      closespan_runner_label:
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: closespan-${{ inputs.closespan_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: CloseSpan bootstrap
+    runs-on: ${{ inputs.closespan_control_runner_label }}
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    steps:
+      - name: Fetch immutable job specification
+        env:
+          CALLBACK_URL: ${{ inputs.closespan_callback_url }}
+          ORG_ID: ${{ inputs.closespan_org_id }}
+          RUN_ID: ${{ inputs.closespan_run_id }}
+          PROFILE_HASH: ${{ inputs.closespan_profile_hash }}
+        run: |
+          set -euo pipefail
+          oidc_json="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=closespan-agent-run")"
+          oidc_token="$(OIDC_JSON="$oidc_json" node -e 'process.stdout.write(JSON.parse(process.env.OIDC_JSON).value)')"
+          echo "::add-mask::$oidc_token"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $oidc_token" \
+            "$CALLBACK_URL?orgId=$ORG_ID" \
+            --output closespan-job.json
+          JOB_PATH="$PWD/closespan-job.json" RUN_ID="$RUN_ID" PROFILE_HASH="$PROFILE_HASH" node <<'NODE'
+          const fs = require("node:fs");
+          const job = JSON.parse(fs.readFileSync(process.env.JOB_PATH, "utf8"));
+          if (job.schemaVersion !== 1 || job.runId !== process.env.RUN_ID) throw new Error("CloseSpan job identity mismatch");
+          if (job.executionProfileHash !== process.env.PROFILE_HASH) throw new Error("CloseSpan profile hash mismatch");
+          if (job.baseSha.toLowerCase() !== process.env.GITHUB_SHA.toLowerCase()) throw new Error("CloseSpan base commit mismatch");
+          if (new Date(job.expiresAt).getTime() <= Date.now()) throw new Error("CloseSpan approval expired");
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: closespan-job
+          path: closespan-job.json
+          if-no-files-found: error
+          retention-days: 1
+
+  implementation:
+    name: CloseSpan implementation
+    needs: bootstrap
+    runs-on: ${{ inputs.closespan_runner_label }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: closespan-job
+          path: .closespan-run
+      - name: Materialize approved prompt and tests
+        id: prepare
+        run: |
+          node <<'NODE'
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-job.json", "utf8"));
+          const safe = value => typeof value === "string" && value.length > 0 && !path.isAbsolute(value) && !value.split(/[\\/]/).includes("..");
+          for (const file of [{ path: job.promptArtifactPath, content: job.promptContent }, ...job.generatedTests]) {
+            if (!safe(file.path)) throw new Error(`Unsafe generated path: ${file.path}`);
+            if (file.contentHash && crypto.createHash("sha256").update(file.content).digest("hex") !== file.contentHash) throw new Error(`Generated test hash mismatch: ${file.path}`);
+            fs.mkdirSync(path.dirname(file.path), { recursive: true });
+            fs.writeFileSync(file.path, file.content);
+          }
+          const workingDirectory = job.executionProfileSnapshot.config.workingDirectory;
+          if (!safe(workingDirectory) && workingDirectory !== ".") throw new Error("Unsafe working directory");
+          for (const item of job.executionProfileSnapshot.config.publicEnvironment) {
+            const delimiter = `CLOSESPAN_${crypto.randomBytes(12).toString("hex")}`;
+            fs.appendFileSync(process.env.GITHUB_ENV, `${item.name}<<${delimiter}\n${item.value}\n${delimiter}\n`);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `working-directory=${workingDirectory}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `prompt-file=${job.promptArtifactPath}\n`);
+          NODE
+      - name: Prepare repository dependencies
+        run: |
+          node <<'NODE'
+          const cp = require("node:child_process");
+          const fs = require("node:fs");
+          const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-job.json", "utf8"));
+          const config = job.executionProfileSnapshot.config;
+          for (const command of config.installCommands) {
+            const result = cp.spawnSync("/bin/bash", ["-lc", command], { cwd: config.workingDirectory, stdio: "inherit", timeout: config.maxDurationMs });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+          }
+          NODE
+      - name: Validate Xcode and start Android Emulator
+        run: |
+          node <<'NODE'
+          const cp = require("node:child_process");
+          const fs = require("node:fs");
+          const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-job.json", "utf8"));
+          const mobile = job.runner;
+          if (mobile.xcode) {
+            const result = cp.spawnSync("xcodebuild", ["-version"], { encoding: "utf8" });
+            if (result.status !== 0 || !`${result.stdout}${result.stderr}`.includes(`Xcode ${mobile.xcode.version}`)) throw new Error(`Tenki runner does not provide approved Xcode ${mobile.xcode.version}`);
+          }
+          if (mobile.androidEmulator) {
+            const emulator = mobile.androidEmulator;
+            const image = `system-images;android-${emulator.apiLevel};${emulator.target};${emulator.architecture}`;
+            if (fs.existsSync("/dev/kvm")) cp.spawnSync("sudo", ["chmod", "666", "/dev/kvm"], { stdio: "inherit" });
+            let result = cp.spawnSync("sdkmanager", [image], { input: "y\n", stdio: ["pipe", "inherit", "inherit"] });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+            result = cp.spawnSync("avdmanager", ["create", "avd", "--force", "--name", "closespan", "--package", image, "--device", emulator.deviceProfile], { input: "no\n", stdio: ["pipe", "inherit", "inherit"] });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+            const emulatorProcess = cp.spawn("emulator", ["-avd", "closespan", "-no-window", "-no-audio", "-no-boot-anim", "-gpu", "swiftshader_indirect"], { detached: true, stdio: "ignore" });
+            emulatorProcess.unref();
+            result = cp.spawnSync("adb", ["wait-for-device"], { stdio: "inherit", timeout: 180_000 });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+            for (let attempt = 0; attempt < 90; attempt += 1) {
+              result = cp.spawnSync("adb", ["shell", "getprop", "sys.boot_completed"], { encoding: "utf8" });
+              if (result.stdout.trim() === "1") process.exit(0);
+              cp.spawnSync("sleep", ["2"]);
+            }
+            throw new Error("Android Emulator did not finish booting");
+          }
+          NODE
+      - name: Obtain run-scoped CloseSpan model access
+        id: model
+        env:
+          CALLBACK_URL: ${{ inputs.closespan_callback_url }}
+          ORG_ID: ${{ inputs.closespan_org_id }}
+        run: |
+          set -euo pipefail
+          oidc_json="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=closespan-agent-run")"
+          oidc_token="$(OIDC_JSON="$oidc_json" node -e 'process.stdout.write(JSON.parse(process.env.OIDC_JSON).value)')"
+          echo "::add-mask::$oidc_token"
+          model_json="$(curl --fail --silent --show-error \
+            -X POST -H "Authorization: Bearer $oidc_token" -H "Content-Type: application/json" \
+            --data "{\"orgId\":\"$ORG_ID\"}" "$CALLBACK_URL/model-token")"
+          MODEL_JSON="$model_json" node <<'NODE'
+          const fs = require("node:fs");
+          const value = JSON.parse(process.env.MODEL_JSON);
+          if (typeof value.token !== "string" || typeof value.model !== "string" || typeof value.responsesApiEndpoint !== "string") throw new Error("CloseSpan returned an invalid model credential");
+          process.stdout.write(`::add-mask::${value.token}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `token=${value.token}\nmodel=${value.model}\nendpoint=${value.responsesApiEndpoint}\n`);
+          NODE
+      - name: Run Codex implementation agent
+        id: codex
+        continue-on-error: true
+        uses: openai/codex-action@b11346a6fa031e2e164ab4b7c7ea201afffd7d59
+        with:
+          openai-api-key: ${{ steps.model.outputs.token }}
+          responses-api-endpoint: ${{ steps.model.outputs.endpoint }}
+          model: ${{ steps.model.outputs.model }}
+          prompt-file: ${{ steps.prepare.outputs.prompt-file }}
+          working-directory: ${{ steps.prepare.outputs.working-directory }}
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          allow-bot-users: ${{ github.actor }}
+      - name: Build bounded implementation report
+        if: always()
+        env:
+          CODEX_OUTCOME: ${{ steps.codex.outcome }}
+        run: |
+          node <<'NODE'
+          const cp = require("node:child_process");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-job.json", "utf8"));
+          const config = job.executionProfileSnapshot.config;
+          const crypto = require("node:crypto");
+          const promptIntact = crypto.createHash("sha256").update(fs.readFileSync(job.promptArtifactPath)).digest("hex") === job.promptHash;
+          const testsIntact = job.generatedTests.every(test => fs.existsSync(test.path) && crypto.createHash("sha256").update(fs.readFileSync(test.path)).digest("hex") === test.contentHash);
+          const run = command => {
+            const started = Date.now();
+            const result = cp.spawnSync("/bin/bash", ["-lc", command], { cwd: config.workingDirectory, encoding: "utf8", timeout: config.maxDurationMs, maxBuffer: 20_000_000 });
+            return { command, status: result.status === 0 ? "passed" : "failed", output: `${result.stdout || ""}${result.stderr || ""}`.slice(-20_000), durationMs: Date.now() - started };
+          };
+          const tests = job.requiredCommands.slice(0, 30).map(run);
+          const tracked = cp.execFileSync("git", ["diff", "--name-only", "-z", "HEAD"], { encoding: "utf8" }).split("\0").filter(Boolean);
+          const untracked = cp.execFileSync("git", ["ls-files", "--others", "--exclude-standard", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
+          const ignored = new Set([job.promptArtifactPath, ".closespan-run/closespan-job.json"]);
+          const paths = [...new Set([...tracked, ...untracked])].filter(file => !ignored.has(file));
+          const changedFiles = paths.map(file => ({
+            path: file,
+            contentBase64: fs.existsSync(file) ? fs.readFileSync(file).toString("base64") : null,
+            reason: "Implemented the approval-bound CloseSpan ticket",
+          }));
+          const allPassed = promptIntact && testsIntact && tests.every(test => test.status === "passed");
+          const automated = new Set(job.testScenarios.filter(item => item.testLevel !== "manual").map(item => item.id));
+          const criteria = job.acceptanceCriteria.map(item => {
+            const hasAutomated = item.scenarioIds.some(id => automated.has(id));
+            return { criterionId: item.id, status: hasAutomated && allPassed ? "Passed" : hasAutomated ? "Failed" : "Pending manual", evidence: hasAutomated ? "Verified by the approval-bound command set on the implementation runner." : "Manual-only criterion retained for human verification.", scenarioIds: item.scenarioIds };
+          });
+          const status = changedFiles.length === 0 ? "No changes" : allPassed && process.env.CODEX_OUTCOME === "success" ? "Tests passed" : "Failed";
+          const report = {
+            schemaVersion: 1, runId: job.runId, promptHash: job.promptHash, promptArtifactHash: job.promptHash,
+            baseSha: job.baseSha, status, summary: status === "Tests passed" ? "Implemented the approved change and passed the required commands." : "The approval-bound implementation did not complete successfully.",
+            changedFiles, testFiles: job.generatedTests.map(test => test.path).filter(file => paths.includes(file)), tests,
+            criteria, remainingRisks: [], assumptions: [], manualVerification: criteria.filter(item => item.status === "Pending manual").map(item => `${item.criterionId} requires manual verification.`),
+            logs: [`Codex outcome: ${process.env.CODEX_OUTCOME}`, `Approved artifacts intact: ${promptIntact && testsIntact}`],
+          };
+          fs.writeFileSync(".closespan-run/report.json", JSON.stringify(report));
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: closespan-implementation
+          path: .closespan-run/report.json
+          if-no-files-found: error
+          retention-days: 1
+
+  verification:
+    name: CloseSpan independent verification
+    needs: implementation
+    if: always() && needs.implementation.result == 'success'
+    runs-on: ${{ inputs.closespan_runner_label }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: closespan-job
+          path: .closespan-run
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: closespan-implementation
+          path: .closespan-run
+      - name: Apply bounded files and verify on a fresh VM
+        run: |
+          node <<'NODE'
+          const cp = require("node:child_process");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const started = Date.now();
+          const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-job.json", "utf8"));
+          const report = JSON.parse(fs.readFileSync(".closespan-run/report.json", "utf8"));
+          for (const file of report.changedFiles) {
+            if (path.isAbsolute(file.path) || file.path.split(/[\\/]/).includes("..")) throw new Error(`Unsafe changed path: ${file.path}`);
+            if (file.contentBase64 === null) fs.rmSync(file.path, { force: true });
+            else { fs.mkdirSync(path.dirname(file.path), { recursive: true }); fs.writeFileSync(file.path, Buffer.from(file.contentBase64, "base64")); }
+          }
+          const config = job.executionProfileSnapshot.config;
+          const commandEnvironment = { ...process.env, ...Object.fromEntries(config.publicEnvironment.map(item => [item.name, item.value])) };
+          for (const command of config.installCommands) {
+            const result = cp.spawnSync("/bin/bash", ["-lc", command], { cwd: config.workingDirectory, env: commandEnvironment, stdio: "inherit", timeout: config.maxDurationMs });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+          }
+          const mobile = job.runner;
+          if (mobile.xcode) {
+            const result = cp.spawnSync("xcodebuild", ["-version"], { encoding: "utf8" });
+            if (result.status !== 0 || !`${result.stdout}${result.stderr}`.includes(`Xcode ${mobile.xcode.version}`)) throw new Error(`Tenki runner does not provide approved Xcode ${mobile.xcode.version}`);
+          }
+          if (mobile.androidEmulator) {
+            const emulator = mobile.androidEmulator;
+            const image = `system-images;android-${emulator.apiLevel};${emulator.target};${emulator.architecture}`;
+            if (fs.existsSync("/dev/kvm")) cp.spawnSync("sudo", ["chmod", "666", "/dev/kvm"], { stdio: "inherit" });
+            let result = cp.spawnSync("sdkmanager", [image], { input: "y\n", stdio: ["pipe", "inherit", "inherit"] });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+            result = cp.spawnSync("avdmanager", ["create", "avd", "--force", "--name", "closespan", "--package", image, "--device", emulator.deviceProfile], { input: "no\n", stdio: ["pipe", "inherit", "inherit"] });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+            const emulatorProcess = cp.spawn("emulator", ["-avd", "closespan", "-no-window", "-no-audio", "-no-boot-anim", "-gpu", "swiftshader_indirect"], { detached: true, stdio: "ignore" });
+            emulatorProcess.unref();
+            result = cp.spawnSync("adb", ["wait-for-device"], { stdio: "inherit", timeout: 180_000 });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+            for (let attempt = 0; attempt < 90; attempt += 1) {
+              result = cp.spawnSync("adb", ["shell", "getprop", "sys.boot_completed"], { encoding: "utf8" });
+              if (result.stdout.trim() === "1") break;
+              cp.spawnSync("sleep", ["2"]);
+              if (attempt === 89) throw new Error("Android Emulator did not finish booting");
+            }
+          }
+          const results = job.requiredCommands.slice(0, 30).map(command => {
+            const result = cp.spawnSync("/bin/bash", ["-lc", command], { cwd: config.workingDirectory, env: commandEnvironment, encoding: "utf8", timeout: config.maxDurationMs, maxBuffer: 20_000_000 });
+            return { command, status: result.status === 0 ? "passed" : "failed", output: `${result.stdout || ""}${result.stderr || ""}`.slice(-20_000) };
+          });
+          fs.writeFileSync(".closespan-run/verification.json", JSON.stringify({ status: results.every(item => item.status === "passed") ? "passed" : "failed", durationMs: Date.now() - started, results }));
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: closespan-verification
+          path: .closespan-run/verification.json
+          if-no-files-found: error
+          retention-days: 1
+
+  callback:
+    name: CloseSpan authenticated callback
+    needs: [implementation, verification]
+    if: always()
+    runs-on: ${{ inputs.closespan_control_runner_label }}
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        continue-on-error: true
+        with:
+          name: closespan-implementation
+          path: .closespan-run
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        continue-on-error: true
+        with:
+          name: closespan-job
+          path: .closespan-run
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        continue-on-error: true
+        with:
+          name: closespan-verification
+          path: .closespan-run
+      - name: Return signed result to CloseSpan
+        env:
+          CALLBACK_URL: ${{ inputs.closespan_callback_url }}
+          RUNNER_LABEL: ${{ inputs.closespan_runner_label }}
+          ORG_ID: ${{ inputs.closespan_org_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          if (!fs.existsSync(".closespan-run/report.json")) {
+            fs.mkdirSync(".closespan-run", { recursive: true });
+            fs.writeFileSync(".closespan-run/callback.json", JSON.stringify({ event: "failed", orgId: process.env.ORG_ID, code: "runner_failed", message: "The Tenki runner did not produce an implementation report." }));
+            process.exit(0);
+          }
+          const report = JSON.parse(fs.readFileSync(".closespan-run/report.json", "utf8"));
+          const verification = fs.existsSync(".closespan-run/verification.json") ? JSON.parse(fs.readFileSync(".closespan-run/verification.json", "utf8")) : { status: "failed", durationMs: 0 };
+          const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-job.json", "utf8"));
+          const profile = job.runner;
+          report.independentVerification = {
+            provider: "Tenki GitHub Actions", workflowRunId: Number(process.env.GITHUB_RUN_ID), runnerLabel: process.env.RUNNER_LABEL,
+            platform: profile?.platform || (process.platform === "darwin" ? "macos" : "linux"),
+            implementationJobId: `implementation:${process.env.GITHUB_RUN_ID}:${process.env.RUN_ATTEMPT}`,
+            verificationJobId: `verification:${process.env.GITHUB_RUN_ID}:${process.env.RUN_ATTEMPT}`,
+            status: verification.status, completedAt: new Date().toISOString(), durationMs: verification.durationMs,
+          };
+          fs.writeFileSync(".closespan-run/callback.json", JSON.stringify({ event: "completed", orgId: process.env.ORG_ID, report }));
+          NODE
+          oidc_json="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=closespan-agent-run")"
+          oidc_token="$(OIDC_JSON="$oidc_json" node -e 'process.stdout.write(JSON.parse(process.env.OIDC_JSON).value)')"
+          echo "::add-mask::$oidc_token"
+          curl --fail --silent --show-error \
+            -X POST -H "Authorization: Bearer $oidc_token" -H "Content-Type: application/json" \
+            --data-binary @.closespan-run/callback.json "$CALLBACK_URL"

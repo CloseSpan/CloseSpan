@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { classificationConfidence, clusterConfidence, redactUntrustedText, validateAiAnalysisForTest } from "./ai-provider";
+import { classificationConfidence, clusterConfidence, redactUntrustedText, sentimentConfidence, validateAiAnalysisForTest } from "./ai-provider";
 
 const analysis = {
   feedbackId: "fb_001",
   classification: "Bug" as const,
   severity: "High" as const,
+  sentiment: "Negative" as const,
+  sentimentIntensity: 0.72,
+  sentimentClarity: 0.94,
+  sentimentEvidenceQuality: 0.88,
+  sentimentEvidence: ["The export output is empty."],
+  sentimentRationale: "The customer reports an adverse product outcome.",
   redactedSummary: "CSV export completes with an empty file.",
   proposedProblemId: "prob_export",
   evidenceQuality: 0.8,
@@ -19,6 +25,7 @@ describe("AI provider feedback intelligence boundary", () => {
   it("computes transparent confidence from evidence factors", () => {
     expect(classificationConfidence(analysis)).toBe(0.865);
     expect(clusterConfidence(analysis)).toBe(0.893);
+    expect(sentimentConfidence(analysis)).toBe(0.919);
   });
 
   it("redacts common secrets and direct identifiers before model processing", () => {

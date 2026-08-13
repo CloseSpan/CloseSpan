@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveOnboardingPhase,
+  prioritizeOnboardingContinuation,
   resolvedConnectorFailure,
 } from "./onboarding-guidance";
 
@@ -55,5 +56,25 @@ describe("resolvedConnectorFailure", () => {
         messages,
       }),
     ).toBe(false);
+  });
+});
+
+describe("prioritizeOnboardingContinuation", () => {
+  it("puts continue first once GitHub and one feedback source are ready", () => {
+    expect(
+      prioritizeOnboardingContinuation(
+        ["Connect Apple App Store", "Continue to the workspace"],
+        true,
+      ),
+    ).toEqual(["Continue for now", "Connect Apple App Store"]);
+  });
+
+  it("removes premature continue actions while a required connection is missing", () => {
+    expect(
+      prioritizeOnboardingContinuation(
+        ["Connect Apple App Store", "Continue for now"],
+        false,
+      ),
+    ).toEqual(["Connect Apple App Store"]);
   });
 });

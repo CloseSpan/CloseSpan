@@ -52,7 +52,7 @@ export default async function ApprovalRecordPage({
               <div className="fact"><span><Clock3 /></span><div><small>Authorization expiry</small><strong>{new Date(finalApproval.expiresAt).toLocaleString()}</strong></div></div>
             </div>
             <div className="top-actions">
-              <Link className="btn" href={`/problems/${finalApproval.problemId}#engineering-ticket`}>Open product problem</Link>
+              <Link className="btn" href={`/pdd/${finalApproval.problemId}#engineering-ticket`}>Open PDD preparation</Link>
               <a className="btn primary" href={finalApproval.pullRequestUrl} target="_blank" rel="noreferrer">Open pull request</a>
             </div>
           </div>
@@ -126,7 +126,7 @@ export default async function ApprovalRecordPage({
             </div>
           </div>
           <div className="top-actions">
-            <Link className="btn" href={`/problems/${record.problemId}#engineering-ticket`}>
+            <Link className="btn" href={`/pdd/${record.problemId}#engineering-ticket`}>
               Open product problem
             </Link>
             {record.runId ? (

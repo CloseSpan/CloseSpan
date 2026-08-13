@@ -7,12 +7,14 @@ import type {
 } from "@/lib/execution-profile-repository";
 import {
   TENKI_BROWSER_PREFLIGHT_COMMAND,
+  executionProfileExecutor,
   executionProfileBrowserReadiness,
   isPlaywrightChromiumInstallCommand,
   playwrightChromiumInstallCommand,
   upgradeExecutionProfileConfigV2,
   type ExecutionProfileConfig,
   type ExecutionProfileConfigV2,
+  type ExecutionProfileConfigV3,
   type ExecutionProfileVersion,
 } from "@/lib/execution-profile";
 import type {
@@ -24,16 +26,42 @@ import {
   runtimeFamilyForExecutionProfile,
   type ManagedTenkiEnvironmentArtifact,
 } from "@/lib/tenki-environment-catalog";
+import type { PendingTenkiRunnerWorkflowSetup } from "@/lib/tenki-runner-workflow-setup-repository";
+import {
+  tenkiRunnerSize,
+  tenkiRunnerSizesForPlatform,
+} from "@/lib/tenki-runner-sizing";
 
 interface ExecutionProfileApiView extends ExecutionProfileSettingsView {
   available: boolean;
   repositories: GithubRepositoryAuthorization[];
   managedEnvironments: ManagedTenkiEnvironmentArtifact[];
+  runnerWorkflowSetups: PendingTenkiRunnerWorkflowSetup[];
 }
 
 interface ApiResult {
   error?: string;
   settings?: ExecutionProfileSettingsView;
+}
+
+interface RunnerWorkflowInstallationResult {
+  error?: string;
+  status?: "installed" | "pull_request";
+  pullRequestNumber?: number | null;
+  pullRequestUrl?: string | null;
+}
+
+interface RunnerWorkflowPullRequest {
+  number: number;
+  url: string;
+}
+
+interface RunnerWorkflowMergeResult {
+  error?: string;
+  status?: "merged" | "installed";
+  pullRequestUrl?: string | null;
+  mergedSha?: string;
+  githubActionsChecksPassed?: number;
 }
 
 interface RuntimeSecretVersionMetadata {
@@ -131,10 +159,12 @@ function commandList(value: string): string[] {
     .filter(Boolean);
 }
 
-export function configureBrowserInteraction(
-  config: ExecutionProfileConfigV2,
+export function configureBrowserInteraction<
+  Config extends ExecutionProfileConfigV2 | ExecutionProfileConfigV3,
+>(
+  config: Config,
   enabled: boolean,
-): { config: ExecutionProfileConfigV2; error?: string } {
+): { config: Config; error?: string } {
   const retainedInstallCommands = config.installCommands.filter(
     (command) => command !== TENKI_BROWSER_PREFLIGHT_COMMAND
       && !isPlaywrightChromiumInstallCommand(command),
@@ -519,6 +549,7 @@ function RuntimeSecretManager({
 
 function ProfileSummary({ profile }: { profile: ExecutionProfileVersion }) {
   const config = profile.config;
+  const executor = executionProfileExecutor(config);
   const commands = [
     ...config.installCommands,
     ...config.buildCommands,
@@ -532,12 +563,15 @@ function ProfileSummary({ profile }: { profile: ExecutionProfileVersion }) {
         <span><small>Framework</small><strong>{config.framework ?? "Not detected"}</strong></span>
         <span><small>Package manager</small><strong>{config.packageManager}</strong></span>
         <span><small>Resources</small><strong>{config.cpuCores} CPU · {Math.round(config.memoryMb / 1_024)} GB</strong></span>
+        <span><small>Executor</small><strong>{executor.kind === "tenki_github_actions" ? `Tenki Runner · ${executor.platform}` : "Tenki Sandbox"}</strong></span>
       </div>
       <div className="execution-profile-meta subtle">
         <span>Working directory <code>{config.workingDirectory}</code></span>
         <span>Version {profile.version}</span>
         <span title={profile.contentHash}>Hash <code>{compactHash(profile.contentHash)}</code></span>
         <span>{config.allowOutbound ? "Outbound network enabled" : "Network isolated"}</span>
+        {executor.kind === "tenki_github_actions" && <span>Runner <code>{executor.runnerLabel}</code></span>}
+        {executor.kind === "tenki_github_actions" && <span>{executor.workflowSha256 ? <>Workflow <code>{compactHash(executor.workflowSha256)}</code></> : "Runner workflow awaiting installation"}</span>}
       </div>
       {commands.length > 0 && (
         <div className="execution-profile-commands" aria-label="Detected execution commands">
@@ -575,6 +609,8 @@ function ProfileEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState(false);
+  const executor = executionProfileExecutor(config);
+  const runnerProfile = executor.kind === "tenki_github_actions";
   const secretOptions = useMemo(
     () => runtimeSecretBindingOptions(runtimeSecrets, repository, workspaceRoot),
     [repository, runtimeSecrets, workspaceRoot],
@@ -584,7 +620,7 @@ function ProfileEditor({
     "test",
     "setup",
   ];
-  const browserReadiness = config.schemaVersion === 2
+  const browserReadiness = config.schemaVersion !== 1 && !runnerProfile
     ? executionProfileBrowserReadiness(config)
     : null;
   const profileRuntimeFamily = runtimeFamilyForExecutionProfile(config);
@@ -602,8 +638,9 @@ function ProfileEditor({
       || config.packageManager === "unknown"
       || artifact.packageManager === config.packageManager
     )
+    && !runnerProfile
     && (
-      config.schemaVersion !== 2
+      config.schemaVersion === 1
       || !config.runtimeTools.browser
       || artifact.capabilities.includes("browser")
     )
@@ -622,7 +659,7 @@ function ProfileEditor({
     exposure: ExecutionProfileSecretBinding["exposure"],
     exceptIndex = -1,
   ): boolean {
-    return config.schemaVersion !== 2 || !config.secretBindings.some(
+    return config.schemaVersion === 1 || !config.secretBindings.some(
       (binding, index) => index !== exceptIndex
         && binding.envName === environmentName
         && binding.exposure === exposure,
@@ -649,15 +686,36 @@ function ProfileEditor({
     value: ExecutionProfileConfigV2[Key],
   ): void {
     setConfig((current) => ({
-      ...upgradeExecutionProfileConfigV2(current),
+      ...(current.schemaVersion === 1 ? upgradeExecutionProfileConfigV2(current) : current),
       [key]: value,
     }));
     setSaved(false);
     setError(undefined);
   }
 
+  function changeRunnerLabel(runnerLabel: string): void {
+    if (config.schemaVersion !== 3 || executor.kind !== "tenki_github_actions") return;
+    const size = tenkiRunnerSize(runnerLabel);
+    if (!size || size.platform !== executor.platform) {
+      setError(`Select a documented Tenki ${executor.platform} runner size.`);
+      return;
+    }
+    setConfig((current) => current.schemaVersion === 3
+      ? {
+          ...current,
+          cpuCores: size.cpuCores,
+          memoryMb: size.memoryMb,
+          executor: current.executor.kind === "tenki_github_actions"
+            ? { ...current.executor, runnerLabel: size.label }
+            : current.executor,
+        }
+      : current);
+    setSaved(false);
+    setError(undefined);
+  }
+
   function changeInboundNetworking(enabled: boolean): void {
-    setConfig((current) => current.schemaVersion === 2
+    setConfig((current) => current.schemaVersion !== 1
       ? { ...current, allowInbound: enabled, previewEnabled: enabled ? current.previewEnabled : false }
       : { ...current, allowInbound: enabled });
     setSaved(false);
@@ -667,7 +725,7 @@ function ProfileEditor({
   function changeOutboundNetworking(enabled: boolean): void {
     if (
       enabled
-      && config.schemaVersion === 2
+      && config.schemaVersion !== 1
       && config.secretBindings.some((binding) => binding.exposure === "runtime" || binding.exposure === "test")
     ) {
       setSaved(false);
@@ -678,7 +736,8 @@ function ProfileEditor({
   }
 
   function changeBrowserInteraction(enabled: boolean): void {
-    const runtimeConfig = upgradeExecutionProfileConfigV2(config);
+    if (config.schemaVersion === 1 || runnerProfile) return;
+    const runtimeConfig = config;
     const result = configureBrowserInteraction(runtimeConfig, enabled);
     if (result.error) {
       setSaved(false);
@@ -694,14 +753,14 @@ function ProfileEditor({
     index: number,
     value: ExecutionProfilePublicEnvironmentVariable,
   ): void {
-    if (config.schemaVersion !== 2) return;
+    if (config.schemaVersion === 1 || runnerProfile) return;
     runtimeChange("publicEnvironment", config.publicEnvironment.map(
       (current, currentIndex) => currentIndex === index ? value : current,
     ));
   }
 
   function removePublicEnvironment(index: number): void {
-    if (config.schemaVersion !== 2) return;
+    if (config.schemaVersion === 1 || runnerProfile) return;
     runtimeChange(
       "publicEnvironment",
       config.publicEnvironment.filter((_, currentIndex) => currentIndex !== index),
@@ -709,7 +768,7 @@ function ProfileEditor({
   }
 
   function replaceSecretBinding(index: number, token: string): void {
-    if (config.schemaVersion !== 2) return;
+    if (config.schemaVersion === 1 || runnerProfile) return;
     const selected = secretOptions.find((option) => option.token === token);
     if (!selected) return;
     runtimeChange("secretBindings", config.secretBindings.map((binding, currentIndex) => currentIndex === index
@@ -726,7 +785,7 @@ function ProfileEditor({
     index: number,
     exposure: ExecutionProfileSecretBinding["exposure"],
   ): void {
-    if (config.schemaVersion !== 2) return;
+    if (config.schemaVersion === 1 || runnerProfile) return;
     if (config.allowOutbound && exposure !== "setup") {
       setSaved(false);
       setError("Runtime and test secrets require a network-isolated profile. Disable outbound access first.");
@@ -740,12 +799,12 @@ function ProfileEditor({
   }
 
   function removeSecretBinding(index: number): void {
-    if (config.schemaVersion !== 2) return;
+    if (config.schemaVersion === 1 || runnerProfile) return;
     runtimeChange("secretBindings", config.secretBindings.filter((_, currentIndex) => currentIndex !== index));
   }
 
   function addSecretBinding(): void {
-    if (config.schemaVersion !== 2) return;
+    if (config.schemaVersion === 1 || runnerProfile) return;
     const eligibleExposures = config.allowOutbound
       ? secretExposures.filter((exposure) => exposure === "setup")
       : secretExposures;
@@ -851,7 +910,7 @@ function ProfileEditor({
               </button>
             )}
           </div>
-          {config.schemaVersion === 2 && (
+          {config.schemaVersion !== 1 && !runnerProfile && (
             <>
               <div className="execution-profile-network">
                 <label className="toggle-row">
@@ -999,13 +1058,40 @@ function ProfileEditor({
               </div>
             </>
           )}
+          {runnerProfile && (
+            <div className="callout">
+              <div className="callout-title">Tenki GitHub Actions runner</div>
+              <p className="subtle">
+                Platform <code>{executor.platform}</code> · architecture <code>{executor.architecture}</code> · runner <code>{executor.runnerLabel}</code>
+              </p>
+              <p className="subtle">
+                Workflow <code>{executor.workflowPath}</code> · {executor.workflowSha256 ? <>SHA-256 <code>{compactHash(executor.workflowSha256)}</code></> : "Install and verify this workflow before activation."}
+              </p>
+              <label className="field">Tenki runner size
+                <select
+                  value={executor.runnerLabel}
+                  disabled={!isAdmin}
+                  onChange={(event) => changeRunnerLabel(event.target.value)}
+                >
+                  {tenkiRunnerSizesForPlatform(executor.platform).map((size) => (
+                    <option key={size.label} value={size.label}>
+                      {size.label} · {size.cpuCores} CPU · {Math.round(size.memoryMb / 1_024)} GB
+                    </option>
+                  ))}
+                </select>
+                <small>CloseSpan selects a baseline during repository analysis, measures it during onboarding, and stores any administrator change as a new immutable profile version.</small>
+              </label>
+              {executor.xcode && <p className="subtle">Xcode {executor.xcode.version} · <code>{executor.xcode.containerPath}</code> · scheme <code>{executor.xcode.scheme}</code> · {executor.xcode.destination}</p>}
+              {executor.androidEmulator && <p className="subtle">Android API {executor.androidEmulator.apiLevel} · {executor.androidEmulator.deviceProfile} · <code>{executor.androidEmulator.gradleTask}</code> · nested KVM required</p>}
+            </div>
+          )}
         </section>
         <div className="execution-profile-fields execution-profile-resource-fields">
           <label className="field">CPU cores
-            <input type="number" min="1" max="16" value={config.cpuCores} disabled={!isAdmin} onChange={(event) => change("cpuCores", Number(event.target.value))} />
+            <input type="number" min="1" max="16" value={config.cpuCores} disabled={!isAdmin || runnerProfile} onChange={(event) => change("cpuCores", Number(event.target.value))} />
           </label>
           <label className="field">Memory (MB)
-            <input type="number" min="512" max="65536" step="512" value={config.memoryMb} disabled={!isAdmin} onChange={(event) => change("memoryMb", Number(event.target.value))} />
+            <input type="number" min="512" max="65536" step="512" value={config.memoryMb} disabled={!isAdmin || runnerProfile} onChange={(event) => change("memoryMb", Number(event.target.value))} />
           </label>
           <label className="field">Requested max duration (minutes)
             <input type="number" min="1" max="1440" value={Math.round(config.maxDurationMs / 60_000)} disabled={!isAdmin} onChange={(event) => change("maxDurationMs", Number(event.target.value) * 60_000)} />
@@ -1017,7 +1103,7 @@ function ProfileEditor({
           <label className="field">Managed Tenki environment
             <select
               value={config.tenkiImage ?? ""}
-              disabled={!isAdmin}
+              disabled={!isAdmin || runnerProfile}
               onChange={(event) => {
                 change("tenkiImage", event.target.value || null);
                 change("tenkiSnapshotId", null);
@@ -1030,7 +1116,7 @@ function ProfileEditor({
                 </option>
               ))}
             </select>
-            <small>Only active, validated, digest-pinned environments from the CloseSpan catalog can be selected. Raw snapshot IDs and mutable image tags are rejected.</small>
+            <small>{runnerProfile ? "Runner profiles bind a workflow digest and runner label instead of a Sandbox image." : "Only active, validated, digest-pinned environments from the CloseSpan catalog can be selected. Raw snapshot IDs and mutable image tags are rejected."}</small>
           </label>
         </div>
         <div className="execution-profile-network">
@@ -1040,7 +1126,7 @@ function ProfileEditor({
           </label>
           <label className="toggle-row">
             <div><strong>Inbound network</strong><p className="subtle">Disabled by default for isolated agent runs.</p></div>
-            <input type="checkbox" checked={config.allowInbound} disabled={!isAdmin} onChange={(event) => changeInboundNetworking(event.target.checked)} />
+            <input type="checkbox" checked={config.allowInbound} disabled={!isAdmin || runnerProfile} onChange={(event) => changeInboundNetworking(event.target.checked)} />
           </label>
         </div>
         <div className="ai-config-actions">
@@ -1069,6 +1155,10 @@ export function ExecutionProfileSettings({
   const [view, setView] = useState<ExecutionProfileApiView>();
   const [loading, setLoading] = useState(isAdmin);
   const [busyRepository, setBusyRepository] = useState<string>();
+  const [busyRunnerRepository, setBusyRunnerRepository] = useState<string>();
+  const [busyRunnerMergeRepository, setBusyRunnerMergeRepository] = useState<string>();
+  const [runnerWorkflowPulls, setRunnerWorkflowPulls] = useState<Record<string, RunnerWorkflowPullRequest>>({});
+  const [runnerWorkflowNotices, setRunnerWorkflowNotices] = useState<Record<string, string>>({});
   const [busyProfile, setBusyProfile] = useState<string>();
   const [error, setError] = useState<string>();
   const [runtimeSecrets, setRuntimeSecrets] = useState<RuntimeSecretMetadata[]>([]);
@@ -1104,7 +1194,15 @@ export function ExecutionProfileSettings({
         return payload;
       })
       .then((payload) => {
-        if (!cancelled) setView(payload);
+        if (!cancelled) {
+          setView(payload);
+          setRunnerWorkflowPulls(Object.fromEntries(
+            (payload.runnerWorkflowSetups ?? []).map((setup) => [
+              setup.repository,
+              { number: setup.pullRequestNumber, url: setup.pullRequestUrl },
+            ]),
+          ));
+        }
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
@@ -1159,8 +1257,8 @@ export function ExecutionProfileSettings({
     ].sort((left, right) => left.environmentName.localeCompare(right.environmentName)));
   }
 
-  async function detect(repository: string): Promise<void> {
-    if (!isAdmin) return;
+  async function detect(repository: string): Promise<boolean> {
+    if (!isAdmin) return false;
     setBusyRepository(repository);
     setError(undefined);
     try {
@@ -1172,8 +1270,10 @@ export function ExecutionProfileSettings({
       const payload = await response.json() as ApiResult;
       if (!response.ok || !payload.settings) throw new Error(payload.error ?? "Repository detection failed.");
       applySettings(payload.settings);
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Repository detection failed.");
+      return false;
     } finally {
       setBusyRepository(undefined);
     }
@@ -1196,6 +1296,101 @@ export function ExecutionProfileSettings({
       setError(cause instanceof Error ? cause.message : "Execution profile could not be confirmed.");
     } finally {
       setBusyProfile(undefined);
+    }
+  }
+
+  async function installRunnerWorkflow(repository: string): Promise<void> {
+    if (!isAdmin) return;
+    setBusyRunnerRepository(repository);
+    setError(undefined);
+    try {
+      const response = await fetch(
+        "/api/settings/execution-profiles/install-runner-workflow",
+        {
+          method: "POST",
+          headers: requestHeaders(orgId, true),
+          body: JSON.stringify({ repository }),
+        },
+      );
+      const payload = await response.json() as RunnerWorkflowInstallationResult;
+      if (!response.ok || !payload.status) {
+        throw new Error(payload.error ?? "The Tenki workflows could not be installed.");
+      }
+      if (payload.pullRequestUrl && payload.pullRequestNumber) {
+        setRunnerWorkflowPulls((current) => ({
+          ...current,
+          [repository]: {
+            number: payload.pullRequestNumber!,
+            url: payload.pullRequestUrl!,
+          },
+        }));
+        setRunnerWorkflowNotices((current) => {
+          const next = { ...current };
+          delete next[repository];
+          return next;
+        });
+      } else {
+        const detectionRefreshed = await detect(repository);
+        setRunnerWorkflowNotices((current) => ({
+          ...current,
+          [repository]: detectionRefreshed
+            ? "The Tenki workflows are already installed. Repository detection has been refreshed."
+            : "The Tenki workflows are installed, but repository detection still needs to be refreshed.",
+        }));
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The Tenki workflows could not be installed.");
+    } finally {
+      setBusyRunnerRepository(undefined);
+    }
+  }
+
+  async function approveAndMergeRunnerWorkflow(repository: string): Promise<void> {
+    if (!isAdmin) return;
+    const pullRequest = runnerWorkflowPulls[repository];
+    if (!pullRequest) return;
+    setBusyRunnerMergeRepository(repository);
+    setError(undefined);
+    try {
+      const response = await fetch(
+        "/api/settings/execution-profiles/approve-runner-workflow",
+        {
+          method: "POST",
+          headers: requestHeaders(orgId, true),
+          body: JSON.stringify({
+            repository,
+            pullRequestNumber: pullRequest.number,
+          }),
+        },
+      );
+      const payload = await response.json() as RunnerWorkflowMergeResult;
+      if (!response.ok || !payload.status || !payload.mergedSha) {
+        throw new Error(payload.error ?? "The runner setup pull request could not be merged.");
+      }
+      setRunnerWorkflowPulls((current) => {
+        const next = { ...current };
+        delete next[repository];
+        return next;
+      });
+      const detectionRefreshed = await detect(repository);
+      const checks = payload.githubActionsChecksPassed ?? 0;
+      const checkSummary = checks > 0
+        ? `after ${checks} reported GitHub Actions ${checks === 1 ? "check" : "checks"} passed`
+        : "with no GitHub Actions checks reported";
+      setRunnerWorkflowNotices((current) => ({
+        ...current,
+        [repository]: payload.status === "installed"
+          ? detectionRefreshed
+            ? "The Tenki workflows were already installed. Repository detection has been refreshed."
+            : "The Tenki workflows were already installed, but repository detection still needs to be refreshed."
+          : `Tenki setup merged ${checkSummary}. ${detectionRefreshed ? "Repository detection has been refreshed." : "Refresh repository detection to finish binding the implementation workflow."}`,
+      }));
+    } catch (cause) {
+      setError(cause instanceof Error
+        ? cause.message
+        : "The runner setup pull request could not be merged.");
+    } finally {
+      setBusyRunnerMergeRepository(undefined);
     }
   }
 
@@ -1254,14 +1449,61 @@ export function ExecutionProfileSettings({
       <div className="execution-profile-repositories">
         {view.repositories.filter((repository) => repository.active).map((repository) => {
           const assignments = assignmentsByRepository.get(repository.repository) ?? [];
+          const needsRunnerWorkflow = assignments.some((assignment) => {
+            const profile = assignment.detectedProfile ?? assignment.activeProfile;
+            return profile
+              ? executionProfileExecutor(profile.config).kind === "tenki_github_actions"
+              : false;
+          });
           return (
             <article className="execution-profile-scope" key={repository.id}>
               <div className="execution-profile-scope-head">
                 <div><span className="eyebrow">Authorized repository</span><h3>{repository.repository}</h3><p className="subtle">Default branch <code>{repository.defaultBranch}</code> · metadata-only detection at an exact commit SHA</p></div>
-                <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyRepository)} onClick={() => detect(repository.repository)}>
-                  {busyRepository === repository.repository ? "Detecting…" : assignments.length ? "Refresh detection" : "Detect configuration"}
-                </button>
+                <div className="top-actions">
+                  {needsRunnerWorkflow && (
+                    <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyRunnerRepository) || Boolean(busyRunnerMergeRepository)} onClick={() => installRunnerWorkflow(repository.repository)}>
+                      {busyRunnerRepository === repository.repository ? "Preparing workflows…" : "Install Tenki workflows"}
+                    </button>
+                  )}
+                  <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyRepository) || Boolean(busyRunnerMergeRepository)} onClick={() => detect(repository.repository)}>
+                    {busyRepository === repository.repository ? "Detecting…" : assignments.length ? "Refresh detection" : "Detect configuration"}
+                  </button>
+                </div>
               </div>
+              {runnerWorkflowNotices[repository.repository] && (
+                <div className="callout success runner-workflow-notice" role="status">
+                  <div className="callout-title">Tenki workflows installed</div>
+                  <p>{runnerWorkflowNotices[repository.repository]}</p>
+                </div>
+              )}
+              {runnerWorkflowPulls[repository.repository] && (
+                <div className="callout runner-workflow-approval" aria-live="polite">
+                  <div className="callout-title">Runner setup is ready for your approval</div>
+                  <p>
+                    CloseSpan will recheck the exact pull request commit, allow only the reviewed implementation and runtime-verifier workflow files, and require every reported GitHub Actions run to pass. Your approval merges the setup pull request; CloseSpan never commits it directly to the default branch.
+                  </p>
+                  <div className="top-actions">
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={!isAdmin || Boolean(busyRunnerMergeRepository) || Boolean(busyRunnerRepository)}
+                      onClick={() => approveAndMergeRunnerWorkflow(repository.repository)}
+                    >
+                      {busyRunnerMergeRepository === repository.repository
+                        ? "Verifying checks and merging…"
+                        : "Approve and merge runner setup"}
+                    </button>
+                    <a
+                      className="btn secondary"
+                      href={runnerWorkflowPulls[repository.repository].url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Review setup pull request
+                    </a>
+                  </div>
+                </div>
+              )}
               {assignments.length === 0 ? (
                 <div className="execution-profile-empty">
                   <strong>No repository profile yet</strong>

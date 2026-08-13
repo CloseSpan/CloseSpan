@@ -421,6 +421,29 @@ describe("runOnboardingTurn product-first", () => {
     expect(guidance.suggestedReplies).toContain("Connect GitHub");
   });
 
+  it("offers continue first only after GitHub and a feedback source are connected", () => {
+    const state = connectorState();
+    const incompleteGuidance = onboardingGuidanceForWorkspace({
+      state,
+      workspaceStatus: {
+        ...emptyWorkspaceStatus,
+        githubConnected: true,
+      },
+    });
+    const readyGuidance = onboardingGuidanceForWorkspace({
+      state,
+      workspaceStatus: {
+        ...emptyWorkspaceStatus,
+        connectedIntegrationIds: ["int_github", "int_zendesk"],
+        githubConnected: true,
+        feedbackConnected: true,
+      },
+    });
+
+    expect(incompleteGuidance.suggestedReplies).not.toContain("Continue for now");
+    expect(readyGuidance.suggestedReplies[0]).toBe("Continue for now");
+  });
+
   it("restores a webhook escape hatch when persisted recommendations are unavailable", () => {
     const state = connectorState();
     state.recommendedConnectors = state.recommendedConnectors.filter(

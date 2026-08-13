@@ -25,6 +25,13 @@ const { processExecutions, dispatchVerifications } = vi.hoisted(() => ({
   dispatchVerifications: vi.fn(async () => ({ dispatched: 0, skipped: true })),
 }));
 
+const { reconcileRuntimeVerifications } = vi.hoisted(() => ({
+  reconcileRuntimeVerifications: vi.fn(async () => ({
+    queuedTimedOut: 0,
+    runningTimedOut: 0,
+  })),
+}));
+
 vi.mock("@/lib/problem-automation-repository", () => ({
   runProblemAutomationForAllOrganizations: runAll,
 }));
@@ -45,6 +52,10 @@ vi.mock("@/lib/release-lifecycle-repository", () => ({
   dispatchQueuedReleaseVerifications: dispatchVerifications,
 }));
 
+vi.mock("@/lib/issue-runtime-verification", () => ({
+  reconcileStaleIssueRuntimeVerifications: reconcileRuntimeVerifications,
+}));
+
 import { GET } from "./route";
 
 describe("workflow automation cron boundary", () => {
@@ -55,6 +66,7 @@ describe("workflow automation cron boundary", () => {
     deliverBilling.mockClear();
     processExecutions.mockClear();
     dispatchVerifications.mockClear();
+    reconcileRuntimeVerifications.mockClear();
   });
 
   it("rejects a missing cron secret", async () => {
@@ -81,6 +93,7 @@ describe("workflow automation cron boundary", () => {
     expect(deliverBilling).toHaveBeenCalledOnce();
     expect(processExecutions).toHaveBeenCalledOnce();
     expect(dispatchVerifications).toHaveBeenCalledOnce();
+    expect(reconcileRuntimeVerifications).toHaveBeenCalledOnce();
   });
 
   it("does not block workflow automation when shadow delivery fails", async () => {
@@ -99,6 +112,30 @@ describe("workflow automation cron boundary", () => {
     });
     expect(runSlack).toHaveBeenCalledOnce();
     expect(runAll).toHaveBeenCalledOnce();
+  });
+
+  it("does not block workflow automation when timeout reconciliation fails", async () => {
+    process.env.CRON_SECRET = "workflow-cron-secret-for-tests";
+    reconcileRuntimeVerifications.mockRejectedValueOnce(
+      new Error("database temporarily unavailable"),
+    );
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/internal/workflow/automation", {
+        headers: {
+          authorization: "Bearer workflow-cron-secret-for-tests",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      runtimeVerifications: {
+        error: "Runtime verification timeout reconciliation failed",
+      },
+    });
+    expect(runAll).toHaveBeenCalledOnce();
+    expect(processExecutions).toHaveBeenCalledOnce();
   });
 
   it("finishes core automation before a hanging billing provider is deferred", async () => {
