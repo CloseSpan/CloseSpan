@@ -68,6 +68,7 @@ import {
   type ProblemTableTrend,
 } from "@/lib/problem-table-filters";
 import { isPipedreamConnectorId } from "@/lib/pipedream-connectors";
+import { requestGithubInstallUrl } from "@/lib/github-installation-client";
 import {
   isFeedbackSourceIntegration,
   isIntegrationAvailable,
@@ -4340,12 +4341,16 @@ function Fact({
 function IntegrationProgressDrawer({
   activity,
   connected,
+  githubBusy,
   integrationId,
+  onConnectGithub,
   onViewDetails,
 }: {
   activity: IntegrationActivityItem | null;
   connected: boolean;
+  githubBusy: boolean;
   integrationId: string;
+  onConnectGithub: () => void;
   onViewDetails: () => void;
 }) {
   const github = integrationId === "int_github";
@@ -4398,12 +4403,18 @@ function IntegrationProgressDrawer({
 
       <div className="integration-progress-actions">
         {github && (
-          <Link
+          <button
             className="btn primary"
-            href="/integrations?view=connections&focus=int_github"
+            type="button"
+            disabled={githubBusy}
+            onClick={onConnectGithub}
           >
-            {connected ? "Manage repositories" : "Finish repository selection"}
-          </Link>
+            {githubBusy
+              ? "Opening GitHub…"
+              : connected
+                ? "Manage repositories"
+                : "Finish repository selection"}
+          </button>
         )}
         <button className="btn" type="button" onClick={onViewDetails}>
           View connection details
@@ -4484,6 +4495,8 @@ export function IntegrationsScreen({
   >({});
   const [webhookBusy, setWebhookBusy] = useState(false);
   const [webhookError, setWebhookError] = useState<string | null>(null);
+  const [githubBusy, setGithubBusy] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
   const [webhookCredentials, setWebhookCredentials] = useState<{
     webhookUrl: string;
     signingSecret: string;
@@ -4673,6 +4686,24 @@ export function IntegrationsScreen({
     }
     setIntegrationDrawerMode(mode);
     setSelectedIntegrationId(integrationId);
+    if (integrationId === "int_github") setGithubError(null);
+  }
+
+  async function connectGithub() {
+    if (githubBusy) return;
+    setGithubBusy(true);
+    setGithubError(null);
+    try {
+      const installUrl = await requestGithubInstallUrl(orgId);
+      window.location.assign(installUrl);
+    } catch (caught) {
+      setGithubError(
+        caught instanceof Error
+          ? caught.message
+          : "GitHub connection could not be started",
+      );
+      setGithubBusy(false);
+    }
   }
 
   async function createWebhook() {
@@ -5036,7 +5067,9 @@ export function IntegrationsScreen({
               <IntegrationProgressDrawer
                 activity={selectedProgressActivity}
                 connected={selectedRow.connected}
+                githubBusy={githubBusy}
                 integrationId={selectedRow.item.id}
+                onConnectGithub={() => void connectGithub()}
                 onViewDetails={() => setIntegrationDrawerMode("details")}
               />
             ) : (
@@ -5068,12 +5101,19 @@ export function IntegrationsScreen({
                     CloseSpan uses its GitHub App so you choose the exact
                     repositories available for testing and approved pull requests.
                   </p>
-                  <Link
+                  <button
                     className="btn primary"
-                    href="/integrations?view=connections&focus=int_github"
+                    type="button"
+                    disabled={githubBusy}
+                    onClick={() => void connectGithub()}
                   >
-                    Select repositories
-                  </Link>
+                    {githubBusy ? "Opening GitHub…" : "Select repositories"}
+                  </button>
+                  {githubError && (
+                    <div className="github-connection-message error" role="alert">
+                      {githubError}
+                    </div>
+                  )}
                 </div>
               ) : isPipedreamConnectorId(selectedRow.item.id) ? (
                 <PipedreamAccountManager

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CheckCircle2, ExternalLink, Github, Unplug } from "lucide-react";
 import type { GithubAppInstallationRecord } from "@/lib/github-installation-repository";
 import type { GithubRepositoryAuthorization } from "@/lib/github-repository-allowlist";
+import { requestGithubInstallUrl } from "@/lib/github-installation-client";
 
 const errorMessages: Record<string, string> = {
   authentication_required: "Sign in again, then reconnect GitHub from this workspace.",
@@ -47,27 +48,8 @@ export function GithubConnectionPanel({
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("/api/integrations/github", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-org-id": orgId,
-          "idempotency-key": crypto.randomUUID(),
-          "x-request-id": crypto.randomUUID(),
-        },
-      });
-      const payload = (await response.json().catch(() => ({}))) as {
-        error?: unknown;
-        installUrl?: unknown;
-      };
-      if (!response.ok || typeof payload.installUrl !== "string") {
-        throw new Error(
-          typeof payload.error === "string"
-            ? payload.error
-            : "GitHub connection could not be started",
-        );
-      }
-      window.location.assign(payload.installUrl);
+      const installUrl = await requestGithubInstallUrl(orgId);
+      window.location.assign(installUrl);
     } catch (caught) {
       setError(
         caught instanceof Error
