@@ -6,6 +6,8 @@ export type IntegrationActivitySection =
   | "Review"
   | "Done";
 
+export type IntegrationInspectionMode = "details" | "progress";
+
 export type IntegrationActivityActionKind =
   | "connect"
   | "reconnect"
@@ -61,6 +63,12 @@ export interface IntegrationActivityItem {
   count: number | null;
   primaryAction: IntegrationActivityAction;
   secondaryAction: IntegrationActivityAction | null;
+}
+
+export function inspectionModeForActivity(
+  item: IntegrationActivityItem,
+): IntegrationInspectionMode {
+  return item.section === "Working" ? "progress" : "details";
 }
 
 export interface IntegrationSuggestionsInput {

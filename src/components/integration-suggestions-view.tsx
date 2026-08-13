@@ -12,7 +12,9 @@ import { useState } from "react";
 import type {
   IntegrationActivityItem,
   IntegrationActivitySection,
+  IntegrationInspectionMode,
 } from "@/lib/integration-suggestions";
+import { inspectionModeForActivity } from "@/lib/integration-suggestions";
 import { FitText } from "./fit-text";
 import { IntegrationProviderIcon } from "./integration-provider-icon";
 
@@ -87,7 +89,10 @@ export function IntegrationSuggestionsView({
 }: {
   items: IntegrationActivityItem[];
   productName: string | null;
-  onInspect: (integrationId: string) => void;
+  onInspect: (
+    integrationId: string,
+    mode?: IntegrationInspectionMode,
+  ) => void;
 }) {
   const [openSections, setOpenSections] = useState<
     Record<IntegrationActivitySection, boolean>
@@ -168,7 +173,12 @@ export function IntegrationSuggestionsView({
                           className="integration-suggestion-row"
                           type="button"
                           key={item.id}
-                          onClick={() => onInspect(item.integrationId)}
+                          onClick={() =>
+                            onInspect(
+                              item.integrationId,
+                              inspectionModeForActivity(item),
+                            )
+                          }
                           aria-label={`${actionLabel}: ${item.title}`}
                         >
                           <IntegrationProviderIcon

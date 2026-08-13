@@ -85,6 +85,8 @@ import type { RecommendedConnector } from "@/lib/onboarding-repository";
 import type { PromptDraftReadiness } from "@/lib/automated-prompt-draft-repository";
 import {
   buildIntegrationSuggestions,
+  type IntegrationActivityItem,
+  type IntegrationInspectionMode,
   type IntegrationSuggestionPipedreamActivity,
 } from "@/lib/integration-suggestions";
 import type {
@@ -4335,6 +4337,82 @@ function Fact({
   );
 }
 
+function IntegrationProgressDrawer({
+  activity,
+  connected,
+  integrationId,
+  onViewDetails,
+}: {
+  activity: IntegrationActivityItem | null;
+  connected: boolean;
+  integrationId: string;
+  onViewDetails: () => void;
+}) {
+  const github = integrationId === "int_github";
+  const title = activity?.title ?? (github ? "Connecting GitHub" : "Connection in progress");
+  const description = activity?.description ??
+    "CloseSpan is checking the connection. You can keep working while it finishes.";
+
+  return (
+    <div className="integration-progress-view">
+      <section className="integration-progress-current" aria-live="polite">
+        <span className="integration-progress-current-icon" aria-hidden="true">
+          <LoaderCircle className="spin" size={18} />
+        </span>
+        <div>
+          <span>In progress</span>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+      </section>
+
+      {github && (
+        <ol className="integration-progress-steps" aria-label="GitHub connection progress">
+          <li className={connected ? "complete" : "current"}>
+            <span aria-hidden="true">{connected ? <Check size={15} /> : "1"}</span>
+            <div>
+              <strong>Select repository access</strong>
+              <p>
+                {connected
+                  ? "GitHub returned the repositories approved for this workspace."
+                  : "Choose the repositories CloseSpan may inspect, test, and use for approved pull requests."}
+              </p>
+            </div>
+          </li>
+          <li className={connected ? "current" : "upcoming"}>
+            <span aria-hidden="true">2</span>
+            <div>
+              <strong>Build repository context</strong>
+              <p>Index the selected source at its pinned commit.</p>
+            </div>
+          </li>
+          <li className="upcoming">
+            <span aria-hidden="true">3</span>
+            <div>
+              <strong>Prepare runtime verification</strong>
+              <p>Detect the workload and configure the reviewed Tenki workflow.</p>
+            </div>
+          </li>
+        </ol>
+      )}
+
+      <div className="integration-progress-actions">
+        {github && (
+          <Link
+            className="btn primary"
+            href="/integrations?view=connections&focus=int_github"
+          >
+            {connected ? "Manage repositories" : "Finish repository selection"}
+          </Link>
+        )}
+        <button className="btn" type="button" onClick={onViewDetails}>
+          View connection details
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function IntegrationsScreen({
   integrations,
   orgId,
@@ -4417,6 +4495,8 @@ export function IntegrationsScreen({
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
   >(null);
+  const [integrationDrawerMode, setIntegrationDrawerMode] =
+    useState<IntegrationInspectionMode>("details");
 
   const connectorRows = integrations.map((item) => {
     const progress = connectionProgress[item.id];
@@ -4500,6 +4580,10 @@ export function IntegrationsScreen({
     recommendations: recommendedConnectors,
     pipedreamActivity,
   });
+  const selectedProgressActivity = suggestionItems.find(
+    (item) =>
+      item.integrationId === selectedIntegrationId && item.section === "Working",
+  ) ?? null;
   const attentionSuggestionCount = suggestionItems.filter(
     (item) => item.section === "Suggested" || item.section === "Review",
   ).length;
@@ -4577,13 +4661,17 @@ export function IntegrationsScreen({
     );
   }
 
-  function openIntegrationDetails(integrationId: string) {
+  function openIntegrationDetails(
+    integrationId: string,
+    mode: IntegrationInspectionMode = "details",
+  ) {
     if (!selectedIntegrationId) {
       integrationDrawerTriggerRef.current =
         document.activeElement instanceof HTMLElement
           ? document.activeElement
           : null;
     }
+    setIntegrationDrawerMode(mode);
     setSelectedIntegrationId(integrationId);
   }
 
@@ -4908,7 +4996,7 @@ export function IntegrationsScreen({
       <AnimatePresence initial={false}>
       {selectedRow && (
         <motion.div
-          key={selectedRow.item.id}
+          key={`${selectedRow.item.id}-${integrationDrawerMode}`}
           className="integration-drawer-layer"
           role="presentation"
           initial={reduceMotion ? false : { opacity: 0 }}
@@ -4932,23 +5020,41 @@ export function IntegrationsScreen({
           >
             <div className="integration-drawer-head">
               <IntegrationProviderIcon integrationId={selectedRow.item.id} size={22} />
-              <div><span>{selectedRow.experience.filter}</span><h2 id="integration-drawer-title">{selectedRow.connected ? selectedRow.item.name : `Connect ${selectedRow.item.name}`}</h2></div>
+              <div>
+                <span>{selectedRow.experience.filter}</span>
+                <h2 id="integration-drawer-title">
+                  {integrationDrawerMode === "progress"
+                    ? `${selectedRow.item.name} progress`
+                    : selectedRow.connected
+                      ? selectedRow.item.name
+                      : `Connect ${selectedRow.item.name}`}
+                </h2>
+              </div>
               <button ref={integrationDrawerCloseRef} type="button" className="icon-button" aria-label="Close connector details" onClick={() => setSelectedIntegrationId(null)}><X size={18} /></button>
             </div>
-            <p className="integration-drawer-summary">{selectedRow.experience.summary}</p>
-            <section className="integration-drawer-section">
-              <h3>Data CloseSpan will use</h3>
-              <ul>{selectedRow.experience.importedData.map((value) => <li key={value}><Check size={14} aria-hidden="true" />{value}</li>)}</ul>
-            </section>
-            <section className="integration-drawer-section">
-              <h3>Permissions requested</h3>
-              <ul>{selectedRow.experience.requestedPermissions.map((value) => <li key={value}><ShieldCheck size={14} aria-hidden="true" />{value}</li>)}</ul>
-              <p>CloseSpan requests least-privilege access. Agent actions still require your approval.</p>
-            </section>
-            {selectedRow.connected && selectedRow.item.permissions.length > 0 && (
-              <section className="integration-drawer-section"><h3>Currently granted</h3><p>{selectedRow.item.permissions.join(", ")}</p></section>
-            )}
-            <div className="integration-drawer-actions">
+            {integrationDrawerMode === "progress" ? (
+              <IntegrationProgressDrawer
+                activity={selectedProgressActivity}
+                connected={selectedRow.connected}
+                integrationId={selectedRow.item.id}
+                onViewDetails={() => setIntegrationDrawerMode("details")}
+              />
+            ) : (
+              <>
+                <p className="integration-drawer-summary">{selectedRow.experience.summary}</p>
+                <section className="integration-drawer-section">
+                  <h3>Data CloseSpan will use</h3>
+                  <ul>{selectedRow.experience.importedData.map((value) => <li key={value}><Check size={14} aria-hidden="true" />{value}</li>)}</ul>
+                </section>
+                <section className="integration-drawer-section">
+                  <h3>Permissions requested</h3>
+                  <ul>{selectedRow.experience.requestedPermissions.map((value) => <li key={value}><ShieldCheck size={14} aria-hidden="true" />{value}</li>)}</ul>
+                  <p>CloseSpan requests least-privilege access. Agent actions still require your approval.</p>
+                </section>
+                {selectedRow.connected && selectedRow.item.permissions.length > 0 && (
+                  <section className="integration-drawer-section"><h3>Currently granted</h3><p>{selectedRow.item.permissions.join(", ")}</p></section>
+                )}
+                <div className="integration-drawer-actions">
               {selectedRow.demonstration ? (
                 <div className="integration-demo-connection">
                   <span className="badge success">Demo connection</span>
@@ -5001,14 +5107,16 @@ export function IntegrationsScreen({
                 <span className="badge success">Connected</span>
               )}
               {webhookError && selectedRow.item.id === "int_webhook" && <p className="integration-import failed"><AlertTriangle size={13} />{webhookError}</p>}
-            </div>
-            {selectedRow.item.id === "int_webhook" && webhookCredentials && (
-              <div className="setup-credentials integration-webhook-credentials">
-                <label>Webhook URL</label><code className="credential-value">{webhookCredentials.webhookUrl}</code>
-                <button type="button" className="btn" onClick={() => void copyWebhookValue("url", webhookCredentials.webhookUrl)}><Copy size={13} />{webhookCopied === "url" ? "Copied" : "Copy URL"}</button>
-                <label>Signing secret (shown once)</label><code className="credential-value">{webhookCredentials.signingSecret}</code>
-                <button type="button" className="btn" onClick={() => void copyWebhookValue("secret", webhookCredentials.signingSecret)}><Copy size={13} />{webhookCopied === "secret" ? "Copied" : "Copy secret"}</button>
-              </div>
+                </div>
+                {selectedRow.item.id === "int_webhook" && webhookCredentials && (
+                  <div className="setup-credentials integration-webhook-credentials">
+                    <label>Webhook URL</label><code className="credential-value">{webhookCredentials.webhookUrl}</code>
+                    <button type="button" className="btn" onClick={() => void copyWebhookValue("url", webhookCredentials.webhookUrl)}><Copy size={13} />{webhookCopied === "url" ? "Copied" : "Copy URL"}</button>
+                    <label>Signing secret (shown once)</label><code className="credential-value">{webhookCredentials.signingSecret}</code>
+                    <button type="button" className="btn" onClick={() => void copyWebhookValue("secret", webhookCredentials.signingSecret)}><Copy size={13} />{webhookCopied === "secret" ? "Copied" : "Copy secret"}</button>
+                  </div>
+                )}
+              </>
             )}
           </motion.aside>
         </motion.div>

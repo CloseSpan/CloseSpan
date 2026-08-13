@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildIntegrationSuggestions,
+  inspectionModeForActivity,
   type IntegrationSuggestionConnector,
   type IntegrationSuggestionPipedreamActivity,
 } from "./integration-suggestions";
@@ -108,6 +109,20 @@ describe("integration suggestions", () => {
       title: "Pulling feedback from Zendesk",
       primaryAction: { kind: "review_details", label: "View progress" },
     });
+    expect(inspectionModeForActivity(items[0]!)).toBe("progress");
+  });
+
+  it("keeps non-working suggestions in the connector details view", () => {
+    const items = buildIntegrationSuggestions({
+      orgId: "org_one",
+      connectors: [connector({ id: "int_slack", name: "Slack" })],
+      recommendations: [
+        { integrationId: "int_slack", reason: "Read customer channels." },
+      ],
+      pipedreamActivity: [],
+    });
+
+    expect(inspectionModeForActivity(items[0]!)).toBe("details");
   });
 
   it("aggregates multiple accounts deterministically with attention precedence", () => {
