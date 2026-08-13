@@ -25,10 +25,11 @@ export default async function Page({
   }>;
 }) {
   const user = await requireWorkspaceUser();
-  const [data, onboarding, pipedreamConnections, params] = await Promise.all([
+  const [data, onboarding, pipedreamConnections, githubRepositories, params] = await Promise.all([
     getWorkspaceData(user.orgId),
     getOnboardingState(user.orgId),
     listPipedreamConnections(user.orgId),
+    listGithubRepositoryAuthorizations(user.orgId),
     searchParams,
   ]);
   const requestedFocus = Array.isArray(params.focus)
@@ -50,12 +51,9 @@ export default async function Page({
   const callbackReason = Array.isArray(params.reason) ? params.reason[0] : params.reason;
   const showGithubConnection =
     focusedIntegrationId === "int_github" || callbackStatus === "connected" || callbackStatus === "error";
-  const [githubInstallations, githubRepositories] = showGithubConnection
-    ? await Promise.all([
-        listGithubAppInstallations(user.orgId),
-        listGithubRepositoryAuthorizations(user.orgId),
-      ])
-    : [[], []];
+  const githubInstallations = showGithubConnection
+    ? await listGithubAppInstallations(user.orgId)
+    : [];
   const initialIntegrationActivity = pipedreamConnections.map(
     ({
       integrationId,
@@ -90,6 +88,7 @@ export default async function Page({
       )}
       <IntegrationsScreen
         integrations={data.integrations}
+        githubRepositories={githubRepositories}
         orgId={user.orgId}
         focusedIntegrationId={focusedIntegrationId}
         productName={onboarding.productProfile.productName}

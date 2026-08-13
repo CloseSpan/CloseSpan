@@ -81,6 +81,7 @@ import {
   type IntegrationGroup,
 } from "@/lib/integration-ui";
 import type { IntegrationConnectionState } from "@/lib/integration-client";
+import type { GithubRepositoryAuthorization } from "@/lib/github-repository-allowlist";
 import type { PipedreamConnectState } from "./pipedream-connect-button";
 import type { RecommendedConnector } from "@/lib/onboarding-repository";
 import type { PromptDraftReadiness } from "@/lib/automated-prompt-draft-repository";
@@ -4426,6 +4427,7 @@ function IntegrationProgressDrawer({
 
 export function IntegrationsScreen({
   integrations,
+  githubRepositories,
   orgId,
   focusedIntegrationId = null,
   productName,
@@ -4434,6 +4436,7 @@ export function IntegrationsScreen({
   initialView,
 }: {
   integrations: IntegrationView[];
+  githubRepositories: GithubRepositoryAuthorization[];
   orgId: string;
   focusedIntegrationId?: string | null;
   productName: string | null;
@@ -4510,6 +4513,13 @@ export function IntegrationsScreen({
   >(null);
   const [integrationDrawerMode, setIntegrationDrawerMode] =
     useState<IntegrationInspectionMode>("details");
+  const connectedGithubRepositories = useMemo(
+    () =>
+      githubRepositories.filter(
+        (repository) => repository.active && repository.workspaceSelected,
+      ),
+    [githubRepositories],
+  );
 
   const connectorRows = integrations.map((item) => {
     const progress = connectionProgress[item.id];
@@ -4527,10 +4537,14 @@ export function IntegrationsScreen({
     };
     const observedConnectionState = connectionStates[item.id];
     const demonstration = isSimulatedConnectedState(itemWithLiveState.state);
-    const connected =
+    const connectedFromIntegration =
       observedConnectionState === undefined
         ? connectedIds.includes(item.id)
         : observedConnectionState === "Connected";
+    const connected =
+      item.id === "int_github" && !demonstration
+        ? connectedGithubRepositories.length > 0
+        : connectedFromIntegration;
     const available = isIntegrationAvailable(item.id);
     return {
       item: itemWithLiveState,
@@ -5096,18 +5110,59 @@ export function IntegrationsScreen({
               ) : !selectedRow.available ? (
                 <button className="btn" type="button" disabled>Coming soon</button>
               ) : selectedRow.item.id === "int_github" ? (
-                <div>
-                  <p>
-                    CloseSpan uses its GitHub App so you choose the exact
-                    repositories available for testing and approved pull requests.
-                  </p>
+                <div className="integration-github-access">
+                  {selectedRow.connected ? (
+                    <>
+                      <div className="integration-github-repository-summary">
+                        <div>
+                          <strong>Connected repositories</strong>
+                          <span className="badge success">
+                            {connectedGithubRepositories.length}
+                          </span>
+                        </div>
+                        <p>
+                          CloseSpan can use these repositories for testing and
+                          approved pull requests.
+                        </p>
+                      </div>
+                      <ul
+                        className="integration-github-repository-list"
+                        aria-label="Connected GitHub repositories"
+                      >
+                        {connectedGithubRepositories.map((repository) => (
+                          <li key={repository.id}>
+                            <GitBranch size={16} aria-hidden="true" />
+                            <div>
+                              <strong>{repository.repository}</strong>
+                              <span>Default branch: {repository.defaultBranch}</span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : (
+                    <div className="integration-github-setup-copy">
+                      <p>
+                        CloseSpan uses its GitHub App so you choose the exact
+                        repositories available for testing and approved pull requests.
+                      </p>
+                      <p>
+                        Already installed? Keep the repository selected and click
+                        <strong> Save</strong> in GitHub to sync it with this workspace.
+                      </p>
+                    </div>
+                  )}
                   <button
                     className="btn primary"
                     type="button"
                     disabled={githubBusy}
                     onClick={() => void connectGithub()}
                   >
-                    {githubBusy ? "Opening GitHub…" : "Select repositories"}
+                    {githubBusy
+                      ? "Opening GitHub…"
+                      : selectedRow.connected
+                        ? "Manage repositories"
+                        : "Select repositories"}
                   </button>
                   {githubError && (
                     <div className="github-connection-message error" role="alert">
