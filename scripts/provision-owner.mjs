@@ -43,12 +43,11 @@ try {
          org_id, autonomy_level, pii_redaction, retention_days, priority_weights,
          monthly_model_budget, used_model_cost, hard_stop, plan_name, plan_price
        ) VALUES (
-         $1, 'Observe', true, 365,
+         $1, 'Execute with approval', true, 365,
          '{"frequency":20,"severity":20,"revenue":20,"churnRisk":15,"customerTier":10,"strategicAlignment":5,"sla":5,"engineeringEffort":5}'::jsonb,
          0, 0, true, 'Production', 'Managed externally'
        )
        ON CONFLICT (org_id) DO UPDATE SET
-         autonomy_level = excluded.autonomy_level,
          plan_name = excluded.plan_name,
          plan_price = excluded.plan_price,
          updated_at = now()`,
