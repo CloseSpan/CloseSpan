@@ -272,7 +272,7 @@ jobs:
 
   callback:
     name: Return runtime evidence to CloseSpan
-    needs: verify
+    needs: [bootstrap, verify]
     if: always()
     runs-on: ${{ inputs.closespan_control_runner_label }}
     timeout-minutes: 10
@@ -288,14 +288,22 @@ jobs:
         env:
           CALLBACK_URL: ${{ inputs.closespan_callback_url }}
           ORG_ID: ${{ inputs.closespan_org_id }}
+          BOOTSTRAP_RESULT: ${{ needs.bootstrap.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
         run: |
           set -euo pipefail
+          mkdir -p .closespan-run
           node <<'NODE'
           const fs = require("node:fs");
           const path = ".closespan-run/runtime-verification.json";
+          const failedStage = process.env.BOOTSTRAP_RESULT === "failure"
+            ? "The verifier could not fetch its approval-bound CloseSpan job."
+            : process.env.VERIFY_RESULT === "failure"
+              ? "The Tenki runner stopped before producing runtime verification evidence."
+              : "The Tenki runner did not produce runtime verification evidence.";
           const payload = fs.existsSync(path)
             ? { event: "completed", orgId: process.env.ORG_ID, report: JSON.parse(fs.readFileSync(path, "utf8")) }
-            : { event: "failed", orgId: process.env.ORG_ID, message: "The Tenki runner did not produce runtime verification evidence." };
+            : { event: "failed", orgId: process.env.ORG_ID, message: failedStage };
           fs.writeFileSync(".closespan-run/callback.json", JSON.stringify(payload));
           NODE
           oidc_json="$(curl --fail --silent --show-error -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=closespan-agent-run")"

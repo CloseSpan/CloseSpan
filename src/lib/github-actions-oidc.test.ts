@@ -55,6 +55,19 @@ describe("GitHub Actions OIDC run identity", () => {
     })).not.toThrow();
   });
 
+  it("accepts GitHub's commit-qualified workflow claim for the approved commit", () => {
+    expect(() => assertGithubActionsRunIdentity({
+      claims: claims({
+        ref: "refs/heads/main",
+        workflow_ref: `${repository}/${workflowPath}@${"a".repeat(40)}`,
+      }),
+      repository,
+      runId,
+      workflowPath,
+      expectedSha: "a".repeat(40),
+    })).not.toThrow();
+  });
+
   it("rejects another ref when its commit is not the approved commit", () => {
     const ref = "refs/heads/main";
     expect(() => assertGithubActionsRunIdentity({

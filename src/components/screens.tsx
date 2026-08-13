@@ -2825,6 +2825,7 @@ export function ProductProblemInvestigationPanel({
     investigation?.runtimeVerification ?? null,
   );
   const [runtimeVerificationError, setRuntimeVerificationError] = useState<string>();
+  const [runtimeVerificationNotice, setRuntimeVerificationNotice] = useState<string>();
   const [runtimeClock, setRuntimeClock] = useState(() => Date.now());
   const [verificationStatus, setVerificationStatus] = useState<InvestigationVerificationStatus>("Confirmed current");
   const [verificationMethod, setVerificationMethod] = useState<InvestigationVerificationMethod>("Product reproduction");
@@ -2894,9 +2895,20 @@ export function ProductProblemInvestigationPanel({
         }
         if (!cancelled && payload.run) {
           setRuntimeVerificationState(payload.run);
-          setRuntimeVerificationError(undefined);
-          if (payload.run.status === "Completed" || payload.run.status === "Failed") {
+          if (payload.run.status === "Failed") {
+            setRuntimeVerificationNotice(undefined);
+            setRuntimeVerificationError(
+              payload.run.failureMessage ?? payload.run.summary ?? "Runtime verification failed.",
+            );
             router.refresh();
+          } else if (payload.run.status === "Completed") {
+            setRuntimeVerificationError(undefined);
+            setRuntimeVerificationNotice(
+              `Runtime verification finished: ${payload.run.outcome ?? "result received"}.`,
+            );
+            router.refresh();
+          } else {
+            setRuntimeVerificationError(undefined);
           }
         }
       } catch (cause) {
@@ -3290,6 +3302,12 @@ export function ProductProblemInvestigationPanel({
                       </Link>
                     </div>
                   )}
+                </div>
+              )}
+
+              {runtimeVerificationNotice && (
+                <div className="toast success runtime-verification-feedback" role="status">
+                  <p>{runtimeVerificationNotice}</p>
                 </div>
               )}
 

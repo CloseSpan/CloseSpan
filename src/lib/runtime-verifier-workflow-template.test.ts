@@ -22,4 +22,10 @@ describe("current-issue runtime verifier workflow template", () => {
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).toContain("contents: read");
   });
+
+  it("reports bootstrap failures even when no verification artifact directory exists", () => {
+    expect(workflow).toContain("needs: [bootstrap, verify]");
+    expect(workflow).toContain("mkdir -p .closespan-run");
+    expect(workflow).toContain("The verifier could not fetch its approval-bound CloseSpan job.");
+  });
 });
