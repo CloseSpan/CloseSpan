@@ -230,4 +230,52 @@ describe("GitHub webhook persistence", () => {
     );
     expect(invalidation?.[1]).toEqual(["org-1", "run-1", "c".repeat(40)]);
   });
+
+  it("stops and links an active verification when GitHub finishes without a callback", async () => {
+    const runId = "13f4610c-942a-45fa-b475-11e6fe560625";
+    database.pool.query.mockImplementation(async (query: unknown) =>
+      sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
+        ? { rows: [], rowCount: 0 }
+        : sql(query).includes("FROM github_app_installations")
+          ? { rows: [{ org_id: "org-1" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 },
+    );
+    database.client.query.mockImplementation(async (query: unknown) => {
+      if (sql(query).includes("INSERT INTO github_webhook_deliveries"))
+        return { rows: [{ delivery_id: deliveryId }], rowCount: 1 };
+      if (sql(query).includes("FROM issue_runtime_verification_runs run"))
+        return { rows: [{ investigation_id: "investigation-1", status: "Queued" }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await processGithubWebhook({
+      deliveryId,
+      event: "workflow_run",
+      rawBody: '{"action":"completed"}',
+      payload: {
+        action: "completed",
+        installation: { id: 150109806 },
+        repository: { full_name: "samshanmukh/zup" },
+        workflow_run: {
+          id: 31746217439,
+          name: "CloseSpan current-issue verifier",
+          display_title: `CloseSpan verification ${runId}`,
+          event: "workflow_dispatch",
+          status: "completed",
+          conclusion: "failure",
+          html_url: "https://github.com/samshanmukh/zup/actions/runs/31746217439",
+          head_branch: "main",
+          head_sha: "a".repeat(40),
+        },
+      },
+    });
+
+    expect(result.outcome).toBe("runtime_verification_failed_from_github_workflow");
+    expect(database.client.query.mock.calls.some(([query]) =>
+      sql(query).includes("workflow_run_id=$3") && sql(query).includes("status='Failed'"),
+    )).toBe(true);
+    expect(database.client.query.mock.calls.some(([query]) =>
+      sql(query).includes("UPDATE investigations") && sql(query).includes("Verification blocked"),
+    )).toBe(true);
+  });
 });

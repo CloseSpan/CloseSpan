@@ -1,4 +1,5 @@
 name: CloseSpan current-issue verifier
+run-name: CloseSpan verification ${{ inputs.closespan_run_id }}
 
 on:
   workflow_dispatch:

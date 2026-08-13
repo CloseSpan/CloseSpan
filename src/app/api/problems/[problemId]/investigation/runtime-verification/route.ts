@@ -5,7 +5,9 @@ import {
 } from "@/lib/issue-runtime-verification-executor";
 import {
   failIssueRuntimeVerification,
+  getIssueRuntimeVerificationContext,
   latestIssueRuntimeVerification,
+  reconcileIssueRuntimeVerificationFromGithub,
   startIssueRuntimeVerification,
 } from "@/lib/issue-runtime-verification";
 import {
@@ -26,8 +28,18 @@ export async function GET(
       authorizeRead(request),
       params,
     ]);
+    let run = await latestIssueRuntimeVerification(context.orgId, problemId);
+    if (run && (run.status === "Queued" || run.status === "Running")) {
+      try {
+        const runtimeContext = await getIssueRuntimeVerificationContext(context.orgId, run.id);
+        await reconcileIssueRuntimeVerificationFromGithub(runtimeContext, run);
+        run = await latestIssueRuntimeVerification(context.orgId, problemId);
+      } catch (error) {
+        console.error("Runtime verification GitHub reconciliation failed", error);
+      }
+    }
     return NextResponse.json(
-      { run: await latestIssueRuntimeVerification(context.orgId, problemId) },
+      { run },
       { headers: noStoreHeaders },
     );
   } catch (error) {

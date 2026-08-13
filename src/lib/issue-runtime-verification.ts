@@ -566,6 +566,7 @@ export async function failIssueRuntimeVerification(
   orgId: string,
   runId: string,
   message: string,
+  workflowRunId?: number,
 ): Promise<void> {
   const summary = runtimeVerificationFailureMessage(message)?.slice(0, 2_000)
     || "The Tenki runtime verifier failed before it produced decisive evidence.";
@@ -573,10 +574,10 @@ export async function failIssueRuntimeVerification(
     const result = await client.query<{ investigation_id: string }>(
       `UPDATE issue_runtime_verification_runs
           SET status='Failed',outcome='Verification blocked',summary=$3,failure_message=$3,
-              completed_at=now(),updated_at=now()
+              workflow_run_id=coalesce($4,workflow_run_id),completed_at=now(),updated_at=now()
         WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running')
         RETURNING investigation_id`,
-      [orgId, runId, summary],
+      [orgId, runId, summary, workflowRunId ?? null],
     );
     const investigationId = result.rows[0]?.investigation_id;
     if (!investigationId) return;
@@ -589,6 +590,62 @@ export async function failIssueRuntimeVerification(
       [orgId, investigationId, summary],
     );
   });
+}
+
+export async function reconcileIssueRuntimeVerificationFromGithub(
+  context: IssueRuntimeVerificationContext,
+  current: IssueRuntimeVerificationRunView,
+): Promise<void> {
+  if (current.status !== "Queued" && current.status !== "Running") return;
+  const github = await createGithubInstallationClient(context.installationId);
+  const [owner, repo] = context.repository.split("/");
+  if (!owner || !repo) return;
+  let workflowRun: {
+    id: number;
+    status: string | null;
+    conclusion: string | null;
+  } | undefined;
+  if (current.workflowRunId) {
+    const response = await github.rest.actions.getWorkflowRun({
+      owner,
+      repo,
+      run_id: current.workflowRunId,
+    });
+    workflowRun = response.data;
+  } else {
+    const response = await github.rest.actions.listWorkflowRuns({
+      owner,
+      repo,
+      workflow_id: ".github/workflows/closespan-runtime-verifier.yml",
+      event: "workflow_dispatch",
+      per_page: 30,
+    });
+    workflowRun = response.data.workflow_runs.find(
+      (run) => run.display_title === `CloseSpan verification ${context.runId}`,
+    );
+  }
+  if (!workflowRun) return;
+  if (workflowRun.status === "completed") {
+    const conclusion = workflowRun.conclusion?.replaceAll("_", " ") ?? "without a result";
+    await failIssueRuntimeVerification(
+      context.orgId,
+      context.runId,
+      workflowRun.conclusion === "success"
+        ? "GitHub Actions completed, but CloseSpan did not receive the runtime verification result. Review the GitHub run, then retry."
+        : `GitHub Actions ${conclusion} before CloseSpan received a runtime verification result. Review the GitHub run, correct the failure, then retry.`,
+      workflowRun.id,
+    );
+    return;
+  }
+  await databasePool().query(
+    `UPDATE issue_runtime_verification_runs
+        SET workflow_run_id=coalesce(workflow_run_id,$3),
+            status=CASE WHEN $4='in_progress' AND status='Queued' THEN 'Running' ELSE status END,
+            started_at=CASE WHEN $4='in_progress' THEN coalesce(started_at,now()) ELSE started_at END,
+            updated_at=now()
+      WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running')`,
+    [context.orgId, context.runId, workflowRun.id, workflowRun.status],
+  );
 }
 
 export async function completeIssueRuntimeVerification(

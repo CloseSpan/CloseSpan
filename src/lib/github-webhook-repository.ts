@@ -12,6 +12,17 @@ interface GithubWebhookPayload extends GithubDeploymentPayload {
   action?: unknown;
   installation?: { id?: unknown };
   repository?: { full_name?: unknown };
+  workflow_run?: {
+    id?: unknown;
+    name?: unknown;
+    display_title?: unknown;
+    event?: unknown;
+    status?: unknown;
+    conclusion?: unknown;
+    html_url?: unknown;
+    head_branch?: unknown;
+    head_sha?: unknown;
+  };
   pull_request?: {
     number?: unknown;
     html_url?: unknown;
@@ -50,6 +61,7 @@ const pullRequestActions = new Set([
   "converted_to_draft",
   "closed",
 ]);
+const runtimeVerificationTitle = /^CloseSpan verification ([0-9a-f]{8}-[0-9a-f-]{27})$/i;
 
 let schemaInitialization: Promise<void> | undefined;
 
@@ -257,6 +269,96 @@ async function auditPullRequest(
   return merged ? "tracked_pull_request_merged" : `tracked_pull_request_${action}`;
 }
 
+function runtimeVerificationRunId(payload: GithubWebhookPayload): string | null {
+  const title = payload.workflow_run?.display_title;
+  const titleMatch = typeof title === "string" ? runtimeVerificationTitle.exec(title) : null;
+  if (titleMatch?.[1]) return titleMatch[1].toLowerCase();
+  const branch = payload.workflow_run?.head_branch;
+  const branchMatch = typeof branch === "string"
+    ? /^closespan\/runs\/([0-9a-f]{8}-[0-9a-f-]{27})$/i.exec(branch)
+    : null;
+  return branchMatch?.[1]?.toLowerCase() ?? null;
+}
+
+async function reconcileRuntimeVerificationWorkflow(
+  client: PoolClient,
+  orgId: string,
+  installationId: string,
+  action: string | null,
+  payload: GithubWebhookPayload,
+  deliveryId: string,
+): Promise<string> {
+  const workflow = payload.workflow_run;
+  if (action !== "completed" || workflow?.name !== "CloseSpan current-issue verifier") {
+    return "ignored_runtime_verification_workflow_action";
+  }
+  const runId = runtimeVerificationRunId(payload);
+  const repository = payload.repository?.full_name;
+  const workflowRunId = workflow.id;
+  const headSha = workflow.head_sha;
+  if (
+    !runId
+    || typeof repository !== "string"
+    || typeof workflowRunId !== "number"
+    || !Number.isSafeInteger(workflowRunId)
+    || typeof headSha !== "string"
+  ) return "ignored_malformed_runtime_verification_workflow";
+
+  const tracked = await client.query<{ investigation_id: string; status: string }>(
+    `SELECT run.investigation_id,run.status
+       FROM issue_runtime_verification_runs run
+       JOIN github_repository_allowlists allowlist
+         ON allowlist.org_id=run.org_id
+        AND allowlist.repository=run.repository
+        AND allowlist.installation_id=$3
+        AND allowlist.active=true
+      WHERE run.org_id=$1 AND run.id=$2 AND run.repository=$4
+        AND lower(run.base_sha)=lower($5)
+      FOR UPDATE`,
+    [orgId, runId, installationId, repository, headSha],
+  );
+  const record = tracked.rows[0];
+  if (!record) return "ignored_untracked_runtime_verification_workflow";
+  if (record.status === "Completed" || record.status === "Failed") {
+    await client.query(
+      `UPDATE issue_runtime_verification_runs
+          SET workflow_run_id=coalesce(workflow_run_id,$3),updated_at=now()
+        WHERE org_id=$1 AND id=$2`,
+      [orgId, runId, workflowRunId],
+    );
+    return "runtime_verification_already_terminal";
+  }
+
+  const conclusion = typeof workflow.conclusion === "string"
+    ? workflow.conclusion.replaceAll("_", " ")
+    : "without a result";
+  const message = workflow.conclusion === "success"
+    ? "GitHub Actions completed, but CloseSpan did not receive the runtime verification result. Review the GitHub run, then retry."
+    : `GitHub Actions ${conclusion} before CloseSpan received a runtime verification result. Review the GitHub run, correct the failure, then retry.`;
+  await client.query(
+    `UPDATE issue_runtime_verification_runs
+        SET status='Failed',outcome='Verification blocked',summary=$4,failure_message=$4,
+            workflow_run_id=$3,completed_at=coalesce(completed_at,now()),updated_at=now()
+      WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running')`,
+    [orgId, runId, workflowRunId, message],
+  );
+  await client.query(
+    `UPDATE investigations
+        SET verification_status='Verification blocked',verification_method='Automated check',
+            verification_summary=$3,verification_actor_id='github',verification_actor_name='GitHub Actions',
+            verified_at=now(),updated_at=now()
+      WHERE org_id=$1 AND id=$2`,
+    [orgId, record.investigation_id, message],
+  );
+  await client.query(
+    `INSERT INTO audit_events(
+       id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+     ) VALUES($1,$2,'github','GitHub Actions',$3,'Investigation',$4,$5)`,
+    [randomUUID(), orgId, message, record.investigation_id, `github-webhook-${deliveryId}`],
+  );
+  return "runtime_verification_failed_from_github_workflow";
+}
+
 function summarizeWorkspaceOutcomes(outcomes: string[]): string {
   if (outcomes.length === 0) return "ignored_unbound_installation";
   if (outcomes.length === 1) return outcomes[0];
@@ -294,6 +396,15 @@ async function processWorkspaceEvent(
     return synchronizeInstallation(client, orgId, verified, input.deliveryId);
   if (input.event === "pull_request")
     return auditPullRequest(client, orgId, id, action, input.payload, input.deliveryId);
+  if (input.event === "workflow_run")
+    return reconcileRuntimeVerificationWorkflow(
+      client,
+      orgId,
+      id,
+      action,
+      input.payload,
+      input.deliveryId,
+    );
   if (input.event === "deployment_status")
     return recordGithubDeploymentStatus(client, orgId, input.deliveryId, input.payload);
   return "ignored_unhandled_event";

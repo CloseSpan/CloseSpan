@@ -8,6 +8,10 @@ const workflow = readFileSync(
 );
 
 describe("current-issue runtime verifier workflow template", () => {
+  it("gives every dispatch a webhook-reconcilable run name", () => {
+    expect(workflow).toContain("run-name: CloseSpan verification ${{ inputs.closespan_run_id }}");
+  });
+
   it("boots and exports a reusable iOS Simulator harness before verification", () => {
     expect(workflow).toContain("name: Prepare iOS Simulator harness");
     expect(workflow).toContain("xcrun simctl bootstatus");
