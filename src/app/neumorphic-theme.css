@@ -3301,6 +3301,21 @@ table tbody tr:hover {
   flex: 0 0 auto;
 }
 
+.app-shell .runtime-verification-feedback {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.app-shell .runtime-verification-feedback p {
+  margin: 0;
+}
+
+.app-shell .runtime-verification-feedback .top-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
 .app-shell .runtime-verification-external {
   justify-self: start;
 }

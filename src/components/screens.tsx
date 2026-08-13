@@ -2821,6 +2821,10 @@ export function ProductProblemInvestigationPanel({
   const router = useRouter();
   const [startingInvestigation, setStartingInvestigation] = useState(false);
   const [startingRuntimeVerification, setStartingRuntimeVerification] = useState(false);
+  const [runtimeVerificationState, setRuntimeVerificationState] = useState<IssueRuntimeVerificationRunView | null>(
+    investigation?.runtimeVerification ?? null,
+  );
+  const [runtimeVerificationError, setRuntimeVerificationError] = useState<string>();
   const [runtimeClock, setRuntimeClock] = useState(() => Date.now());
   const [verificationStatus, setVerificationStatus] = useState<InvestigationVerificationStatus>("Confirmed current");
   const [verificationMethod, setVerificationMethod] = useState<InvestigationVerificationMethod>("Product reproduction");
@@ -2835,7 +2839,8 @@ export function ProductProblemInvestigationPanel({
   const updatedLabel = !updatedAt || Number.isNaN(updatedAt.getTime())
     ? "Awaiting investigation"
     : `Updated ${updatedAt.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-  const runtimeVerification = investigation?.runtimeVerification ?? null;
+  const persistedRuntimeVerification = investigation?.runtimeVerification ?? null;
+  const runtimeVerification = runtimeVerificationState;
   const evidenceToCollect = evidenceBundle?.remainingEvidence
     ?? investigation?.missingInformation
     ?? [];
@@ -2855,10 +2860,64 @@ export function ProductProblemInvestigationPanel({
     : null;
 
   useEffect(() => {
+    if (!persistedRuntimeVerification) return;
+    // Server refreshes reconcile the durable run; mirror that result locally
+    // so the action card never falls back to its pre-run state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRuntimeVerificationState(persistedRuntimeVerification);
+  }, [
+    persistedRuntimeVerification?.id,
+    persistedRuntimeVerification?.status,
+    persistedRuntimeVerification?.outcome,
+    persistedRuntimeVerification?.summary,
+    persistedRuntimeVerification?.workflowRunId,
+  ]);
+
+  useEffect(() => {
     if (!runtimeVerificationActive) return;
-    const timer = window.setInterval(() => router.refresh(), 4_000);
-    return () => window.clearInterval(timer);
-  }, [router, runtimeVerificationActive]);
+    let cancelled = false;
+    let polling = false;
+    const poll = async () => {
+      if (polling) return;
+      polling = true;
+      try {
+        const response = await fetch(
+          `/api/problems/${encodeURIComponent(problem.id)}/investigation/runtime-verification`,
+          { cache: "no-store", headers: { "x-request-id": crypto.randomUUID() } },
+        );
+        const payload = await response.json().catch(() => ({})) as {
+          error?: string;
+          run?: IssueRuntimeVerificationRunView | null;
+        };
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Runtime verification status could not be refreshed.");
+        }
+        if (!cancelled && payload.run) {
+          setRuntimeVerificationState(payload.run);
+          setRuntimeVerificationError(undefined);
+          if (payload.run.status === "Completed" || payload.run.status === "Failed") {
+            router.refresh();
+          }
+        }
+      } catch (cause) {
+        if (!cancelled) {
+          setRuntimeVerificationError(
+            cause instanceof Error
+              ? cause.message
+              : "Runtime verification status could not be refreshed.",
+          );
+        }
+      } finally {
+        polling = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 4_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [problem.id, router, runtimeVerificationActive]);
 
   useEffect(() => {
     if (!runtimeVerificationActive) return;
@@ -2925,7 +2984,7 @@ export function ProductProblemInvestigationPanel({
   async function runRuntimeVerification() {
     if (!investigation) return;
     setStartingRuntimeVerification(true);
-    setInvestigationError(undefined);
+    setRuntimeVerificationError(undefined);
     try {
       const response = await fetch(
         `/api/problems/${problem.id}/investigation/runtime-verification`,
@@ -2938,13 +2997,20 @@ export function ProductProblemInvestigationPanel({
           },
         },
       );
-      const payload = await response.json() as { error?: string };
+      const payload = await response.json() as {
+        error?: string;
+        run?: IssueRuntimeVerificationRunView | null;
+      };
       if (!response.ok) {
         throw new Error(payload.error ?? "Runtime verification could not be started.");
       }
+      if (!payload.run) {
+        throw new Error("Runtime verification was accepted but no run status was returned.");
+      }
+      setRuntimeVerificationState(payload.run);
       router.refresh();
     } catch (cause) {
-      setInvestigationError(
+      setRuntimeVerificationError(
         cause instanceof Error ? cause.message : "Runtime verification could not be started.",
       );
     } finally {
@@ -3152,7 +3218,11 @@ export function ProductProblemInvestigationPanel({
                 </span>
               </div>
 
-              <div className="runtime-verification-action">
+              <div
+                className="runtime-verification-action"
+                aria-live="polite"
+                aria-busy={startingRuntimeVerification || runtimeVerificationActive}
+              >
                 <div>
                   <strong>{runtimeVerificationActive
                     ? runtimeVerificationQueued
@@ -3206,6 +3276,22 @@ export function ProductProblemInvestigationPanel({
                           : runtimeVerification ? "Run again on Tenki" : "Run runtime verification"}
                 </button>
               </div>
+
+              {runtimeVerificationError && (
+                <div className="toast error runtime-verification-feedback" role="alert">
+                  <p>{runtimeVerificationError}</p>
+                  {runtimeVerificationError.includes("confirmed repository binding") && (
+                    <div className="top-actions">
+                      <Link className="btn secondary" href="/settings#execution">
+                        Open Settings → Execution
+                      </Link>
+                      <Link className="btn secondary" href={`/pdd/${problem.id}`}>
+                        Open PDD repository context
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {editingVerification ? (
                 <form className="investigation-verification-form" onSubmit={saveVerification}>

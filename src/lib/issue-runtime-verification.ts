@@ -10,9 +10,12 @@ import {
 import { createGithubInstallationClient } from "./github-app-auth";
 import { listGithubRepositoryAuthorizations } from "./github-repository-allowlist";
 import {
+  confirmProblemRepositoryMatch,
   getActiveConfirmedProblemRepositoryMatch,
+  ProblemRepositoryMatchError,
   refreshProblemRepositoryMatch,
 } from "./problem-repository-match-repository";
+import type { ProblemRepositoryMatchView } from "./execution-profile";
 import {
   CLOSESPAN_SYSTEM_PATH_PREFIXES,
   searchRepositoryContext,
@@ -152,6 +155,60 @@ export const issueRuntimeVerificationReportSchema = z.object({
 });
 
 export type IssueRuntimeVerificationReport = z.infer<typeof issueRuntimeVerificationReportSchema>;
+
+interface RuntimeRepositoryBindingDependencies {
+  getActiveMatch: typeof getActiveConfirmedProblemRepositoryMatch;
+  refreshMatch: typeof refreshProblemRepositoryMatch;
+  confirmMatch: typeof confirmProblemRepositoryMatch;
+}
+
+const runtimeRepositoryBindingDependencies: RuntimeRepositoryBindingDependencies = {
+  getActiveMatch: getActiveConfirmedProblemRepositoryMatch,
+  refreshMatch: refreshProblemRepositoryMatch,
+  confirmMatch: confirmProblemRepositoryMatch,
+};
+
+/**
+ * Reuses an active ticket binding, or confirms a deterministic repository
+ * suggestion as part of the user's explicit request to run verification.
+ * Ambiguous repository evidence remains human-reviewed in PDD.
+ */
+export async function resolveRuntimeVerificationRepositoryBinding(
+  input: {
+    orgId: string;
+    problemId: string;
+    actor: { actorId: string; actorName: string; traceId: string };
+  },
+  dependencies: RuntimeRepositoryBindingDependencies = runtimeRepositoryBindingDependencies,
+): Promise<ProblemRepositoryMatchView | null> {
+  const active = await dependencies.getActiveMatch(input.orgId, input.problemId);
+  if (active) return active;
+
+  const refreshed = await dependencies.refreshMatch(input.orgId, input.problemId);
+  if (
+    refreshed.resolution.needsReview
+    || !refreshed.resolution.selected
+    || !refreshed.persistedProfileId
+  ) {
+    return null;
+  }
+
+  try {
+    const confirmation = await dependencies.confirmMatch({
+      orgId: input.orgId,
+      problemId: input.problemId,
+      profileId: refreshed.persistedProfileId,
+      repository: refreshed.resolution.selected.repository,
+      actor: input.actor,
+    });
+    return confirmation.match;
+  } catch (error) {
+    if (error instanceof ProblemRepositoryMatchError && error.status === 409) {
+      return null;
+    }
+    throw error;
+  }
+}
 
 function iso(value: Date | string | null): string | null {
   return value ? (value instanceof Date ? value : new Date(value)).toISOString() : null;
@@ -319,11 +376,7 @@ export async function startIssueRuntimeVerification(input: {
     throw new HttpError(409, "Runtime verification requires a persistent workspace");
   }
   await reconcileStaleIssueRuntimeVerifications(input.orgId);
-  let match = await getActiveConfirmedProblemRepositoryMatch(input.orgId, input.problemId);
-  if (!match) {
-    await refreshProblemRepositoryMatch(input.orgId, input.problemId);
-    match = await getActiveConfirmedProblemRepositoryMatch(input.orgId, input.problemId);
-  }
+  const match = await resolveRuntimeVerificationRepositoryBinding(input);
   if (!match) {
     throw new HttpError(
       409,
