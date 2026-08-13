@@ -3338,7 +3338,21 @@ export function ProductProblemInvestigationPanel({
             </button>
           </section>
         )}
-        {investigationError && <p className="toast error" role="alert">{investigationError}</p>}
+        {investigationError && (
+          <div className="toast error" role="alert">
+            <p>{investigationError}</p>
+            {investigationError.includes("confirmed repository binding") && (
+              <div className="top-actions">
+                <Link className="btn secondary" href="/settings#execution">
+                  Open Settings → Execution
+                </Link>
+                <Link className="btn secondary" href={`/pdd/${problem.id}`}>
+                  Open PDD repository context
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </article>
   );

@@ -9,7 +9,10 @@ import {
 } from "./execution-profile";
 import { createGithubInstallationClient } from "./github-app-auth";
 import { listGithubRepositoryAuthorizations } from "./github-repository-allowlist";
-import { getActiveConfirmedProblemRepositoryMatch } from "./problem-repository-match-repository";
+import {
+  getActiveConfirmedProblemRepositoryMatch,
+  refreshProblemRepositoryMatch,
+} from "./problem-repository-match-repository";
 import {
   CLOSESPAN_SYSTEM_PATH_PREFIXES,
   searchRepositoryContext,
@@ -316,8 +319,17 @@ export async function startIssueRuntimeVerification(input: {
     throw new HttpError(409, "Runtime verification requires a persistent workspace");
   }
   await reconcileStaleIssueRuntimeVerifications(input.orgId);
-  const match = await getActiveConfirmedProblemRepositoryMatch(input.orgId, input.problemId);
-  if (!match) throw new HttpError(409, "Confirm an authorized repository and execution profile before runtime verification");
+  let match = await getActiveConfirmedProblemRepositoryMatch(input.orgId, input.problemId);
+  if (!match) {
+    await refreshProblemRepositoryMatch(input.orgId, input.problemId);
+    match = await getActiveConfirmedProblemRepositoryMatch(input.orgId, input.problemId);
+  }
+  if (!match) {
+    throw new HttpError(
+      409,
+      "Runtime verification needs a confirmed repository binding for this ticket. Step 1: Go to Settings → Execution and verify that the authorized repository root is Active. Step 2: Open this ticket in PDD → Repository execution context, select that active repository/root, and confirm it for this ticket. Step 3: Return here and retry runtime verification.",
+    );
+  }
   const profile = await getExecutionProfileVersion(input.orgId, match.profileId);
   if (!profile || profile.contentHash !== match.profileHash) {
     throw new HttpError(409, "The confirmed execution profile is no longer available");

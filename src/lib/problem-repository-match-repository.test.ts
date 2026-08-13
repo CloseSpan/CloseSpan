@@ -86,6 +86,36 @@ describe("durable problem repository matching", () => {
     expect(profiles.save).not.toHaveBeenCalled();
   });
 
+  it("refreshes a stale root suggestion to the repository's active root", async () => {
+    database.query
+      .mockResolvedValueOnce({ rows: [{ ...problem, suspected_files: [] }] })
+      .mockResolvedValueOnce({
+        rows: [{
+          repository: "samshanmukh/zup",
+          default_branch: "main",
+          profile_id: "11111111-1111-4111-8111-111111111111",
+          workspace_root: ".",
+          profile_active: false,
+          config: { language: "typescript", framework: "Next.js" },
+          detection_evidence: {},
+        }, {
+          repository: "samshanmukh/zup",
+          default_branch: "main",
+          profile_id: "22222222-2222-4222-8222-222222222222",
+          workspace_root: "ZupNative",
+          profile_active: true,
+          config: { language: "swift", framework: "iOS" },
+          detection_evidence: {},
+        }],
+      });
+
+    const result = await refreshProblemRepositoryMatch("org-1", "problem-1");
+    expect(result.persistedProfileId).toBe("22222222-2222-4222-8222-222222222222");
+    expect(profiles.save).toHaveBeenCalledWith(expect.objectContaining({
+      profileId: "22222222-2222-4222-8222-222222222222",
+    }));
+  });
+
   it("does not persist ambiguous multi-repository evidence", async () => {
     database.query
       .mockResolvedValueOnce({

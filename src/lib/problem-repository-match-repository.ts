@@ -220,7 +220,7 @@ function matchingRootScore(root: string, suspectedFiles: string[]): number {
   const prefix = `${root.replace(/\/$/, "")}/`;
   return suspectedFiles.some((path) => path === root || path.startsWith(prefix))
     ? root.split("/").length
-    : -1;
+    : 0;
 }
 
 function selectProfile(

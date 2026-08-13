@@ -806,6 +806,14 @@ export async function saveProblemRepositoryMatch(input: {
       throw new Error("Repository match execution profile was not found");
     }
     await requireAuthorizedRepository(client, input.orgId, profile.repository);
+    if ((input.status ?? "Suggested") === "Suggested") {
+      await client.query(
+        `DELETE FROM problem_repository_matches
+          WHERE org_id=$1 AND problem_id=$2 AND status='Suggested'
+            AND NOT (repository=$3 AND workspace_root=$4)`,
+        [input.orgId, input.problemId, profile.repository, profile.workspaceRoot],
+      );
+    }
     await client.query(
       `INSERT INTO problem_repository_matches(
          org_id,problem_id,repository,workspace_root,profile_id,profile_hash,
