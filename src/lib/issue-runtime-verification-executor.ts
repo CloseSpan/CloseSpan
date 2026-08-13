@@ -5,6 +5,7 @@ import type { Octokit } from "@octokit/rest";
 import {
   executionProfileExecutor,
   sanitizeExecutionProfileConfig,
+  type ExecutionProfileExecutor,
 } from "./execution-profile";
 import { createGithubInstallationClient } from "./github-app-auth";
 import type { IssueRuntimeVerificationContext } from "./issue-runtime-verification";
@@ -24,6 +25,21 @@ function controlRunnerLabel(): string {
   if (!RUNNER_LABEL_PATTERN.test(label)) {
     throw new Error(
       "TENKI_CONTROL_RUNNER_LABEL must be a valid GitHub Actions runner label",
+    );
+  }
+  return label;
+}
+
+export function runtimeVerificationRunnerLabel(
+  executor: Extract<ExecutionProfileExecutor, { kind: "tenki_github_actions" }>,
+): string {
+  const override = executor.platform === "macos"
+    ? process.env.RUNTIME_VERIFICATION_MACOS_RUNNER_LABEL?.trim()
+    : undefined;
+  const label = override || executor.runnerLabel;
+  if (!RUNNER_LABEL_PATTERN.test(label)) {
+    throw new Error(
+      "RUNTIME_VERIFICATION_MACOS_RUNNER_LABEL must be a valid GitHub Actions runner label",
     );
   }
   return label;
@@ -107,6 +123,7 @@ export function buildIssueRuntimeVerificationJob(
   if (executor.kind !== "tenki_github_actions") {
     throw new Error("Runtime verification is not bound to a Tenki GitHub Actions profile");
   }
+  const runnerLabel = runtimeVerificationRunnerLabel(executor);
   return {
     schemaVersion: 1 as const,
     kind: "issue_runtime_verification" as const,
@@ -128,7 +145,7 @@ export function buildIssueRuntimeVerificationJob(
     workflowHash: context.workflowHash,
     expiresAt: context.expiresAt,
     runner: {
-      label: executor.runnerLabel,
+      label: runnerLabel,
       platform: executor.platform,
       architecture: executor.architecture,
       xcode: executor.xcode,
@@ -157,6 +174,7 @@ export async function dispatchIssueRuntimeVerification(
   if (executor.kind !== "tenki_github_actions") {
     throw new Error("Runtime verification is not bound to a Tenki GitHub Actions profile");
   }
+  const runnerLabel = runtimeVerificationRunnerLabel(executor);
   const repository = repositoryParts(context.repository);
   const github = dependencies.createClient
     ? await dependencies.createClient(context.installationId)
@@ -209,7 +227,7 @@ export async function dispatchIssueRuntimeVerification(
       closespan_profile_hash: context.executionProfileHash,
       closespan_workflow_hash: context.workflowHash,
       closespan_control_runner_label: controlRunnerLabel(),
-      closespan_runner_label: executor.runnerLabel,
+      closespan_runner_label: runnerLabel,
     },
   });
 }
