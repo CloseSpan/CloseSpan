@@ -5038,6 +5038,27 @@ pre.code-block {
   box-shadow: var(--shadow-inset-sm);
 }
 
+/* Connector detail groups are inset wells, so their copy needs a real inner
+ * gutter rather than relying on the drawer's outer padding. Keep the same
+ * spacing rhythm for the connected-account row that follows these groups. */
+.app-shell .integration-drawer-section {
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.app-shell .integration-drawer-section :is(h3, p, ul) {
+  min-width: 0;
+}
+
+.app-shell .integration-drawer-section p,
+.app-shell .integration-drawer-section li {
+  overflow-wrap: anywhere;
+}
+
+.app-shell .integration-drawer .pipedream-account-row {
+  padding: var(--space-5);
+}
+
 .delphi-onboarding,
 .delphi-hero,
 .delphi-stage,
@@ -9338,6 +9359,11 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 @media (max-width: 480px) {
   .app-shell .content,
   .immersive-content { padding-inline: var(--space-3); }
+
+  .app-shell .integration-drawer-section,
+  .app-shell .integration-drawer .pipedream-account-row {
+    padding: var(--space-4);
+  }
 
   .page-head { gap: var(--space-4); }
 
