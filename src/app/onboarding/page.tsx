@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ github?: string | string[] }>;
+  searchParams: Promise<{
+    github?: string | string[];
+    reason?: string | string[];
+  }>;
 }) {
   const user = await requireWorkspaceUser();
   const [setup, onboarding, params] = await Promise.all([
@@ -21,6 +24,9 @@ export default async function OnboardingPage({
   const githubCallback = Array.isArray(params.github)
     ? params.github[0]
     : params.github;
+  const githubCallbackReason = Array.isArray(params.reason)
+    ? params.reason[0]
+    : params.reason;
   const returningFromGithub =
     githubCallback === "connected" || githubCallback === "error";
   const showOnboarding =
@@ -36,6 +42,8 @@ export default async function OnboardingPage({
       <OnboardingAgentPanel
         orgId={user.orgId}
         initialSetup={setup}
+        githubCallbackStatus={githubCallback ?? null}
+        githubCallbackReason={githubCallbackReason ?? null}
       />
     </AppShell>
   );

@@ -11314,11 +11314,54 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
   line-height: 1.5;
 }
 
+.shell-immersive .delphi-next-step-actions {
+  display: grid;
+  justify-items: stretch;
+  gap: var(--space-2);
+  min-width: 176px;
+}
+
 .shell-immersive .delphi-next-step .btn.primary {
   min-height: 52px;
   padding-inline: var(--space-5);
   border-radius: var(--radius-pill);
   white-space: nowrap;
+}
+
+.shell-immersive .delphi-next-step-actions > .btn:not(.primary) {
+  min-height: 42px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.shell-immersive .delphi-next-step-skip {
+  justify-self: center;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.shell-immersive .delphi-next-step-skip:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+.shell-immersive .delphi-next-step-skip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.shell-immersive .delphi-next-step-skip:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.shell-immersive .delphi-next-step-copy .delphi-next-step-notice {
+  color: var(--text);
+  font-weight: var(--weight-semibold);
 }
 
 .shell-immersive .delphi-sync {
@@ -11952,9 +11995,14 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
     padding: var(--space-5);
   }
 
-  .shell-immersive .delphi-next-step .btn.primary {
+  .shell-immersive .delphi-next-step-actions {
     width: 100%;
     grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .shell-immersive .delphi-next-step-actions .btn {
+    width: 100%;
   }
 
   .shell-immersive .delphi-github-connected {

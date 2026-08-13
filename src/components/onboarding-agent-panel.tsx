@@ -44,6 +44,21 @@ const STARTER_CHIPS = [
 const FRIENDLY_ERROR =
   "Something went wrong. Please try again in a moment.";
 
+const GITHUB_CALLBACK_ERRORS: Readonly<Record<string, string>> = {
+  authentication_required:
+    "CloseSpan could not match the GitHub return to your signed-in workspace.",
+  administrator_required:
+    "A workspace administrator must finish linking this GitHub installation.",
+  install_request_expired:
+    "The GitHub connection request expired before CloseSpan received the installation.",
+  installation_unavailable:
+    "GitHub is installed, but CloseSpan could not link the selected repository to this workspace.",
+  invalid_callback:
+    "GitHub returned without the information CloseSpan needs to link this workspace.",
+  connection_failed:
+    "GitHub kept the installation, but CloseSpan could not finish linking it to this workspace.",
+};
+
 const SUPPORT_EMAIL = "support@closespan.com";
 const SUPPORT_REQUEST_PATTERN =
   /^(?:contact|email|message|talk to|speak to|connect (?:me )?(?:to|with))\s+(?:the\s+)?support(?:\s+team)?[.!]?$/i;
@@ -291,9 +306,13 @@ async function onboardingActionFetch(
 export function OnboardingAgentPanel({
   orgId,
   initialSetup,
+  githubCallbackStatus,
+  githubCallbackReason,
 }: {
   orgId: string;
   initialSetup: WorkspaceSetupStatus;
+  githubCallbackStatus: string | null;
+  githubCallbackReason: string | null;
 }) {
   const router = useRouter();
   const prefersReducedMotion = useReducedMotion();
@@ -333,6 +352,9 @@ export function OnboardingAgentPanel({
     message: "",
   });
   const [supportDeliveryError, setSupportDeliveryError] = useState<
+    string | null
+  >(null);
+  const [githubRecoveryNotice, setGithubRecoveryNotice] = useState<
     string | null
   >(null);
 
@@ -446,7 +468,7 @@ export function OnboardingAgentPanel({
           ? {
               ...message,
               content:
-                "Connect GitHub first so CloseSpan can test the right repository and open approved PRs.",
+                "Connect GitHub to test repositories and open approved PRs, or continue to the workspace and finish setup later.",
             }
           : message,
       );
@@ -597,6 +619,42 @@ export function OnboardingAgentPanel({
       await onboardingActionFetch(orgId, "continue");
       router.push("/overview");
       router.refresh();
+    } catch {
+      setError(FRIENDLY_ERROR);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function continueWithoutGithub() {
+    if (busy) return;
+    setBusy("continue_without_github");
+    setError(null);
+    try {
+      await onboardingActionFetch(orgId, "continue");
+      router.push("/overview");
+      router.refresh();
+    } catch {
+      setError(FRIENDLY_ERROR);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function refreshGithubConnection() {
+    if (busy) return;
+    setBusy("refresh_github");
+    setError(null);
+    setGithubRecoveryNotice(null);
+    try {
+      const next = await workspaceSetupFetch(orgId);
+      setSetupStatus(next);
+      setConnectedIds(next.connectedIntegrationIds);
+      if (!next.githubConnected) {
+        setGithubRecoveryNotice(
+          "GitHub has not linked this installation to the workspace yet. You can continue now and reconnect later from Integrations.",
+        );
+      }
     } catch {
       setError(FRIENDLY_ERROR);
     } finally {
@@ -1345,22 +1403,56 @@ export function OnboardingAgentPanel({
             </div>
             <div className="delphi-next-step-copy">
               <span>NEXT BEST STEP</span>
-              <h2 id="github-next-step-title">Connect GitHub</h2>
-              <p>Choose repositories for testing and approved PRs.</p>
+              <h2 id="github-next-step-title">
+                {githubCallbackStatus === "error"
+                  ? "GitHub needs to be linked"
+                  : "Connect GitHub"}
+              </h2>
+              <p>
+                {githubCallbackStatus === "error"
+                  ? GITHUB_CALLBACK_ERRORS[githubCallbackReason ?? ""] ??
+                    GITHUB_CALLBACK_ERRORS.connection_failed
+                  : "Choose repositories for testing and approved PRs. Already installed? Check the connection again or continue for now."}
+              </p>
+              {githubRecoveryNotice && (
+                <p className="delphi-next-step-notice" role="status">
+                  {githubRecoveryNotice}
+                </p>
+              )}
             </div>
-            <button
-              className="btn primary"
-              type="button"
-              disabled={busy === "connect_github"}
-              onClick={() =>
-                void runAction({
-                  type: "connect_github",
-                  label: "Connect GitHub",
-                })
-              }
-            >
-              {busy === "connect_github" ? "Opening..." : "Connect GitHub"}
-            </button>
+            <div className="delphi-next-step-actions">
+              <button
+                className="btn primary"
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() =>
+                  void runAction({
+                    type: "connect_github",
+                    label: "Connect GitHub",
+                  })
+                }
+              >
+                {busy === "connect_github" ? "Opening..." : "Connect GitHub"}
+              </button>
+              <button
+                className="btn"
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => void refreshGithubConnection()}
+              >
+                {busy === "refresh_github" ? "Checking..." : "Check again"}
+              </button>
+              <button
+                className="text-link delphi-next-step-skip"
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => void continueWithoutGithub()}
+              >
+                {busy === "continue_without_github"
+                  ? "Opening workspace..."
+                  : "Continue to workspace"}
+              </button>
+            </div>
           </motion.section>
         )}
 
