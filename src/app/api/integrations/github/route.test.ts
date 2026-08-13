@@ -60,9 +60,11 @@ describe("GitHub integration API", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("closespan_github_install=");
     expect(response.headers.get("set-cookie")).toContain("HttpOnly");
-    await expect(response.json()).resolves.toMatchObject({
-      installUrl: "https://github.com/apps/closespan/installations/new",
-    });
+    const payload = await response.json() as { installUrl: string };
+    const installUrl = new URL(payload.installUrl);
+    expect(installUrl.origin).toBe("https://github.com");
+    expect(installUrl.pathname).toBe("/apps/closespan/installations/new");
+    expect(installUrl.searchParams.get("state")).toBeTruthy();
   });
 
   it("stores the onboarding return path in signed callback state", async () => {
@@ -70,6 +72,10 @@ describe("GitHub integration API", () => {
     const setCookie = response.headers.get("set-cookie") ?? "";
     const encodedCookie = setCookie.match(/closespan_github_install=([^;]+)/)?.[1];
     expect(encodedCookie).toBeTruthy();
+    const payload = await response.json() as { installUrl: string };
+    expect(new URL(payload.installUrl).searchParams.get("state")).toBe(
+      encodedCookie,
+    );
     const { verifyGithubInstallStateToken } = await import(
       "@/lib/github-installation-state"
     );

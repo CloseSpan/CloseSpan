@@ -7,6 +7,7 @@ const detector = vi.hoisted(() => ({ detect: vi.fn() }));
 const repositoryContext = vi.hoisted(() => ({ queue: vi.fn(), build: vi.fn() }));
 const activation = vi.hoisted(() => ({ prepare: vi.fn(), activate: vi.fn(), probes: vi.fn() }));
 const background = vi.hoisted(() => ({ tasks: [] as Promise<unknown>[] }));
+const integration = vi.hoisted(() => ({ failed: vi.fn() }));
 
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -39,6 +40,9 @@ vi.mock("@/lib/tenki-runner-onboarding", () => ({
   prepareTenkiRunnerSizingProbes: activation.probes,
   activateReadyDetectedExecutionProfiles: activation.activate,
 }));
+vi.mock("@/lib/integration-repository", () => ({
+  markGithubSetupFailed: integration.failed,
+}));
 
 import { NextRequest } from "next/server";
 import { createGithubInstallStateToken, GITHUB_INSTALL_STATE_COOKIE } from "@/lib/github-installation-state";
@@ -67,6 +71,7 @@ const verified = {
 function request(
   includeCookie = true,
   returnTo: "/integrations" | "/onboarding" = "/integrations",
+  includeQueryState = false,
 ) {
   const expiresAt = new Date(Date.now() + 60_000);
   const token = createGithubInstallStateToken(
@@ -75,8 +80,12 @@ function request(
     returnTo,
     secret,
   );
-  return new NextRequest(
+  const url = new URL(
     "https://closespan.com/api/integrations/github/callback?installation_id=150109806&setup_action=install",
+  );
+  if (includeQueryState) url.searchParams.set("state", token);
+  return new NextRequest(
+    url,
     { headers: includeCookie ? { cookie: `${GITHUB_INSTALL_STATE_COOKIE}=${token}` } : {} },
   );
 }
@@ -94,6 +103,7 @@ describe("GitHub installation callback", () => {
     activation.prepare.mockReset().mockResolvedValue(null);
     activation.activate.mockReset().mockResolvedValue(1);
     activation.probes.mockReset().mockResolvedValue([]);
+    integration.failed.mockReset().mockResolvedValue(undefined);
     background.tasks.length = 0;
   });
 
@@ -137,6 +147,15 @@ describe("GitHub installation callback", () => {
     expect(location.searchParams.get("github")).toBe("error");
     expect(location.searchParams.get("reason")).toBe("invalid_callback");
     expect(github.verify).not.toHaveBeenCalled();
+    expect(integration.failed).toHaveBeenCalledWith("org-1", "invalid_callback");
+  });
+
+  it("uses GitHub's signed state when the callback cookie is unavailable", async () => {
+    const response = await GET(request(false, "/integrations", true));
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.searchParams.get("github")).toBe("connected");
+    expect(repository.connect).toHaveBeenCalled();
+    expect(integration.failed).not.toHaveBeenCalled();
   });
 
   it("returns onboarding-initiated installations to onboarding", async () => {

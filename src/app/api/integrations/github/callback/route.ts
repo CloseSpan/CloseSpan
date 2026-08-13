@@ -19,6 +19,7 @@ import {
   prepareDetectedTenkiRunner,
   prepareTenkiRunnerSizingProbes,
 } from "@/lib/tenki-runner-onboarding";
+import { markGithubSetupFailed } from "@/lib/integration-repository";
 
 function workspaceRedirect(
   request: NextRequest,
@@ -112,10 +113,15 @@ async function detectInstallationRepositories(input: {
 
 export async function GET(request: NextRequest) {
   let returnTo: "/integrations" | "/onboarding" = "/integrations";
+  let orgId: string | null = null;
   try {
     const context = await authorizeAdminRead(request);
+    orgId = context.orgId;
     const installationId = request.nextUrl.searchParams.get("installation_id") ?? "";
-    const stateToken = request.cookies.get(GITHUB_INSTALL_STATE_COOKIE)?.value ?? "";
+    const stateToken =
+      request.nextUrl.searchParams.get("state") ??
+      request.cookies.get(GITHUB_INSTALL_STATE_COOKIE)?.value ??
+      "";
     const state = verifyGithubInstallStateToken(stateToken);
     returnTo = state.returnTo;
     await requireGithubInstallAttempt(state.attemptId, context.orgId, context.actorId);
@@ -156,9 +162,24 @@ export async function GET(request: NextRequest) {
       repositories: String(result.repositoryCount),
     });
   } catch (error) {
+    const reason = callbackErrorCode(error);
+    console.error("GitHub installation callback failed", {
+      reason,
+      errorType: error instanceof Error ? error.name : "UnknownError",
+    });
+    if (orgId) {
+      await markGithubSetupFailed(orgId, reason).catch((persistenceError) => {
+        console.error("GitHub callback failure state could not be saved", {
+          errorType:
+            persistenceError instanceof Error
+              ? persistenceError.name
+              : "UnknownError",
+        });
+      });
+    }
     return workspaceRedirect(request, returnTo, {
       github: "error",
-      reason: callbackErrorCode(error),
+      reason,
     });
   }
 }

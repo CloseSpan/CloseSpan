@@ -260,6 +260,34 @@ describe("integration suggestions", () => {
     expect(items[1]?.description.toLowerCase()).not.toContain("import");
   });
 
+  it("explains that repository context never started after GitHub setup expires", () => {
+    const items = buildIntegrationSuggestions({
+      orgId: "org_one",
+      connectors: [
+        connector({
+          id: "int_github",
+          name: "GitHub",
+          feedbackSource: false,
+          state: "Connection failed",
+        }),
+      ],
+      recommendations: [],
+      pipedreamActivity: [],
+    });
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        section: "Review",
+        title: "GitHub repository connection expired",
+        description: expect.stringContaining("Repository context has not started"),
+        primaryAction: {
+          kind: "connect",
+          label: "Retry GitHub connection",
+        },
+      }),
+    ]);
+  });
+
   it("offers the first pull for connected Zendesk and records successful pulls as Done", () => {
     const baseInput = {
       orgId: "org_one",

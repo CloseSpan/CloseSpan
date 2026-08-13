@@ -281,15 +281,22 @@ function connectedActivityItem(input: {
   }
 
   if (setupHasFailed(connector)) {
+    const github = connector.id === "int_github";
     return baseItem({
       orgId,
       connector,
       section: "Review",
       suffix: "connection-failed",
-      title: `${connector.name} connection needs attention`,
-      description:
-        "The secure connection did not finish. Try again, or review the connector details.",
-      primaryAction: action("connect", "Try again"),
+      title: github
+        ? "GitHub repository connection expired"
+        : `${connector.name} connection needs attention`,
+      description: github
+        ? "GitHub did not finish returning repository access. Repository context has not started."
+        : "The secure connection did not finish. Try again, or review the connector details.",
+      primaryAction: action(
+        "connect",
+        github ? "Retry GitHub connection" : "Try again",
+      ),
       secondaryAction: action("review_details", "Review details"),
     });
   }

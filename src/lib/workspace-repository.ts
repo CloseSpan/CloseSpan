@@ -15,6 +15,7 @@ import {
   normalizePromptEvaluationMode,
   type PromptEvaluationMode,
 } from "./prompt-evaluation-policy";
+import { reconcileExpiredGithubSetup } from "./integration-repository";
 
 export interface IntegrationView { id: string; name: string; category: string; state: string; lastSync: string | null; dataScope: string; permissions: string[] }
 export interface InvestigationQueueItem { id: string; problemId: string; title: string; status: string }
@@ -184,6 +185,7 @@ export function mapPrimaryWorkspaceDomain(
 
 export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
   if (workspacePersistenceMode(orgId) === "memory") return await memoryData(orgId);
+  await reconcileExpiredGithubSetup(orgId);
   const pool = databasePool();
   const [analytics, feedbackResult, problemResult, investigationResult, integrationResult, customerResult, settingsResult, membersResult, promptResult, modelRunResult, ai] = await Promise.all([
     getOverviewAnalytics(orgId),

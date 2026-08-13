@@ -40,17 +40,20 @@ export async function POST(request: NextRequest) {
       ? "/onboarding"
       : "/integrations";
     const attempt = await markGithubPendingSetup(context.orgId, context.actorId);
+    const stateToken = createGithubInstallStateToken(
+      attempt.attemptId,
+      attempt.expiresAt,
+      returnTo,
+    );
+    const installUrl = new URL(attempt.installUrl);
+    installUrl.searchParams.set("state", stateToken);
     const response = NextResponse.json(
-      { installUrl: attempt.installUrl, expiresAt: attempt.expiresAt.toISOString() },
+      { installUrl: installUrl.toString(), expiresAt: attempt.expiresAt.toISOString() },
       { headers: noStoreHeaders },
     );
     response.cookies.set(
       GITHUB_INSTALL_STATE_COOKIE,
-      createGithubInstallStateToken(
-        attempt.attemptId,
-        attempt.expiresAt,
-        returnTo,
-      ),
+      stateToken,
       {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",

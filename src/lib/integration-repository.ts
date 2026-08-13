@@ -49,6 +49,21 @@ export interface WebhookCreationResult {
 const WEBHOOK_PROVIDER = "Custom webhook";
 const GITHUB_PROVIDER = "GitHub";
 
+const githubSetupFailureMessages: Readonly<Record<string, string>> = {
+  authentication_required:
+    "The GitHub connection returned without an active CloseSpan session. Sign in and try again.",
+  administrator_required:
+    "A workspace administrator must finish the GitHub repository connection.",
+  install_request_expired:
+    "GitHub repository selection expired before CloseSpan could finish the connection.",
+  installation_unavailable:
+    "CloseSpan could not use the selected GitHub installation. Review its repository access and try again.",
+  invalid_callback:
+    "GitHub returned without valid connection state. Start repository selection again.",
+  connection_failed:
+    "CloseSpan could not finish the GitHub repository connection. Try again.",
+};
+
 type WorkspaceIntegrationSetupRow = {
   id: string;
   provider: string;
@@ -221,6 +236,7 @@ export async function getWorkspaceSetupStatus(
     };
   }
   await ensureIntegrationCatalog(orgId);
+  await reconcileExpiredGithubSetup(orgId);
   const pool = databasePool();
   const [feedbackResult, integrationsResult, aiConfig, githubResult] =
     await Promise.all([
@@ -417,6 +433,62 @@ export async function markGithubPendingSetup(
     client.release();
   }
   return { installUrl: installUrl.toString(), attemptId, expiresAt };
+}
+
+export async function markGithubSetupFailed(
+  orgId: string,
+  reason: string,
+): Promise<void> {
+  requirePostgresWorkspace(orgId, "GitHub setup");
+  const message =
+    githubSetupFailureMessages[reason] ??
+    githubSetupFailureMessages.connection_failed;
+  await databasePool().query(
+    `UPDATE integrations
+        SET connection_state='Connection failed', error_message=$2
+      WHERE org_id=$1 AND id='int_github'
+        AND NOT EXISTS (
+          SELECT 1
+            FROM github_app_installations installation
+           WHERE installation.org_id=$1
+             AND installation.active=true
+             AND installation.workspace_connected=true
+        )`,
+    [orgId, message],
+  );
+}
+
+export async function reconcileExpiredGithubSetup(
+  orgId: string,
+): Promise<boolean> {
+  requirePostgresWorkspace(orgId, "GitHub setup");
+  const result = await databasePool().query(
+    `UPDATE integrations
+        SET connection_state='Connection failed',
+            error_message=$2
+      WHERE org_id=$1 AND id='int_github'
+        AND connection_state='Pending setup'
+        AND NOT EXISTS (
+          SELECT 1
+            FROM github_app_install_attempts attempt
+           WHERE attempt.org_id=$1
+             AND attempt.consumed_at IS NULL
+             AND attempt.expires_at>now()
+        )
+        AND NOT EXISTS (
+          SELECT 1
+            FROM github_app_installations installation
+           WHERE installation.org_id=$1
+             AND installation.active=true
+             AND installation.workspace_connected=true
+        )
+      RETURNING id`,
+    [
+      orgId,
+      "GitHub repository selection expired before CloseSpan could finish the connection.",
+    ],
+  );
+  return result.rowCount === 1;
 }
 
 export interface WebhookFeedbackPayload {

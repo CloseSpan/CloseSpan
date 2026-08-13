@@ -33,12 +33,25 @@ vi.mock("./pipedream-repository", () => ({
   listPipedreamConnections: vi.fn(async () => []),
 }));
 
-import { getWorkspaceSetupStatus } from "./integration-repository";
+import {
+  getWorkspaceSetupStatus,
+  reconcileExpiredGithubSetup,
+} from "./integration-repository";
+
+function isGithubSetupReconciliation(sql: string): boolean {
+  return (
+    sql.includes("UPDATE integrations") &&
+    sql.includes("github_app_install_attempts")
+  );
+}
 
 describe("workspace setup integration compatibility", () => {
   beforeEach(() => {
     database.mode = "postgres";
     database.pool.query.mockReset().mockImplementation((sql: string) => {
+      if (isGithubSetupReconciliation(sql)) {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
       if (sql.includes("INSERT INTO integrations")) {
         return Promise.resolve({ rows: [], rowCount: 1 });
       }
@@ -111,6 +124,9 @@ describe("workspace setup integration compatibility", () => {
 
   it("does not treat a broad GitHub connector as an authorized repository", async () => {
     database.pool.query.mockImplementation((sql: string) => {
+      if (isGithubSetupReconciliation(sql)) {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
       if (sql.includes("INSERT INTO integrations")) {
         return Promise.resolve({ rows: [], rowCount: 1 });
       }
@@ -149,6 +165,9 @@ describe("workspace setup integration compatibility", () => {
 
   it("marks GitHub ready only after an app installation has an active repository", async () => {
     database.pool.query.mockImplementation((sql: string) => {
+      if (isGithubSetupReconciliation(sql)) {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
       if (sql.includes("INSERT INTO integrations")) {
         return Promise.resolve({ rows: [], rowCount: 1 });
       }
@@ -179,6 +198,9 @@ describe("workspace setup integration compatibility", () => {
 
   it("does not hide unrelated PostgreSQL failures", async () => {
     database.pool.query.mockImplementation((sql: string) => {
+      if (isGithubSetupReconciliation(sql)) {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
       if (sql.includes("INSERT INTO integrations")) {
         return Promise.resolve({ rows: [], rowCount: 1 });
       }
@@ -212,5 +234,23 @@ describe("workspace setup integration compatibility", () => {
           sql.includes("NULL::text AS webhook_public_id"),
       ),
     ).toBe(false);
+  });
+
+  it("moves an expired GitHub setup out of an indefinite pending state", async () => {
+    database.pool.query.mockResolvedValue({
+      rows: [{ id: "int_github" }],
+      rowCount: 1,
+    });
+
+    await expect(reconcileExpiredGithubSetup("org_demo")).resolves.toBe(true);
+
+    const [sql, parameters] = database.pool.query.mock.calls[0] ?? [];
+    expect(sql).toContain("connection_state='Pending setup'");
+    expect(sql).toContain("attempt.expires_at>now()");
+    expect(sql).toContain("connection_state='Connection failed'");
+    expect(parameters).toEqual([
+      "org_demo",
+      "GitHub repository selection expired before CloseSpan could finish the connection.",
+    ]);
   });
 });
