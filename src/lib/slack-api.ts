@@ -205,6 +205,9 @@ export async function listSlackChannelMessages(
   const response = await slackGet(context, "conversations.history", {
     channel: channelId,
     oldest,
+    // Pipedream may cache identical proxy GET URLs. A fresh, valid Slack time
+    // boundary keeps polling requests distinct without adding unknown params.
+    latest: (Date.now() / 1_000).toFixed(6),
     inclusive: "false",
     limit: "100",
   });
@@ -221,6 +224,7 @@ export async function listSlackThreadReplies(
   const response = await slackGet(context, "conversations.replies", {
     channel: channelId,
     ts: threadTs,
+    latest: (Date.now() / 1_000).toFixed(6),
     limit: "100",
   });
   return Array.isArray(response.messages)

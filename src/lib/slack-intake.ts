@@ -142,7 +142,12 @@ export async function ensureSlackIntakeChannel(input: {
     context,
     SLACK_INTAKE_CHANNEL,
   );
-  await setSlackChannelPurpose(context, channel.id);
+  const channelBindingChanged =
+    previous?.account_id !== input.accountId ||
+    previous?.channel_id !== channel.id;
+  if (!existing || channelBindingChanged) {
+    await setSlackChannelPurpose(context, channel.id);
+  }
 
   const cursor = previous?.cursor_ts ?? timestampNow();
   await transaction(async (client) => {
