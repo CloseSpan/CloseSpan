@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeSlackThread } from "./slack-intake";
+import { batchProblemSimilarity, summarizeSlackThread } from "./slack-intake";
 
 describe("Slack intake normalization", () => {
   it("turns a thread, reactions, and attachment metadata into one redacted signal", () => {
@@ -71,5 +71,21 @@ describe("Slack intake normalization", () => {
         },
       ])?.text,
     ).toBe("Attachments: trace.txt (text/plain)");
+  });
+});
+
+describe("Slack intake batch clustering", () => {
+  it("treats formatting-only changes as the same problem", () => {
+    expect(batchProblemSimilarity(
+      "Undo caption regeneration: save the existing caption, then restore it on Undo.",
+      "undo caption regeneration — save the existing caption then restore it on undo",
+    )).toBe(1);
+  });
+
+  it("keeps unrelated feature requests separate", () => {
+    expect(batchProblemSimilarity(
+      "Undo caption regeneration after replacing an existing caption.",
+      "Add bulk export filters for enterprise account reports.",
+    )).toBeLessThan(0.9);
   });
 });

@@ -113,6 +113,34 @@ describe("feedback analysis review transaction", () => {
       sqlIncludes(sql, "INSERT INTO product_problems"))).toBe(false);
   });
 
+  it("reuses an identical active problem when the AI candidate snapshot was stale", async () => {
+    database.client.query.mockImplementation(async (sql: unknown) => {
+      if (sqlIncludes(sql, "SELECT action FROM idempotency_keys"))
+        return { rows: [] };
+      if (sqlIncludes(sql, "FROM ai_feedback_analyses analysis"))
+        return { rows: [analysis] };
+      if (sqlIncludes(sql, "stage <> 'Closed'") && sqlIncludes(sql, "lower(title)=lower"))
+        return { rows: [{ id: "problem_existing", title: "Export fails on Safari", stage: "Needs review" }] };
+      if (sqlIncludes(sql, "UPDATE ai_feedback_analyses"))
+        return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await reviewLatestFeedbackAnalysis({
+      orgId: "org_test",
+      feedbackId: "feedback_test",
+      decision: "approve",
+      context,
+    });
+
+    expect(result).toMatchObject({
+      createdProblem: false,
+      problem: { id: "problem_existing" },
+    });
+    expect(database.client.query.mock.calls.some(([sql]) =>
+      sqlIncludes(sql, "INSERT INTO product_problems"))).toBe(false);
+  });
+
   it("rejects the latest proposal without creating a membership", async () => {
     database.client.query.mockImplementation(async (sql: unknown) => {
       if (sqlIncludes(sql, "SELECT action FROM idempotency_keys"))

@@ -31,6 +31,59 @@ export const SLACK_INTAKE_WELCOME_TEXT =
   "CloseSpan is listening in #closespan-feedback. Messages, thread replies, reactions, and attachment metadata posted from now on can become customer signals. CloseSpan creates one thread per Product Problem and asks for human action only when approval, scope changes, or release verification is required.";
 const MAX_THREAD_FETCHES_PER_TICK = 25;
 const MAX_SIGNAL_TEXT = 8_000;
+const IN_BATCH_CLUSTER_THRESHOLD = 0.9;
+
+interface InBatchProblem {
+  problemId: string;
+  classification: string;
+  summary: string;
+}
+
+function normalizedClusterWords(value: string): string[] {
+  return value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function wordBigrams(value: string): Set<string> {
+  const words = normalizedClusterWords(value);
+  if (words.length < 2) return new Set(words);
+  return new Set(words.slice(0, -1).map((word, index) => `${word} ${words[index + 1]}`));
+}
+
+export function batchProblemSimilarity(left: string, right: string): number {
+  const leftNormalized = normalizedClusterWords(left).join(" ");
+  const rightNormalized = normalizedClusterWords(right).join(" ");
+  if (!leftNormalized || !rightNormalized) return 0;
+  if (leftNormalized === rightNormalized) return 1;
+  const leftBigrams = wordBigrams(leftNormalized);
+  const rightBigrams = wordBigrams(rightNormalized);
+  let overlap = 0;
+  for (const bigram of leftBigrams) {
+    if (rightBigrams.has(bigram)) overlap += 1;
+  }
+  return (2 * overlap) / (leftBigrams.size + rightBigrams.size);
+}
+
+function findInBatchProblem(
+  candidates: InBatchProblem[],
+  classification: string,
+  summary: string,
+): InBatchProblem | null {
+  let best: { candidate: InBatchProblem; similarity: number } | null = null;
+  for (const candidate of candidates) {
+    if (candidate.classification !== classification) continue;
+    const similarity = batchProblemSimilarity(candidate.summary, summary);
+    if (!best || similarity > best.similarity) best = { candidate, similarity };
+  }
+  return best && best.similarity >= IN_BATCH_CLUSTER_THRESHOLD
+    ? best.candidate
+    : null;
+}
 
 export interface SlackIntakeStatus {
   state: "Connected" | "Needs reconnect" | "Disconnected" | "Error";
@@ -570,8 +623,16 @@ export async function analyzeAndClusterSlackSignals(orgId: string): Promise<{
       context,
     });
     let clustered = 0;
+    const inBatchProblems: InBatchProblem[] = [];
     for (const item of analysis.analyses) {
       if (item.classification === "Noise" || item.classification === "Question") continue;
+      // Every analysis in this provider call sees the same candidate snapshot.
+      // Reuse a highly similar problem created earlier in this batch so two
+      // repeated messages cannot each create their own problem.
+      const inBatchMatch = item.proposedProblemId
+        ? null
+        : findInBatchProblem(inBatchProblems, item.classification, item.redactedSummary);
+      const targetProblemId = item.proposedProblemId ?? inBatchMatch?.problemId ?? null;
       const confident = item.proposedProblemId
         ? item.classificationConfidence >= 0.78 && item.clusterConfidence >= 0.78
         : item.classificationConfidence >= 0.85;
@@ -580,7 +641,7 @@ export async function analyzeAndClusterSlackSignals(orgId: string): Promise<{
         orgId,
         feedbackId: item.feedbackId,
         decision: "approve",
-        problemId: item.proposedProblemId,
+        problemId: targetProblemId,
         context: {
           ...context,
           idempotencyKey: `slack-review-${createHash("sha256")
@@ -591,6 +652,13 @@ export async function analyzeAndClusterSlackSignals(orgId: string): Promise<{
       });
       if (result.problem) {
         clustered += 1;
+        if (!inBatchProblems.some((candidate) => candidate.problemId === result.problem!.id)) {
+          inBatchProblems.push({
+            problemId: result.problem.id,
+            classification: item.classification,
+            summary: item.redactedSummary,
+          });
+        }
         await enqueueSlackNotification({
           orgId,
           problemId: result.problem.id,

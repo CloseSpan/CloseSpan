@@ -185,6 +185,29 @@ async function createProblem(
   return problem;
 }
 
+async function findOrCreateProblem(
+  client: PoolClient,
+  input: FeedbackReviewInput,
+  analysis: AnalysisRow,
+): Promise<{ problem: ProblemRow; created: boolean }> {
+  const title = feedbackProblemTitle(analysis.redacted_summary);
+  // Serialize fallback problem creation within a workspace. The AI candidate
+  // snapshot can be stale when multiple feedback records are analyzed together
+  // or when two intake jobs overlap.
+  await client.query(
+    "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+    [`${input.orgId}:problem-cluster-create`],
+  );
+  const existing = await client.query<ProblemRow>(
+    `SELECT id,title,stage FROM product_problems
+      WHERE org_id=$1 AND stage <> 'Closed' AND lower(title)=lower($2)
+      ORDER BY created_at,id LIMIT 1 FOR UPDATE`,
+    [input.orgId, title],
+  );
+  if (existing.rows[0]) return { problem: existing.rows[0], created: false };
+  return { problem: await createProblem(client, input, analysis), created: true };
+}
+
 async function performReview(
   client: PoolClient,
   input: FeedbackReviewInput,
@@ -257,8 +280,9 @@ async function performReview(
           "Closed product problems cannot receive new feedback",
         );
     } else {
-      problem = await createProblem(client, input, analysis);
-      createdProblem = true;
+      const fallback = await findOrCreateProblem(client, input, analysis);
+      problem = fallback.problem;
+      createdProblem = fallback.created;
     }
 
     const humanSelectedDifferentProblem = Boolean(
