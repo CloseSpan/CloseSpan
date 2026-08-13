@@ -50,11 +50,11 @@ export function assertGithubActionsRunIdentity(input: {
 }): void {
   const expectedRef = `refs/heads/closespan/runs/${input.runId}`;
   const expectedWorkflowRef = `${input.repository}/${input.workflowPath}@${expectedRef}`;
-  const workflowRefAtClaimedRef = `${input.repository}/${input.workflowPath}@${input.claims.ref}`;
+  const expectedWorkflowPrefix = `${input.repository}/${input.workflowPath}@refs/heads/`;
   const exactCommitFallback = Boolean(
     input.expectedSha
     && input.claims.sha.toLowerCase() === input.expectedSha.toLowerCase()
-    && input.claims.workflow_ref === workflowRefAtClaimedRef,
+    && input.claims.workflow_ref.startsWith(expectedWorkflowPrefix),
   );
   if (input.claims.repository !== input.repository) {
     throw new Error("GitHub Actions callback repository does not match the approval-bound run");

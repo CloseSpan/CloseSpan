@@ -45,6 +45,16 @@ describe("GitHub Actions OIDC run identity", () => {
     })).not.toThrow();
   });
 
+  it("accepts GitHub's mixed ref claims when the workflow and approved commit match", () => {
+    expect(() => assertGithubActionsRunIdentity({
+      claims: claims({ ref: "refs/heads/main" }),
+      repository,
+      runId,
+      workflowPath,
+      expectedSha: "a".repeat(40),
+    })).not.toThrow();
+  });
+
   it("rejects another ref when its commit is not the approved commit", () => {
     const ref = "refs/heads/main";
     expect(() => assertGithubActionsRunIdentity({
@@ -53,6 +63,17 @@ describe("GitHub Actions OIDC run identity", () => {
       runId,
       workflowPath,
       expectedSha: "b".repeat(40),
+    })).toThrow("immutable run ref");
+  });
+
+  it("rejects an exact commit from a different workflow", () => {
+    const ref = "refs/heads/main";
+    expect(() => assertGithubActionsRunIdentity({
+      claims: claims({ ref, workflow_ref: `${repository}/.github/workflows/other.yml@${ref}` }),
+      repository,
+      runId,
+      workflowPath,
+      expectedSha: "a".repeat(40),
     })).toThrow("immutable run ref");
   });
 
