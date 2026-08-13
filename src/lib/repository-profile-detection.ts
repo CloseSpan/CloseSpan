@@ -184,6 +184,7 @@ export interface DetectedRepositoryProfileSuggestion {
   runnerWorkflowSha256: string | null;
   runnerProbeWorkflowSha256: string | null;
   xcode: {
+    version: string;
     containerKind: "workspace" | "project" | "package";
     containerPath: string;
     scheme: string;
@@ -744,6 +745,15 @@ function shellArgument(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
+function detectedXcodeVersion(content: string): string {
+  const checks = [...content.matchAll(/(?:LastUpgradeCheck|LastSwiftUpdateCheck)\s*=\s*(\d{4})\s*;/g)]
+    .map((match) => Number.parseInt(match[1], 10))
+    .filter(Number.isFinite);
+  if (!checks.length) return "16";
+  const newest = Math.max(...checks);
+  return `${Math.floor(newest / 100)}.${Math.floor((newest % 100) / 10)}`;
+}
+
 function detectSwift(files: ReadManifest[]): ProfileDraft {
   const names = new Set(files.map((file) => file.name));
   const content = files.map((file) => file.content).join("\n");
@@ -784,6 +794,7 @@ function detectSwift(files: ReadManifest[]): ProfileDraft {
     runtimeFamily: "ios",
     confidence: 0.96,
     xcode: {
+      version: detectedXcodeVersion(content),
       containerKind: container.kind,
       containerPath: container.path,
       scheme,
@@ -1096,8 +1107,8 @@ export function executionProfileSuggestionStore(
               workflowPath: TENKI_RUNNER_WORKFLOW_PATH,
               workflowSha256: detected.runnerWorkflowSha256,
               xcode: detected.xcode ? {
-                version: process.env.TENKI_XCODE_VERSION?.trim() || "16",
                 ...detected.xcode,
+                version: process.env.TENKI_XCODE_VERSION?.trim() || detected.xcode.version,
                 sdk: "iphonesimulator" as const,
                 signingPolicy: "simulator_only" as const,
               } : null,

@@ -115,7 +115,11 @@ jobs:
           const mobile = job.runner;
           if (mobile.xcode) {
             const result = cp.spawnSync("xcodebuild", ["-version"], { encoding: "utf8" });
-            if (result.status !== 0 || !`${result.stdout}${result.stderr}`.includes(`Xcode ${mobile.xcode.version}`)) throw new Error(`Tenki runner does not provide approved Xcode ${mobile.xcode.version}`);
+            const output = `${result.stdout}${result.stderr}`;
+            const installed = /Xcode\s+(\d+(?:\.\d+)?)/.exec(output)?.[1]?.split(".").map(Number);
+            const required = mobile.xcode.version.split(".").map(Number);
+            const compatible = installed && (installed[0] > required[0] || (installed[0] === required[0] && (installed[1] || 0) >= (required[1] || 0)));
+            if (result.status !== 0 || !compatible) throw new Error(`The runtime requires Xcode ${mobile.xcode.version} or newer; this runner reported ${output.trim() || "no Xcode"}`);
           }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, "working-directory=.\n");
           NODE

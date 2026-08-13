@@ -87,7 +87,7 @@ function mobileGithubFixture(platform: "ios" | "android") {
     ["workflow", encoded(workflow)],
     ...(platform === "ios" ? [
       ["package", encoded(JSON.stringify({ scripts: { test: "vitest" }, devDependencies: { vite: "7.0.0" } }))],
-      ["project", encoded("IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; /* SwiftUI */")],
+      ["project", encoded("LastUpgradeCheck = 2610; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; /* SwiftUI */")],
       ["scheme", encoded("<Scheme version=\"1.7\"></Scheme>")],
       ["internal-workspace", encoded("<Workspace version=\"1.0\"></Workspace>")],
     ] : [
@@ -230,7 +230,7 @@ describe("repository execution-profile detection", () => {
       root: ".",
       platform: "ios",
       language: "swift",
-      xcode: { containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
+      xcode: { version: "26.1", containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
       commands: { test: "swift tests/CloseSpanPDDTests.swift" },
       runnerWorkflowSha256: createHash("sha256").update(workflow).digest("hex"),
     });
@@ -245,7 +245,7 @@ describe("repository execution-profile detection", () => {
           architecture: "arm64",
           workflowPath: ".github/workflows/closespan-agent-runner.yml",
           workflowSha256: createHash("sha256").update(workflow).digest("hex"),
-          xcode: expect.objectContaining({ scheme: "Zup", signingPolicy: "simulator_only" }),
+          xcode: expect.objectContaining({ version: "26.1", scheme: "Zup", signingPolicy: "simulator_only" }),
         }),
       }),
       detectionEvidence: expect.objectContaining({ platform: "ios" }),

@@ -29,6 +29,22 @@ describe("runtimeVerificationRunnerLabel", () => {
     expect(runtimeVerificationRunnerLabel(executor)).toBe("macos-15");
   });
 
+  it("selects a compatible GitHub macOS image for a newer Xcode requirement", () => {
+    expect(runtimeVerificationRunnerLabel({
+      ...executor,
+      xcode: {
+        version: "26.1",
+        containerKind: "project",
+        containerPath: "App.xcodeproj",
+        scheme: "App",
+        configuration: "Debug",
+        sdk: "iphonesimulator",
+        destination: "platform=iOS Simulator,name=iPhone 16",
+        signingPolicy: "simulator_only",
+      },
+    })).toBe("macos-26");
+  });
+
   it("rejects an unsafe override", () => {
     process.env.RUNTIME_VERIFICATION_MACOS_RUNNER_LABEL = "macos-15, self-hosted";
     expect(() => runtimeVerificationRunnerLabel(executor)).toThrow(
