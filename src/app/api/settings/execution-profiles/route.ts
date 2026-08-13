@@ -4,7 +4,10 @@ import {
   listExecutionProfileSettings,
   overrideExecutionProfile,
 } from "@/lib/execution-profile-repository";
-import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
+import {
+  listGithubRepositoryAuthorizations,
+  updateGithubRepositoryExecutionBranch,
+} from "@/lib/github-repository-allowlist";
 import {
   authorizeAdminRead,
   authorizeAdminMutation,
@@ -42,6 +45,25 @@ export async function DELETE(request: NextRequest) {
     });
     return NextResponse.json(
       { settings: await listExecutionProfileSettings(context.orgId) },
+      { headers: noStoreHeaders },
+    );
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const context = await authorizeAdminMutation(request);
+    const body = await request.json() as { repository?: unknown; executionBranch?: unknown };
+    if (typeof body.repository !== "string") throw new Error("Repository is required");
+    const executionBranch = await updateGithubRepositoryExecutionBranch({
+      orgId: context.orgId,
+      repository: body.repository,
+      executionBranch: body.executionBranch,
+    });
+    return NextResponse.json(
+      { executionBranch },
       { headers: noStoreHeaders },
     );
   } catch (error) {

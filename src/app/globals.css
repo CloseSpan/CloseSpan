@@ -456,6 +456,10 @@ p { margin:0; line-height:1.55; }
 .execution-profile-scope-head { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
 .execution-profile-scope-head > div { min-width:0; }
 .execution-profile-scope-head h3 { margin:3px 0 5px; overflow-wrap:anywhere; font-size:15px; }
+.execution-branch-field { max-width:min(520px,100%); margin-top:12px; }
+.execution-branch-control { display:grid; grid-template-columns:minmax(180px,1fr) auto; align-items:center; gap:9px; }
+.execution-branch-control > input { width:100%; min-width:0; min-height:42px; padding:10px 12px; border:0; border-radius:12px; background:var(--surface-pressed); color:var(--text-strong); box-shadow:var(--shadow-inset-sm); font:inherit; }
+.execution-branch-control > input:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
 .execution-profile-scope-head .eyebrow { color:var(--brand); font-size:9px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
 .execution-profile-summary { display:grid; gap:12px; }
 .execution-profile-facts { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; }
@@ -556,6 +560,8 @@ p { margin:0; line-height:1.55; }
   .execution-profile-scope { padding:14px; }
   .execution-profile-scope-head { display:grid; }
   .execution-profile-scope-head .btn { width:100%; }
+  .execution-branch-control { grid-template-columns:1fr; }
+  .execution-branch-control > input { font-size:16px; }
   .execution-profile-facts,
   .execution-profile-fields,
   .execution-profile-command-grid,

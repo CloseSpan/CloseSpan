@@ -2866,13 +2866,7 @@ export function ProductProblemInvestigationPanel({
     // so the action card never falls back to its pre-run state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRuntimeVerificationState(persistedRuntimeVerification);
-  }, [
-    persistedRuntimeVerification?.id,
-    persistedRuntimeVerification?.status,
-    persistedRuntimeVerification?.outcome,
-    persistedRuntimeVerification?.summary,
-    persistedRuntimeVerification?.workflowRunId,
-  ]);
+  }, [persistedRuntimeVerification]);
 
   useEffect(() => {
     if (!runtimeVerificationActive) return;

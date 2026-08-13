@@ -29,7 +29,7 @@ describe("Tenki runner sizing", () => {
       manifestPaths: ["Podfile", "App.xcworkspace/contents.xcworkspacedata"],
       commands: { install: null, build: "xcodebuild build", test: "xcodebuild test", typecheck: null },
       application: null,
-      xcode: { containerKind: "workspace", containerPath: "App.xcworkspace", scheme: "App", configuration: "Debug", destination: "platform=iOS Simulator" },
+      xcode: { version: "26.0", containerKind: "workspace", containerPath: "App.xcworkspace", scheme: "App", configuration: "Debug", destination: "platform=iOS Simulator" },
       androidEmulator: null,
     });
     const android = assessTenkiRunnerWorkload({

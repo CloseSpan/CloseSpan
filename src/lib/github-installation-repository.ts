@@ -164,8 +164,8 @@ export async function syncGithubInstallationRecords(
   for (const repository of repositoriesToBind) {
     await client.query(
       `INSERT INTO github_repository_allowlists(
-         id,org_id,installation_id,repository,default_branch,active,workspace_selected
-       ) VALUES($1,$2,$3,$4,$5,true,true)
+         id,org_id,installation_id,repository,default_branch,execution_branch,active,workspace_selected
+       ) VALUES($1,$2,$3,$4,$5,$5,true,true)
        ON CONFLICT(org_id,repository) DO UPDATE SET
          installation_id=excluded.installation_id,
          default_branch=excluded.default_branch,

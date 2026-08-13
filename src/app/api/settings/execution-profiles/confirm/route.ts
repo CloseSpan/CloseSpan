@@ -5,6 +5,7 @@ import {
   listExecutionProfileSettings,
 } from "@/lib/execution-profile-repository";
 import { refreshPendingProblemRepositoryMatches } from "@/lib/problem-repository-match-repository";
+import { updateGithubRepositoryExecutionBranch } from "@/lib/github-repository-allowlist";
 import {
   authorizeAdminMutation,
   errorResponse,
@@ -20,7 +21,7 @@ import {
 export async function POST(request: NextRequest) {
   try {
     const context = await authorizeAdminMutation(request);
-    const body = await request.json() as { detectedProfileId?: unknown };
+    const body = await request.json() as { detectedProfileId?: unknown; executionBranch?: unknown };
     if (
       typeof body.detectedProfileId !== "string" ||
       !/^[a-f0-9-]{36}$/i.test(body.detectedProfileId)
@@ -34,6 +35,11 @@ export async function POST(request: NextRequest) {
     if (!detected || detected.source !== "detected") {
       throw new HttpError(404, "Detected execution profile was not found");
     }
+    await updateGithubRepositoryExecutionBranch({
+      orgId: context.orgId,
+      repository: detected.repository,
+      executionBranch: body.executionBranch,
+    });
     assertExecutionProfileReadyForActivation(detected.config);
     assertTenkiProviderResourceLimits(detected.config);
     await assertManagedTenkiBootSourceAllowed({

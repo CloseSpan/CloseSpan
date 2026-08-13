@@ -412,7 +412,7 @@ export async function startIssueRuntimeVerification(input: {
   if (!authorization) throw new HttpError(409, "The confirmed repository is no longer authorized");
   const github = await createGithubInstallationClient(authorization.installationId);
   const [owner, repo] = match.repository.split("/");
-  const ref = await github.rest.git.getRef({ owner, repo, ref: `heads/${authorization.defaultBranch}` });
+  const ref = await github.rest.git.getRef({ owner, repo, ref: `heads/${authorization.executionBranch}` });
   const baseSha = ref.data.object.sha.toLowerCase();
   if (!/^[a-f0-9]{40}$/.test(baseSha)) throw new Error("GitHub returned an invalid commit SHA");
   const problemResult = await databasePool().query<RuntimeProblemRow>(
@@ -478,7 +478,7 @@ export async function startIssueRuntimeVerification(input: {
          workflow_hash,requested_by,requested_by_name
        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [runId, input.orgId, input.problemId, problem.investigation_id, match.repository,
-        authorization.installationId, match.workspaceRoot, authorization.defaultBranch,
+        authorization.installationId, match.workspaceRoot, authorization.executionBranch,
         baseSha, promptHash, prompt, profile.id, profile.contentHash,
         JSON.stringify(snapshot), input.workflowHash, input.actor.actorId, input.actor.actorName],
     );
@@ -505,7 +505,7 @@ export async function startIssueRuntimeVerification(input: {
     repository: match.repository,
     installationId: authorization.installationId,
     workspaceRoot: match.workspaceRoot,
-    baseBranch: authorization.defaultBranch,
+    baseBranch: authorization.executionBranch,
     baseSha,
     promptHash,
     verificationPrompt: prompt,

@@ -7,6 +7,7 @@ const profiles = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 const matches = vi.hoisted(() => ({ refresh: vi.fn() }));
+const github = vi.hoisted(() => ({ updateBranch: vi.fn() }));
 
 vi.mock("@/lib/execution-profile-repository", () => ({
   confirmDetectedExecutionProfile: profiles.confirm,
@@ -15,6 +16,9 @@ vi.mock("@/lib/execution-profile-repository", () => ({
 }));
 vi.mock("@/lib/problem-repository-match-repository", () => ({
   refreshPendingProblemRepositoryMatches: matches.refresh,
+}));
+vi.mock("@/lib/github-repository-allowlist", () => ({
+  updateGithubRepositoryExecutionBranch: github.updateBranch,
 }));
 
 import { POST } from "./route";
@@ -30,7 +34,10 @@ function request(role = "Admin") {
       "x-test-user-org-id": "org-1",
       "x-test-user-role": role,
     },
-    body: JSON.stringify({ detectedProfileId: "11111111-1111-4111-8111-111111111111" }),
+    body: JSON.stringify({
+      detectedProfileId: "11111111-1111-4111-8111-111111111111",
+      executionBranch: "release/test",
+    }),
   });
 }
 
@@ -46,6 +53,7 @@ describe("execution profile confirmation API", () => {
     });
     profiles.list.mockReset().mockResolvedValue({ assignments: [] });
     matches.refresh.mockReset().mockResolvedValue([]);
+    github.updateBranch.mockReset().mockResolvedValue("release/test");
   });
 
   it("promotes a reviewed suggestion to a new immutable version", async () => {
@@ -55,6 +63,11 @@ describe("execution profile confirmation API", () => {
       orgId: "org-1",
       detectedProfileId: "11111111-1111-4111-8111-111111111111",
     }));
+    expect(github.updateBranch).toHaveBeenCalledWith({
+      orgId: "org-1",
+      repository: "acme/platform",
+      executionBranch: "release/test",
+    });
     expect(matches.refresh).toHaveBeenCalledWith("org-1");
   });
 

@@ -1162,6 +1162,8 @@ export function ExecutionProfileSettings({
   const [repositoryActionErrors, setRepositoryActionErrors] = useState<Record<string, string>>({});
   const [busyProfile, setBusyProfile] = useState<string>();
   const [busyDeactivation, setBusyDeactivation] = useState<string>();
+  const [busyExecutionBranch, setBusyExecutionBranch] = useState<string>();
+  const [executionBranches, setExecutionBranches] = useState<Record<string, string>>({});
   const [error, setError] = useState<string>();
   const [runtimeSecrets, setRuntimeSecrets] = useState<RuntimeSecretMetadata[]>([]);
   const [runtimeSecretsLoading, setRuntimeSecretsLoading] = useState(isAdmin);
@@ -1288,7 +1290,7 @@ export function ExecutionProfileSettings({
     }
   }
 
-  async function confirm(profileId: string): Promise<void> {
+  async function confirm(profileId: string, repository: GithubRepositoryAuthorization): Promise<void> {
     if (!isAdmin) return;
     setBusyProfile(profileId);
     setError(undefined);
@@ -1296,7 +1298,12 @@ export function ExecutionProfileSettings({
       const response = await fetch("/api/settings/execution-profiles/confirm", {
         method: "POST",
         headers: requestHeaders(orgId, true),
-        body: JSON.stringify({ detectedProfileId: profileId }),
+        body: JSON.stringify({
+          detectedProfileId: profileId,
+          executionBranch: executionBranches[repository.repository]
+            ?? repository.executionBranch
+            ?? repository.defaultBranch,
+        }),
       });
       const payload = await response.json() as ApiResult;
       if (!response.ok || !payload.settings) throw new Error(payload.error ?? "Execution profile could not be confirmed.");
@@ -1335,6 +1342,47 @@ export function ExecutionProfileSettings({
       }));
     } finally {
       setBusyDeactivation(undefined);
+    }
+  }
+
+  async function saveExecutionBranch(repository: GithubRepositoryAuthorization): Promise<void> {
+    if (!isAdmin) return;
+    setBusyExecutionBranch(repository.repository);
+    setRepositoryActionErrors((current) => {
+      const next = { ...current };
+      delete next[repository.repository];
+      return next;
+    });
+    try {
+      const response = await fetch("/api/settings/execution-profiles", {
+        method: "PATCH",
+        headers: requestHeaders(orgId, true),
+        body: JSON.stringify({
+          repository: repository.repository,
+          executionBranch: executionBranches[repository.repository]
+            ?? repository.executionBranch
+            ?? repository.defaultBranch,
+        }),
+      });
+      const payload = await response.json() as { error?: string; executionBranch?: string };
+      if (!response.ok || !payload.executionBranch) {
+        throw new Error(payload.error ?? "Execution branch could not be saved.");
+      }
+      setView((current) => current ? {
+        ...current,
+        repositories: current.repositories.map((item) => item.repository === repository.repository
+          ? { ...item, executionBranch: payload.executionBranch! }
+          : item),
+      } : current);
+    } catch (cause) {
+      setRepositoryActionErrors((current) => ({
+        ...current,
+        [repository.repository]: cause instanceof Error
+          ? cause.message
+          : "Execution branch could not be saved.",
+      }));
+    } finally {
+      setBusyExecutionBranch(undefined);
     }
   }
 
@@ -1511,7 +1559,38 @@ export function ExecutionProfileSettings({
           return (
             <article className="execution-profile-scope" key={repository.id}>
               <div className="execution-profile-scope-head">
-                <div><span className="eyebrow">Authorized repository</span><h3>{repository.repository}</h3><p className="subtle">Default branch <code>{repository.defaultBranch}</code> · metadata-only detection at an exact commit SHA</p></div>
+                <div>
+                  <span className="eyebrow">Authorized repository</span>
+                  <h3>{repository.repository}</h3>
+                  <p className="subtle">Default branch <code>{repository.defaultBranch}</code> · runtime verification pins the selected execution branch to an exact commit SHA</p>
+                  <label className="field execution-branch-field">
+                    <span>Execution branch</span>
+                    <span className="execution-branch-control">
+                      <input
+                        value={executionBranches[repository.repository] ?? repository.executionBranch ?? repository.defaultBranch}
+                        onChange={(event) => setExecutionBranches((current) => ({
+                          ...current,
+                          [repository.repository]: event.target.value,
+                        }))}
+                        disabled={!isAdmin || Boolean(busyProfile) || busyExecutionBranch === repository.repository}
+                        aria-label={`Execution branch for ${repository.repository}`}
+                        maxLength={255}
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                      />
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        disabled={!isAdmin || Boolean(busyProfile) || Boolean(busyExecutionBranch)}
+                        onClick={() => saveExecutionBranch(repository)}
+                      >
+                        {busyExecutionBranch === repository.repository ? "Checking…" : "Use branch"}
+                      </button>
+                    </span>
+                    <small>New verification runs use the latest exact commit from this branch.</small>
+                  </label>
+                </div>
                 <div className="top-actions">
                   {needsRunnerWorkflow && (
                     <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyRunnerRepository) || Boolean(busyRunnerMergeRepository)} onClick={() => installRunnerWorkflow(repository.repository)}>
@@ -1605,7 +1684,7 @@ export function ExecutionProfileSettings({
                           </button>
                         )}
                         {assignment.detectedProfile && (
-                          <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyProfile)} onClick={() => confirm(assignment.detectedProfile!.id)}>
+                          <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyProfile)} onClick={() => confirm(assignment.detectedProfile!.id, repository)}>
                             {busyProfile === assignment.detectedProfile.id ? "Activating…" : assignment.activeProfile ? "Activate detected update" : "Activate"}
                           </button>
                         )}
