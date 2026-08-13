@@ -1161,6 +1161,7 @@ export function ExecutionProfileSettings({
   const [runnerWorkflowNotices, setRunnerWorkflowNotices] = useState<Record<string, string>>({});
   const [repositoryActionErrors, setRepositoryActionErrors] = useState<Record<string, string>>({});
   const [busyProfile, setBusyProfile] = useState<string>();
+  const [busyDeactivation, setBusyDeactivation] = useState<string>();
   const [error, setError] = useState<string>();
   const [runtimeSecrets, setRuntimeSecrets] = useState<RuntimeSecretMetadata[]>([]);
   const [runtimeSecretsLoading, setRuntimeSecretsLoading] = useState(isAdmin);
@@ -1304,6 +1305,36 @@ export function ExecutionProfileSettings({
       setError(cause instanceof Error ? cause.message : "Execution profile could not be confirmed.");
     } finally {
       setBusyProfile(undefined);
+    }
+  }
+
+  async function deactivate(repository: string, workspaceRoot: string): Promise<void> {
+    if (!isAdmin) return;
+    const scope = `${repository}:${workspaceRoot}`;
+    setBusyDeactivation(scope);
+    setRepositoryActionErrors((current) => {
+      const next = { ...current };
+      delete next[repository];
+      return next;
+    });
+    try {
+      const response = await fetch("/api/settings/execution-profiles", {
+        method: "DELETE",
+        headers: requestHeaders(orgId, true),
+        body: JSON.stringify({ repository, workspaceRoot }),
+      });
+      const payload = await response.json() as ApiResult;
+      if (!response.ok || !payload.settings) {
+        throw new Error(payload.error ?? "Execution profile could not be deactivated.");
+      }
+      applySettings(payload.settings);
+    } catch (cause) {
+      setRepositoryActionErrors((current) => ({
+        ...current,
+        [repository]: cause instanceof Error ? cause.message : "Execution profile could not be deactivated.",
+      }));
+    } finally {
+      setBusyDeactivation(undefined);
     }
   }
 
@@ -1565,12 +1596,17 @@ export function ExecutionProfileSettings({
                 return (
                   <div className="execution-profile-root" key={`${assignment.repository}:${assignment.workspaceRoot}`}>
                     <div className="split">
-                      <div><strong>Root <code>{assignment.workspaceRoot}</code></strong><p className="subtle">{assignment.activeProfile ? profileLabel(assignment.activeProfile) : "Pending admin review"}</p></div>
+                      <div><strong>Root <code>{assignment.workspaceRoot}</code></strong><p className="subtle">{assignment.activeProfile ? profileLabel(assignment.activeProfile) : assignment.automaticActivationDisabled ? "Deactivated by an administrator" : "Activating automatically when ready"}</p></div>
                       <div className="top-actions">
                         {assignment.activeProfile && <span className="badge success">Active</span>}
+                        {assignment.activeProfile && (
+                          <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyDeactivation)} onClick={() => deactivate(assignment.repository, assignment.workspaceRoot)}>
+                            {busyDeactivation === `${assignment.repository}:${assignment.workspaceRoot}` ? "Deactivating…" : "Deactivate"}
+                          </button>
+                        )}
                         {assignment.detectedProfile && (
                           <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyProfile)} onClick={() => confirm(assignment.detectedProfile!.id)}>
-                            {busyProfile === assignment.detectedProfile.id ? "Confirming…" : assignment.activeProfile ? "Confirm new detection" : "Confirm & activate"}
+                            {busyProfile === assignment.detectedProfile.id ? "Activating…" : assignment.activeProfile ? "Activate detected update" : "Activate"}
                           </button>
                         )}
                       </div>

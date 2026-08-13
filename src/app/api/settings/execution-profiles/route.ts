@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  clearExecutionProfileAssignment,
   listExecutionProfileSettings,
   overrideExecutionProfile,
 } from "@/lib/execution-profile-repository";
@@ -25,6 +26,28 @@ import {
 } from "@/lib/tenki-environment-catalog-repository";
 import { listPendingTenkiRunnerWorkflowSetups } from "@/lib/tenki-runner-workflow-setup-repository";
 import { assertTenkiRunnerLabel, tenkiRunnerSize } from "@/lib/tenki-runner-sizing";
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const context = await authorizeAdminMutation(request);
+    const body = await request.json() as { repository?: unknown; workspaceRoot?: unknown };
+    if (typeof body.repository !== "string" || typeof body.workspaceRoot !== "string") {
+      throw new Error("Repository and workspace root are required");
+    }
+    await clearExecutionProfileAssignment({
+      orgId: context.orgId,
+      repository: body.repository,
+      workspaceRoot: body.workspaceRoot,
+      actor: context,
+    });
+    return NextResponse.json(
+      { settings: await listExecutionProfileSettings(context.orgId) },
+      { headers: noStoreHeaders },
+    );
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {

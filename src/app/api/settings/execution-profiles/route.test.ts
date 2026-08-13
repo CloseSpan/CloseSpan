@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { upgradeExecutionProfileConfigV2 } from "@/lib/execution-profile";
 
-const profiles = vi.hoisted(() => ({ list: vi.fn(), override: vi.fn() }));
+const profiles = vi.hoisted(() => ({ list: vi.fn(), override: vi.fn(), clear: vi.fn() }));
 const repositories = vi.hoisted(() => ({ list: vi.fn() }));
 const runtimeSecrets = vi.hoisted(() => ({ validate: vi.fn() }));
 const runnerSetups = vi.hoisted(() => ({ list: vi.fn() }));
@@ -10,6 +10,7 @@ const runnerSetups = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock("@/lib/execution-profile-repository", () => ({
   listExecutionProfileSettings: profiles.list,
   overrideExecutionProfile: profiles.override,
+  clearExecutionProfileAssignment: profiles.clear,
 }));
 vi.mock("@/lib/github-repository-allowlist", () => ({
   listGithubRepositoryAuthorizations: repositories.list,
@@ -24,7 +25,7 @@ vi.mock("@/lib/tenki-runner-workflow-setup-repository", () => ({
   listPendingTenkiRunnerWorkflowSetups: runnerSetups.list,
 }));
 
-import { GET, PUT } from "./route";
+import { DELETE, GET, PUT } from "./route";
 
 function request(method = "GET", body?: unknown, role = "Admin") {
   return new NextRequest("http://localhost/api/settings/execution-profiles", {
@@ -48,6 +49,7 @@ describe("execution profile settings API", () => {
       safeGenericProfile: { id: "safe" },
     });
     profiles.override.mockReset().mockResolvedValue({ id: "override" });
+    profiles.clear.mockReset().mockResolvedValue(undefined);
     repositories.list.mockReset().mockResolvedValue([]);
     runtimeSecrets.validate.mockReset().mockResolvedValue(undefined);
     runnerSetups.list.mockReset().mockResolvedValue([{
@@ -103,6 +105,19 @@ describe("execution profile settings API", () => {
 
     const forbidden = await PUT(request("PUT", payload, "Contributor"));
     expect(forbidden.status).toBe(403);
+  });
+
+  it("deactivates a repository root while retaining its immutable profile history", async () => {
+    const response = await DELETE(request("DELETE", {
+      repository: "acme/app",
+      workspaceRoot: "ZupNative",
+    }));
+    expect(response.status).toBe(200);
+    expect(profiles.clear).toHaveBeenCalledWith(expect.objectContaining({
+      orgId: "org-1",
+      repository: "acme/app",
+      workspaceRoot: "ZupNative",
+    }));
   });
 
   it("validates opaque runtime secret bindings before persisting a v2 profile", async () => {

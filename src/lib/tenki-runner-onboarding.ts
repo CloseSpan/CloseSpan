@@ -44,9 +44,14 @@ export async function activateReadyDetectedExecutionProfiles(input: {
 }): Promise<number> {
   const settings = await listExecutionProfileSettings(input.orgId);
   const detected = settings.assignments
-    .filter((assignment) => assignment.repository === input.repository)
+    .filter((assignment) => assignment.repository === input.repository
+      && !assignment.automaticActivationDisabled)
     .map((assignment) => assignment.detectedProfile)
-    .filter((profile) => profile !== null);
+    .filter((profile) => profile !== null)
+    .filter((profile) => {
+      const confidence = profile.detectionEvidence.confidence;
+      return typeof confidence === "number" && confidence >= 0.85;
+    });
   let activated = 0;
   for (const profile of detected) {
     try {

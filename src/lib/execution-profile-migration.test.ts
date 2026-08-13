@@ -18,6 +18,14 @@ describe("execution profile migration", () => {
     expect(sql).toContain("UNIQUE (org_id,repository,workspace_root,version)");
   });
 
+  it("persists an administrator opt-out from automatic profile activation", async () => {
+    const sql = await readFile(
+      path.join(process.cwd(), "db/migrations/063_execution_profile_auto_activation.sql"),
+      "utf8",
+    );
+    expect(sql).toContain("automatic_activation_disabled boolean NOT NULL DEFAULT false");
+  });
+
   it("binds problems and every approval artifact to a tenant-safe immutable profile", async () => {
     const sql = await readFile(
       path.join(process.cwd(), "db/migrations/033_execution_profiles.sql"),

@@ -3,6 +3,7 @@ import { listExecutionProfileSettings } from "@/lib/execution-profile-repository
 import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
 import { refreshPendingProblemRepositoryMatches } from "@/lib/problem-repository-match-repository";
 import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
+import { activateReadyDetectedExecutionProfiles } from "@/lib/tenki-runner-onboarding";
 import {
   authorizeAdminMutation,
   errorResponse,
@@ -32,10 +33,16 @@ export async function POST(request: NextRequest) {
       defaultBranch: repository.defaultBranch,
       actor: context,
     });
+    const activatedProfiles = await activateReadyDetectedExecutionProfiles({
+      orgId: context.orgId,
+      repository: repository.repository,
+      actor: { ...context, actorId: "system:repository-detector" },
+    });
     const repositoryMatches = await refreshPendingProblemRepositoryMatches(context.orgId);
     return NextResponse.json(
       {
         detection,
+        activatedProfiles,
         repositoryMatches,
         settings: await listExecutionProfileSettings(context.orgId),
       },

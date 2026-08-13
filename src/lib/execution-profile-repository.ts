@@ -69,6 +69,7 @@ export interface ResolveExecutionProfileForTicketInput
 export interface ExecutionProfileAssignmentView extends ExecutionProfileScope {
   activeProfile: ExecutionProfileVersion | null;
   detectedProfile: ExecutionProfileVersion | null;
+  automaticActivationDisabled: boolean;
   updatedBy: string;
   updatedAt: string;
 }
@@ -98,6 +99,7 @@ interface AssignmentRow {
   workspace_root: string;
   active_profile_id: string | null;
   detected_profile_id: string | null;
+  automatic_activation_disabled: boolean;
   updated_by: string;
   updated_at: Date | string;
 }
@@ -307,6 +309,7 @@ async function setActiveAssignment(
      ON CONFLICT(org_id,repository,workspace_root) DO UPDATE SET
        active_profile_id=excluded.active_profile_id,
        active_profile_hash=excluded.active_profile_hash,
+       automatic_activation_disabled=false,
        updated_by=excluded.updated_by,
        updated_at=now()`,
     [
@@ -591,6 +594,27 @@ export async function clearExecutionProfileAssignment(
     await client.query(
       `UPDATE execution_profile_assignments
           SET active_profile_id=NULL,active_profile_hash=NULL,
+              automatic_activation_disabled=true,
+              detected_profile_id=COALESCE(
+                detected_profile_id,
+                (SELECT parent.id
+                   FROM execution_profile_versions active
+                   JOIN execution_profile_versions parent
+                     ON parent.org_id=active.org_id AND parent.id=active.parent_profile_id
+                  WHERE active.org_id=$1
+                    AND active.id=execution_profile_assignments.active_profile_id
+                    AND active.source='confirmed' AND parent.source='detected')
+              ),
+              detected_profile_hash=COALESCE(
+                detected_profile_hash,
+                (SELECT parent.content_hash
+                   FROM execution_profile_versions active
+                   JOIN execution_profile_versions parent
+                     ON parent.org_id=active.org_id AND parent.id=active.parent_profile_id
+                  WHERE active.org_id=$1
+                    AND active.id=execution_profile_assignments.active_profile_id
+                    AND active.source='confirmed' AND parent.source='detected')
+              ),
               updated_by=$4,updated_at=now()
         WHERE org_id=$1 AND repository=$2 AND workspace_root=$3`,
       [input.orgId, scope.repository, scope.workspaceRoot, input.actor.actorId],
@@ -646,6 +670,7 @@ export async function listExecutionProfileSettings(
     const safeGenericProfile = await ensureSafeGenericWithClient(client, orgId);
     const result = await client.query<AssignmentRow>(
       `SELECT repository,workspace_root,active_profile_id,detected_profile_id,
+              automatic_activation_disabled,
               updated_by,updated_at
          FROM execution_profile_assignments
         WHERE org_id=$1
@@ -681,6 +706,7 @@ export async function listExecutionProfileSettings(
         detectedProfile: row.detected_profile_id
           ? byId.get(row.detected_profile_id) ?? null
           : null,
+        automaticActivationDisabled: row.automatic_activation_disabled,
         updatedBy: row.updated_by,
         updatedAt: isoDate(row.updated_at),
       })),
