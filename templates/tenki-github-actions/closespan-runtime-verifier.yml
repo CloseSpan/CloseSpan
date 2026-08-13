@@ -168,7 +168,13 @@ jobs:
             launch) xcrun simctl launch "$udid" "${2:?usage: ios-simulator launch BUNDLE_ID}" ;;
             terminate) xcrun simctl terminate "$udid" "${2:?usage: ios-simulator terminate BUNDLE_ID}" ;;
             openurl) xcrun simctl openurl "$udid" "${2:?usage: ios-simulator openurl URL}" ;;
-            screenshot) xcrun simctl io "$udid" screenshot "${2:?usage: ios-simulator screenshot OUTPUT_PATH}" ;;
+            screenshot)
+              output="${2:?usage: ios-simulator screenshot OUTPUT_PATH}"
+              xcrun simctl io "$udid" screenshot "$output"
+              # Simulator PNGs can exceed the scoped model gateway request limit.
+              # Preserve useful visual evidence while keeping subsequent agent turns bounded.
+              sips --resampleHeightWidthMax 960 "$output" >/dev/null
+              ;;
             *) echo "usage: ios-simulator {status|install|launch|terminate|openurl|screenshot}" >&2; exit 64 ;;
           esac
           HARNESS

@@ -13,6 +13,7 @@ describe("current-issue runtime verifier workflow template", () => {
     expect(workflow).toContain("xcrun simctl bootstatus");
     expect(workflow).toContain("CLOSESPAN_IOS_SIMULATOR_UDID");
     expect(workflow).toContain(".closespan-run/bin/ios-simulator");
+    expect(workflow).toContain('sips --resampleHeightWidthMax 960 "$output"');
   });
 
   it("allows CoreSimulator access only for the macOS verifier job", () => {
