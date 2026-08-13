@@ -1525,10 +1525,10 @@ export function ExecutionProfileSettings({
               </div>
               {repositoryActionErrors[repository.repository] && (
                 <div className="toast error runner-workflow-error" role="alert">
-                  {repositoryActionErrors[repository.repository]}
+                  <span>{repositoryActionErrors[repository.repository]}</span>
                   {runnerWorkflowPulls[repository.repository] && (
                     <a
-                      className="text-link"
+                      className="btn secondary"
                       href={runnerWorkflowPulls[repository.repository].url}
                       target="_blank"
                       rel="noopener noreferrer"

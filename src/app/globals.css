@@ -520,6 +520,9 @@ p { margin:0; line-height:1.55; }
 .runtime-secret-feedback:empty { display:none; }
 .runtime-secret-feedback .toast { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0; }
 .runtime-secret-feedback .text-link { flex:none; padding:0; border:0; background:transparent; color:inherit; font-weight:750; text-decoration:underline; text-underline-offset:3px; }
+.runner-workflow-error { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.runner-workflow-error > span { min-width:0; }
+.runner-workflow-error > .btn { flex:none; color:inherit; }
 .runtime-secret-list { display:grid; min-width:0; gap:0; }
 .runtime-secret-list-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:10px; }
 .runtime-secret-empty { display:grid; gap:4px; padding:18px 0 3px; border-top:1px solid var(--border-subtle); }
