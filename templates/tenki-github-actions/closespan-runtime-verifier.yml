@@ -119,6 +119,64 @@ jobs:
           }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, "working-directory=.\n");
           NODE
+      - name: Prepare iOS Simulator harness
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          mkdir -p .closespan-run/artifacts .closespan-run/bin
+
+          simulator_json=""
+          for attempt in 1 2 3; do
+            if simulator_json="$(xcrun simctl list devices available -j 2>.closespan-run/artifacts/simctl-error.log)" && \
+               SIMULATOR_JSON="$simulator_json" node -e 'const value=JSON.parse(process.env.SIMULATOR_JSON); process.exit(Object.values(value.devices || {}).flat().some(device => device.isAvailable && device.name.startsWith("iPhone")) ? 0 : 1)'; then
+              break
+            fi
+            killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+            sleep $((attempt * 2))
+          done
+
+          simulator="$(SIMULATOR_JSON="$simulator_json" node <<'NODE'
+          const value = JSON.parse(process.env.SIMULATOR_JSON || "{}");
+          const devices = Object.values(value.devices || {}).flat().filter(device => device.isAvailable && device.name.startsWith("iPhone"));
+          const selected = devices.find(device => device.name === "iPhone 16") || devices[0];
+          if (!selected) throw new Error("The approved macOS runner has no available iPhone Simulator device");
+          process.stdout.write(`${selected.udid}\t${selected.name}`);
+          NODE
+          )"
+          simulator_udid="${simulator%%$'\t'*}"
+          simulator_name="${simulator#*$'\t'}"
+          xcrun simctl boot "$simulator_udid" 2>/dev/null || true
+          xcrun simctl bootstatus "$simulator_udid" -b
+
+          {
+            echo "CLOSESPAN_IOS_SIMULATOR_UDID=$simulator_udid"
+            echo "CLOSESPAN_IOS_SIMULATOR_NAME=$simulator_name"
+            echo "CLOSESPAN_IOS_SIMULATOR_HARNESS=$GITHUB_WORKSPACE/.closespan-run/bin/ios-simulator"
+          } >> "$GITHUB_ENV"
+
+          cat > .closespan-run/bin/ios-simulator <<'HARNESS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          udid="${CLOSESPAN_IOS_SIMULATOR_UDID:?CLOSESPAN_IOS_SIMULATOR_UDID is not set}"
+          case "${1:-status}" in
+            status) xcrun simctl list devices booted ;;
+            install) xcrun simctl install "$udid" "${2:?usage: ios-simulator install APP_PATH}" ;;
+            launch) xcrun simctl launch "$udid" "${2:?usage: ios-simulator launch BUNDLE_ID}" ;;
+            terminate) xcrun simctl terminate "$udid" "${2:?usage: ios-simulator terminate BUNDLE_ID}" ;;
+            openurl) xcrun simctl openurl "$udid" "${2:?usage: ios-simulator openurl URL}" ;;
+            screenshot) xcrun simctl io "$udid" screenshot "${2:?usage: ios-simulator screenshot OUTPUT_PATH}" ;;
+            *) echo "usage: ios-simulator {status|install|launch|terminate|openurl|screenshot}" >&2; exit 64 ;;
+          esac
+          HARNESS
+          chmod +x .closespan-run/bin/ios-simulator
+          SIMULATOR_UDID="$simulator_udid" SIMULATOR_NAME="$simulator_name" node <<'NODE'
+          const fs = require("node:fs");
+          fs.writeFileSync(".closespan-run/artifacts/ios-simulator.json", JSON.stringify({
+            udid: process.env.SIMULATOR_UDID,
+            name: process.env.SIMULATOR_NAME,
+            state: "Booted",
+          }, null, 2));
+          NODE
       - name: Mark verification running
         env:
           CALLBACK_URL: ${{ inputs.closespan_callback_url }}
@@ -161,7 +219,10 @@ jobs:
           model: ${{ steps.model.outputs.model }}
           prompt-file: .closespan-run/runtime-verification.prompt.md
           working-directory: ${{ steps.prepare.outputs.working-directory }}
-          sandbox: workspace-write
+          # CoreSimulator and package resolution require host services that the macOS
+          # Seatbelt workspace sandbox blocks. This remains an ephemeral runner with
+          # no persisted checkout credential, read-only repository permission, and no sudo.
+          sandbox: ${{ runner.os == 'macOS' && 'danger-full-access' || 'workspace-write' }}
           safety-strategy: drop-sudo
           allow-bot-users: ${{ github.actor }}
       - name: Validate and attest verification report
