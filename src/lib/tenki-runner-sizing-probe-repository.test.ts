@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sanitizeExecutionProfileConfig, type ExecutionProfileVersion } from "./execution-profile";
 import {
   completeTenkiRunnerSizingProbe,
@@ -8,6 +9,7 @@ import {
   queueTenkiRunnerSizingProbe,
   resetMemoryTenkiRunnerSizingProbes,
 } from "./tenki-runner-sizing-probe-repository";
+import { queueAndDispatchTenkiRunnerSizingProbe } from "./tenki-runner-sizing-probe";
 
 function profile(): ExecutionProfileVersion {
   return {
@@ -48,6 +50,48 @@ function profile(): ExecutionProfileVersion {
     detectionEvidence: {},
     createdBy: "system:test",
     createdAt: new Date().toISOString(),
+  };
+}
+
+function iosProfile(workflowHash: string): ExecutionProfileVersion {
+  return {
+    ...profile(),
+    id: "22222222-2222-4222-8222-222222222222",
+    repository: "samshanmukh/zup",
+    workspaceRoot: "ZupNative",
+    config: sanitizeExecutionProfileConfig({
+      schemaVersion: 3,
+      language: "swift",
+      packageManager: "xcode",
+      workingDirectory: "ZupNative",
+      buildCommands: ["xcodebuild build"],
+      permittedPaths: ["ZupNative/**"],
+      cpuCores: 4,
+      memoryMb: 14_336,
+      executor: {
+        kind: "tenki_github_actions",
+        platform: "macos",
+        architecture: "arm64",
+        runnerLabel: "tenki-macos-15-small",
+        workflowPath: ".github/workflows/closespan-agent-runner.yml",
+        workflowSha256: "a".repeat(64),
+        xcode: {
+          version: "26.1",
+          containerKind: "project",
+          containerPath: "Zup.xcodeproj",
+          scheme: "Zup",
+          configuration: "Debug",
+          destination: "platform=iOS Simulator,name=iPhone 16",
+          sdk: "iphonesimulator",
+          signingPolicy: "simulator_only",
+        },
+        androidEmulator: null,
+      },
+    }),
+    detectionEvidence: {
+      sourceSha: "c".repeat(40),
+      runnerProbeWorkflowSha256: workflowHash,
+    },
   };
 }
 
@@ -94,5 +138,48 @@ describe("Tenki runner sizing probe persistence", () => {
       githubWorkflowRunId: 91,
     });
     await expect(listTenkiRunnerSizingProbes("org_demo")).resolves.toHaveLength(1);
+  });
+
+  it("maps a macOS capacity selector to a real GitHub runner for sizing", async () => {
+    const sizingWorkflow = "name: CloseSpan runner sizing probe\n";
+    const workflowHash = createHash("sha256").update(sizingWorkflow).digest("hex");
+    const createWorkflowDispatch = vi.fn().mockResolvedValue({ data: {} });
+    const github = {
+      rest: {
+        repos: {
+          getContent: vi.fn().mockResolvedValue({
+            data: {
+              type: "file",
+              encoding: "base64",
+              content: Buffer.from(sizingWorkflow).toString("base64"),
+            },
+          }),
+        },
+        git: {
+          getRef: vi.fn().mockRejectedValue(Object.assign(new Error("not found"), { status: 404 })),
+          createRef: vi.fn().mockResolvedValue({ data: {} }),
+        },
+        actions: { createWorkflowDispatch },
+      },
+    };
+
+    const result = await queueAndDispatchTenkiRunnerSizingProbe({
+      orgId: "org_demo",
+      installationId: "installation-1",
+      profile: iosProfile(workflowHash),
+      sourceSha: "c".repeat(40),
+      workflowSha256: workflowHash,
+      workloadClass: "ios_simulator",
+      workloadReasons: ["iOS Simulator build"],
+      callbackBaseUrl: "https://closespan.example",
+    }, { createClient: async () => github as never });
+
+    expect(result.status).toBe("Dispatched");
+    expect(result.runnerLabel).toBe("tenki-macos-15-small");
+    expect(createWorkflowDispatch).toHaveBeenCalledWith(expect.objectContaining({
+      inputs: expect.objectContaining({
+        closespan_runner_label: "macos-15",
+      }),
+    }));
   });
 });

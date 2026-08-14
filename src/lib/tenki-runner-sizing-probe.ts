@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Octokit } from "@octokit/rest";
 import { createGithubInstallationClient } from "./github-app-auth";
 import { executionProfileExecutor, type ExecutionProfileVersion } from "./execution-profile";
+import { githubActionsRunnerLabel } from "./github-actions-runner-label";
 import {
   failTenkiRunnerSizingProbe,
   markTenkiRunnerSizingProbeDispatched,
@@ -77,6 +78,7 @@ export async function queueAndDispatchTenkiRunnerSizingProbe(input: {
     throw new Error("Sizing probes require a Tenki GitHub Actions profile");
   }
   assertTenkiRunnerLabel(executor.runnerLabel, executor.platform);
+  const selectedGithubRunnerLabel = githubActionsRunnerLabel(executor);
   if (!/^[a-f0-9]{64}$/.test(input.workflowSha256)) {
     throw new Error("The Tenki sizing workflow must be hashed before dispatch");
   }
@@ -128,7 +130,7 @@ export async function queueAndDispatchTenkiRunnerSizingProbe(input: {
         closespan_org_id: input.orgId,
         closespan_callback_url: `${input.callbackBaseUrl}/api/internal/tenki-runner-sizing/${probe.id}`,
         closespan_profile_hash: input.profile.contentHash,
-        closespan_runner_label: executor.runnerLabel,
+        closespan_runner_label: selectedGithubRunnerLabel,
       },
     });
     return markTenkiRunnerSizingProbeDispatched({ orgId: input.orgId, probeId: probe.id });
