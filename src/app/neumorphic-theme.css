@@ -3128,6 +3128,12 @@ table tbody tr:hover {
   margin: var(--space-2) 0 0;
 }
 
+.app-shell .verification-status-card {
+  position: relative;
+  z-index: 2;
+  overflow: visible;
+}
+
 .app-shell .agent-runs-table {
   overflow: visible;
 }

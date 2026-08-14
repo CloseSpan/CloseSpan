@@ -101,7 +101,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
           )}
         </div>
       </section>
-      <section className="card section-gap">
+      <section className="card section-gap verification-status-card">
         <div className="card-head">
           <div>
             <h2>Independent verification</h2>
