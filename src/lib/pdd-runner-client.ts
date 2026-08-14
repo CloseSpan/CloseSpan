@@ -271,5 +271,5 @@ export async function dispatchPddVerification(
     await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
   }
   if (!response) throw new Error("Prompt Testing runner did not return a response");
-  if (!response.ok) throw new Error(`Prompt Testing runner rejected the verification with HTTP ${response.status}`);
+  if (!response.ok) throw await pddResponseError(response);
 }

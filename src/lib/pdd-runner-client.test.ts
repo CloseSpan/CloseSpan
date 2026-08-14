@@ -78,6 +78,34 @@ describe("probePddRunner", () => {
     })).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("surfaces an actionable verification rejection from the runner", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      error: "The execution profile does not permit the generated test path",
+    }), { status: 400, headers: { "content-type": "application/json" } }));
+
+    await expect(dispatchPddVerification({
+      orgId: "org-1",
+      problemId: "problem-1",
+      verificationId: "verification-1",
+      repository: "acme/app",
+      installationId: "installation-1",
+      baseBranch: "main",
+      baseSha: "a".repeat(40),
+      promptId: "prompt-1",
+      promptHash: "b".repeat(64),
+      userStory: "As a user, I can retry safely.",
+      pddPrompt: "Generate the acceptance test.",
+      pddVersion: "0.0.309",
+      budgetUsd: 0.25,
+      permittedPaths: ["src/**"],
+      requiredCommands: ["npm test"],
+      suspectedFiles: ["src/app.ts"],
+      executionProfileId: "profile-1",
+      executionProfileHash: "c".repeat(64),
+      executionProfileSnapshot: {} as never,
+    })).rejects.toThrow("The execution profile does not permit the generated test path");
+  });
 });
 
 describe("evaluatePromptWithPdd", () => {
