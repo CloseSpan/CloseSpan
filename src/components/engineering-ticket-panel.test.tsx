@@ -497,7 +497,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
 
     expect(markup).not.toContain("implementation-approval-section");
     expect(approvalMarkup).toContain(
-      'class="workflow-callout-block implementation-approval-section"',
+      'class="callout implementation-approval-callout" role="region" aria-label="Implementation approval"',
     );
     expect(approvalMarkup).toContain(
       'class="callout implementation-approval-callout"',

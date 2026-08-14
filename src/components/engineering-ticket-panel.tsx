@@ -1087,12 +1087,12 @@ export function EngineeringTicketPanel({
 
         {verificationReady &&
           workflow.approval?.status === "Pending" && (
-            <div
-              className="workflow-callout-block implementation-approval-section"
-              role="region"
-              aria-label="Implementation approval"
-            >
-              <div className="callout implementation-approval-callout">
+            <>
+              <div
+                className="callout implementation-approval-callout"
+                role="region"
+                aria-label="Implementation approval"
+              >
                 <div className="callout-title">
                   <ShieldCheck size={14} />
                   Ready for one isolated run
@@ -1110,15 +1110,11 @@ export function EngineeringTicketPanel({
                   Review execution approval
                 </Link>
               </div>
-            </div>
-        )}
+            </>
+          )}
 
         {workflow.run && (
-          <div
-            className="workflow-callout-block"
-            role="region"
-            aria-label="Implementation run"
-          >
+          <>
             <div className={`callout ${retryableRun ? "warning" : ""}`} role="status">
               <div className="callout-title">
                 {workflow.run.status === "Failed"
@@ -1140,7 +1136,7 @@ export function EngineeringTicketPanel({
                 {retryableRun ? "Review run" : "View run"}
               </Link>
             </div>
-          </div>
+          </>
         )}
 
         {workflow.releaseEvidence && (

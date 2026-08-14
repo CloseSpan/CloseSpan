@@ -12662,12 +12662,6 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   margin: 0;
 }
 
-.app-shell .workflow-callout-block {
-  display: grid;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
 .app-shell .implementation-approval-callout {
   display: grid;
   gap: var(--space-3);
