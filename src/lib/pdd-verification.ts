@@ -94,6 +94,20 @@ export function pddGeneratedTestsReferenceLiveApplication(
   return tests.some((test) => /\bCLOSESPAN_APP_URL\b/.test(test.content));
 }
 
+function pddUsesNativeRuntimeHarness(
+  snapshot: ImplementationPromptSnapshot,
+  tests: ReadonlyArray<{ path: string; command: string }>,
+): boolean {
+  const nativeCommand = /(?:^|\s)(?:xcodebuild|swift|\.\/gradlew|gradlew|flutter\s+test)(?:\s|$)/i;
+  const nativeArtifact = /\.(?:swift|m|mm|kt|kts|java|dart)$/i;
+  return tests.length > 0
+    && tests.every((test) => nativeArtifact.test(test.path))
+    && (
+      tests.some((test) => nativeCommand.test(test.command))
+      || snapshot.ticket.requiredCommands.some((command) => nativeCommand.test(command))
+    );
+}
+
 function pathMatches(pattern: string, path: string): boolean {
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -126,6 +140,7 @@ export function validateGeneratedTests(
   if (
     parsed.status === "Ready for approval"
     && pddScenariosRequireLiveApplication(snapshot.ticket.testScenarios)
+    && !pddUsesNativeRuntimeHarness(snapshot, parsed.generatedTests)
     && !pddGeneratedTestsReferenceLiveApplication(parsed.generatedTests)
   ) {
     throw new Error(

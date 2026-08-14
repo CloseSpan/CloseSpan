@@ -119,4 +119,43 @@ describe("Prompt Testing acceptance verification", () => {
       failureMessage: null,
     }, liveSnapshot).generatedTests[0]?.content).toContain("CLOSESPAN_APP_URL");
   });
+
+  it("accepts native runtime harnesses without a web-only base URL", () => {
+    const nativeSnapshot: ImplementationPromptSnapshot = {
+      ...snapshot,
+      ticket: {
+        ...snapshot.ticket,
+        testScenarios: snapshot.ticket.testScenarios.map((scenario) => ({
+          ...scenario,
+          testLevel: "component" as const,
+        })),
+        requiredTestLevels: ["component"],
+        permittedPaths: ["ZupNative/tests/**"],
+        requiredCommands: ["swift tests/CloseSpanPDDTests.swift"],
+      },
+    };
+    const content = "import Foundation\nprint(\"native acceptance harness\")";
+
+    const result = validateGeneratedTests({
+      schemaVersion: 1,
+      verificationId: "11111111-1111-4111-8111-111111111111",
+      promptHash: "b".repeat(64),
+      status: "Ready for approval",
+      pddVersion: PDD_CLI_VERSION,
+      model: "openai/test",
+      costUsd: 0.01,
+      summary: "Generated a native acceptance harness.",
+      generatedTests: [{
+        path: "ZupNative/tests/CloseSpanPDDTests.swift",
+        content,
+        contentHash: sha256(content),
+        command: "swift tests/CloseSpanPDDTests.swift",
+      }],
+      failureMessage: null,
+    }, nativeSnapshot);
+
+    expect(result.generatedTests[0]?.path).toBe(
+      "ZupNative/tests/CloseSpanPDDTests.swift",
+    );
+  });
 });
