@@ -12662,9 +12662,10 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   margin: 0;
 }
 
-.app-shell .implementation-approval-section {
+.app-shell .workflow-callout-block {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
+  min-width: 0;
 }
 
 .app-shell .implementation-approval-callout {
@@ -12681,7 +12682,11 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   max-width: 75ch;
 }
 
-.app-shell .implementation-approval-actions {
+.app-shell .workflow-callout-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   justify-content: flex-start;
   margin: 0;
 }

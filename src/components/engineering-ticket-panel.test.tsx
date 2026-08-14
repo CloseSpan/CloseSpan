@@ -497,13 +497,13 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
 
     expect(markup).not.toContain("implementation-approval-section");
     expect(approvalMarkup).toContain(
-      'class="implementation-approval-section"',
+      'class="workflow-callout-block implementation-approval-section"',
     );
     expect(approvalMarkup).toContain(
       'class="callout implementation-approval-callout"',
     );
     expect(approvalMarkup).toContain(
-      '</p></div><div class="top-actions implementation-approval-actions"><a class="btn primary" href="/approvals">Review execution approval</a></div>',
+      '</p></div><div class="workflow-callout-actions implementation-approval-actions"><a class="btn primary" href="/approvals">Review execution approval</a></div>',
     );
   });
 
@@ -532,6 +532,9 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("This one-run authorization ended");
     expect(markup).toContain("Review run");
     expect(markup).not.toContain("The approved run continues automatically");
+    expect(markup).toContain(
+      '</p></div><div class="workflow-callout-actions agent-run-actions"><a class="btn secondary" href="/agent-runs/run-1">Review run</a></div>',
+    );
   });
 
   it("shows backend and frontend production verification independently", () => {

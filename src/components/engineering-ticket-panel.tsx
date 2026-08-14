@@ -1088,7 +1088,7 @@ export function EngineeringTicketPanel({
         {verificationReady &&
           workflow.approval?.status === "Pending" && (
             <div
-              className="implementation-approval-section"
+              className="workflow-callout-block implementation-approval-section"
               role="region"
               aria-label="Implementation approval"
             >
@@ -1105,33 +1105,41 @@ export function EngineeringTicketPanel({
                   if verification passes.
                 </p>
               </div>
-              <div className="top-actions implementation-approval-actions">
+              <div className="workflow-callout-actions implementation-approval-actions">
                 <Link className="btn primary" href="/approvals">
                   Review execution approval
                 </Link>
               </div>
             </div>
-          )}
+        )}
 
         {workflow.run && (
-          <div className={`callout ${retryableRun ? "warning" : ""}`} role="status">
-            <div className="callout-title">
-              {workflow.run.status === "Failed"
-                ? "Coding run failed"
-                : workflow.run.status === "No changes"
-                  ? "Coding run returned no changes"
-                  : `Run ${workflow.run.status}`}
+          <div
+            className="workflow-callout-block"
+            role="region"
+            aria-label="Implementation run"
+          >
+            <div className={`callout ${retryableRun ? "warning" : ""}`} role="status">
+              <div className="callout-title">
+                {workflow.run.status === "Failed"
+                  ? "Coding run failed"
+                  : workflow.run.status === "No changes"
+                    ? "Coding run returned no changes"
+                    : `Run ${workflow.run.status}`}
+              </div>
+              <p className="subtle">
+                {workflow.run.status === "Failed"
+                  ? "This one-run authorization ended before a draft pull request was opened. Review the failure, then prepare another coding run to reuse the immutable prompt and acceptance contract with a fresh approval."
+                  : workflow.run.status === "No changes"
+                    ? "The coding agent did not produce repository changes. Review the run, then prepare another coding run if the implementation still needs work."
+                    : "The approved run continues automatically. Open the run to follow coding, tests, independent verification, and the draft pull request."}
+              </p>
             </div>
-            <p className="subtle">
-              {workflow.run.status === "Failed"
-                ? "This one-run authorization ended before a draft pull request was opened. Review the failure, then prepare another coding run to reuse the immutable prompt and acceptance contract with a fresh approval."
-                : workflow.run.status === "No changes"
-                  ? "The coding agent did not produce repository changes. Review the run, then prepare another coding run if the implementation still needs work."
-                  : "The approved run continues automatically. Open the run to follow coding, tests, independent verification, and the draft pull request."}
-            </p>
-            <Link className="btn secondary" href={`/agent-runs/${workflow.run.id}`}>
-              {retryableRun ? "Review run" : "View run"}
-            </Link>
+            <div className="workflow-callout-actions agent-run-actions">
+              <Link className="btn secondary" href={`/agent-runs/${workflow.run.id}`}>
+                {retryableRun ? "Review run" : "View run"}
+              </Link>
+            </div>
           </div>
         )}
 
