@@ -11,6 +11,12 @@ import {
 const template = "name: CloseSpan runner\non: workflow_dispatch\n";
 const runtimeTemplate = "name: CloseSpan runtime verifier\non: workflow_dispatch\n";
 const sizingTemplate = "name: CloseSpan runner sizing\non: workflow_dispatch\n";
+const managedV1 = [
+  "# Managed by CloseSpan. Updates are proposed through an audited setup pull request.",
+  "name: CloseSpan previous runner",
+  "on: workflow_dispatch",
+  "",
+].join("\n");
 const baseSha = "a".repeat(40);
 
 function notFound(): Error & { status: number } {
@@ -49,6 +55,7 @@ function github(input: {
         type: "file",
         encoding: "base64",
         content: Buffer.from(content).toString("base64"),
+        sha: "f".repeat(40),
       },
     };
   });
@@ -129,6 +136,32 @@ describe("Tenki runner workflow installer", () => {
     expect(mock.createOrUpdateFileContents).not.toHaveBeenCalled();
   });
 
+  it("proposes an audited update for an existing CloseSpan-managed workflow", async () => {
+    const mock = github({
+      defaultWorkflow: managedV1,
+      defaultRuntimeWorkflow: managedV1,
+      defaultSizingWorkflow: managedV1,
+      proposedWorkflow: managedV1,
+      proposedRuntimeWorkflow: managedV1,
+      proposedSizingWorkflow: managedV1,
+      setupBranchExists: true,
+    });
+    await expect(installTenkiRunnerWorkflow({
+      installationId: "42",
+      repository: "acme/app",
+      defaultBranch: "main",
+    }, { createClient: async () => mock.client as never, template, runtimeTemplate, sizingTemplate })).resolves.toMatchObject({
+      status: "pull_request",
+      pullRequestNumber: 12,
+    });
+    expect(mock.createOrUpdateFileContents).toHaveBeenCalledTimes(3);
+    expect(mock.createOrUpdateFileContents).toHaveBeenCalledWith(expect.objectContaining({
+      path: TENKI_RUNNER_WORKFLOW_PATH,
+      sha: "f".repeat(40),
+      content: Buffer.from(template).toString("base64"),
+    }));
+  });
+
   it("reuses an existing setup PR without rewriting the reviewed workflow", async () => {
     const mock = github({
       setupBranchExists: true,
@@ -191,6 +224,7 @@ function mergeGithub(input: {
         type: "file",
         encoding: "base64",
         content: Buffer.from(content).toString("base64"),
+        sha: "f".repeat(40),
       },
     };
   });
@@ -263,6 +297,37 @@ describe("Tenki runner workflow approval", () => {
       sha: mock.headSha,
       merge_method: "squash",
     }));
+  });
+
+  it("revalidates and merges an exact update to managed workflow files", async () => {
+    const mock = mergeGithub({
+      defaultWorkflow: managedV1,
+      defaultRuntimeWorkflow: managedV1,
+      defaultSizingWorkflow: managedV1,
+      changedFiles: [
+        { filename: TENKI_RUNNER_WORKFLOW_PATH, status: "modified" },
+        { filename: TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH, status: "modified" },
+        { filename: TENKI_RUNNER_SIZING_WORKFLOW_PATH, status: "modified" },
+      ],
+      runs: [{
+        id: 93,
+        workflow_id: 8,
+        status: "completed",
+        conclusion: "success",
+        name: "CI",
+      }],
+    });
+
+    await expect(approveAndMergeTenkiRunnerWorkflow({
+      installationId: "42",
+      repository: "acme/app",
+      defaultBranch: "main",
+      pullRequestNumber: 12,
+    }, { createClient: async () => mock.client as never, template, runtimeTemplate, sizingTemplate })).resolves.toMatchObject({
+      status: "merged",
+      githubActionsChecksPassed: 1,
+    });
+    expect(mock.merge).toHaveBeenCalledOnce();
   });
 
   it("fails closed when the setup PR contains any additional file", async () => {

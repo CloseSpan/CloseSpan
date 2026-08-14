@@ -1,3 +1,4 @@
+# Managed by CloseSpan. Updates are proposed through an audited setup pull request.
 name: CloseSpan runner sizing probe
 
 on:

@@ -1,3 +1,4 @@
+# Managed by CloseSpan. Updates are proposed through an audited setup pull request.
 name: CloseSpan current-issue verifier
 run-name: CloseSpan verification ${{ inputs.closespan_run_id }}
 

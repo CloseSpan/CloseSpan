@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Octokit } from "@octokit/rest";
@@ -11,6 +12,20 @@ export const TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH =
 export const TENKI_RUNNER_SIZING_WORKFLOW_PATH =
   ".github/workflows/closespan-runner-sizing.yml";
 export const TENKI_RUNNER_SETUP_BRANCH = "closespan/setup-agent-runner";
+
+const CLOSESPAN_MANAGED_WORKFLOW_MARKER =
+  "# Managed by CloseSpan. Updates are proposed through an audited setup pull request.";
+const LEGACY_MANAGED_WORKFLOW_HASHES: Record<string, ReadonlySet<string>> = {
+  [TENKI_RUNNER_WORKFLOW_PATH]: new Set([
+    "64df8335116608ec48d60cf2f78886e198e993438dfb4883eddf0eecdb4d1aee",
+  ]),
+  [TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH]: new Set([
+    "5db57dabd86398c651979200be022bf57bc3c42e050d9713474f5f54cb820bdd",
+  ]),
+  [TENKI_RUNNER_SIZING_WORKFLOW_PATH]: new Set([
+    "dfbef42dad3fd2dd16fb4211b661dd14af633764394513fde1062e5e834a9c5f",
+  ]),
+};
 
 const TEMPLATE_PATH = "templates/tenki-github-actions/closespan-agent-runner.yml";
 const RUNTIME_TEMPLATE_PATH =
@@ -50,23 +65,51 @@ function decodedGithubFile(data: unknown): string {
   return Buffer.from(data.content.replaceAll("\n", ""), "base64").toString("utf8");
 }
 
-async function repositoryFile(
+interface RepositoryFileState {
+  content: string;
+  sha: string;
+}
+
+async function repositoryFileState(
   github: Octokit,
   repository: { owner: string; repo: string },
   ref: string,
   path = TENKI_RUNNER_WORKFLOW_PATH,
-): Promise<string | null> {
+): Promise<RepositoryFileState | null> {
   try {
     const response = await github.rest.repos.getContent({
       ...repository,
       path,
       ref,
     });
-    return decodedGithubFile(response.data);
+    if (
+      !response.data
+      || Array.isArray(response.data)
+      || !("sha" in response.data)
+      || typeof response.data.sha !== "string"
+    ) {
+      throw new HttpError(409, "The CloseSpan runner workflow is missing its GitHub blob identity");
+    }
+    return { content: decodedGithubFile(response.data), sha: response.data.sha };
   } catch (error) {
     if (githubStatus(error) === 404) return null;
     throw error;
   }
+}
+
+async function repositoryFile(
+  github: Octokit,
+  repository: { owner: string; repo: string },
+  ref: string,
+  path = TENKI_RUNNER_WORKFLOW_PATH,
+): Promise<string | null> {
+  return (await repositoryFileState(github, repository, ref, path))?.content ?? null;
+}
+
+function isCloseSpanManagedWorkflow(path: string, content: string): boolean {
+  if (content.startsWith(`${CLOSESPAN_MANAGED_WORKFLOW_MARKER}\n`)) return true;
+  const hash = createHash("sha256").update(content, "utf8").digest("hex");
+  return LEGACY_MANAGED_WORKFLOW_HASHES[path]?.has(hash) ?? false;
 }
 
 async function setupBranch(
@@ -164,11 +207,12 @@ export interface TenkiRunnerWorkflowMergeResult {
 }
 
 /**
- * Install the reviewed workflow without overwriting repository-owned content.
+ * Install or update the reviewed workflow without overwriting repository-owned content.
  *
  * An absent workflow is proposed on a stable CloseSpan setup branch. An exact
- * workflow already present on the default branch is accepted idempotently. Any
- * other content at the reserved path fails closed for manual review.
+ * workflow already present on the default branch is accepted idempotently. A
+ * marked or exact legacy CloseSpan-managed revision is upgraded through the
+ * same audited PR flow. Any other content fails closed for manual review.
  */
 export async function installTenkiRunnerWorkflow(
   input: {
@@ -213,7 +257,7 @@ export async function installTenkiRunnerWorkflow(
     [TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH, defaultRuntimeWorkflow, runtimeTemplate],
     [TENKI_RUNNER_SIZING_WORKFLOW_PATH, defaultSizingWorkflow, sizingTemplate],
   ] as const) {
-    if (actual !== null && actual !== expected) {
+    if (actual !== null && actual !== expected && !isCloseSpanManagedWorkflow(path, actual)) {
       throw new HttpError(
         409,
         `A different workflow already exists at ${path}; review it manually before enabling Tenki execution`,
@@ -234,66 +278,43 @@ export async function installTenkiRunnerWorkflow(
   }
 
   await setupBranch(github, repository, baseRef.data.object.sha);
-  const proposedWorkflow = await repositoryFile(
+  const proposedWorkflowState = await repositoryFileState(
     github,
     repository,
     TENKI_RUNNER_SETUP_BRANCH,
   );
-  const proposedRuntimeWorkflow = await repositoryFile(
+  const proposedRuntimeWorkflowState = await repositoryFileState(
     github,
     repository,
     TENKI_RUNNER_SETUP_BRANCH,
     TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
   );
-  const proposedSizingWorkflow = await repositoryFile(
+  const proposedSizingWorkflowState = await repositoryFileState(
     github,
     repository,
     TENKI_RUNNER_SETUP_BRANCH,
     TENKI_RUNNER_SIZING_WORKFLOW_PATH,
   );
-  if (proposedWorkflow !== null && proposedWorkflow !== template) {
-    throw new HttpError(
-      409,
-      `The ${TENKI_RUNNER_SETUP_BRANCH} branch contains a different runner workflow; review it manually before retrying`,
-    );
-  }
-  if (proposedWorkflow === null) {
+  const updates = [
+    [TENKI_RUNNER_WORKFLOW_PATH, proposedWorkflowState, template, "chore(closespan): update approval-bound agent runner"],
+    [TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH, proposedRuntimeWorkflowState, runtimeTemplate, "chore(closespan): update current-issue runtime verifier"],
+    [TENKI_RUNNER_SIZING_WORKFLOW_PATH, proposedSizingWorkflowState, sizingTemplate, "chore(closespan): update adaptive runner sizing probe"],
+  ] as const;
+  for (const [path, state, expected, message] of updates) {
+    if (state?.content === expected) continue;
+    if (state && !isCloseSpanManagedWorkflow(path, state.content)) {
+      throw new HttpError(
+        409,
+        `The ${TENKI_RUNNER_SETUP_BRANCH} branch contains a different workflow at ${path}; review it manually before retrying`,
+      );
+    }
     await github.rest.repos.createOrUpdateFileContents({
       ...repository,
-      path: TENKI_RUNNER_WORKFLOW_PATH,
-      message: "chore(closespan): install approval-bound agent runner",
-      content: Buffer.from(template, "utf8").toString("base64"),
+      path,
+      message,
+      content: Buffer.from(expected, "utf8").toString("base64"),
       branch: TENKI_RUNNER_SETUP_BRANCH,
-    });
-  }
-  if (proposedRuntimeWorkflow !== null && proposedRuntimeWorkflow !== runtimeTemplate) {
-    throw new HttpError(
-      409,
-      `The ${TENKI_RUNNER_SETUP_BRANCH} branch contains a different runtime verifier; review it manually before retrying`,
-    );
-  }
-  if (proposedRuntimeWorkflow === null) {
-    await github.rest.repos.createOrUpdateFileContents({
-      ...repository,
-      path: TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
-      message: "chore(closespan): install current-issue runtime verifier",
-      content: Buffer.from(runtimeTemplate, "utf8").toString("base64"),
-      branch: TENKI_RUNNER_SETUP_BRANCH,
-    });
-  }
-  if (proposedSizingWorkflow !== null && proposedSizingWorkflow !== sizingTemplate) {
-    throw new HttpError(
-      409,
-      `The ${TENKI_RUNNER_SETUP_BRANCH} branch contains a different runner sizing workflow; review it manually before retrying`,
-    );
-  }
-  if (proposedSizingWorkflow === null) {
-    await github.rest.repos.createOrUpdateFileContents({
-      ...repository,
-      path: TENKI_RUNNER_SIZING_WORKFLOW_PATH,
-      message: "chore(closespan): install adaptive runner sizing probe",
-      content: Buffer.from(sizingTemplate, "utf8").toString("base64"),
-      branch: TENKI_RUNNER_SETUP_BRANCH,
+      ...(state ? { sha: state.sha } : {}),
     });
   }
   const pullRequest = await setupPullRequest(github, repository, input.defaultBranch);
@@ -373,7 +394,7 @@ export async function approveAndMergeTenkiRunnerWorkflow(
     [TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH, defaultRuntimeWorkflow, runtimeTemplate],
     [TENKI_RUNNER_SIZING_WORKFLOW_PATH, defaultSizingWorkflow, sizingTemplate],
   ] as const) {
-    if (actual !== null && actual !== expected) {
+    if (actual !== null && actual !== expected && !isCloseSpanManagedWorkflow(path, actual)) {
       throw new HttpError(
         409,
         `A different workflow already exists at ${path}; CloseSpan will not overwrite it`,
@@ -428,9 +449,9 @@ export async function approveAndMergeTenkiRunnerWorkflow(
     throw new HttpError(409, "The runner setup pull request source changed; review it in GitHub");
   }
   const expectedFiles = [
-    ...(defaultWorkflow === null ? [TENKI_RUNNER_WORKFLOW_PATH] : []),
-    ...(defaultRuntimeWorkflow === null ? [TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH] : []),
-    ...(defaultSizingWorkflow === null ? [TENKI_RUNNER_SIZING_WORKFLOW_PATH] : []),
+    ...(defaultWorkflow !== template ? [TENKI_RUNNER_WORKFLOW_PATH] : []),
+    ...(defaultRuntimeWorkflow !== runtimeTemplate ? [TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH] : []),
+    ...(defaultSizingWorkflow !== sizingTemplate ? [TENKI_RUNNER_SIZING_WORKFLOW_PATH] : []),
   ];
   if (pull.data.changed_files !== expectedFiles.length) {
     throw new HttpError(409, "The runner setup pull request contains unexpected file changes");
@@ -442,9 +463,17 @@ export async function approveAndMergeTenkiRunnerWorkflow(
   });
   if (
     files.data.length !== expectedFiles.length
-    || files.data.some((file) => !expectedFiles.includes(file.filename) || file.status !== "added")
+    || files.data.some((file) => {
+      if (!expectedFiles.includes(file.filename)) return true;
+      const existing = file.filename === TENKI_RUNNER_WORKFLOW_PATH
+        ? defaultWorkflow
+        : file.filename === TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH
+          ? defaultRuntimeWorkflow
+          : defaultSizingWorkflow;
+      return file.status !== (existing === null ? "added" : "modified");
+    })
   ) {
-    throw new HttpError(409, "The runner setup pull request may only add CloseSpan's reviewed workflows");
+    throw new HttpError(409, "The runner setup pull request may only install or update CloseSpan's reviewed workflows");
   }
   const headSha = pull.data.head.sha;
   const proposedWorkflow = await repositoryFile(github, repository, headSha);
