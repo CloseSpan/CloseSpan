@@ -59,6 +59,7 @@ export async function GET(
       repository: context.repository,
       runId,
       workflowPath: executor.workflowPath,
+      expectedSha: context.baseSha,
     });
     const job = buildTenkiGithubActionsJob(context);
     const body = JSON.stringify(job);
@@ -124,6 +125,7 @@ export async function POST(
         repository: context.repository,
         runId,
         workflowPath: boundExecutor.workflowPath,
+        expectedSha: context.baseSha,
       });
     } else if (!hmacAuthenticated) {
       throw new Error("Tenki Sandbox callbacks require the executor HMAC signature");
@@ -151,6 +153,7 @@ export async function POST(
           ? boundExecutor.workflowPath
           : "",
         reportedWorkflowRunId: report.independentVerification.workflowRunId,
+        expectedSha: context.baseSha,
       });
     }
     validateAgentImplementationReport(report, {

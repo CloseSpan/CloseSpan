@@ -233,7 +233,12 @@ describe("agent-run completion callback", () => {
 
     expect(response.status).toBe(200);
     expect(workflow.running).toHaveBeenCalledWith("org-1", runId, "github-actions:123");
-    expect(oidc.assert).toHaveBeenCalledOnce();
+    expect(oidc.assert).toHaveBeenCalledWith(expect.objectContaining({
+      repository: "owner/repo",
+      runId,
+      workflowPath: ".github/workflows/closespan-agent-runner.yml",
+      expectedSha: context.baseSha,
+    }));
   });
 
   it("returns a secret-free approval-bound job to the OIDC-authenticated runner", async () => {
@@ -251,10 +256,55 @@ describe("agent-run completion callback", () => {
       schemaVersion: 1,
       runId,
       repository: "owner/repo",
+      promptContent: "Approved implementation prompt",
+      generatedTests: [{
+        path: "tests/pdd.test.ts",
+        content: "test content",
+        contentHash: "d".repeat(64),
+        command: "npm test",
+      }],
       requiredCommands: ["npm test"],
       runner: { label: "tenki-standard-large-8c-16g", platform: "linux" },
     });
-    expect(oidc.assert).toHaveBeenCalledOnce();
+    expect(oidc.assert).toHaveBeenCalledWith(expect.objectContaining({
+      repository: "owner/repo",
+      runId,
+      workflowPath: ".github/workflows/closespan-agent-runner.yml",
+      expectedSha: context.baseSha,
+    }));
+  });
+
+  it("keeps the completed GitHub report bound to the approved commit and workflow run", async () => {
+    workflow.context.mockResolvedValue(runnerContext());
+    const githubReport = {
+      ...report,
+      independentVerification: {
+        provider: "Tenki GitHub Actions",
+        workflowRunId: 123,
+        runnerLabel: "tenki-standard-large-8c-16g",
+        platform: "linux",
+        implementationJobId: "implementation:123:1",
+        verificationJobId: "verification:123:1",
+        status: "passed",
+        completedAt: "2026-08-14T00:00:00.000Z",
+        durationMs: 1_000,
+      },
+    };
+
+    const response = await POST(
+      oidcCallbackRequest({ event: "completed", orgId: "org-1", report: githubReport }),
+      { params: Promise.resolve({ runId }) },
+    );
+
+    expect(response.status).toBe(202);
+    expect(oidc.assert).toHaveBeenCalledTimes(2);
+    expect(oidc.assert).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      expectedSha: context.baseSha,
+    }));
+    expect(oidc.assert).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      expectedSha: context.baseSha,
+      reportedWorkflowRunId: 123,
+    }));
   });
 
   it("does not publish when independent verification fails", async () => {

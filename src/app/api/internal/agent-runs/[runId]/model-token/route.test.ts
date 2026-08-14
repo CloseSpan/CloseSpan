@@ -30,6 +30,7 @@ function executionContext() {
     orgId: "org-1",
     runId,
     repository: "owner/repo",
+    baseSha: "d".repeat(40),
     promptHash: "a".repeat(64),
     executionProfileHash: "b".repeat(64),
     executionProfileSnapshot: {
@@ -104,7 +105,12 @@ describe("runner model-token exchange", () => {
       repository: "owner/repo",
     });
     expect(dependencies.configuration).toHaveBeenCalledWith("org-1");
-    expect(dependencies.assertIdentity).toHaveBeenCalledOnce();
+    expect(dependencies.assertIdentity).toHaveBeenCalledWith(expect.objectContaining({
+      repository: "owner/repo",
+      runId,
+      workflowPath: ".github/workflows/closespan-agent-runner.yml",
+      expectedSha: "d".repeat(40),
+    }));
   });
 
   it("rejects a workspace without usable OpenAI configuration", async () => {

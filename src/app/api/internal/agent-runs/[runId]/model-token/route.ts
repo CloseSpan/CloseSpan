@@ -43,6 +43,7 @@ export async function POST(
       repository: context.repository,
       runId,
       workflowPath: executor.workflowPath,
+      expectedSha: context.baseSha,
     });
     const configuration = await getAiRuntimeConfiguration(context.orgId);
     if (
