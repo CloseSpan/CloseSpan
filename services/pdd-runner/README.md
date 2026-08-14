@@ -135,7 +135,7 @@ Required environment:
   `PDD_CLOUD_FALLBACK_ENABLED=true`
 - optional `PDD_EXECUTION_MODE` (`cloud`, the production default, or `local`)
 - optional `PDD_CLOUD_FALLBACK_ENABLED` (default `true` in the Tenki deployer)
-- optional `PDD_CLOUD_TIMEOUT` in seconds (default `240`)
+- optional `PDD_CLOUD_TIMEOUT` in seconds (default `600`, bounded to `60`–`900`)
 - optional `PDD_RUNNER_STABLE_SLUG` (default `closespan-pdd-production`)
 - optional `PDD_RUNNER_ROTATION_MAX_AGE_DAYS` (default `21`)
 - optional `PDD_RUNNER_DRAIN_MS` (default `300000`)

@@ -28,7 +28,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MAX_JOB_BYTES = 1_000_000
 MAX_ARCHIVE_BYTES = 50_000_000
 MAX_OUTPUT_BYTES = 750_000
-RUN_TIMEOUT_SECONDS = 240
+RUN_TIMEOUT_SECONDS = int(
+    os.getenv("PDD_RUN_TIMEOUT_SECONDS", os.getenv("PDD_CLOUD_TIMEOUT", "600"))
+)
+if not 60 <= RUN_TIMEOUT_SECONDS <= 900:
+    raise ValueError("PDD runner timeout must be between 60 and 900 seconds")
 PDD_VERSION_TIMEOUT_SECONDS = 60
 RUN_CONCURRENCY = int(os.getenv("PDD_RUNNER_CONCURRENCY", "2"))
 MAX_QUEUED_JOBS = int(os.getenv("PDD_RUNNER_MAX_QUEUED_JOBS", str(RUN_CONCURRENCY * 4)))

@@ -348,7 +348,7 @@ async function provisionRunner(client, config) {
       ["PDD_CLOUD_FALLBACK_ENABLED", String(config.localFallbackEnabled)],
       ["PDD_JWT_TOKEN", config.jwtToken ?? ""],
       ["PDD_REFRESH_TOKEN", config.refreshToken ?? ""],
-      ["PDD_CLOUD_TIMEOUT", process.env.PDD_CLOUD_TIMEOUT?.trim() || "240"],
+      ["PDD_CLOUD_TIMEOUT", process.env.PDD_CLOUD_TIMEOUT?.trim() || "600"],
       ["PYTHON_KEYRING_BACKEND", "keyrings.alt.file.PlaintextKeyring"],
       ...config.providerKeys,
     ]);

@@ -28,7 +28,7 @@ jobs:
       PDD_MODEL: gpt-5.4
       PDD_EXECUTION_MODE: cloud
       PDD_CLOUD_FALLBACK_ENABLED: "true"
-      PDD_CLOUD_TIMEOUT: "240"
+      PDD_CLOUD_TIMEOUT: "600"
       PDD_RUNNER_CONCURRENCY: "2"
       PDD_RUNNER_STABLE_SLUG: closespan-pdd-production
       PDD_RUNNER_ROTATION_MAX_AGE_DAYS: "21"
