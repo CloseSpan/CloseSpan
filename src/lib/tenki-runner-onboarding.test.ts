@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const workflow = vi.hoisted(() => ({ install: vi.fn() }));
 const profiles = vi.hoisted(() => ({ list: vi.fn(), confirm: vi.fn() }));
+const catalog = vi.hoisted(() => ({ assertAllowed: vi.fn() }));
 const setups = vi.hoisted(() => ({
   get: vi.fn(),
   preparing: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock("./execution-profile-repository", () => ({
   confirmDetectedExecutionProfile: profiles.confirm,
 }));
 vi.mock("./tenki-environment-catalog-repository", () => ({
-  assertManagedTenkiBootSourceAllowed: vi.fn(),
+  assertManagedTenkiBootSourceAllowed: catalog.assertAllowed,
 }));
 
 import {
@@ -61,6 +62,7 @@ describe("Tenki repository onboarding", () => {
     setups.installed.mockResolvedValue(undefined);
     setups.failed.mockResolvedValue(undefined);
     profiles.confirm.mockResolvedValue({});
+    catalog.assertAllowed.mockResolvedValue(null);
   });
 
   it("respects an administrator deactivation during automatic refreshes", async () => {
@@ -190,6 +192,67 @@ describe("Tenki repository onboarding", () => {
     expect(profiles.confirm).toHaveBeenCalledWith(expect.objectContaining({
       detectedProfileId: "detected-runner",
     }));
+  });
+
+  it("does not let an incomplete unselected root block a ready detected root", async () => {
+    profiles.list.mockResolvedValue({
+      assignments: [{
+        repository: "acme/app",
+        workspaceRoot: ".",
+        automaticActivationDisabled: false,
+        detectedProfile: {
+          id: "detected-repository-root",
+          repository: "acme/app",
+          workspaceRoot: ".",
+          detectionEvidence: { confidence: 0.9 },
+          config: { schemaVersion: 1 },
+        },
+      }, {
+        repository: "acme/app",
+        workspaceRoot: "ZupNative",
+        automaticActivationDisabled: false,
+        detectedProfile: {
+          id: "detected-zup-native",
+          repository: "acme/app",
+          workspaceRoot: "ZupNative",
+          detectionEvidence: { confidence: 0.96 },
+          config: {
+            schemaVersion: 3,
+            executor: {
+              kind: "tenki_github_actions",
+              workflowSha256: "a".repeat(64),
+            },
+          },
+        },
+      }],
+    });
+    catalog.assertAllowed.mockImplementation(
+      (input: { workspaceRoot: string }) => input.workspaceRoot === "."
+        ? Promise.reject(new Error(
+            "Strict Tenki catalog enforcement requires a validated digest-pinned managed environment",
+          ))
+        : Promise.resolve(null),
+    );
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(activateReadyDetectedExecutionProfiles({
+      orgId: "org-1",
+      repository: "acme/app",
+      actor: { actorId: "system:repository-detector" },
+    })).resolves.toBe(1);
+
+    expect(profiles.confirm).toHaveBeenCalledOnce();
+    expect(profiles.confirm).toHaveBeenCalledWith(expect.objectContaining({
+      detectedProfileId: "detected-zup-native",
+    }));
+    expect(warning).toHaveBeenCalledWith(
+      "Skipping automatic execution-profile activation",
+      expect.objectContaining({
+        workspaceRoot: ".",
+        profileId: "detected-repository-root",
+      }),
+    );
+    warning.mockRestore();
   });
 
   it("only requires a setup pull request for detected runner platforms", () => {

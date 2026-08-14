@@ -65,17 +65,27 @@ export async function activateReadyDetectedExecutionProfiles(input: {
         workspaceRoot: profile.workspaceRoot,
         config: profile.config,
       });
-      await confirmDetectedExecutionProfile({
-        orgId: input.orgId,
-        detectedProfileId: profile.id,
-        actor: input.actor,
-      });
-      activated += 1;
     } catch (error) {
-      const waitingForWorkflow = error instanceof Error
-        && error.message.includes("immutable runner workflow SHA-256");
-      if (!waitingForWorkflow) throw error;
+      // Repository detection can find multiple independent roots. One root
+      // that still needs a workflow, managed image, or other activation
+      // prerequisite must not block ready roots or the user action that
+      // triggered this best-effort refresh.
+      console.warn("Skipping automatic execution-profile activation", {
+        repository: profile.repository,
+        workspaceRoot: profile.workspaceRoot,
+        profileId: profile.id,
+        reason: error instanceof Error
+          ? error.message
+          : "The detected profile is not ready for automatic activation",
+      });
+      continue;
     }
+    await confirmDetectedExecutionProfile({
+      orgId: input.orgId,
+      detectedProfileId: profile.id,
+      actor: input.actor,
+    });
+    activated += 1;
   }
   return activated;
 }
