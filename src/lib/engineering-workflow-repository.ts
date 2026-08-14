@@ -55,6 +55,10 @@ import {
   getActiveConfirmedProblemRepositoryMatch,
 } from "./problem-repository-match-repository";
 import {
+  resolveAuthorizedGithubBranchHead,
+  type GithubAuthorizedBranchHead,
+} from "./github-repository-allowlist";
+import {
   createFinalExecutionApproval,
   readFinalExecutionApproval,
   type FinalExecutionApprovalView,
@@ -1019,7 +1023,7 @@ async function reopenPromptAfterTerminalAgentRun(
 }
 
 export function reviewedProfileSourceForRetry(input: {
-  detectionEvidence: Record<string, unknown>;
+  currentHead: GithubAuthorizedBranchHead;
   repository: string;
   workspaceRoot: string;
   profileId: string;
@@ -1028,17 +1032,14 @@ export function reviewedProfileSourceForRetry(input: {
   contentHash: string;
   config: ExecutionProfileSnapshot["config"];
 }): { baseBranch: string; baseSha: string; snapshot: ExecutionProfileSnapshot } | null {
-  const baseBranch = input.detectionEvidence.defaultBranch;
-  const baseSha = input.detectionEvidence.sourceSha;
   if (
-    typeof baseBranch !== "string"
-    || !baseBranch.trim()
-    || typeof baseSha !== "string"
-    || !/^[a-f0-9]{40}$/i.test(baseSha)
+    input.currentHead.repository !== input.repository
+    || !input.currentHead.branch.trim()
+    || !/^[a-f0-9]{40}$/i.test(input.currentHead.sha)
   ) return null;
   return {
-    baseBranch: baseBranch.trim(),
-    baseSha: baseSha.toLowerCase(),
+    baseBranch: input.currentHead.branch.trim(),
+    baseSha: input.currentHead.sha.toLowerCase(),
     snapshot: {
       profileId: input.profileId,
       repository: input.repository,
@@ -1106,7 +1107,10 @@ export function evidenceBackedProductPathsForRetry(...sources: unknown[]): strin
  * A retry is a new authorization, not permission to keep executing an old
  * repository snapshot. When an administrator has confirmed a newer profile
  * after a terminal run, advance the mutable ticket specification to that
- * profile's reviewed commit and supersede the old prompt/acceptance contract.
+ * authorized branch's current GitHub commit and supersede the old
+ * prompt/acceptance contract. The repository authorization identifies the
+ * user-selected branch; cached profile detection evidence must never be reused
+ * as the head of a newly authorized retry.
  * The caller then renders and tests a new immutable prompt revision.
  */
 async function rebindTerminalRetryToCurrentProfile(
@@ -1135,8 +1139,22 @@ async function rebindTerminalRetryToCurrentProfile(
     || profile.contentHash !== match.profileHash
     || !["confirmed", "override"].includes(profile.source)
   ) return false;
+  let currentHead: GithubAuthorizedBranchHead;
+  try {
+    currentHead = await resolveAuthorizedGithubBranchHead({
+      orgId,
+      repository: profile.repository,
+    });
+  } catch (error) {
+    throw new EngineeringWorkflowError(
+      error instanceof Error
+        ? `CloseSpan could not refresh the authorized branch before preparing another coding run: ${error.message}`
+        : "CloseSpan could not refresh the authorized branch before preparing another coding run.",
+      409,
+    );
+  }
   const reviewed = reviewedProfileSourceForRetry({
-    detectionEvidence: profile.detectionEvidence,
+    currentHead,
     repository: profile.repository,
     workspaceRoot: profile.workspaceRoot,
     profileId: profile.id,
