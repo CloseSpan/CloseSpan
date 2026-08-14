@@ -1,4 +1,4 @@
-import { Bot, ExternalLink, ShieldCheck } from "lucide-react";
+import { Bot, ExternalLink, Info, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { PageTitle } from "@/components/screens";
 import { requireWorkspaceUser } from "@/lib/auth-user";
@@ -6,7 +6,10 @@ import {
   listAgentRuns,
   type AgentRunSummaryView,
 } from "@/lib/engineering-workflow-repository";
-import { agentRunVerificationState } from "@/lib/agent-run-presentation";
+import {
+  agentRunVerificationExplanation,
+  agentRunVerificationState,
+} from "@/lib/agent-run-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +55,7 @@ export default async function AgentRunsPage() {
           </Link>
         </section>
       ) : (
-        <section className="card table-wrap">
+        <section className="card table-wrap agent-runs-table">
           <table>
             <caption className="sr-only">
               Agent implementation and verification runs
@@ -70,6 +73,8 @@ export default async function AgentRunsPage() {
             <tbody>
               {runs.map((run) => {
                 const verification = agentRunVerificationState(run);
+                const verificationExplanation =
+                  agentRunVerificationExplanation(run);
                 return (
                   <tr key={run.id}>
                     <td>
@@ -87,9 +92,22 @@ export default async function AgentRunsPage() {
                       </span>
                     </td>
                     <td>
-                      <span className={verification.className}>
-                        {verification.label}
-                      </span>
+                      <div className="status-with-help">
+                        <span className={verification.className}>
+                          {verification.label}
+                        </span>
+                        {verificationExplanation ? (
+                          <details className="status-help status-help-list">
+                            <summary aria-label={verificationExplanation.title}>
+                              <Info size={15} aria-hidden="true" />
+                            </summary>
+                            <div className="status-help-panel">
+                              <strong>{verificationExplanation.title}</strong>
+                              <p>{verificationExplanation.message}</p>
+                            </div>
+                          </details>
+                        ) : null}
+                      </div>
                     </td>
                     <td>{run.repository ?? "Repository unavailable"}</td>
                     <td>{dateFormatter.format(new Date(run.queuedAt))}</td>

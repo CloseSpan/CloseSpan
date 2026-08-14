@@ -39,7 +39,7 @@ export interface AgentRunVerificationExplanation {
 
 export function agentRunVerificationExplanation(
   run: Pick<
-    AgentRunView,
+    AgentRunView | AgentRunSummaryView,
     "status" | "failureCode" | "failureMessage" | "repository" | "baseBranch" | "baseSha"
   >,
 ): AgentRunVerificationExplanation | null {

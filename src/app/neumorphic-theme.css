@@ -3074,13 +3074,18 @@ table tbody tr:hover {
 .app-shell .status-help summary {
   display: inline-grid;
   width: 28px;
+  min-width: 28px;
   height: 28px;
+  min-height: 28px;
+  aspect-ratio: 1;
+  box-sizing: border-box;
+  flex: 0 0 28px;
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: transparent;
-  color: var(--text-muted);
-  box-shadow: none;
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-raised-sm);
   cursor: pointer;
   list-style: none;
   place-items: center;
@@ -3093,10 +3098,10 @@ table tbody tr:hover {
 .app-shell .status-help summary:hover,
 .app-shell .status-help summary:focus-visible,
 .app-shell .status-help[open] summary {
-  background: var(--surface-muted);
-  color: var(--accent);
+  background: var(--surface-pressed);
+  color: var(--accent-active);
   outline: 0;
-  box-shadow: var(--shadow-raised-sm);
+  box-shadow: var(--shadow-inset-sm);
 }
 
 .app-shell .status-help-panel {
@@ -3105,9 +3110,10 @@ table tbody tr:hover {
   right: 0;
   z-index: 30;
   width: min(360px, calc(100vw - 48px));
-  padding: var(--space-3);
+  padding: var(--space-4);
+  border: 0;
   border-radius: var(--radius-md);
-  background: var(--surface-muted);
+  background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-overlay);
   font-size: var(--text-sm);
@@ -3119,7 +3125,29 @@ table tbody tr:hover {
 }
 
 .app-shell .status-help-panel p {
-  margin: var(--space-1) 0 0;
+  margin: var(--space-2) 0 0;
+}
+
+.app-shell .agent-runs-table {
+  overflow: visible;
+}
+
+.app-shell .agent-runs-table td:has(.status-help[open]) {
+  position: relative;
+  z-index: 4;
+}
+
+.app-shell .status-help-list .status-help-panel {
+  right: auto;
+  left: 0;
+  width: min(320px, calc(100vw - 48px));
+}
+
+@media (max-width: 820px) {
+  .app-shell .agent-runs-table {
+    overflow-x: auto;
+    overflow-y: visible;
+  }
 }
 
 .app-shell .investigation-metric-tooltip {

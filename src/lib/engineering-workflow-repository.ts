@@ -184,6 +184,10 @@ export interface AgentRunSummaryView {
   queuedAt: string;
   completedAt: string | null;
   independentVerificationStatus: "passed" | "failed" | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  baseBranch?: string;
+  baseSha?: string;
 }
 
 export interface AgentTestResult {
@@ -676,6 +680,10 @@ export async function listAgentRuns(
           completedAt: run.completedAt,
           independentVerificationStatus:
             run.independentVerification?.status ?? null,
+          failureCode: run.failureCode ?? null,
+          failureMessage: run.failureMessage ?? null,
+          baseBranch: run.baseBranch,
+          baseSha: run.baseSha,
         } satisfies AgentRunSummaryView;
       })
       .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt));
@@ -693,6 +701,10 @@ export async function listAgentRuns(
     queued_at: Date;
     completed_at: Date | null;
     implementation_report: AgentImplementationReport | null;
+    failure_code: string | null;
+    failure_message: string | null;
+    base_branch: string;
+    base_sha: string;
   }>(
     `SELECT run.id,
             run.approval_id,
@@ -704,7 +716,11 @@ export async function listAgentRuns(
             run.pull_request_url,
             run.queued_at,
             run.completed_at,
-            run.implementation_report
+            run.implementation_report,
+            run.failure_code,
+            run.failure_message,
+            run.base_branch,
+            run.base_sha
        FROM agent_runs run
        JOIN product_problems problem
          ON problem.org_id=run.org_id AND problem.id=run.problem_id
@@ -727,6 +743,10 @@ export async function listAgentRuns(
     completedAt: row.completed_at?.toISOString() ?? null,
     independentVerificationStatus:
       row.implementation_report?.independentVerification?.status ?? null,
+    failureCode: row.failure_code,
+    failureMessage: row.failure_message,
+    baseBranch: row.base_branch,
+    baseSha: row.base_sha,
   }));
 }
 
