@@ -1082,7 +1082,11 @@ export function EngineeringTicketPanel({
 
         {verificationReady &&
           workflow.approval?.status === "Pending" && (
-            <div className="callout" role="region" aria-label="Implementation approval">
+            <div
+              className="callout implementation-approval-callout"
+              role="region"
+              aria-label="Implementation approval"
+            >
               <div className="callout-title">
                 <ShieldCheck size={14} />
                 Ready for one isolated run

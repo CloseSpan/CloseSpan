@@ -459,6 +459,49 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("will not restart the check when you revisit this page");
   });
 
+  it("separates the execution approval action from its explanatory copy", () => {
+    const markup = renderPanel(readyPromptWorkflow());
+    const approvalMarkup = renderPanel(workflow({
+      ...readyPromptWorkflow(),
+      verification: {
+        id: "verification-1",
+        status: "Ready for approval",
+        userStory: "As a user, I want the input to work, so that I can finish.",
+        promptHash: "b".repeat(64),
+        pddVersion: "0.0.309",
+        model: "openai/test",
+        budgetUsd: 0.25,
+        costUsd: 0.01,
+        summary: "Generated one acceptance test.",
+        generatedTests: [{
+          path: "tests/input.test.ts",
+          content: "test('input', () => {})",
+          contentHash: "c".repeat(64),
+          command: "npm test",
+        }],
+        failureMessage: null,
+        createdAt: "2026-08-11T12:00:00.000Z",
+        completedAt: "2026-08-11T12:01:00.000Z",
+      },
+      approval: {
+        id: "approval-1",
+        status: "Pending",
+        expiresAt: "2026-08-12T12:00:00.000Z",
+        promptHash: "b".repeat(64),
+        repository: "closespan/app",
+        baseBranch: "main",
+        baseSha: "a".repeat(40),
+        allowedCapabilities: ["repository:write"],
+      },
+    }));
+
+    expect(markup).not.toContain("implementation-approval-callout");
+    expect(approvalMarkup).toContain(
+      'class="callout implementation-approval-callout"',
+    );
+    expect(approvalMarkup).toContain("Review execution approval");
+  });
+
   it("shows backend and frontend production verification independently", () => {
     const markup = renderPanel(workflow({
           releaseEvidence: {

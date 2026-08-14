@@ -12662,6 +12662,26 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   margin: 0;
 }
 
+.app-shell .implementation-approval-callout {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.app-shell .implementation-approval-callout > p,
+.app-shell .implementation-approval-callout .callout-title,
+.app-shell .implementation-approval-callout .top-actions {
+  margin: 0;
+}
+
+.app-shell .implementation-approval-callout > p {
+  max-width: 75ch;
+}
+
+.app-shell .implementation-approval-callout .top-actions {
+  justify-content: flex-start;
+  margin-top: var(--space-2);
+}
+
 .app-shell .runner-workflow-approval,
 .app-shell .runner-workflow-notice {
   display: grid;
