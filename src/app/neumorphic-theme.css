@@ -12662,14 +12662,18 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   margin: 0;
 }
 
+.app-shell .implementation-approval-section {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .app-shell .implementation-approval-callout {
   display: grid;
   gap: var(--space-3);
 }
 
 .app-shell .implementation-approval-callout > p,
-.app-shell .implementation-approval-callout .callout-title,
-.app-shell .implementation-approval-callout .top-actions {
+.app-shell .implementation-approval-callout .callout-title {
   margin: 0;
 }
 
@@ -12677,9 +12681,9 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   max-width: 75ch;
 }
 
-.app-shell .implementation-approval-callout .top-actions {
+.app-shell .implementation-approval-actions {
   justify-content: flex-start;
-  margin-top: var(--space-2);
+  margin: 0;
 }
 
 .app-shell .runner-workflow-approval,

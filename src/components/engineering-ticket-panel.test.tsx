@@ -459,7 +459,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("will not restart the check when you revisit this page");
   });
 
-  it("separates the execution approval action from its explanatory copy", () => {
+  it("places the execution approval action below the explanatory callout", () => {
     const markup = renderPanel(readyPromptWorkflow());
     const approvalMarkup = renderPanel(workflow({
       ...readyPromptWorkflow(),
@@ -495,11 +495,16 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
       },
     }));
 
-    expect(markup).not.toContain("implementation-approval-callout");
+    expect(markup).not.toContain("implementation-approval-section");
+    expect(approvalMarkup).toContain(
+      'class="implementation-approval-section"',
+    );
     expect(approvalMarkup).toContain(
       'class="callout implementation-approval-callout"',
     );
-    expect(approvalMarkup).toContain("Review execution approval");
+    expect(approvalMarkup).toContain(
+      '</p></div><div class="top-actions implementation-approval-actions"><a class="btn primary" href="/approvals">Review execution approval</a></div>',
+    );
   });
 
   it("shows backend and frontend production verification independently", () => {

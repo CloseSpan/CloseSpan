@@ -1083,22 +1083,24 @@ export function EngineeringTicketPanel({
         {verificationReady &&
           workflow.approval?.status === "Pending" && (
             <div
-              className="callout implementation-approval-callout"
+              className="implementation-approval-section"
               role="region"
               aria-label="Implementation approval"
             >
-              <div className="callout-title">
-                <ShieldCheck size={14} />
-                Ready for one isolated run
+              <div className="callout implementation-approval-callout">
+                <div className="callout-title">
+                  <ShieldCheck size={14} />
+                  Ready for one isolated run
+                </div>
+                <p className="subtle">
+                  This approval is bound to prompt revision {workflow.prompt?.revision},
+                  repository {workflow.approval.repository}, and base commit {workflow.approval.baseSha}.
+                  CloseSpan will run the coding agent in a fresh Tenki microVM, verify the
+                  result in a second isolated session, and open a draft pull request only
+                  if verification passes.
+                </p>
               </div>
-              <p className="subtle">
-                This approval is bound to prompt revision {workflow.prompt?.revision},
-                repository {workflow.approval.repository}, and base commit {workflow.approval.baseSha}.
-                CloseSpan will run the coding agent in a fresh Tenki microVM, verify the
-                result in a second isolated session, and open a draft pull request only
-                if verification passes.
-              </p>
-              <div className="top-actions">
+              <div className="top-actions implementation-approval-actions">
                 <Link className="btn primary" href="/approvals">
                   Review execution approval
                 </Link>
