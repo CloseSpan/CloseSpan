@@ -1293,7 +1293,11 @@ export function ExecutionProfileSettings({
   async function confirm(profileId: string, repository: GithubRepositoryAuthorization): Promise<void> {
     if (!isAdmin) return;
     setBusyProfile(profileId);
-    setError(undefined);
+    setRepositoryActionErrors((current) => {
+      const next = { ...current };
+      delete next[repository.repository];
+      return next;
+    });
     try {
       const response = await fetch("/api/settings/execution-profiles/confirm", {
         method: "POST",
@@ -1309,7 +1313,12 @@ export function ExecutionProfileSettings({
       if (!response.ok || !payload.settings) throw new Error(payload.error ?? "Execution profile could not be confirmed.");
       applySettings(payload.settings);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Execution profile could not be confirmed.");
+      setRepositoryActionErrors((current) => ({
+        ...current,
+        [repository.repository]: cause instanceof Error
+          ? cause.message
+          : "Execution profile could not be confirmed.",
+      }));
     } finally {
       setBusyProfile(undefined);
     }

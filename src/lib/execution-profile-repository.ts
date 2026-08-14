@@ -278,8 +278,26 @@ async function setDetectedAssignment(
        created_by,updated_by
      ) VALUES($1,$2,$3,$4,$5,$6,$6)
      ON CONFLICT(org_id,repository,workspace_root) DO UPDATE SET
-       detected_profile_id=excluded.detected_profile_id,
-       detected_profile_hash=excluded.detected_profile_hash,
+       detected_profile_id=CASE
+         WHEN EXISTS(
+           SELECT 1
+             FROM execution_profile_versions active
+            WHERE active.org_id=execution_profile_assignments.org_id
+              AND active.id=execution_profile_assignments.active_profile_id
+              AND active.parent_profile_id=excluded.detected_profile_id
+         ) THEN NULL
+         ELSE excluded.detected_profile_id
+       END,
+       detected_profile_hash=CASE
+         WHEN EXISTS(
+           SELECT 1
+             FROM execution_profile_versions active
+            WHERE active.org_id=execution_profile_assignments.org_id
+              AND active.id=execution_profile_assignments.active_profile_id
+              AND active.parent_profile_id=excluded.detected_profile_id
+         ) THEN NULL
+         ELSE excluded.detected_profile_hash
+       END,
        updated_by=excluded.updated_by,
        updated_at=now()`,
     [
@@ -697,19 +715,26 @@ export async function listExecutionProfileSettings(
     }));
     return {
       safeGenericProfile,
-      assignments: result.rows.map((row) => ({
-        repository: row.repository,
-        workspaceRoot: row.workspace_root,
-        activeProfile: row.active_profile_id
+      assignments: result.rows.map((row) => {
+        const activeProfile = row.active_profile_id
           ? byId.get(row.active_profile_id) ?? null
-          : null,
-        detectedProfile: row.detected_profile_id
+          : null;
+        const detectedProfile = row.detected_profile_id
           ? byId.get(row.detected_profile_id) ?? null
-          : null,
-        automaticActivationDisabled: row.automatic_activation_disabled,
-        updatedBy: row.updated_by,
-        updatedAt: isoDate(row.updated_at),
-      })),
+          : null;
+        const pendingDetectedProfile = activeProfile?.parentProfileId === detectedProfile?.id
+          ? null
+          : detectedProfile;
+        return {
+          repository: row.repository,
+          workspaceRoot: row.workspace_root,
+          activeProfile,
+          detectedProfile: pendingDetectedProfile,
+          automaticActivationDisabled: row.automatic_activation_disabled,
+          updatedBy: row.updated_by,
+          updatedAt: isoDate(row.updated_at),
+        };
+      }),
     };
   });
 }
