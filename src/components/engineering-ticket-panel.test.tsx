@@ -249,6 +249,46 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).not.toContain("Test again");
   });
 
+  it("lets a user override a revision recommendation and continue to Action approval", () => {
+    const candidate = readyPromptWorkflow();
+    const markup = renderPanel({
+      ...candidate,
+      promptEvaluation: {
+        id: "11111111-1111-4111-8111-111111111111",
+        triggerSource: "manual",
+        status: "Succeeded",
+        promptRevisionId: "prompt_1",
+        promptHash: "b".repeat(64),
+        userStory: candidate.specification!.userStory,
+        review: {
+          verdict: "Needs revision",
+          summary: "One optional improvement is available.",
+          changes: ["Clarify the expected behavior."],
+          acceptanceContract: "## Contract\nThe current prompt is executable.",
+          suggestedRevision: "Fix the input and clarify the expected behavior.",
+          pddVersion: "0.0.309",
+          executionMode: "cloud",
+          model: "test-model",
+          costUsd: 0.01,
+          promptHash: "b".repeat(64),
+          alignmentReceipt: null,
+          revisionReceipt: "signed-revision-receipt",
+        },
+        failureMessage: null,
+        acceptancePreparationFailureMessage: null,
+        appliedPromptRevisionId: null,
+        applied: false,
+        automaticAttempted: false,
+        createdAt: "2026-08-11T12:00:00.000Z",
+        completedAt: "2026-08-11T12:01:00.000Z",
+      },
+    });
+
+    expect(markup).toContain("Keep the tested prompt as-is");
+    expect(markup).toContain("Override test &amp; prepare approval");
+    expect(markup).toContain("records who made this decision");
+  });
+
   it("shows a durable automatic result as review-ready instead of restarting it", () => {
     const candidate = readyPromptWorkflow();
     const markup = renderPanel({

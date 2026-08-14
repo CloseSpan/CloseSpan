@@ -12981,6 +12981,33 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   box-shadow: var(--shadow-inset-sm), 0 0 0 1px color-mix(in srgb, var(--success) 22%, transparent);
 }
 
+.app-shell .prompt-override-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-width: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent);
+}
+
+.app-shell .prompt-override-action > div {
+  min-width: 0;
+  max-width: 72ch;
+}
+
+.app-shell .prompt-override-action strong {
+  color: var(--text-strong);
+}
+
+.app-shell .prompt-override-action p {
+  margin: var(--space-1) 0 0;
+}
+
+.app-shell .prompt-override-action > .btn {
+  flex: 0 0 auto;
+}
+
 .prompt-test-dock {
   position: fixed;
   right: var(--space-5);
@@ -13179,6 +13206,15 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   }
 
   .app-shell .prompt-comparison-heading > .btn {
+    width: 100%;
+  }
+
+  .app-shell .prompt-override-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-shell .prompt-override-action > .btn {
     width: 100%;
   }
 

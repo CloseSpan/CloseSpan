@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { databasePool } from "./db";
+import { databasePool, transaction } from "./db";
 import {
   pddPromptReviewSchema,
   type PddPromptReview,
@@ -242,6 +242,97 @@ export async function markPddPromptEvaluationApplied(
       WHERE org_id=$1 AND id=$2 AND status='Succeeded'`,
     [orgId, evaluationId, appliedPromptRevisionId],
   );
+}
+
+export async function overridePddPromptEvaluation(input: {
+  orgId: string;
+  problemId: string;
+  evaluationId: string;
+  promptHash: string;
+  actorId: string;
+  actorName: string;
+  traceId: string;
+  reason?: string;
+}): Promise<PddPromptReview | null> {
+  const reason = input.reason?.trim()
+    || "Accepted the current immutable prompt as-is for Action approval.";
+  const occurredAt = new Date().toISOString();
+  const overriddenReview = (review: PddPromptReview): PddPromptReview =>
+    pddPromptReviewSchema.parse({
+      ...review,
+      verdict: "Passed",
+      summary: "Prompt Testing recommendations were overridden. The current immutable prompt was accepted as-is for Action approval.",
+      changes: [],
+      suggestedRevision: null,
+      alignmentReceipt: null,
+      revisionReceipt: null,
+      override: {
+        actorId: input.actorId,
+        actorName: input.actorName,
+        reason,
+        occurredAt,
+      },
+    });
+
+  if (workspacePersistenceMode(input.orgId) === "memory") {
+    const current = memoryEvaluations().get(input.evaluationId);
+    if (
+      !current
+      || current.orgId !== input.orgId
+      || current.problemId !== input.problemId
+      || current.promptHash !== input.promptHash
+      || current.status !== "Succeeded"
+      || current.review?.verdict !== "Needs revision"
+    ) return null;
+    const review = overriddenReview(current.review);
+    memoryEvaluations().set(input.evaluationId, { ...current, review });
+    return structuredClone(review);
+  }
+
+  return transaction(async (client) => {
+    const selected = await client.query<{
+      review: unknown;
+      status: PddPromptEvaluationStatus;
+      prompt_hash: string;
+    }>(
+      `SELECT review,status,prompt_hash
+         FROM pdd_prompt_evaluations
+        WHERE org_id=$1 AND problem_id=$2 AND id=$3
+        FOR UPDATE`,
+      [input.orgId, input.problemId, input.evaluationId],
+    );
+    const row = selected.rows[0];
+    const currentReview = rowReview(row?.review);
+    if (
+      !row
+      || row.status !== "Succeeded"
+      || row.prompt_hash !== input.promptHash
+      || currentReview?.verdict !== "Needs revision"
+    ) return null;
+    const review = overriddenReview(currentReview);
+    await client.query(
+      `UPDATE pdd_prompt_evaluations
+          SET review=$4
+        WHERE org_id=$1 AND problem_id=$2 AND id=$3`,
+      [input.orgId, input.problemId, input.evaluationId, JSON.stringify(storedReview(review))],
+    );
+    await client.query(
+      `INSERT INTO audit_events(
+         id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        randomUUID(),
+        input.orgId,
+        input.actorId,
+        input.actorName,
+        `Overrode Prompt Testing recommendations and accepted prompt ${input.promptHash} as-is for Action approval: ${reason}`,
+        "PddPromptEvaluation",
+        input.evaluationId,
+        `${input.traceId}_${randomUUID()}`,
+      ],
+    );
+    return review;
+  });
 }
 
 export async function recordPddAcceptancePreparationFailure(input: {

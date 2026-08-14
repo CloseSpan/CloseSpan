@@ -599,6 +599,65 @@ export function EngineeringTicketPanel({
     }
   }
 
+  async function overridePromptTest() {
+    const evaluationId = backgroundPromptResult?.evaluationId
+      ?? workflow.promptEvaluation?.id;
+    if (
+      revisionBusy
+      || !evaluationId
+      || !workflow.prompt
+      || promptEvaluation?.verdict !== "Needs revision"
+      || promptEvaluation.promptHash !== workflow.prompt.contentHash
+    ) return;
+
+    setRevisionBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch(
+        `/api/problems/${problemId}/engineering/override-prompt-test`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-org-id": orgId,
+            "idempotency-key": crypto.randomUUID(),
+            "x-request-id": crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            evaluationId,
+            userStory: userStory.trim(),
+            currentPromptHash: workflow.prompt.contentHash,
+            reason: "The user accepted the current immutable prompt as-is and chose to proceed to Action approval.",
+          }),
+        },
+      );
+      const payload = await response.json() as {
+        workflow?: EngineeringWorkflowView;
+        alignmentReceipt?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.workflow || !payload.alignmentReceipt) {
+        throw new Error(payload.error ?? "The Prompt Testing override could not be recorded.");
+      }
+      setWorkflow(payload.workflow);
+      setRecentPromptComparison(undefined);
+      discardProblemTasks(problemId);
+      const prepared = await prepareAlignedPromptApproval({
+        orgId,
+        problemId,
+        userStory: userStory.trim(),
+        evaluationId,
+        alignmentReceipt: payload.alignmentReceipt,
+      });
+      setWorkflow(prepared.workflow);
+      setStoryTest(prepared.storyTest);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The Prompt Testing override could not be recorded.");
+    } finally {
+      setRevisionBusy(false);
+    }
+  }
+
   const promptStatus = workflow.prompt?.status ?? "No prompt yet";
   const retryableRun = Boolean(
     workflow.run && ["Failed", "No changes"].includes(workflow.run.status),
@@ -630,12 +689,22 @@ export function EngineeringTicketPanel({
     suggestedRevision: backgroundPromptResult?.promptEvaluation.suggestedRevision,
     revisionReceipt: backgroundPromptResult?.promptEvaluation.revisionReceipt,
   }) && suggestedRevisionDiffers;
+  const currentPromptEvaluationId = backgroundPromptResult?.evaluationId
+    ?? workflow.promptEvaluation?.id;
+  const canOverridePromptTest = Boolean(
+    currentPromptEvaluationId
+    && workflow.prompt
+    && promptEvaluation?.verdict === "Needs revision"
+    && promptEvaluation.promptHash === workflow.prompt.contentHash,
+  );
   const promptEvaluationSummary = incompletePromptEvaluation
     ? "The runner returned an incomplete recommendation. Run Prompt Testing again to rebuild it from the complete generated contract. This partial result cannot be applied."
     : !promptAligned && recommendedChanges.length > 0
       ? `Prompt Testing found ${recommendedChanges.length} ${recommendedChanges.length === 1 ? "change" : "changes"} to make before approval.`
       : promptEvaluation?.summary;
-  const displayedPromptStatus = promptEvaluation?.verdict ?? promptStatus;
+  const displayedPromptStatus = promptEvaluation?.override
+    ? "Overridden"
+    : promptEvaluation?.verdict ?? promptStatus;
   const currentPromptLabel = "Agent-written prompt";
   const pendingPromptComparison: PromptComparisonSnapshot | undefined =
     promptEvaluation?.verdict === "Needs revision"
@@ -653,6 +722,25 @@ export function EngineeringTicketPanel({
         }
       : undefined;
   const promptComparison = recentPromptComparison ?? pendingPromptComparison;
+  const promptOverrideAction = canOverridePromptTest ? (
+    <div className="prompt-override-action">
+      <div>
+        <strong>Keep the tested prompt as-is</strong>
+        <p className="subtle">
+          Skip the recommended revision and prepare this immutable prompt for Action approval. CloseSpan records who made this decision.
+        </p>
+      </div>
+      <button
+        type="button"
+        className="btn secondary"
+        disabled={revisionBusy}
+        onClick={overridePromptTest}
+      >
+        <ShieldCheck size={14} aria-hidden="true" />
+        {revisionBusy ? "Preparing approval…" : "Override test & prepare approval"}
+      </button>
+    </div>
+  ) : null;
   useEffect(() => {
     if (!repositoryProfileReady) return;
     if (!shouldAutomaticallyPreparePrompt({
@@ -817,6 +905,8 @@ export function EngineeringTicketPanel({
               </article>
             </div>
 
+            {promptOverrideAction}
+
             {!promptComparison.applied && !suggestedRevisionDiffers && (
               <div className="callout warning" role="status">
                 <div className="callout-title"><AlertCircle size={14} />Nothing new to apply</div>
@@ -922,6 +1012,8 @@ export function EngineeringTicketPanel({
             </details>
           </div>
         )}
+
+        {!promptComparison && promptOverrideAction}
 
         {acceptancePreparationBlocker && (
           <div

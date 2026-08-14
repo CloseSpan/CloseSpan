@@ -5,6 +5,7 @@ import {
   completePddPromptEvaluation,
   clearPddAcceptancePreparationFailure,
   markPddPromptEvaluationApplied,
+  overridePddPromptEvaluation,
   recordPddAcceptancePreparationFailure,
   readPddAcceptanceContract,
   readPddPromptEvaluation,
@@ -146,6 +147,59 @@ describe("Prompt Testing prompt evaluation runs", () => {
       baseInput.promptRevisionId,
     )).resolves.toMatchObject({
       acceptancePreparationFailureMessage: null,
+    });
+  });
+
+  it("records an auditable human override without creating another prompt revision", async () => {
+    const run = await beginPddPromptEvaluation({
+      ...baseInput,
+      triggerSource: "manual",
+    });
+    await completePddPromptEvaluation(baseInput.orgId, run.evaluation.id, {
+      verdict: "Needs revision",
+      summary: "One optional improvement is available.",
+      changes: ["Clarify the recovery copy."],
+      acceptanceContract: "## Contract\nThe current prompt remains executable.",
+      suggestedRevision: "Clarify the recovery copy in the implementation prompt.",
+      pddVersion: "0.0.309",
+      executionMode: "cloud",
+      model: "test-model",
+      costUsd: 0,
+      promptHash: baseInput.promptHash,
+      alignmentReceipt: null,
+      revisionReceipt: "short-lived-receipt",
+    });
+
+    const review = await overridePddPromptEvaluation({
+      orgId: baseInput.orgId,
+      problemId: baseInput.problemId,
+      evaluationId: run.evaluation.id,
+      promptHash: baseInput.promptHash,
+      actorId: "user_1",
+      actorName: "Avery Chen",
+      traceId: "trace_1",
+      reason: "The current prompt already expresses the intended outcome.",
+    });
+
+    expect(review).toMatchObject({
+      verdict: "Passed",
+      changes: [],
+      suggestedRevision: null,
+      override: {
+        actorId: "user_1",
+        actorName: "Avery Chen",
+        reason: "The current prompt already expresses the intended outcome.",
+      },
+    });
+    await expect(readPddPromptEvaluation(
+      baseInput.orgId,
+      baseInput.problemId,
+      baseInput.promptRevisionId,
+    )).resolves.toMatchObject({
+      review: {
+        verdict: "Passed",
+        acceptanceContract: "## Contract\nThe current prompt remains executable.",
+      },
     });
   });
 
