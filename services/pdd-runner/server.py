@@ -1189,6 +1189,35 @@ def prompt_evaluation_artifacts(root: pathlib.Path) -> tuple[pathlib.Path, pathl
     return story, expected_contract
 
 
+def seed_prompt_evaluation_artifacts(
+    *, root: pathlib.Path, user_story: str, acceptance_contract: str,
+) -> tuple[pathlib.Path, pathlib.Path]:
+    """Restore the immutable story/contract pair used by a prompt retest.
+
+    The application persists PDD's acceptance contract after the first review.
+    A retest must evaluate that exact boundary, so generating another contract is
+    both incorrect and an avoidable provider call.  The small story file only
+    supplies the human outcome and the stable prompt link expected by PDD; the
+    saved contract remains the complete machine-owned oracle.
+    """
+    stories = root / "user_stories"
+    contracts = stories / "contracts"
+    contracts.mkdir(parents=True, exist_ok=True)
+    story = stories / "story__requested_outcome.md"
+    contract = contracts / "requested_outcome.contract.md"
+    normalized_story = re.sub(
+        r"\A#\s+Requested outcome\s*", "", user_story.strip(), flags=re.IGNORECASE,
+    ).strip()
+    story.write_text(
+        "<!-- pdd-story-prompts: suggested.prompt -->\n\n"
+        "# User Story: Requested outcome\n\n"
+        f"## Story\n\n{normalized_story}\n",
+        encoding="utf-8",
+    )
+    contract.write_text(acceptance_contract.strip() + "\n", encoding="utf-8")
+    return prompt_evaluation_artifacts(root)
+
+
 def pdd_prompt_stage_error(
     stage: str, process: subprocess.CompletedProcess[str], *, mode: str = "cloud",
 ) -> RuntimeError:
@@ -1248,45 +1277,49 @@ def run_prompt_evaluation_pipeline(
     generation_budget, repair_budget, _detection_budget = (
         prompt_evaluation_stage_budgets(budget_usd)
     )
-    verify_pdd_cloud_authentication(mode=mode, budget_usd=generation_budget)
-    generation = subprocess.run(
-        pdd_story_command(mode=mode, costs=costs, issue=issue), cwd=root,
-        env=pdd_environment(
-            mode,
-            generation_budget,
-            local_runtime=local_runtime,
-            isolate_local_credentials=True,
-            output_token_cap=PROMPT_EVALUATION_MAX_OUTPUT_TOKENS,
-        ), capture_output=True,
-        text=True, timeout=RUN_TIMEOUT_SECONDS, check=False,
-    )
-    if generation.returncode != 0:
-        log_pdd_stage_failure(
-            stage="contract-generation", mode=mode, process=generation,
-        )
-        raise pdd_prompt_stage_error(
-            "contract-generation", generation, mode=mode,
-        )
-
-    try:
-        prompt_evaluation_artifacts(root)
-    except RuntimeError as error:
-        if "required prompt-evaluation contract" not in str(error):
-            raise
-        repair_prompt_evaluation_contract(
-            root=root,
-            mode=mode,
-            budget_usd=repair_budget,
-            costs=costs,
-            local_runtime=local_runtime,
-        )
-
     if acceptance_contract:
         # A retest must use the immutable contract authored by the preceding
         # PDD review. Regenerating it would move the acceptance boundary after
-        # the product manager applied the requested revision.
-        _, contract_path = prompt_evaluation_artifacts(root)
-        contract_path.write_text(acceptance_contract.strip() + "\n", encoding="utf-8")
+        # the product manager applied the requested revision and can spend the
+        # entire request timeout before the actual detector starts.
+        seed_prompt_evaluation_artifacts(
+            root=root,
+            user_story=(root / "requested-outcome.md").read_text(encoding="utf-8"),
+            acceptance_contract=acceptance_contract,
+        )
+    else:
+        verify_pdd_cloud_authentication(mode=mode, budget_usd=generation_budget)
+        generation = subprocess.run(
+            pdd_story_command(mode=mode, costs=costs, issue=issue), cwd=root,
+            env=pdd_environment(
+                mode,
+                generation_budget,
+                local_runtime=local_runtime,
+                isolate_local_credentials=True,
+                output_token_cap=PROMPT_EVALUATION_MAX_OUTPUT_TOKENS,
+            ), capture_output=True,
+            text=True, timeout=RUN_TIMEOUT_SECONDS, check=False,
+        )
+        if generation.returncode != 0:
+            log_pdd_stage_failure(
+                stage="contract-generation", mode=mode, process=generation,
+            )
+            raise pdd_prompt_stage_error(
+                "contract-generation", generation, mode=mode,
+            )
+
+        try:
+            prompt_evaluation_artifacts(root)
+        except RuntimeError as error:
+            if "required prompt-evaluation contract" not in str(error):
+                raise
+            repair_prompt_evaluation_contract(
+                root=root,
+                mode=mode,
+                budget_usd=repair_budget,
+                costs=costs,
+                local_runtime=local_runtime,
+            )
 
     # Give the detector the real unspent remainder. A repair is best-effort and
     # usually does not run, so permanently reserving its entire ceiling made
@@ -1301,6 +1334,8 @@ def run_prompt_evaluation_pipeline(
         raise RuntimeError(
             "PDD preparation exhausted the prompt evaluation review budget"
         )
+    if acceptance_contract:
+        verify_pdd_cloud_authentication(mode=mode, budget_usd=detection_budget)
 
     detection = subprocess.run(
         pdd_detect_command(mode=mode, costs=costs), cwd=root,

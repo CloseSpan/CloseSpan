@@ -1061,6 +1061,83 @@ class PddExecutionModeTests(unittest.TestCase):
         self.assertEqual(calls[1][1]["env"]["PDD_COMMAND_MAX_COST_USD"], "0.062500")
         self.assertEqual(calls[2][1]["env"]["PDD_COMMAND_MAX_COST_USD"], "0.187500")
 
+    def test_prompt_retest_reuses_saved_contract_without_regenerating_it(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "prompts").mkdir()
+            (root / "user_stories").mkdir()
+            (root / "requested-outcome.md").write_text(
+                "# Requested outcome\n\nAs a user, I want to undo a replacement.\n",
+                encoding="utf-8",
+            )
+            (root / "prompts" / "suggested.prompt").write_text(
+                "Preserve the prior value and expose Undo.\n", encoding="utf-8",
+            )
+            contract = """## Covers
+- Undo replacement
+
+## Context
+An existing value is present.
+
+## Acceptance Criteria
+- Undo restores the value.
+
+## Oracle
+The prior value is visible.
+
+## Non-Oracle
+Internal state alone is insufficient.
+
+## Negative Cases
+- No prior value.
+
+## Non-Goals
+- Multi-level history.
+
+## Candidate Prompts
+- suggested.prompt
+
+## Notes
+Retest the saved boundary.
+"""
+            calls = []
+
+            def fake_run(command, **kwargs):
+                calls.append((command, kwargs))
+                if command[-3:] == ["auth", "status", "--verify"]:
+                    return subprocess.CompletedProcess(command, 0, "Authenticated", "")
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    json.dumps({
+                        "schema_version": "pdd.detect.stories.v1",
+                        "outcome": "PASS",
+                        "results": [{"verdict": "PASS", "changes": []}],
+                    }),
+                    "",
+                )
+
+            with mock.patch.object(server.subprocess, "run", side_effect=fake_run):
+                detection = server.run_prompt_evaluation_pipeline(
+                    root=root,
+                    mode="cloud",
+                    budget_usd=0.25,
+                    costs=root / "costs.csv",
+                    acceptance_contract=contract,
+                )
+
+            story, saved_contract = server.prompt_evaluation_artifacts(root)
+            story_text = story.read_text()
+            saved_contract_text = saved_contract.read_text()
+
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all("story" not in call[0] for call in calls))
+        self.assertEqual(calls[0][0], ["pdd", "auth", "status", "--verify"])
+        self.assertIn("detect", calls[1][0])
+        self.assertEqual(json.loads(detection.stdout)["outcome"], "PASS")
+        self.assertIn("As a user, I want to undo a replacement.", story_text)
+        self.assertEqual(saved_contract_text, contract.strip() + "\n")
+
     def test_prompt_review_rejects_unpaired_contract_artifacts(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
