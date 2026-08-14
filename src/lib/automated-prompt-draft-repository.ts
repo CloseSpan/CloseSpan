@@ -234,8 +234,8 @@ async function nextPostgresCandidate(
     `SELECT problem.id,problem.title,problem.statement,problem.summary,problem.severity,
             problem.confidence,problem.product_area,problem.team,problem.suspected_repository,
             problem.suspected_files,count(membership.feedback_id)::int AS evidence_count,
-            count(*) FILTER (WHERE feedback.type IN ('Bug','Incident'))::int AS bug_count,
-            count(*) FILTER (WHERE feedback.type='Feature request')::int AS feature_count,
+            count(*) FILTER (WHERE coalesce(approved_analysis.classification,feedback.type) IN ('Bug','Incident'))::int AS bug_count,
+            count(*) FILTER (WHERE coalesce(approved_analysis.classification,feedback.type)='Feature request')::int AS feature_count,
             investigation.hypothesis,investigation.confidence AS investigation_confidence,
             investigation.assumptions,investigation.missing_information,
             investigation.proposed_action,investigation.recommended_tests,
@@ -246,6 +246,19 @@ async function nextPostgresCandidate(
          ON membership.org_id=problem.org_id AND membership.problem_id=problem.id
        JOIN feedback_items feedback
          ON feedback.org_id=membership.org_id AND feedback.id=membership.feedback_id
+       LEFT JOIN LATERAL (
+         SELECT analysis.classification
+           FROM ai_feedback_analyses analysis
+           JOIN model_runs run
+             ON run.org_id=analysis.org_id
+            AND run.id=analysis.model_run_id
+            AND run.status='Succeeded'
+          WHERE analysis.org_id=feedback.org_id
+            AND analysis.feedback_id=feedback.id
+            AND analysis.review_status='Approved'
+          ORDER BY analysis.created_at DESC,analysis.id DESC
+          LIMIT 1
+       ) approved_analysis ON true
        JOIN LATERAL (
          SELECT candidate.hypothesis,candidate.confidence,candidate.assumptions,
                 candidate.missing_information,candidate.proposed_action,candidate.recommended_tests
@@ -336,8 +349,8 @@ async function nextPostgresCandidate(
       HAVING count(membership.feedback_id) >= $2
          AND least(problem.confidence,investigation.confidence) >= $3
          AND (
-           ($4::boolean AND count(*) FILTER (WHERE feedback.type IN ('Bug','Incident')) >= count(*) FILTER (WHERE feedback.type='Feature request'))
-           OR ($5::boolean AND count(*) FILTER (WHERE feedback.type='Feature request') > count(*) FILTER (WHERE feedback.type IN ('Bug','Incident')))
+           ($4::boolean AND count(*) FILTER (WHERE coalesce(approved_analysis.classification,feedback.type) IN ('Bug','Incident')) >= count(*) FILTER (WHERE coalesce(approved_analysis.classification,feedback.type)='Feature request'))
+           OR ($5::boolean AND count(*) FILTER (WHERE coalesce(approved_analysis.classification,feedback.type)='Feature request') > count(*) FILTER (WHERE coalesce(approved_analysis.classification,feedback.type) IN ('Bug','Incident')))
          )
       ORDER BY problem.confidence DESC,evidence_count DESC,problem.updated_at,problem.id
       LIMIT 25`,
@@ -401,8 +414,8 @@ export async function readPromptDraftReadiness(
   }>(
     `SELECT problem.confidence AS problem_confidence,
             count(membership.feedback_id)::int AS evidence_count,
-            count(*) FILTER (WHERE feedback.type IN ('Bug','Incident'))::int AS bug_count,
-            count(*) FILTER (WHERE feedback.type='Feature request')::int AS feature_count,
+            count(*) FILTER (WHERE coalesce(approved_analysis.classification,feedback.type) IN ('Bug','Incident'))::int AS bug_count,
+            count(*) FILTER (WHERE coalesce(approved_analysis.classification,feedback.type)='Feature request')::int AS feature_count,
             investigation.id AS investigation_id,
             investigation.confidence AS investigation_confidence,
             investigation.verification_status,
@@ -441,6 +454,19 @@ export async function readPromptDraftReadiness(
          ON membership.org_id=problem.org_id AND membership.problem_id=problem.id
        LEFT JOIN feedback_items feedback
          ON feedback.org_id=membership.org_id AND feedback.id=membership.feedback_id
+       LEFT JOIN LATERAL (
+         SELECT analysis.classification
+           FROM ai_feedback_analyses analysis
+           JOIN model_runs run
+             ON run.org_id=analysis.org_id
+            AND run.id=analysis.model_run_id
+            AND run.status='Succeeded'
+          WHERE analysis.org_id=feedback.org_id
+            AND analysis.feedback_id=feedback.id
+            AND analysis.review_status='Approved'
+          ORDER BY analysis.created_at DESC,analysis.id DESC
+          LIMIT 1
+       ) approved_analysis ON true
        LEFT JOIN LATERAL (
          SELECT candidate.id,candidate.confidence,candidate.verification_status
            FROM investigations candidate

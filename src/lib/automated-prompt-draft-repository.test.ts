@@ -61,6 +61,10 @@ describe("automatic engineering prompt drafts", () => {
     expect(readinessQuery).toContain("'clusterMatch',avg(");
     expect(readinessQuery).toContain("'evidenceQuality',avg(");
     expect(readinessQuery).toContain("'ambiguityPenalty',avg(");
+    expect(readinessQuery).toContain(
+      "coalesce(approved_analysis.classification,feedback.type)='Feature request'",
+    );
+    expect(readinessQuery).toContain("analysis.review_status='Approved'");
   });
 
   it("builds a test-ready bug specification when repository context is available", () => {
