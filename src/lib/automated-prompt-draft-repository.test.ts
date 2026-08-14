@@ -39,8 +39,9 @@ describe("automatic engineering prompt drafts", () => {
       path.join(process.cwd(), "src/lib/automated-prompt-draft-repository.ts"),
       "utf8",
     );
-    expect(source).toContain('const directDraftPolicy: PromptDraftPolicy = { ...policy, mode: "automatic" };');
-    expect(source).toContain("await nextPostgresCandidate(orgId, policy, problemId)");
+    expect(source).toContain('mode: "automatic"');
+    expect(source).toContain("minimumEvidence: 1");
+    expect(source).toContain("await nextPostgresCandidate(orgId, directDraftPolicy, problemId)");
     expect(source).toContain("return createForCandidate(orgId, directDraftPolicy, candidate)");
   });
 

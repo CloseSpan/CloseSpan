@@ -389,6 +389,9 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     const markup = renderPanel(workflow());
 
     expect(markup).toContain("Suggested prompt required");
+    expect(markup).toContain("Create suggested prompt");
+    expect(markup).toContain("Create the suggested implementation prompt");
+    expect(markup).not.toContain("Invalid input: expected object, received null");
     expect(markup).toContain("leaves the saved result ready for review");
     expect(markup).not.toContain("Repository execution context");
     expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>.*Suggested prompt required/s);

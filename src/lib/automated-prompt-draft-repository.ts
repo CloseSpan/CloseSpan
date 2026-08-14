@@ -685,9 +685,21 @@ export async function createAutomatedPromptDraftForProblem(
   problemId: string,
 ): Promise<AutomatedPromptDraftResult> {
   const policy = await readPromptDraftPolicy(orgId);
-  const directDraftPolicy: PromptDraftPolicy = { ...policy, mode: "automatic" };
+  // This API is an explicit product-manager action. Background thresholds decide
+  // when CloseSpan may create a draft without a person; they must not prevent a
+  // person from drafting a verified, repository-bound request.
+  const directDraftPolicy: PromptDraftPolicy = {
+    ...policy,
+    mode: "automatic",
+    minimumEvidence: 1,
+  };
   const readiness = await readPromptDraftReadiness(orgId, problemId);
-  if (!readiness.canGenerate) {
+  const directDraftReady = readiness.verificationStatus === "Confirmed current"
+    && readiness.hasInvestigation
+    && !readiness.hasExistingWorkflow
+    && readiness.repositoryReady
+    && (readiness.investigationConfidence ?? 0) >= policy.minimumConfidence;
+  if (!readiness.canGenerate && !directDraftReady) {
     return { created: false, problemId, promptId: null, reason: readiness.reason };
   }
   if (workspacePersistenceMode(orgId) === "memory") {
@@ -721,7 +733,7 @@ export async function createAutomatedPromptDraftForProblem(
     };
     return createForCandidate(orgId, directDraftPolicy, row);
   }
-  const candidate = await nextPostgresCandidate(orgId, policy, problemId);
+  const candidate = await nextPostgresCandidate(orgId, directDraftPolicy, problemId);
   if (!candidate) {
     return {
       created: false,

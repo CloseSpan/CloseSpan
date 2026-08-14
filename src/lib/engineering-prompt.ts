@@ -269,6 +269,12 @@ export function ticketReadiness(input: unknown): {
   ready: boolean;
   issues: string[];
 } {
+  if (input === null || input === undefined) {
+    return {
+      ready: false,
+      issues: ["Create the suggested implementation prompt to complete this ticket context."],
+    };
+  }
   const result = engineeringTicketSpecificationSchema.safeParse(input);
   return result.success
     ? { ready: true, issues: [] }

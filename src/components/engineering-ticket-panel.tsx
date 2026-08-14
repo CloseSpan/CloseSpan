@@ -406,6 +406,7 @@ export function EngineeringTicketPanel({
   );
   const [storyTest, setStoryTest] = useState<UserStoryPromptTestView>();
   const [storedError, setError] = useState<string>();
+  const [draftBusy, setDraftBusy] = useState(false);
   const [revisionBusy, setRevisionBusy] = useState(false);
   const [recentPromptComparison, setRecentPromptComparison] =
     useState<PromptComparisonSnapshot>();
@@ -488,6 +489,41 @@ export function EngineeringTicketPanel({
       estimatedDurationMs: pddTiming.estimatedDurationMs,
       triggerSource: "manual",
     });
+  }
+
+  async function createSuggestedPrompt() {
+    if (draftBusy) return;
+    setDraftBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch(
+        `/api/problems/${problemId}/engineering/draft`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-org-id": orgId,
+            "idempotency-key": crypto.randomUUID(),
+            "x-request-id": crypto.randomUUID(),
+          },
+        },
+      );
+      const payload = await response.json() as {
+        workflow?: EngineeringWorkflowView;
+        error?: string;
+      };
+      if (!response.ok || !payload.workflow?.specification) {
+        throw new Error(payload.error ?? "The suggested prompt could not be created.");
+      }
+      setWorkflow(payload.workflow);
+      setUserStory(payload.workflow.specification.userStory);
+      setStoryTest(undefined);
+      setRecentPromptComparison(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The suggested prompt could not be created.");
+    } finally {
+      setDraftBusy(false);
+    }
   }
 
   async function applyImprovedPrompt() {
@@ -932,13 +968,28 @@ export function EngineeringTicketPanel({
           <div className="callout warning" role="status">
             <div className="callout-title"><AlertCircle size={14} />Ticket context needs review</div>
             <p className="subtle">
-              {preparesPromptAutomatically
+              {!workflow.specification
+                ? "Create the suggested implementation prompt from the verified investigation and repository context."
+                : preparesPromptAutomatically
                 ? "CloseSpan will start one automatic prompt test when the implementation scope is complete."
                 : "Complete the implementation scope, then choose Run prompt test when you are ready."}
             </p>
             <ul className="evidence-list">
               {workflow.readiness.issues.slice(0, 4).map((issue) => <li key={issue}>{issue}</li>)}
             </ul>
+            {!workflow.specification && (
+              <div className="top-actions">
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={draftBusy}
+                  onClick={createSuggestedPrompt}
+                >
+                  {draftBusy ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />}
+                  {draftBusy ? "Creating suggested prompt…" : "Create suggested prompt"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
