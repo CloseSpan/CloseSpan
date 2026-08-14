@@ -528,7 +528,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     });
 
     expect(markup).toContain("Prepare another coding run");
-    expect(markup).toContain("Coding run failed");
+    expect(markup).toContain("Previous coding run failed");
     expect(markup).toContain("This one-run authorization ended");
     expect(markup).toContain("Review run");
     expect(markup).not.toContain("The approved run continues automatically");

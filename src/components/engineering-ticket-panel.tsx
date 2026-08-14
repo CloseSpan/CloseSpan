@@ -1118,7 +1118,7 @@ export function EngineeringTicketPanel({
             <div className={`callout ${retryableRun ? "warning" : ""}`} role="status">
               <div className="callout-title">
                 {workflow.run.status === "Failed"
-                  ? "Coding run failed"
+                  ? "Previous coding run failed"
                   : workflow.run.status === "No changes"
                     ? "Coding run returned no changes"
                     : `Run ${workflow.run.status}`}
