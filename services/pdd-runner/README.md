@@ -22,8 +22,8 @@ the paths, command, hashes, prompt identity, and budget again before exposing an
 approval.
 
 Every accepted job uses signed payload schema v2. Embedded execution-profile
-schemas v1 and v2 are supported and attested by `/health` as
-`executionProfileSchemaVersions: [1, 2]`. The runner verifies the immutable
+schemas v1, v2, and v3 are supported and attested by `/health` as
+`executionProfileSchemaVersions: [1, 2, 3]`. The runner verifies the immutable
 profile ID, canonical configuration hash, repository/root scope, resource and
 network policy, and confirms that ticket paths and commands are narrower than
 the bound profile. For profile v2 it additionally validates automatic setup,

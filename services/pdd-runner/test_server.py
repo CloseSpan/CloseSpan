@@ -71,6 +71,45 @@ def profile_config_v2():
     }
 
 
+def profile_config_v3():
+    return {
+        **profile_config(),
+        "schemaVersion": 3,
+        "tenkiImage": None,
+        "tenkiSnapshotId": None,
+        "automaticInstall": True,
+        "automaticBuild": True,
+        "publicEnvironment": [],
+        "secretBindings": [],
+        "startCommand": None,
+        "applicationPort": None,
+        "healthCheckPath": None,
+        "healthCheckTimeoutMs": 90000,
+        "previewEnabled": False,
+        "previewTtlMs": 120000,
+        "runtimeTools": {"http": False, "browser": False, "logs": False},
+        "executor": {
+            "kind": "tenki_github_actions",
+            "platform": "macos",
+            "architecture": "arm64",
+            "runnerLabel": "tenki-macos-15-small",
+            "workflowPath": ".github/workflows/closespan-agent-runner.yml",
+            "workflowSha256": "d" * 64,
+            "xcode": {
+                "version": "16",
+                "containerKind": "project",
+                "containerPath": "apps/web/App.xcodeproj",
+                "scheme": "App",
+                "configuration": "Debug",
+                "destination": "platform=iOS Simulator,name=iPhone 16",
+                "sdk": "iphonesimulator",
+                "signingPolicy": "simulator_only",
+            },
+            "androidEmulator": None,
+        },
+    }
+
+
 def job(config=None):
     config = config or profile_config()
     content_hash = hashlib.sha256(
@@ -146,6 +185,11 @@ class PddJobV2ValidationTest(unittest.TestCase):
 
     def test_accepts_signed_job_with_execution_profile_schema_v1(self):
         self.assertEqual(server.validate_job(job())["schemaVersion"], 2)
+
+    def test_accepts_signed_job_with_execution_profile_schema_v3(self):
+        self.assertEqual(
+            server.validate_job(job(profile_config_v3()))["schemaVersion"], 2,
+        )
 
     def test_accepts_bounded_prompt_evaluation(self):
         value = server.validate_prompt_evaluation({
@@ -560,7 +604,7 @@ class PddVersionDetectionTest(unittest.TestCase):
                 "pddVersion": "0.0.309",
                 "executionMode": server.PDD_EXECUTION_MODE,
                 "localFallbackEnabled": server.PDD_CLOUD_FALLBACK_ENABLED,
-                "executionProfileSchemaVersions": [1, 2],
+                "executionProfileSchemaVersions": [1, 2, 3],
                 "activeJobs": 0,
                 "queuedJobs": 0,
                 "runConcurrency": server.RUN_CONCURRENCY,
@@ -638,7 +682,7 @@ class PddHandlerV2ValidationTest(unittest.TestCase):
         handler.do_GET()
         self.assertEqual(handler.send_response.call_args.args[0], 200)
         payload = json.loads(handler.wfile.getvalue())
-        self.assertEqual(payload["executionProfileSchemaVersions"], [1, 2])
+        self.assertEqual(payload["executionProfileSchemaVersions"], [1, 2, 3])
 
     def test_signed_valid_v2_post_is_accepted(self):
         payload = job(profile_config_v2())

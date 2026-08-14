@@ -210,6 +210,7 @@ export async function probePddRunner(): Promise<boolean> {
     || !Array.isArray(payload.executionProfileSchemaVersions)
     || !payload.executionProfileSchemaVersions.includes(1)
     || !payload.executionProfileSchemaVersions.includes(2)
+    || !payload.executionProfileSchemaVersions.includes(3)
   ) return false;
 
   // An empty signed object is intentionally invalid as a job. HTTP 400 proves

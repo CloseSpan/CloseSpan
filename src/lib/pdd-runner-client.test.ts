@@ -26,7 +26,7 @@ describe("probePddRunner", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         status: "ok",
         pddVersion: "0.0.309",
-        executionProfileSchemaVersions: [1, 2],
+        executionProfileSchemaVersions: [1, 2, 3],
       }), { status: 200, headers: { "content-type": "application/json" } }))
       .mockResolvedValueOnce(new Response(null, { status: 400 }));
 
@@ -43,7 +43,7 @@ describe("probePddRunner", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         status: "ok",
         pddVersion: "0.0.309",
-        executionProfileSchemaVersions: [1, 2],
+        executionProfileSchemaVersions: [1, 2, 3],
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(null, { status: 401 }));
 

@@ -90,6 +90,7 @@ PROFILE_CONFIG_V2_KEYS = PROFILE_CONFIG_V1_KEYS | {
     "startCommand", "applicationPort", "healthCheckPath", "healthCheckTimeoutMs",
     "previewEnabled", "previewTtlMs", "runtimeTools",
 }
+PROFILE_CONFIG_V3_KEYS = PROFILE_CONFIG_V2_KEYS | {"executor"}
 PROFILE_SNAPSHOT_KEYS = {
     "profileId", "version", "source", "repository", "workspaceRoot",
     "contentHash", "config",
@@ -193,7 +194,7 @@ def health_payload() -> dict:
         "pddVersion": PDD_CLI_VERSION,
         "executionMode": PDD_EXECUTION_MODE,
         "localFallbackEnabled": PDD_CLOUD_FALLBACK_ENABLED,
-        "executionProfileSchemaVersions": [1, 2],
+        "executionProfileSchemaVersions": [1, 2, 3],
         "activeJobs": active_jobs,
         "queuedJobs": queued_jobs,
         "runConcurrency": RUN_CONCURRENCY,
@@ -471,6 +472,7 @@ def validate_execution_profile(job: dict) -> dict:
     expected_keys = (
         PROFILE_CONFIG_V1_KEYS if type(schema_version) is int and schema_version == 1
         else PROFILE_CONFIG_V2_KEYS if type(schema_version) is int and schema_version == 2
+        else PROFILE_CONFIG_V3_KEYS if type(schema_version) is int and schema_version == 3
         else None
     )
     if expected_keys is None or set(config) != expected_keys:
@@ -531,8 +533,10 @@ def validate_execution_profile(job: dict) -> dict:
             raise ValueError(f"PDD execution profile {key} is invalid")
     if type(config.get("allowInbound")) is not bool or type(config.get("allowOutbound")) is not bool:
         raise ValueError("PDD execution profile network policy is invalid")
-    if schema_version == 2:
+    if schema_version in {2, 3}:
         validate_runtime_v2_config(config, command_groups)
+    if schema_version == 3:
+        validate_execution_profile_executor(config)
 
     computed_hash = digest(canonical_json(config))
     if computed_hash != profile_hash:
@@ -546,6 +550,84 @@ def validate_execution_profile(job: dict) -> dict:
     if any(command not in commands for command in required_commands):
         raise ValueError("PDD ticket command is not allowed by its execution profile")
     return snapshot
+
+
+def validate_execution_profile_executor(config: dict) -> None:
+    """Validate the immutable executor contract added by profile schema v3."""
+    executor = config.get("executor")
+    if not isinstance(executor, dict) or not isinstance(executor.get("kind"), str):
+        raise ValueError("PDD execution profile executor is invalid")
+    if executor["kind"] == "tenki_sandbox":
+        if set(executor) != {"kind"}:
+            raise ValueError("PDD Tenki Sandbox executor is invalid")
+        return
+    if executor["kind"] != "tenki_github_actions" or set(executor) != {
+        "kind", "platform", "architecture", "runnerLabel", "workflowPath",
+        "workflowSha256", "xcode", "androidEmulator",
+    }:
+        raise ValueError("PDD GitHub Actions executor is invalid")
+    if executor["platform"] not in {"linux", "macos"}:
+        raise ValueError("PDD GitHub Actions platform is invalid")
+    if executor["architecture"] not in {"x64", "arm64"}:
+        raise ValueError("PDD GitHub Actions architecture is invalid")
+    if not isinstance(executor["runnerLabel"], str) or not re.fullmatch(
+        r"[A-Za-z0-9_.-]{1,120}", executor["runnerLabel"],
+    ):
+        raise ValueError("PDD GitHub Actions runner label is invalid")
+    if not isinstance(executor["workflowPath"], str) or not re.fullmatch(
+        r"\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml", executor["workflowPath"],
+    ):
+        raise ValueError("PDD GitHub Actions workflow path is invalid")
+    workflow_hash = executor["workflowSha256"]
+    if workflow_hash is not None and (
+        not isinstance(workflow_hash, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", workflow_hash)
+    ):
+        raise ValueError("PDD GitHub Actions workflow hash is invalid")
+    if config.get("tenkiImage") or config.get("tenkiSnapshotId"):
+        raise ValueError("PDD GitHub Actions profiles cannot use a Sandbox boot source")
+    if config.get("allowInbound") or config.get("previewEnabled"):
+        raise ValueError("PDD GitHub Actions profiles cannot expose an inbound preview")
+    if config.get("secretBindings"):
+        raise ValueError("PDD GitHub Actions profiles cannot export runtime secret bindings")
+    xcode = executor["xcode"]
+    android = executor["androidEmulator"]
+    if executor["platform"] == "macos":
+        if executor["architecture"] != "arm64" or not isinstance(xcode, dict) or android is not None:
+            raise ValueError("PDD macOS executor requires an arm64 Xcode contract")
+        if set(xcode) != {
+            "version", "containerKind", "containerPath", "scheme", "configuration",
+            "destination", "sdk", "signingPolicy",
+        }:
+            raise ValueError("PDD Xcode executor contract is invalid")
+        if xcode["containerKind"] not in {"project", "workspace"}:
+            raise ValueError("PDD Xcode container kind is invalid")
+        if xcode["sdk"] != "iphonesimulator" or xcode["signingPolicy"] != "simulator_only":
+            raise ValueError("PDD Xcode executor must use simulator-only signing")
+        if safe_relative_path(xcode["containerPath"], "Xcode container path") != xcode["containerPath"]:
+            raise ValueError("PDD Xcode container path is not normalized")
+        for key in ("version", "scheme", "configuration", "destination"):
+            if not isinstance(xcode[key], str) or not xcode[key].strip() or len(xcode[key]) > 500:
+                raise ValueError(f"PDD Xcode {key} is invalid")
+    elif xcode is not None:
+        raise ValueError("PDD Xcode executor requires a macOS runner")
+    if android is not None:
+        if executor["platform"] != "linux" or executor["architecture"] != "x64":
+            raise ValueError("PDD Android Emulator executor requires Linux x64")
+        if not isinstance(android, dict) or set(android) != {
+            "apiLevel", "target", "architecture", "deviceProfile", "gradleTask",
+        }:
+            raise ValueError("PDD Android Emulator contract is invalid")
+        if type(android["apiLevel"]) is not int or not 21 <= android["apiLevel"] <= 99:
+            raise ValueError("PDD Android Emulator API level is invalid")
+        if android["target"] not in {"google_apis", "google_apis_playstore", "default"}:
+            raise ValueError("PDD Android Emulator target is invalid")
+        if android["architecture"] not in {"x86_64", "arm64-v8a"}:
+            raise ValueError("PDD Android Emulator architecture is invalid")
+        if not isinstance(android["deviceProfile"], str) or not android["deviceProfile"].strip() or len(android["deviceProfile"]) > 120:
+            raise ValueError("PDD Android Emulator device profile is invalid")
+        if not isinstance(android["gradleTask"], str) or not re.fullmatch(r":[A-Za-z0-9_.:-]+", android["gradleTask"]):
+            raise ValueError("PDD Android Emulator Gradle task is invalid")
 
 
 def validate_job(job: object) -> dict:

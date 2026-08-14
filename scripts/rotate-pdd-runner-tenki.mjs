@@ -201,7 +201,8 @@ function healthIsAttested(payload, expectedMode = process.env.PDD_EXECUTION_MODE
     && payload.executionMode === expectedMode
     && Array.isArray(payload.executionProfileSchemaVersions)
     && payload.executionProfileSchemaVersions.includes(1)
-    && payload.executionProfileSchemaVersions.includes(2);
+    && payload.executionProfileSchemaVersions.includes(2)
+    && payload.executionProfileSchemaVersions.includes(3);
 }
 
 async function externalHealth(baseUrl, attempts = 60) {
