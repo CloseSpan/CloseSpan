@@ -2316,6 +2316,7 @@ export async function completeAgentRun(
     baseSha: context.baseSha,
     promptArtifactPath: context.promptArtifactPath,
     promptSnapshot: context.promptSnapshot,
+    generatedTests: context.generatedTests,
   });
   const finalStatus: AgentRunView["status"] = publication
     ? "Draft PR opened"

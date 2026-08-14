@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { validateAgentImplementationReport } from "./agent-run-verification";
 import type { ImplementationPromptSnapshot } from "./engineering-prompt";
@@ -5,6 +6,13 @@ import type { ImplementationPromptSnapshot } from "./engineering-prompt";
 const runId = "11111111-1111-4111-8111-111111111111";
 const promptHash = "a".repeat(64);
 const baseSha = "b".repeat(40);
+const generatedTestContent = "expect(exportRows()).toEqual(allRows);\n";
+const generatedTest = {
+  path: "tests/export.pdd.test.ts",
+  content: generatedTestContent,
+  contentHash: createHash("sha256").update(generatedTestContent).digest("hex"),
+  command: "npm test",
+};
 const snapshot: ImplementationPromptSnapshot = {
   schemaVersion: 1,
   evidence: { problemId: "CS-1", title: "Bug", statement: "Broken", summary: "Broken", severity: "High", productArea: "Export", team: "Platform", assumptions: [], missingInformation: [], suspectedFiles: [], redactedEvidence: [] },
@@ -28,6 +36,17 @@ function validReport() {
   };
 }
 
+function reportWithImmutableTest() {
+  const report = validReport();
+  report.changedFiles.push({
+    path: generatedTest.path,
+    contentBase64: Buffer.from(generatedTest.content).toString("base64"),
+    reason: "Materialize immutable acceptance test",
+  });
+  report.testFiles = [generatedTest.path];
+  return report;
+}
+
 describe("agent implementation report verification", () => {
   it("accepts scoped changes with required tests and criterion evidence", () => {
     expect(validateAgentImplementationReport(validReport(), { runId, promptHash, baseSha, promptArtifactPath: ".prompt/tickets/CS-1.prompt.md", promptSnapshot: snapshot }).status).toBe("Tests passed");
@@ -49,6 +68,43 @@ describe("agent implementation report verification", () => {
     const report = validReport();
     report.changedFiles[0]!.contentBase64 = Buffer.from("OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz123456").toString("base64");
     expect(() => validateAgentImplementationReport(report, { runId, promptHash, baseSha, promptArtifactPath: ".prompt/tickets/CS-1.prompt.md", promptSnapshot: snapshot })).toThrow("Potential secret");
+  });
+
+  it("accepts an exact immutable acceptance test alongside a product implementation", () => {
+    expect(validateAgentImplementationReport(reportWithImmutableTest(), {
+      runId,
+      promptHash,
+      baseSha,
+      promptArtifactPath: ".prompt/tickets/CS-1.prompt.md",
+      promptSnapshot: snapshot,
+      generatedTests: [generatedTest],
+    }).status).toBe("Tests passed");
+  });
+
+  it("rejects a claimed success that changes only the generated acceptance test", () => {
+    const report = reportWithImmutableTest();
+    report.changedFiles = report.changedFiles.filter((file) => file.path === generatedTest.path);
+    expect(() => validateAgentImplementationReport(report, {
+      runId,
+      promptHash,
+      baseSha,
+      promptArtifactPath: ".prompt/tickets/CS-1.prompt.md",
+      promptSnapshot: snapshot,
+      generatedTests: [generatedTest],
+    })).toThrow("must change at least one product file");
+  });
+
+  it("rejects a claimed success that tampers with the immutable acceptance test", () => {
+    const report = reportWithImmutableTest();
+    report.changedFiles.find((file) => file.path === generatedTest.path)!.contentBase64 = Buffer.from("weakened test\n").toString("base64");
+    expect(() => validateAgentImplementationReport(report, {
+      runId,
+      promptHash,
+      baseSha,
+      promptArtifactPath: ".prompt/tickets/CS-1.prompt.md",
+      promptSnapshot: snapshot,
+      generatedTests: [generatedTest],
+    })).toThrow("immutable Prompt Testing acceptance test changed");
   });
 
   it("accepts stage-tagged setup evidence while preserving legacy interactions", () => {

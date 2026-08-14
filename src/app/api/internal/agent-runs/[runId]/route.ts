@@ -162,6 +162,7 @@ export async function POST(
       baseSha: context.baseSha,
       promptArtifactPath: context.promptArtifactPath,
       promptSnapshot: context.promptSnapshot,
+      generatedTests: context.generatedTests,
     });
     if (report.status === "Failed" || report.status === "No changes") {
       await completeAgentRun(context, report);

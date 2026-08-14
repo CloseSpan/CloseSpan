@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type {
   EngineeringTicketSpecification,
   ImplementationPromptSnapshot,
 } from "./engineering-prompt";
+import type { PddGeneratedTest } from "./pdd-verification";
 
 const changedFileSchema = z.object({
   path: z.string().trim().min(1).max(500),
@@ -153,6 +155,7 @@ export function validateAgentImplementationReport(
     baseSha: string;
     promptArtifactPath: string;
     promptSnapshot: ImplementationPromptSnapshot;
+    generatedTests?: PddGeneratedTest[];
   },
 ): AgentImplementationReport {
   const report = agentImplementationReportSchema.parse(input);
@@ -187,8 +190,33 @@ export function validateAgentImplementationReport(
   const testsByCommand = new Map(report.tests.map((test) => [test.command, test]));
   const successful = report.status === "Tests passed" || report.status === "Draft PR opened";
   const changedPaths = new Set(report.changedFiles.map((file) => file.path));
+  const generatedTestPaths = new Set((expected.generatedTests ?? []).map((test) => test.path));
   if (new Set(report.testFiles).size !== report.testFiles.length) throw new Error("Agent report repeats a test file");
   if (report.testFiles.some((path) => !changedPaths.has(path))) throw new Error("Agent report cites a test file that is not in the final diff");
+  if (successful) {
+    for (const generatedTest of expected.generatedTests ?? []) {
+      const approvedHash = createHash("sha256").update(generatedTest.content, "utf8").digest("hex");
+      const changed = report.changedFiles.find((file) => file.path === generatedTest.path);
+      const changedContent = changed?.contentBase64 === null || changed?.contentBase64 === undefined
+        ? null
+        : Buffer.from(changed.contentBase64, "base64");
+      if (
+        approvedHash !== generatedTest.contentHash
+        || !changedContent
+        || !changedContent.equals(Buffer.from(generatedTest.content, "utf8"))
+        || !report.testFiles.includes(generatedTest.path)
+      ) {
+        throw new Error(
+          `The immutable Prompt Testing acceptance test changed before verification: ${generatedTest.path}.`,
+        );
+      }
+    }
+    if (generatedTestPaths.size > 0 && !report.changedFiles.some((file) => !generatedTestPaths.has(file.path))) {
+      throw new Error(
+        "A successful implementation must change at least one product file outside the immutable Prompt Testing acceptance test.",
+      );
+    }
+  }
   if (successful && ticket.testScenarios.some((scenario) => scenario.testLevel !== "manual") && report.testFiles.length === 0)
     throw new Error("Successful automated acceptance requires a changed test file");
   if (successful) {

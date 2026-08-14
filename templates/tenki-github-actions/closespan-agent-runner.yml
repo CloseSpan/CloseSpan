@@ -73,6 +73,8 @@ jobs:
     needs: bootstrap
     runs-on: ${{ inputs.closespan_runner_label }}
     timeout-minutes: 60
+    outputs:
+      verification-ready: ${{ steps.report.outputs.verification-ready }}
     permissions:
       contents: read
       id-token: write
@@ -100,6 +102,28 @@ jobs:
             fs.mkdirSync(path.dirname(file.path), { recursive: true });
             fs.writeFileSync(file.path, file.content);
           }
+          const agentPromptPath = ".closespan-run/implementation-instructions.md";
+          const protectedTests = job.generatedTests.map(test => `- ${test.path}`).join("\n") || "- None";
+          fs.writeFileSync(agentPromptPath, [
+            "# CloseSpan approval-bound implementation",
+            "",
+            "Implement the approved prompt below in the actual product code.",
+            "",
+            "## Execution contract",
+            "",
+            "- Change at least one implementation file outside the generated Prompt Testing acceptance tests.",
+            "- Never edit, replace, delete, weaken, or regenerate any protected acceptance test listed below.",
+            "- Keep the approved prompt and workflow files unchanged.",
+            "- Run every required command and finish only when the product implementation satisfies the immutable tests.",
+            "",
+            "### Protected immutable acceptance tests",
+            "",
+            protectedTests,
+            "",
+            "## Approved implementation prompt",
+            "",
+            job.promptContent,
+          ].join("\n"));
           const workingDirectory = job.executionProfileSnapshot.config.workingDirectory;
           if (!safe(workingDirectory) && workingDirectory !== ".") throw new Error("Unsafe working directory");
           for (const item of job.executionProfileSnapshot.config.publicEnvironment) {
@@ -107,7 +131,7 @@ jobs:
             fs.appendFileSync(process.env.GITHUB_ENV, `${item.name}<<${delimiter}\n${item.value}\n${delimiter}\n`);
           }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `working-directory=${workingDirectory}\n`);
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `prompt-file=${job.promptArtifactPath}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `prompt-file=${agentPromptPath}\n`);
           NODE
       - name: Prepare repository dependencies
         run: |
@@ -188,6 +212,7 @@ jobs:
           safety-strategy: drop-sudo
           allow-bot-users: ${{ github.actor }}
       - name: Build bounded implementation report
+        id: report
         if: always()
         env:
           CODEX_OUTCOME: ${{ steps.codex.outcome }}
@@ -209,28 +234,42 @@ jobs:
           const tests = job.requiredCommands.slice(0, 30).map(run);
           const tracked = cp.execFileSync("git", ["diff", "--name-only", "-z", "HEAD"], { encoding: "utf8" }).split("\0").filter(Boolean);
           const untracked = cp.execFileSync("git", ["ls-files", "--others", "--exclude-standard", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
-          const ignored = new Set([job.promptArtifactPath, ".closespan-run/closespan-job.json"]);
+          const ignored = new Set([
+            job.promptArtifactPath,
+            ".closespan-run/closespan-job.json",
+            ".closespan-run/implementation-instructions.md",
+          ]);
           const paths = [...new Set([...tracked, ...untracked])].filter(file => !ignored.has(file));
           const changedFiles = paths.map(file => ({
             path: file,
             contentBase64: fs.existsSync(file) ? fs.readFileSync(file).toString("base64") : null,
             reason: "Implemented the approval-bound CloseSpan ticket",
           }));
-          const allPassed = promptIntact && testsIntact && tests.every(test => test.status === "passed");
+          const generatedTestPaths = new Set(job.generatedTests.map(test => test.path));
+          const implementationPaths = paths.filter(file => !generatedTestPaths.has(file));
+          const commandsPassed = tests.every(test => test.status === "passed");
+          const allPassed = promptIntact && testsIntact && commandsPassed && implementationPaths.length > 0;
           const automated = new Set(job.testScenarios.filter(item => item.testLevel !== "manual").map(item => item.id));
           const criteria = job.acceptanceCriteria.map(item => {
             const hasAutomated = item.scenarioIds.some(id => automated.has(id));
             return { criterionId: item.id, status: hasAutomated && allPassed ? "Passed" : hasAutomated ? "Failed" : "Pending manual", evidence: hasAutomated ? "Verified by the approval-bound command set on the implementation runner." : "Manual-only criterion retained for human verification.", scenarioIds: item.scenarioIds };
           });
           const status = changedFiles.length === 0 ? "No changes" : allPassed && process.env.CODEX_OUTCOME === "success" ? "Tests passed" : "Failed";
+          const failureReasons = [];
+          if (!promptIntact) failureReasons.push("The approved implementation prompt was modified.");
+          if (!testsIntact) failureReasons.push("An immutable Prompt Testing acceptance test was modified or removed.");
+          if (implementationPaths.length === 0) failureReasons.push("No product implementation file changed; generated acceptance tests cannot be used as the implementation.");
+          if (!commandsPassed) failureReasons.push("One or more approval-bound commands failed.");
+          if (process.env.CODEX_OUTCOME !== "success") failureReasons.push("The coding agent did not complete successfully.");
           const report = {
             schemaVersion: 1, runId: job.runId, promptHash: job.promptHash, promptArtifactHash: job.promptHash,
-            baseSha: job.baseSha, status, summary: status === "Tests passed" ? "Implemented the approved change and passed the required commands." : "The approval-bound implementation did not complete successfully.",
+            baseSha: job.baseSha, status, summary: status === "Tests passed" ? "Implemented the approved change and passed the required commands." : failureReasons.join(" ") || "The approval-bound implementation did not complete successfully.",
             changedFiles, testFiles: job.generatedTests.map(test => test.path).filter(file => paths.includes(file)), tests,
             criteria, remainingRisks: [], assumptions: [], manualVerification: criteria.filter(item => item.status === "Pending manual").map(item => `${item.criterionId} requires manual verification.`),
-            logs: [`Codex outcome: ${process.env.CODEX_OUTCOME}`, `Approved artifacts intact: ${promptIntact && testsIntact}`],
+            logs: [`Codex outcome: ${process.env.CODEX_OUTCOME}`, `Approved artifacts intact: ${promptIntact && testsIntact}`, `Product implementation changes: ${implementationPaths.length}`],
           };
           fs.writeFileSync(".closespan-run/report.json", JSON.stringify(report));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `verification-ready=${status === "Tests passed"}\n`);
           NODE
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
@@ -243,7 +282,7 @@ jobs:
   verification:
     name: CloseSpan independent verification
     needs: implementation
-    if: always() && needs.implementation.result == 'success'
+    if: always() && needs.implementation.result == 'success' && needs.implementation.outputs.verification-ready == 'true'
     runs-on: ${{ inputs.closespan_runner_label }}
     timeout-minutes: 60
     permissions:
