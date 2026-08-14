@@ -553,6 +553,30 @@ class SwiftPddTargetTest(unittest.TestCase):
                 output, pathlib.Path("ZupNative/tests/CloseSpanPDDTests.swift")
             )
 
+    def test_skips_a_suspected_file_when_its_test_output_is_not_permitted(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            web = root / "app" / "privacy" / "page.tsx"
+            project = root / "ZupNative" / "Zup.xcodeproj"
+            swift = root / "ZupNative" / "Zup" / "AppModel.swift"
+            web.parent.mkdir(parents=True)
+            web.write_text("export default function Page() {}", encoding="utf-8")
+            project.mkdir(parents=True)
+            swift.parent.mkdir(parents=True)
+            swift.write_text("struct AppModel {}", encoding="utf-8")
+
+            selected, language, output = server.choose_target(
+                root,
+                ["app/privacy/page.tsx", "ZupNative/Zup/AppModel.swift"],
+                ["ZupNative/tests/**"],
+            )
+
+            self.assertEqual(selected, swift)
+            self.assertEqual(language, "Swift")
+            self.assertEqual(
+                output, pathlib.Path("ZupNative/tests/CloseSpanPDDTests.swift")
+            )
+
 
 class PddVersionDetectionTest(unittest.TestCase):
     def test_detects_and_normalizes_the_installed_cli_version(self):

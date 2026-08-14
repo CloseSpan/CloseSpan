@@ -737,7 +737,11 @@ def language_for(path: pathlib.Path) -> tuple[str, str]:
     raise ValueError(f"PDD runner does not support the target extension {suffix}")
 
 
-def choose_target(root: pathlib.Path, suspected: list[str]) -> tuple[pathlib.Path, str, pathlib.Path]:
+def choose_target(
+    root: pathlib.Path,
+    suspected: list[str],
+    permitted_outputs: list[str] | None = None,
+) -> tuple[pathlib.Path, str, pathlib.Path]:
     for candidate in suspected:
         relative = pathlib.PurePosixPath(candidate)
         if relative.is_absolute() or ".." in relative.parts:
@@ -761,6 +765,8 @@ def choose_target(root: pathlib.Path, suspected: list[str]) -> tuple[pathlib.Pat
             output = project_root.relative_to(root) / "tests" / output_name
         else:
             output = relative.parent / output_name
+        if permitted_outputs and not permitted(output.as_posix(), permitted_outputs):
+            continue
         return target, language, pathlib.Path(str(output))
     raise ValueError("No supported suspected source file exists in the repository snapshot")
 
@@ -1664,7 +1670,11 @@ def execute(job: dict) -> None:
         with tempfile.TemporaryDirectory(prefix="closespan-pdd-") as temporary:
             root = pathlib.Path(temporary)
             extract_archive(download_archive(job["repositoryArchiveUrl"]), root)
-            target, language, output = choose_target(root, job.get("suspectedFiles", []))
+            target, language, output = choose_target(
+                root,
+                job.get("suspectedFiles", []),
+                job.get("permittedPaths", []),
+            )
             relative_target = target.relative_to(root)
             output_text = output.as_posix()
             if not permitted(output_text, job["permittedPaths"]):
