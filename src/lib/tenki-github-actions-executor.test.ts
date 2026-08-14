@@ -54,7 +54,7 @@ const config = {
     kind: "tenki_github_actions" as const,
     platform: "macos" as const,
     architecture: "arm64" as const,
-    runnerLabel: "tenki-macos-xcode-16",
+    runnerLabel: "tenki-macos-15-small",
     workflowPath: ".github/workflows/closespan-agent-runner.yml",
     workflowSha256: workflowHash,
     xcode: {
@@ -172,7 +172,7 @@ describe("Tenki GitHub Actions executor dispatch", () => {
         closespan_run_id: runId,
         closespan_profile_hash: hashExecutionProfileConfig(config),
         closespan_control_runner_label: "tenki-standard-small-2c-4g",
-        closespan_runner_label: "tenki-macos-xcode-16",
+        closespan_runner_label: "macos-15",
       }),
     }));
   });
@@ -265,7 +265,7 @@ describe("current-issue Tenki runtime dispatch", () => {
       inputs: expect.objectContaining({
         closespan_run_id: runId,
         closespan_workflow_hash: runtimeWorkflowHash,
-        closespan_runner_label: "tenki-macos-xcode-16",
+        closespan_runner_label: "macos-15",
       }),
     }));
     expect(buildIssueRuntimeVerificationJob(runtimeContext())).toMatchObject({
@@ -273,7 +273,7 @@ describe("current-issue Tenki runtime dispatch", () => {
       baseSha,
       workspaceRoot: "ZupNative",
       verificationPrompt: expect.stringContaining("Post Context"),
-      runner: { label: "tenki-macos-xcode-16", platform: "macos" },
+      runner: { label: "macos-15", platform: "macos" },
     });
   });
 

@@ -7,6 +7,7 @@ import {
   sanitizeExecutionProfileConfig,
   type ExecutionProfileExecutor,
 } from "./execution-profile";
+import { githubActionsRunnerLabel } from "./github-actions-runner-label";
 import { createGithubInstallationClient } from "./github-app-auth";
 import type { IssueRuntimeVerificationContext } from "./issue-runtime-verification";
 import { RUNTIME_VERIFIER_WORKFLOW_NOT_INSTALLED_MESSAGE } from "./runtime-verifier-errors";
@@ -44,7 +45,7 @@ export function runtimeVerificationRunnerLabel(
     && requiredXcodeMajor >= 26
     ? `macos-${requiredXcodeMajor}`
     : undefined;
-  const label = override || compatibleGithubRunner || executor.runnerLabel;
+  const label = override || compatibleGithubRunner || githubActionsRunnerLabel(executor);
   if (!RUNNER_LABEL_PATTERN.test(label)) {
     throw new Error(
       "RUNTIME_VERIFICATION_MACOS_RUNNER_LABEL must be a valid GitHub Actions runner label",

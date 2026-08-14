@@ -5,6 +5,7 @@ import {
   assertExecutionProfileReadyForActivation,
   sanitizeExecutionProfileConfig,
 } from "./execution-profile";
+import { githubActionsRunnerLabel } from "./github-actions-runner-label";
 import { createGithubInstallationClient } from "./github-app-auth";
 
 const RUN_REF_PREFIX = "closespan/runs";
@@ -101,6 +102,7 @@ export async function dispatchTenkiGithubActionsRun(
     throw new Error("TENKI_GITHUB_ACTIONS_ENABLED=true is required for Tenki runner execution");
   }
   const selectedControlRunnerLabel = controlRunnerLabel();
+  const selectedImplementationRunnerLabel = githubActionsRunnerLabel(config.executor);
   const repository = repositoryParts(context.repository);
   const github = dependencies.createClient
     ? await dependencies.createClient(context.installationId)
@@ -139,7 +141,7 @@ export async function dispatchTenkiGithubActionsRun(
       closespan_callback_url: `${callbackBaseUrl}/api/internal/agent-runs/${context.runId}`,
       closespan_profile_hash: context.executionProfileHash,
       closespan_control_runner_label: selectedControlRunnerLabel,
-      closespan_runner_label: config.executor.runnerLabel,
+      closespan_runner_label: selectedImplementationRunnerLabel,
     },
   });
 }

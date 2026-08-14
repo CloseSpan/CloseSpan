@@ -3,6 +3,7 @@ import {
   executionProfileExecutor,
   sanitizeExecutionProfileConfig,
 } from "./execution-profile";
+import { githubActionsRunnerLabel } from "./github-actions-runner-label";
 
 /**
  * Produce the secret-free, approval-bound job consumed by the repository's
@@ -15,6 +16,7 @@ export function buildTenkiGithubActionsJob(context: AgentRunExecutionContext) {
     throw new Error("Agent run is not bound to a Tenki GitHub Actions execution profile");
   }
   const generatedTests = context.generatedTests ?? [];
+  const selectedRunnerLabel = githubActionsRunnerLabel(executor);
   return {
     schemaVersion: 1 as const,
     orgId: context.orgId,
@@ -48,7 +50,7 @@ export function buildTenkiGithubActionsJob(context: AgentRunExecutionContext) {
     expiresAt: context.expiresAt,
     capabilities: context.allowedCapabilities,
     runner: {
-      label: executor.runnerLabel,
+      label: selectedRunnerLabel,
       platform: executor.platform,
       architecture: executor.architecture,
       xcode: executor.xcode,

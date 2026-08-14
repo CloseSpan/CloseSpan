@@ -20,8 +20,8 @@ afterEach(() => {
 });
 
 describe("runtimeVerificationRunnerLabel", () => {
-  it("uses the immutable profile label by default", () => {
-    expect(runtimeVerificationRunnerLabel(executor)).toBe("tenki-macos-15-small");
+  it("maps a macOS capacity selector to its hosted runner label", () => {
+    expect(runtimeVerificationRunnerLabel(executor)).toBe("macos-15");
   });
 
   it("uses an explicit macOS fallback label when configured", () => {
