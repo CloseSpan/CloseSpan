@@ -51,4 +51,22 @@ describe("execution profile migration", () => {
     expect(sql).toContain("execution_profile_snapshot jsonb");
     expect(sql).toContain("reject_execution_profile_binding_change");
   });
+
+  it("lets a terminal retry advance only the mutable ticket preparation context", async () => {
+    const sql = await readFile(
+      path.join(
+        process.cwd(),
+        "db/migrations/066_terminal_retry_execution_profile_rebinding.sql",
+      ),
+      "utf8",
+    );
+
+    expect(sql).toContain(
+      "DROP TRIGGER IF EXISTS ticket_specs_execution_profile_immutable",
+    );
+    expect(sql).toContain("ON engineering_ticket_specifications");
+    expect(sql).not.toMatch(
+      /DROP TRIGGER IF EXISTS (?:pdd_verifications|approval_requests|agent_runs)_execution_profile_immutable/,
+    );
+  });
 });
