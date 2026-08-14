@@ -59,6 +59,15 @@ export function buildPddRequiredRevision(
   changes: readonly string[],
 ): string {
   const generatedBlocks = changes.map((change) => {
+    const contractHeading = PDD_CONTRACT_HEADINGS.find((heading) =>
+      change.includes(`## ${heading}`),
+    );
+    if (contractHeading) {
+      const marker = `## ${contractHeading}`;
+      const markerIndex = change.indexOf(marker);
+      const body = change.slice(markerIndex + marker.length).trim();
+      return body ? `${marker}\n${body}` : marker;
+    }
     const heading = change.match(/(?:^|\n)(## [^\n]+\n[\s\S]*)$/);
     return heading?.[1]?.trim() ?? null;
   });

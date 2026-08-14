@@ -69,6 +69,24 @@ describe("Prompt Testing prompt review contract", () => {
     expect(revision).not.toContain("Update the prompt with the complete Prompt Testing");
   });
 
+  it("extracts contract sections returned inline after recommendation text", () => {
+    const changes = [
+      'Update the prompt with the complete PDD "Context" contract section: ## Context A user has an existing caption before regeneration.',
+      'Update the prompt with the complete PDD "Acceptance Criteria" contract section: ## Acceptance Criteria 1. Undo restores the previous caption.',
+      'Update the prompt with the complete PDD "Oracle" contract section: ## Oracle The restored text exactly matches the original.',
+      'Update the prompt with the complete PDD "Non-Oracle" contract section: ## Non-Oracle The storage mechanism does not determine success.',
+      'Update the prompt with the complete PDD "Negative Cases" contract section: ## Negative Cases Undo must not clear the caption.',
+      'Update the prompt with the complete PDD "Non-Goals" contract section: ## Non-Goals Multi-level undo is excluded.',
+    ];
+
+    const revision = buildPddRequiredRevision("Add caption regeneration undo.", changes);
+
+    expect(revision).toContain("## Context\nA user has an existing caption");
+    expect(revision).toContain("## Acceptance Criteria\n1. Undo restores");
+    expect(revision).toContain("## Non-Goals\nMulti-level undo is excluded.");
+    expect(revision).not.toContain("Update the prompt with the complete PDD");
+  });
+
   it("canonicalizes Prompt Testing's contract-first rewrite without duplicate criteria", () => {
     const prompt = [
       "Correct the affected workflow and preserve unrelated behavior.",

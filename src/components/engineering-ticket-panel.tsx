@@ -786,7 +786,9 @@ export function EngineeringTicketPanel({
                   <span className={`badge ${promptComparison.applied ? "success" : "brand"}`}>
                     {promptComparison.applied
                       ? `SHA ${promptComparison.proposed.contentHash?.slice(0, 10)}`
-                      : "Ready to apply"}
+                      : suggestedRevisionDiffers
+                        ? "Ready to apply"
+                        : "No new revision"}
                   </span>
                 </div>
                 <PromptViewSwitcher
