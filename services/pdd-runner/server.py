@@ -20,6 +20,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1645,16 +1646,66 @@ def run_pdd(
     )
 
 
-def callback(job: dict, result: dict) -> None:
+class CallbackRejectedError(RuntimeError):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def callback_error_message(error: urllib.error.HTTPError) -> str:
+    try:
+        payload = json.loads(error.read(5_000).decode("utf-8", errors="replace"))
+        message = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(message, str) and message.strip():
+            return message.strip()[:1_000]
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        pass
+    finally:
+        error.close()
+    return f"CloseSpan callback failed with HTTP {error.code}"
+
+
+def post_callback(job: dict, result: dict) -> None:
     body = json.dumps({"orgId": job["orgId"], "result": result}, separators=(",", ":")).encode()
     signature = hmac.new(SHARED_SECRET, body, hashlib.sha256).hexdigest()
     request = urllib.request.Request(
         safe_callback_url(job["callbackUrl"]), data=body, method="POST",
         headers={"content-type": "application/json", "x-closespan-signature": signature},
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        if response.status >= 300:
-            raise RuntimeError(f"CloseSpan callback failed with HTTP {response.status}")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            if response.status >= 300:
+                raise CallbackRejectedError(
+                    response.status,
+                    f"CloseSpan callback failed with HTTP {response.status}",
+                )
+    except urllib.error.HTTPError as error:
+        raise CallbackRejectedError(
+            error.code, callback_error_message(error),
+        ) from error
+
+
+def callback(job: dict, result: dict) -> None:
+    try:
+        post_callback(job, result)
+    except CallbackRejectedError as error:
+        if error.status != 409 or result.get("status") != "Ready for approval":
+            raise
+        message = str(error)[:1_000]
+        print(json.dumps({
+            "event": "callback-result-rejected",
+            "verificationId": job["verificationId"],
+            "status": error.status,
+            "message": message,
+        }), flush=True)
+        rejected_result = {
+            **result,
+            "status": "Failed",
+            "summary": "CloseSpan rejected the generated acceptance test during validation.",
+            "generatedTests": [],
+            "failureMessage": message,
+        }
+        post_callback(job, rejected_result)
 
 
 def execute(job: dict) -> None:

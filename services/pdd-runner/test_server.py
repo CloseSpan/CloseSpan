@@ -7,6 +7,7 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+import urllib.error
 from subprocess import CompletedProcess, TimeoutExpired
 from unittest import mock
 
@@ -634,6 +635,83 @@ class PddVersionDetectionTest(unittest.TestCase):
                 "runConcurrency": server.RUN_CONCURRENCY,
                 "maxQueuedJobs": server.MAX_QUEUED_JOBS,
             })
+
+
+class PddCallbackTest(unittest.TestCase):
+    def setUp(self):
+        self.secret = mock.patch.object(server, "SHARED_SECRET", b"callback-secret")
+        self.origin = mock.patch.object(
+            server, "CALLBACK_ORIGIN", "https://closespan.example",
+        )
+        self.secret.start()
+        self.origin.start()
+
+    def tearDown(self):
+        self.origin.stop()
+        self.secret.stop()
+
+    @staticmethod
+    def ready_result():
+        return {
+            "schemaVersion": 1,
+            "verificationId": "22222222-2222-4222-8222-222222222222",
+            "promptHash": "b" * 64,
+            "status": "Ready for approval",
+            "pddVersion": "0.0.309",
+            "model": "openai/gpt-5.6",
+            "costUsd": 0.01,
+            "summary": "Generated one test.",
+            "generatedTests": [{
+                "path": "apps/web/tests/acceptance.test.ts",
+                "content": "test content",
+                "contentHash": hashlib.sha256(b"test content").hexdigest(),
+                "command": "pnpm test",
+            }],
+            "failureMessage": None,
+        }
+
+    def test_rejected_ready_result_is_recorded_as_failed(self):
+        rejection = urllib.error.HTTPError(
+            job()["callbackUrl"], 409, "Conflict", {},
+            io.BytesIO(json.dumps({
+                "error": "Generated test was outside the approved path",
+            }).encode()),
+        )
+        accepted = mock.MagicMock()
+        accepted.__enter__.return_value.status = 200
+
+        with mock.patch.object(
+            server.urllib.request, "urlopen", side_effect=[rejection, accepted],
+        ) as urlopen:
+            server.callback(job(), self.ready_result())
+
+        self.assertEqual(urlopen.call_count, 2)
+        fallback = json.loads(urlopen.call_args_list[1].args[0].data)["result"]
+        self.assertEqual(fallback["status"], "Failed")
+        self.assertEqual(fallback["generatedTests"], [])
+        self.assertEqual(
+            fallback["failureMessage"],
+            "Generated test was outside the approved path",
+        )
+
+    def test_rejected_failed_result_is_not_rewritten(self):
+        rejection = urllib.error.HTTPError(
+            job()["callbackUrl"], 409, "Conflict", {},
+            io.BytesIO(b'{"error":"Verification is already complete"}'),
+        )
+        result = self.ready_result()
+        result.update({
+            "status": "Failed", "generatedTests": [],
+            "failureMessage": "Generation failed",
+        })
+
+        with mock.patch.object(
+            server.urllib.request, "urlopen", side_effect=rejection,
+        ):
+            with self.assertRaisesRegex(
+                server.CallbackRejectedError, "already complete",
+            ):
+                server.callback(job(), result)
 
 
 class PddHandlerV2ValidationTest(unittest.TestCase):
