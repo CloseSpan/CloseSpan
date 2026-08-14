@@ -6,6 +6,7 @@ import {
   listAgentRuns,
   type AgentRunSummaryView,
 } from "@/lib/engineering-workflow-repository";
+import { agentRunVerificationState } from "@/lib/agent-run-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -20,22 +21,6 @@ function statusClass(status: AgentRunSummaryView["status"]): string {
   }
   if (["Failed", "Cancelled"].includes(status)) return "badge high";
   return "badge medium";
-}
-
-function verificationState(run: AgentRunSummaryView): {
-  className: string;
-  label: string;
-} {
-  if (run.independentVerificationStatus === "passed") {
-    return { className: "badge success", label: "Verified" };
-  }
-  if (run.independentVerificationStatus === "failed") {
-    return { className: "badge high", label: "Failed" };
-  }
-  if (run.status === "Tests passed") {
-    return { className: "badge medium", label: "Verifying" };
-  }
-  return { className: "badge", label: "Pending" };
 }
 
 export default async function AgentRunsPage() {
@@ -84,7 +69,7 @@ export default async function AgentRunsPage() {
             </thead>
             <tbody>
               {runs.map((run) => {
-                const verification = verificationState(run);
+                const verification = agentRunVerificationState(run);
                 return (
                   <tr key={run.id}>
                     <td>
