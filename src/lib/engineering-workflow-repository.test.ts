@@ -7,6 +7,7 @@ import {
   getPromptAlignmentContext,
   getEngineeringWorkflow,
   implementationPermittedPathsForRetry,
+  evidenceBackedProductPathsForRetry,
   rejectImplementationApproval,
   requestImplementationApproval,
   reviewedProfileSourceForRetry,
@@ -224,6 +225,20 @@ describe("approval-bound engineering workflow", () => {
 });
 
 describe("terminal coding-run retry context", () => {
+  it("falls back to immutable prompt evidence when mutable problem hints are cleared", () => {
+    expect(evidenceBackedProductPathsForRetry(
+      [],
+      [
+        "ZupNative\\Zup\\ContentView.swift",
+        "ZupNative/Zup/AppModel.swift",
+        "ZupNative/Zup/AppModel.swift",
+      ],
+    )).toEqual([
+      "ZupNative/Zup/ContentView.swift",
+      "ZupNative/Zup/AppModel.swift",
+    ]);
+  });
+
   it("adds only evidence-cited product files inside the confirmed profile", () => {
     const profile = {
       profileId: "profile_ios_v8",

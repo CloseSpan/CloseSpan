@@ -1067,6 +1067,16 @@ export function implementationPermittedPathsForRetry(input: {
   return permitted;
 }
 
+export function evidenceBackedProductPathsForRetry(...sources: unknown[]): string[] {
+  return [...new Set(
+    sources.flatMap((source) => (
+      Array.isArray(source)
+        ? source.filter((value): value is string => typeof value === "string")
+        : []
+    )).map((path) => path.trim().replaceAll("\\", "/")).filter(Boolean),
+  )];
+}
+
 /**
  * A retry is a new authorization, not permission to keep executing an old
  * repository snapshot. When an administrator has confirmed a newer profile
@@ -1116,13 +1126,25 @@ async function rebindTerminalRetryToCurrentProfile(
       409,
     );
   }
-  const scopeEvidence = await databasePool().query<{ suspected_files: string[] | null }>(
-    "SELECT suspected_files FROM product_problems WHERE org_id=$1 AND id=$2",
-    [orgId, workflow.problemId],
+  const scopeEvidence = await databasePool().query<{
+    current_suspected_files: unknown;
+    prompt_suspected_files: unknown;
+  }>(
+    `SELECT problem.suspected_files AS current_suspected_files,
+            prompt.structured_snapshot->'evidence'->'suspectedFiles' AS prompt_suspected_files
+       FROM product_problems problem
+       LEFT JOIN implementation_prompts prompt
+         ON prompt.org_id=problem.org_id AND prompt.id=$3
+      WHERE problem.org_id=$1 AND problem.id=$2`,
+    [orgId, workflow.problemId, workflow.prompt.id],
+  );
+  const citedProductPaths = evidenceBackedProductPathsForRetry(
+    scopeEvidence.rows[0]?.current_suspected_files,
+    scopeEvidence.rows[0]?.prompt_suspected_files,
   );
   const retryPermittedPaths = implementationPermittedPathsForRetry({
     currentPermittedPaths: workflow.specification.permittedPaths,
-    suspectedFiles: scopeEvidence.rows[0]?.suspected_files ?? [],
+    suspectedFiles: citedProductPaths,
     generatedTestPaths: workflow.verification?.generatedTests.map((test) => test.path) ?? [],
     profile: reviewed.snapshot,
   });
