@@ -150,6 +150,9 @@ export interface EngineeringApprovalRecordView {
 export interface AgentRunView {
   id: string;
   approvalId?: string;
+  repository?: string;
+  baseBranch?: string;
+  baseSha?: string;
   status: "Queued" | "Running" | "Tests passed" | "Draft PR opened" | "Failed" | "Cancelled" | "No changes";
   branchName: string;
   changedFiles: string[];
@@ -601,10 +604,11 @@ async function readRun(
 ): Promise<AgentRunView | null> {
   const result = await database.query<{
     id: string; approval_id: string; status: AgentRunView["status"]; branch_name: string;
+    repository: string; base_branch: string; base_sha: string;
     changed_files: string[]; test_results: AgentTestResult[]; failure_code: string | null;
     failure_message: string | null; pull_request_url: string | null;
     queued_at: Date; completed_at: Date | null; implementation_report: AgentImplementationReport | null;
-  }>(`SELECT id,approval_id,status,branch_name,changed_files,test_results,failure_code,
+  }>(`SELECT id,approval_id,status,repository,base_branch,base_sha,branch_name,changed_files,test_results,failure_code,
              failure_message,pull_request_url,queued_at,completed_at,implementation_report
         FROM agent_runs WHERE org_id=$1 AND problem_id=$2 AND ($3::uuid IS NULL OR id=$3)
        ORDER BY queued_at DESC,id DESC LIMIT 1`, [orgId, problemId, runId ?? null]);
@@ -617,6 +621,7 @@ async function readRun(
         FROM agent_run_criterion_results WHERE org_id=$1 AND run_id=$2 ORDER BY criterion_id`, [orgId, row.id]);
   return {
     id: row.id, approvalId: row.approval_id, status: row.status, branchName: row.branch_name,
+    repository: row.repository, baseBranch: row.base_branch, baseSha: row.base_sha,
     changedFiles: row.changed_files, testResults: row.test_results,
     criterionResults: criteria.rows.map((item) => ({ criterionId: item.criterion_id, status: item.status, evidence: item.evidence, scenarioIds: item.scenario_ids })),
     failureCode: row.failure_code, failureMessage: row.failure_message,

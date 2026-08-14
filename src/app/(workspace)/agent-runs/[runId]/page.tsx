@@ -1,3 +1,4 @@
+import { Info } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AgentRunAutoRefresh } from "@/components/agent-run-auto-refresh";
@@ -9,6 +10,7 @@ import {
 } from "@/lib/agent-run-runtime-status";
 import { requireWorkspaceUser } from "@/lib/auth-user";
 import { getAgentRunById } from "@/lib/engineering-workflow-repository";
+import { agentRunVerificationExplanation } from "@/lib/agent-run-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,9 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
   const { run, problemId } = result;
   const runtime = run.runtimeEvidence;
   const runtimeState = getRuntimeVerificationState(run.status, runtime);
+  const verificationExplanation = run.independentVerification
+    ? null
+    : agentRunVerificationExplanation(run);
   return (
     <>
       <section className="card">
@@ -102,17 +107,30 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
             <h2>Independent verification</h2>
             <p className="subtle">CloseSpan runs this automatically after the approved implementation. No additional user action is required.</p>
           </div>
-          <span className={`badge ${run.independentVerification?.status === "passed" ? "success" : run.independentVerification?.status === "failed" ? "high" : "medium"}`}>
-            {run.independentVerification?.status === "passed"
-              ? "Verified"
-              : run.independentVerification?.status === "failed"
-                ? "Failed"
-                : run.status === "Tests passed"
-                  ? "Running"
-                  : run.status === "Queued" || run.status === "Running"
-                    ? "Pending"
-                    : "Not run"}
-          </span>
+          <div className="status-with-help">
+            <span className={`badge ${run.independentVerification?.status === "passed" ? "success" : run.independentVerification?.status === "failed" ? "high" : "medium"}`}>
+              {run.independentVerification?.status === "passed"
+                ? "Verified"
+                : run.independentVerification?.status === "failed"
+                  ? "Failed"
+                  : run.status === "Tests passed"
+                    ? "Running"
+                    : run.status === "Queued" || run.status === "Running"
+                      ? "Pending"
+                      : "Not run"}
+            </span>
+            {verificationExplanation ? (
+              <details className="status-help">
+                <summary aria-label={verificationExplanation.title}>
+                  <Info size={15} aria-hidden="true" />
+                </summary>
+                <div className="status-help-panel">
+                  <strong>{verificationExplanation.title}</strong>
+                  <p>{verificationExplanation.message}</p>
+                </div>
+              </details>
+            ) : null}
+          </div>
         </div>
         <div className="card-body">
           {run.independentVerification ? (

@@ -3059,6 +3059,69 @@ table tbody tr:hover {
   box-shadow: var(--shadow-raised-sm);
 }
 
+.app-shell .status-with-help {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.app-shell .status-help {
+  position: relative;
+}
+
+.app-shell .status-help summary {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  cursor: pointer;
+  list-style: none;
+  place-items: center;
+}
+
+.app-shell .status-help summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-shell .status-help summary:hover,
+.app-shell .status-help summary:focus-visible,
+.app-shell .status-help[open] summary {
+  background: var(--surface-muted);
+  color: var(--accent);
+  outline: 0;
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .status-help-panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 30;
+  width: min(360px, calc(100vw - 48px));
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.app-shell .status-help-panel strong {
+  color: var(--text-strong);
+}
+
+.app-shell .status-help-panel p {
+  margin: var(--space-1) 0 0;
+}
+
 .app-shell .investigation-metric-tooltip {
   position: absolute;
   top: calc(100% + var(--space-2));

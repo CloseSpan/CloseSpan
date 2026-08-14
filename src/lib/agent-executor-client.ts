@@ -31,6 +31,13 @@ export function assertAgentExecutorConfigured(): void {
   }
 }
 
+export function agentRunDispatchFailureCode(
+  message: string,
+  fallback: "dispatch_failed" | "autonomy_dispatch_failed",
+): "stale_base" | "dispatch_failed" | "autonomy_dispatch_failed" {
+  return message.startsWith("stale_base:") ? "stale_base" : fallback;
+}
+
 export async function dispatchAgentRun(context: AgentRunExecutionContext): Promise<void> {
   const callback = callbackConfiguration();
   const profile = sanitizeExecutionProfileConfig(context.executionProfileSnapshot.config);

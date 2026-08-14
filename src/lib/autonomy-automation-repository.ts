@@ -12,7 +12,10 @@ import {
   markPddVerificationGenerating,
   requestImplementationApproval,
 } from "./engineering-workflow-repository";
-import { dispatchAgentRun } from "./agent-executor-client";
+import {
+  agentRunDispatchFailureCode,
+  dispatchAgentRun,
+} from "./agent-executor-client";
 import { approveFinalExecution } from "./final-execution-repository";
 import {
   dispatchPddVerification,
@@ -62,7 +65,11 @@ async function approveAndDispatchAgent(
     await dispatchAgentRun(execution);
   } catch (error) {
     const message = error instanceof Error ? error.message : "The Tenki executor could not start.";
-    await failAgentRun(execution, "autonomy_dispatch_failed", message);
+    await failAgentRun(
+      execution,
+      agentRunDispatchFailureCode(message, "autonomy_dispatch_failed"),
+      message,
+    );
     return { action: "blocked", problemId: workflow.problemId, message };
   }
   return {

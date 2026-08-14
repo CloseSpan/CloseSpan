@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { AgentRunSummaryView } from "./engineering-workflow-repository";
-import { agentRunVerificationState } from "./agent-run-presentation";
+import type {
+  AgentRunSummaryView,
+  AgentRunView,
+} from "./engineering-workflow-repository";
+import {
+  agentRunVerificationExplanation,
+  agentRunVerificationState,
+} from "./agent-run-presentation";
 
 function run(
   status: AgentRunSummaryView["status"],
@@ -47,5 +53,31 @@ describe("agent run verification presentation", () => {
       className: "badge high",
       label: "Failed",
     });
+  });
+
+  it("explains stale-base verification using the saved approval binding", () => {
+    const explanation = agentRunVerificationExplanation({
+      status: "Failed",
+      failureCode: "dispatch_failed",
+      failureMessage: "stale_base: repository branch moved after approval",
+      repository: "samshanmukh/zup",
+      baseBranch: "main",
+      baseSha: "413d87bff0a50313df398abe6bfe3383863bcbe8",
+    } satisfies Pick<
+      AgentRunView,
+      "status" | "failureCode" | "failureMessage" | "repository" | "baseBranch" | "baseSha"
+    >);
+
+    expect(explanation?.message).toContain("samshanmukh/zup’s main branch changed after approval");
+    expect(explanation?.message).toContain("413d87bff0a5");
+    expect(explanation?.message).toContain("Prepare another coding run");
+  });
+
+  it("does not add a terminal explanation to an active run", () => {
+    expect(agentRunVerificationExplanation({
+      status: "Running",
+      failureCode: null,
+      failureMessage: null,
+    })).toBeNull();
   });
 });

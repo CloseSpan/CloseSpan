@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { approveImplementationRun, failAgentRun, getAgentRunExecutionContext } from "@/lib/engineering-workflow-repository";
-import { assertAgentExecutorConfigured, dispatchAgentRun } from "@/lib/agent-executor-client";
+import {
+  agentRunDispatchFailureCode,
+  assertAgentExecutorConfigured,
+  dispatchAgentRun,
+} from "@/lib/agent-executor-client";
 import {
   authorizeAdminMutation,
   errorResponse,
@@ -25,9 +29,11 @@ export async function POST(
       try {
         await dispatchAgentRun(execution);
       } catch (dispatchError) {
-        await failAgentRun(execution, "dispatch_failed", dispatchError instanceof Error ? dispatchError.message : "Executor dispatch failed");
+        const failureMessage = dispatchError instanceof Error ? dispatchError.message : "Executor dispatch failed";
+        const failureCode = agentRunDispatchFailureCode(failureMessage, "dispatch_failed");
+        await failAgentRun(execution, failureCode, failureMessage);
         return NextResponse.json(
-          { workflow: { ...workflow, run: { ...workflow.run, status: "Failed", failureCode: "dispatch_failed", failureMessage: dispatchError instanceof Error ? dispatchError.message : "Executor dispatch failed" } }, warning: "Approval was consumed, but the isolated executor could not start." },
+          { workflow: { ...workflow, run: { ...workflow.run, status: "Failed", failureCode, failureMessage } }, warning: "Approval was consumed, but the isolated executor could not start." },
           { headers: noStoreHeaders },
         );
       }
