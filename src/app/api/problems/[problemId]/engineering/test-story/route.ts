@@ -6,8 +6,8 @@ import { createPromptAlignmentReceipt } from "@/lib/prompt-alignment-receipt";
 import { PDD_CLI_VERSION, sha256 } from "@/lib/pdd-verification";
 import { evaluateWorkspacePrompt } from "@/lib/workspace-prompt-evaluation";
 import {
-  buildPddRequiredRevision,
   pddPromptReviewSchema,
+  reconcilePddPromptRevision,
 } from "@/lib/pdd-prompt-review";
 import {
   readPddPromptTimingSummary,
@@ -124,35 +124,35 @@ export async function POST(
         acceptanceContract,
         pddVersion: PDD_CLI_VERSION,
       });
+      const reconciled = reconcilePddPromptRevision({
+        implementationPrompt: promptContext.implementationPrompt,
+        verdict: evaluation.verdict,
+        changes: evaluation.changes,
+      });
       const alignmentReceipt =
-      evaluation.verdict === "Passed"
+      reconciled.verdict === "Passed"
         ? createPromptAlignmentReceipt({
             orgId: context.orgId,
             problemId,
             promptHash: promptContext.promptHash,
             storyHash,
-          })
+        })
         : null;
-    let suggestedRevision: string | null = null;
-    if (evaluation.verdict === "Needs revision") {
-      suggestedRevision = buildPddRequiredRevision(
-        promptContext.implementationPrompt,
-        evaluation.changes,
-      );
-    }
     const promptEvaluation = pddPromptReviewSchema.parse({
       ...evaluation,
-      summary: evaluation.verdict === "Passed"
+      verdict: reconciled.verdict,
+      changes: reconciled.changes,
+      summary: reconciled.verdict === "Passed"
         ? "The suggested prompt covers the outcome in your user story."
-        : `Prompt Testing found ${evaluation.changes.length} ${evaluation.changes.length === 1 ? "change" : "changes"} to make before approval.`,
-      suggestedRevision,
+        : `Prompt Testing found ${reconciled.changes.length} ${reconciled.changes.length === 1 ? "change" : "changes"} to make before approval.`,
+      suggestedRevision: reconciled.suggestedRevision,
       alignmentReceipt,
-      revisionReceipt: suggestedRevision
+      revisionReceipt: reconciled.suggestedRevision
         ? createPddPromptRevisionReceipt({
             orgId: context.orgId,
             problemId,
             promptHash: promptContext.promptHash,
-            revisionHash: sha256(suggestedRevision),
+            revisionHash: sha256(reconciled.suggestedRevision),
             storyHash,
           })
         : null,

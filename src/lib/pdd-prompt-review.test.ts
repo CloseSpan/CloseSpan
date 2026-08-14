@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPddRequiredRevision,
+  reconcilePddPromptRevision,
   pddPromptReviewSchema,
 } from "./pdd-prompt-review";
 
@@ -85,6 +86,45 @@ describe("Prompt Testing prompt review contract", () => {
     expect(revision).toContain("## Acceptance Criteria\n1. Undo restores");
     expect(revision).toContain("## Non-Goals\nMulti-level undo is excluded.");
     expect(revision).not.toContain("Update the prompt with the complete PDD");
+  });
+
+  it("treats an identical generated revision as already aligned", () => {
+    const implementationPrompt = [
+      "## Goal",
+      "Add caption regeneration undo.",
+      "",
+      "## Context",
+      "A caption exists before regeneration.",
+      "",
+      "## Acceptance Criteria",
+      "Undo restores the previous caption.",
+      "",
+      "## Oracle",
+      "The restored caption exactly matches the original.",
+      "",
+      "## Non-Oracle",
+      "Storage details do not determine success.",
+      "",
+      "## Negative Cases",
+      "Undo must not clear the caption.",
+      "",
+      "## Non-Goals",
+      "Multi-level undo is excluded.",
+    ].join("\n");
+    const changes = [
+      '## Context\nA caption exists before regeneration.',
+      '## Acceptance Criteria\nUndo restores the previous caption.',
+      '## Oracle\nThe restored caption exactly matches the original.',
+      '## Non-Oracle\nStorage details do not determine success.',
+      '## Negative Cases\nUndo must not clear the caption.',
+      '## Non-Goals\nMulti-level undo is excluded.',
+    ];
+
+    expect(reconcilePddPromptRevision({
+      implementationPrompt,
+      verdict: "Needs revision",
+      changes,
+    })).toEqual({ verdict: "Passed", changes: [], suggestedRevision: null });
   });
 
   it("canonicalizes Prompt Testing's contract-first rewrite without duplicate criteria", () => {

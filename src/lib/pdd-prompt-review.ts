@@ -17,6 +17,12 @@ export const pddPromptReviewSchema = z.object({
 
 export type PddPromptReview = z.infer<typeof pddPromptReviewSchema>;
 
+export interface ReconciledPddPromptRevision {
+  verdict: "Passed" | "Needs revision";
+  changes: string[];
+  suggestedRevision: string | null;
+}
+
 const PDD_CONTRACT_HEADINGS = [
   "Context",
   "Acceptance Criteria",
@@ -109,4 +115,26 @@ export function buildPddRequiredRevision(
     "## PDD-required outcomes",
     ...contractBlocks,
   ].join("\n\n");
+}
+
+export function reconcilePddPromptRevision(input: {
+  implementationPrompt: string;
+  verdict: "Passed" | "Needs revision";
+  changes: readonly string[];
+}): ReconciledPddPromptRevision {
+  if (input.verdict === "Passed") {
+    return { verdict: "Passed", changes: [], suggestedRevision: null };
+  }
+  const suggestedRevision = buildPddRequiredRevision(
+    input.implementationPrompt,
+    input.changes,
+  );
+  if (suggestedRevision.trim() === input.implementationPrompt.trim()) {
+    return { verdict: "Passed", changes: [], suggestedRevision: null };
+  }
+  return {
+    verdict: "Needs revision",
+    changes: [...input.changes],
+    suggestedRevision,
+  };
 }
