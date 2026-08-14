@@ -258,7 +258,10 @@ export async function recordPddAcceptancePreparationFailure(input: {
       !current
       || current.orgId !== input.orgId
       || current.problemId !== input.problemId
-      || current.promptRevisionId !== input.promptRevisionId
+      || (
+        current.promptRevisionId !== input.promptRevisionId
+        && current.appliedPromptRevisionId !== input.promptRevisionId
+      )
       || current.status !== "Succeeded"
     ) return;
     memoryEvaluations().set(input.evaluationId, {
@@ -271,7 +274,8 @@ export async function recordPddAcceptancePreparationFailure(input: {
     `UPDATE pdd_prompt_evaluations
         SET acceptance_preparation_failure_message=$5
       WHERE org_id=$1 AND problem_id=$2 AND id=$3
-        AND prompt_revision_id=$4 AND status='Succeeded'`,
+        AND (prompt_revision_id=$4 OR applied_prompt_revision_id=$4)
+        AND status='Succeeded'`,
     [
       input.orgId,
       input.problemId,
@@ -294,7 +298,10 @@ export async function clearPddAcceptancePreparationFailure(input: {
       !current
       || current.orgId !== input.orgId
       || current.problemId !== input.problemId
-      || current.promptRevisionId !== input.promptRevisionId
+      || (
+        current.promptRevisionId !== input.promptRevisionId
+        && current.appliedPromptRevisionId !== input.promptRevisionId
+      )
       || current.status !== "Succeeded"
     ) return;
     memoryEvaluations().set(input.evaluationId, {
@@ -307,7 +314,8 @@ export async function clearPddAcceptancePreparationFailure(input: {
     `UPDATE pdd_prompt_evaluations
         SET acceptance_preparation_failure_message=NULL
       WHERE org_id=$1 AND problem_id=$2 AND id=$3
-        AND prompt_revision_id=$4 AND status='Succeeded'`,
+        AND (prompt_revision_id=$4 OR applied_prompt_revision_id=$4)
+        AND status='Succeeded'`,
     [input.orgId, input.problemId, input.evaluationId, input.promptRevisionId],
   );
 }

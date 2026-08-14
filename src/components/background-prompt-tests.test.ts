@@ -62,7 +62,7 @@ describe("automatic agent approval preparation", () => {
     expect(result.promptEvaluation.suggestedRevision).toBe("Revised immutable prompt");
   });
 
-  it("runs Prompt Testing once, applies at most one immutable revision, and stops for review", async () => {
+  it("runs Prompt Testing once, applies one immutable revision, and prepares approval without retesting", async () => {
     const phases: string[] = [];
     const appliedWorkflow = {
       ...emptyWorkflow(),
@@ -81,7 +81,28 @@ describe("automatic agent approval preparation", () => {
     };
     const responses: unknown[] = [
       evaluation("Needs revision"),
-      { workflow: appliedWorkflow },
+      { workflow: appliedWorkflow, alignmentReceipt: "applied-alignment-receipt" },
+      {
+        workflow: {
+          ...appliedWorkflow,
+          approval: {
+            id: "approval_2",
+            status: "Pending",
+            expiresAt: "2026-08-11T12:00:00.000Z",
+            promptHash: "b".repeat(64),
+            repository: "closespan/app",
+            baseBranch: "main",
+            baseSha: "c".repeat(40),
+            allowedCapabilities: ["repository:read"],
+          },
+        },
+        storyTest: {
+          id: "verification_2",
+          status: "Ready for approval",
+          message: "Executable contract ready",
+          promptHash: "b".repeat(64),
+        },
+      },
     ];
     const requestedPaths: string[] = [];
     const requestMock = vi.fn(async (path: string) => {
@@ -100,14 +121,16 @@ describe("automatic agent approval preparation", () => {
       request,
     });
 
-    expect(requestMock).toHaveBeenCalledTimes(2);
+    expect(requestMock).toHaveBeenCalledTimes(3);
     expect(requestedPaths).toEqual([
       "/api/problems/prob_1/engineering/test-story",
       "/api/problems/prob_1/engineering/apply-pdd-revision",
+      "/api/problems/prob_1/engineering/generate-acceptance",
     ]);
-    expect(phases).toEqual(["applying-revision"]);
+    expect(phases).toEqual(["applying-revision", "generating-contract"]);
     expect(result.workflow.prompt?.revision).toBe(2);
-    expect(result.workflow.approval).toBeNull();
+    expect(result.workflow.approval?.status).toBe("Pending");
+    expect(result.promptEvaluation.verdict).toBe("Passed");
   });
 
   it("creates the first human gate when the single Prompt Testing evaluation passes", async () => {

@@ -23,6 +23,7 @@ import {
   type AutonomyLevel,
 } from "@/lib/autonomy-policy";
 import {
+  prepareAlignedPromptApproval,
   promptPreparationLabel,
   useBackgroundPromptTests,
 } from "./background-prompt-tests";
@@ -562,9 +563,10 @@ export function EngineeringTicketPanel({
       );
       const payload = await response.json() as {
         workflow?: EngineeringWorkflowView;
+        alignmentReceipt?: string;
         error?: string;
       };
-      if (!response.ok || !payload.workflow) {
+      if (!response.ok || !payload.workflow || !payload.alignmentReceipt) {
         throw new Error(payload.error ?? "The improved prompt could not be applied.");
       }
       const appliedPrompt = payload.workflow.prompt;
@@ -580,8 +582,15 @@ export function EngineeringTicketPanel({
         },
         applied: true,
       });
-      setWorkflow(payload.workflow);
-      setStoryTest(undefined);
+      const prepared = await prepareAlignedPromptApproval({
+        orgId,
+        problemId,
+        userStory: userStory.trim(),
+        evaluationId: result.evaluationId,
+        alignmentReceipt: payload.alignmentReceipt,
+      });
+      setWorkflow(prepared.workflow);
+      setStoryTest(prepared.storyTest);
       discardProblemTasks(problemId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The improved prompt could not be applied.");
@@ -744,7 +753,7 @@ export function EngineeringTicketPanel({
                 </h3>
                 <p className="subtle">
                   {promptComparison.applied
-                    ? `Revision ${promptComparison.proposed.revision} replaced the tested revision. Run Prompt Testing again only if you want to evaluate this new immutable prompt.`
+                    ? `Revision ${promptComparison.proposed.revision} replaced the tested revision. CloseSpan is preparing its acceptance contract and Action approval now; no additional prompt revision is required.`
                     : "Compare the exact prompt Prompt Testing tested with the proposed immutable replacement before applying it."}
                 </p>
               </div>
@@ -756,7 +765,7 @@ export function EngineeringTicketPanel({
                   onClick={applyImprovedPrompt}
                 >
                   <CheckCircle2 size={14} />
-                  {revisionBusy ? "Applying…" : "Apply improved prompt"}
+                  {revisionBusy ? "Preparing approval…" : "Apply & prepare approval"}
                 </button>
               )}
             </div>

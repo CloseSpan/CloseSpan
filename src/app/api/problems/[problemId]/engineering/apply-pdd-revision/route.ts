@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { applyPddPromptRevision, getEngineeringWorkflow } from "@/lib/engineering-workflow-repository";
 import { assertPddPromptRevisionReceipt } from "@/lib/pdd-prompt-revision-receipt";
 import { markPddPromptEvaluationApplied } from "@/lib/pdd-prompt-evaluation-repository";
+import { createPromptAlignmentReceipt } from "@/lib/prompt-alignment-receipt";
 import { sha256 } from "@/lib/pdd-verification";
 import { authorizeMutation, errorResponse, noStoreHeaders } from "@/lib/request-security";
 
@@ -56,8 +57,17 @@ export async function POST(
       body.evaluationId,
       appliedWorkflow.prompt.id,
     );
+    const alignmentReceipt = createPromptAlignmentReceipt({
+      orgId: context.orgId,
+      problemId,
+      promptHash: appliedWorkflow.prompt.contentHash,
+      storyHash: sha256(body.userStory.replace(/\s+/g, " ").trim()),
+    });
     const workflow = await getEngineeringWorkflow(context.orgId, problemId);
-    return NextResponse.json({ workflow }, { headers: noStoreHeaders });
+    return NextResponse.json(
+      { workflow, alignmentReceipt },
+      { headers: noStoreHeaders },
+    );
   } catch (error) {
     return errorResponse(error);
   }

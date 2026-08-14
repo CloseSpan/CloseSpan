@@ -117,7 +117,7 @@ export async function prepareAgentApproval(input: {
 }): Promise<PromptTestResult> {
   const request = input.request ?? jsonRequest;
   const waitFor = input.wait ?? wait;
-  const evaluation = await request<PromptTestResult>(
+  let evaluation = await request<PromptTestResult>(
     `/api/problems/${input.problemId}/engineering/test-story`,
     input.orgId,
     { userStory: input.userStory, triggerSource: input.triggerSource },
@@ -135,7 +135,10 @@ export async function prepareAgentApproval(input: {
       throw new Error("Prompt Testing requested a revision but did not return a safe immutable replacement. Review the prompt manually.");
     }
     input.onPhase?.("applying-revision");
-    const applied = await request<{ workflow: EngineeringWorkflowView }>(
+    const applied = await request<{
+      workflow: EngineeringWorkflowView;
+      alignmentReceipt: string;
+    }>(
       `/api/problems/${input.problemId}/engineering/apply-pdd-revision`,
       input.orgId,
       {
@@ -146,9 +149,23 @@ export async function prepareAgentApproval(input: {
         revisionReceipt: receipt,
       },
     );
-    return {
+    const appliedPromptHash = applied.workflow.prompt?.contentHash;
+    if (!appliedPromptHash || !applied.alignmentReceipt) {
+      throw new Error("The improved prompt was saved, but its execution binding could not be created. Review the prompt before retrying.");
+    }
+    evaluation = {
       ...evaluation,
       workflow: applied.workflow,
+      promptEvaluation: {
+        ...evaluation.promptEvaluation,
+        verdict: "Passed",
+        summary: "The Prompt Testing improvement was applied and is ready for repository acceptance testing.",
+        changes: [],
+        suggestedRevision: null,
+        promptHash: appliedPromptHash,
+        alignmentReceipt: applied.alignmentReceipt,
+        revisionReceipt: null,
+      },
     };
   }
 
@@ -156,6 +173,41 @@ export async function prepareAgentApproval(input: {
     throw new Error("Prompt Testing did not approve the prompt for repository execution. Review the result and retry.");
   }
 
+  const prepared = await prepareAlignedPromptApproval({
+    orgId: input.orgId,
+    problemId: input.problemId,
+    userStory: input.userStory,
+    evaluationId: evaluation.evaluationId,
+    alignmentReceipt: evaluation.promptEvaluation.alignmentReceipt,
+    onPhase: input.onPhase,
+    request,
+    wait: waitFor,
+    timeoutMs: input.timeoutMs,
+  });
+
+  return {
+    ...evaluation,
+    workflow: prepared.workflow,
+    storyTest: prepared.storyTest,
+  };
+}
+
+export async function prepareAlignedPromptApproval(input: {
+  orgId: string;
+  problemId: string;
+  userStory: string;
+  evaluationId: string;
+  alignmentReceipt: string;
+  onPhase?: (phase: PromptPreparationPhase) => void;
+  request?: JsonRequester;
+  wait?: (milliseconds: number) => Promise<void>;
+  timeoutMs?: number;
+}): Promise<{
+  workflow: EngineeringWorkflowView;
+  storyTest: UserStoryPromptTestView;
+}> {
+  const request = input.request ?? jsonRequest;
+  const waitFor = input.wait ?? wait;
   input.onPhase?.("generating-contract");
   const acceptance = await request<{
     workflow: EngineeringWorkflowView;
@@ -165,9 +217,9 @@ export async function prepareAgentApproval(input: {
     `/api/problems/${input.problemId}/engineering/generate-acceptance`,
     input.orgId,
     {
-      evaluationId: evaluation.evaluationId,
+      evaluationId: input.evaluationId,
       userStory: input.userStory,
-      alignmentReceipt: evaluation.promptEvaluation.alignmentReceipt,
+      alignmentReceipt: input.alignmentReceipt,
     },
   );
   let finalWorkflow = acceptance.workflow;
@@ -219,11 +271,7 @@ export async function prepareAgentApproval(input: {
     throw new Error("The acceptance contract did not reach the workspace autonomy boundary in time. Retry to reconcile its current state.");
   }
 
-  return {
-    ...evaluation,
-    workflow: finalWorkflow,
-    storyTest: finalStoryTest,
-  };
+  return { workflow: finalWorkflow, storyTest: finalStoryTest };
 }
 
 export function formatApproximateTimeLeft(remainingMs: number): string {

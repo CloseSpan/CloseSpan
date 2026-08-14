@@ -1834,9 +1834,9 @@ export async function applyPddPromptRevision(
       throw new EngineeringWorkflowError("An approved prompt cannot be revised", 409);
     }
     const duplicate = await client.query<{
-      id: string; revision: number;
+      id: string; revision: number; status: string;
     }>(
-      `SELECT id,revision
+      `SELECT id,revision,status
          FROM implementation_prompts
         WHERE org_id=$1 AND problem_id=$2 AND content_hash=$3
         LIMIT 1 FOR UPDATE`,
@@ -1844,10 +1844,23 @@ export async function applyPddPromptRevision(
     );
     if (duplicate.rows[0]?.id === current.id) return;
     if (duplicate.rows[0]) {
-      throw new EngineeringWorkflowError(
-        `Prompt Testing proposed prompt revision ${duplicate.rows[0].revision}, which was already tested. Review the remaining recommendations before retrying.`,
-        409,
+      await client.query(
+        "UPDATE implementation_prompts SET status='Superseded' WHERE org_id=$1 AND problem_id=$2 AND status <> 'Superseded'",
+        [orgId, problemId],
       );
+      await client.query(
+        "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2",
+        [orgId, duplicate.rows[0].id],
+      );
+      await audit(
+        client,
+        orgId,
+        actor,
+        `Prompt Testing converged on previously tested immutable revision ${duplicate.rows[0].revision}; restored it as the ready prompt instead of creating a revision cycle`,
+        "ImplementationPrompt",
+        problemId,
+      );
+      return;
     }
     const revision = current.revision + 1;
     await client.query(

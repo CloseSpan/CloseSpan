@@ -60,6 +60,17 @@ function withoutExistingPddOutcomes(implementationPrompt: string): string {
     ?? implementationPrompt.trim();
 }
 
+function hasUnsafeInstructionOnlyRecommendation(changes: readonly string[]): boolean {
+  const combined = changes.join("\n\n");
+  const requestsReplacement = /(?:replace|rewrite|update)\b[\s\S]*\b(?:section|contract|prompt)\b/i.test(combined);
+  if (!requestsReplacement) return false;
+  const fencedBlocks = combined.match(/```/g)?.length ?? 0;
+  const includesGeneratedContract = PDD_CONTRACT_HEADINGS.every((heading) =>
+    combined.includes(`## ${heading}`),
+  );
+  return fencedBlocks % 2 !== 0 || !includesGeneratedContract;
+}
+
 export function buildPddRequiredRevision(
   implementationPrompt: string,
   changes: readonly string[],
@@ -124,6 +135,13 @@ export function reconcilePddPromptRevision(input: {
 }): ReconciledPddPromptRevision {
   if (input.verdict === "Passed") {
     return { verdict: "Passed", changes: [], suggestedRevision: null };
+  }
+  if (hasUnsafeInstructionOnlyRecommendation(input.changes)) {
+    return {
+      verdict: "Needs revision",
+      changes: [...input.changes],
+      suggestedRevision: null,
+    };
   }
   const suggestedRevision = buildPddRequiredRevision(
     input.implementationPrompt,

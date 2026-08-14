@@ -248,4 +248,17 @@ describe("Prompt Testing prompt review contract", () => {
     expect(revision).toContain("## PDD-required outcomes");
     expect(revision.match(/^## Acceptance Criteria$/gm)).toHaveLength(1);
   });
+
+  it("does not turn a truncated rewrite instruction into executable prompt content", () => {
+    const result = reconcilePddPromptRevision({
+      implementationPrompt: "# CloseSpan implementation ticket\n\n## Repository context\nPinned repository.",
+      verdict: "Needs revision",
+      changes: [
+        'Replace the "Contract: Requested outcome" section with the following content: ``` ## Contract: Requested outcome > Generated from the verified story.',
+      ],
+    });
+
+    expect(result.verdict).toBe("Needs revision");
+    expect(result.suggestedRevision).toBeNull();
+  });
 });

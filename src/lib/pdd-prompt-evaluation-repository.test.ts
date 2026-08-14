@@ -148,4 +148,56 @@ describe("Prompt Testing prompt evaluation runs", () => {
       acceptancePreparationFailureMessage: null,
     });
   });
+
+  it("keeps acceptance-preparation failures attached after applying an improved revision", async () => {
+    const run = await beginPddPromptEvaluation({
+      ...baseInput,
+      triggerSource: "manual",
+    });
+    await completePddPromptEvaluation(baseInput.orgId, run.evaluation.id, {
+      verdict: "Needs revision",
+      summary: "One bounded improvement is available.",
+      changes: ["Clarify the observable result."],
+      acceptanceContract: "## Contract\nAligned after the bounded improvement.",
+      suggestedRevision: "Clarify the observable result in the implementation prompt.",
+      pddVersion: "0.0.309",
+      executionMode: "local",
+      model: null,
+      costUsd: 0,
+      promptHash: baseInput.promptHash,
+      alignmentReceipt: null,
+      revisionReceipt: null,
+    });
+    const appliedPromptRevisionId = "22222222-2222-4222-8222-222222222222";
+    await markPddPromptEvaluationApplied(
+      baseInput.orgId,
+      run.evaluation.id,
+      appliedPromptRevisionId,
+    );
+    const target = {
+      orgId: baseInput.orgId,
+      problemId: baseInput.problemId,
+      evaluationId: run.evaluation.id,
+      promptRevisionId: appliedPromptRevisionId,
+    };
+
+    await recordPddAcceptancePreparationFailure({
+      ...target,
+      message: "Acceptance preparation stopped.",
+    });
+    await expect(readPddPromptEvaluation(
+      baseInput.orgId,
+      baseInput.problemId,
+      appliedPromptRevisionId,
+    )).resolves.toMatchObject({
+      acceptancePreparationFailureMessage: "Acceptance preparation stopped.",
+    });
+
+    await clearPddAcceptancePreparationFailure(target);
+    await expect(readPddPromptEvaluation(
+      baseInput.orgId,
+      baseInput.problemId,
+      appliedPromptRevisionId,
+    )).resolves.toMatchObject({ acceptancePreparationFailureMessage: null });
+  });
 });

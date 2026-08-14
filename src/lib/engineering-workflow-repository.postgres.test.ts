@@ -238,7 +238,7 @@ describe("PostgreSQL engineering workflow state guards", () => {
     );
   });
 
-  it("reports a repeated Prompt Testing revision clearly instead of leaking a unique-constraint error", async () => {
+  it("restores a previously tested immutable revision instead of creating a revision cycle", async () => {
     const currentHash = "c".repeat(64);
     database.client.query.mockImplementation(async (sql: unknown) => {
       const normalized = normalizedSql(sql);
@@ -261,15 +261,19 @@ describe("PostgreSQL engineering workflow state guards", () => {
         };
       }
       if (normalized.includes("AND content_hash=$3")) {
-        return { rows: [{ id: "prior-prompt", revision: 3 }], rowCount: 1 };
+        return { rows: [{ id: "prior-prompt", revision: 3, status: "Superseded" }], rowCount: 1 };
       }
       return { rows: [], rowCount: 1 };
     });
 
-    await expect(applyPddPromptRevision("org-1", "problem-1", {
+    await applyPddPromptRevision("org-1", "problem-1", {
       currentPromptHash: currentHash,
       revisedPrompt: "A previously tested immutable prompt revision.",
-    }, actor)).rejects.toThrow("was already tested");
+    }, actor);
+    expect(database.client.query).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE implementation_prompts SET status='Ready'"),
+      ["org-1", "prior-prompt"],
+    );
     expect(database.client.query.mock.calls.some(([sql]) =>
       normalizedSql(sql).includes("INSERT INTO implementation_prompts"),
     )).toBe(false);
