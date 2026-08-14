@@ -34,6 +34,7 @@ function github(input: {
   existingPull?: { number: number; html_url: string };
 } = {}) {
   const createRef = vi.fn().mockResolvedValue({ data: {} });
+  const updateRef = vi.fn().mockResolvedValue({ data: {} });
   const createOrUpdateFileContents = vi.fn().mockResolvedValue({ data: {} });
   const createPull = vi.fn().mockResolvedValue({
     data: { number: 12, html_url: "https://github.example/pull/12" },
@@ -62,7 +63,7 @@ function github(input: {
   return {
     client: {
       rest: {
-        git: { getRef, createRef },
+        git: { getRef, createRef, updateRef },
         repos: { getContent, createOrUpdateFileContents },
         pulls: {
           list: vi.fn().mockResolvedValue({ data: input.existingPull ? [input.existingPull] : [] }),
@@ -71,6 +72,7 @@ function github(input: {
       },
     },
     createRef,
+    updateRef,
     createOrUpdateFileContents,
     createPull,
   };
@@ -155,6 +157,11 @@ describe("Tenki runner workflow installer", () => {
       pullRequestNumber: 12,
     });
     expect(mock.createOrUpdateFileContents).toHaveBeenCalledTimes(3);
+    expect(mock.updateRef).toHaveBeenCalledWith(expect.objectContaining({
+      ref: `heads/${TENKI_RUNNER_SETUP_BRANCH}`,
+      sha: baseSha,
+      force: true,
+    }));
     expect(mock.createOrUpdateFileContents).toHaveBeenCalledWith(expect.objectContaining({
       path: TENKI_RUNNER_WORKFLOW_PATH,
       sha: "f".repeat(40),
@@ -181,6 +188,7 @@ describe("Tenki runner workflow installer", () => {
     });
     expect(mock.createOrUpdateFileContents).not.toHaveBeenCalled();
     expect(mock.createPull).not.toHaveBeenCalled();
+    expect(mock.updateRef).not.toHaveBeenCalled();
   });
 });
 

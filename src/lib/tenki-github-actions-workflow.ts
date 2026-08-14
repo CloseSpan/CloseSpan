@@ -123,12 +123,21 @@ async function setupBranch(
   github: Octokit,
   repository: { owner: string; repo: string },
   baseSha: string,
+  resetExisting: boolean,
 ): Promise<void> {
   try {
-    await github.rest.git.getRef({
+    const current = await github.rest.git.getRef({
       ...repository,
       ref: `heads/${TENKI_RUNNER_SETUP_BRANCH}`,
     });
+    if (resetExisting && current.data.object.sha !== baseSha) {
+      await github.rest.git.updateRef({
+        ...repository,
+        ref: `heads/${TENKI_RUNNER_SETUP_BRANCH}`,
+        sha: baseSha,
+        force: true,
+      });
+    }
   } catch (error) {
     if (githubStatus(error) !== 404) throw error;
     await github.rest.git.createRef({
@@ -139,11 +148,11 @@ async function setupBranch(
   }
 }
 
-async function setupPullRequest(
+async function openSetupPullRequest(
   github: Octokit,
   repository: { owner: string; repo: string },
   defaultBranch: string,
-): Promise<{ number: number; url: string }> {
+): Promise<{ number: number; html_url: string } | null> {
   const existing = await github.rest.pulls.list({
     ...repository,
     state: "open",
@@ -151,7 +160,16 @@ async function setupPullRequest(
     base: defaultBranch,
     per_page: 10,
   });
-  const pull = existing.data[0] ?? (await github.rest.pulls.create({
+  return existing.data[0] ?? null;
+}
+
+async function setupPullRequest(
+  github: Octokit,
+  repository: { owner: string; repo: string },
+  defaultBranch: string,
+  existing: { number: number; html_url: string } | null,
+): Promise<{ number: number; url: string }> {
+  const pull = existing ?? (await github.rest.pulls.create({
     ...repository,
     title: "chore(closespan): install approval-bound agent runner",
     head: TENKI_RUNNER_SETUP_BRANCH,
@@ -284,7 +302,17 @@ export async function installTenkiRunnerWorkflow(
     };
   }
 
-  await setupBranch(github, repository, baseRef.data.object.sha);
+  const existingPullRequest = await openSetupPullRequest(
+    github,
+    repository,
+    input.defaultBranch,
+  );
+  await setupBranch(
+    github,
+    repository,
+    baseRef.data.object.sha,
+    existingPullRequest === null,
+  );
   const proposedWorkflowState = await repositoryFileState(
     github,
     repository,
@@ -324,7 +352,12 @@ export async function installTenkiRunnerWorkflow(
       ...(state ? { sha: state.sha } : {}),
     });
   }
-  const pullRequest = await setupPullRequest(github, repository, input.defaultBranch);
+  const pullRequest = await setupPullRequest(
+    github,
+    repository,
+    input.defaultBranch,
+    existingPullRequest,
+  );
   return {
     status: "pull_request",
     workflowPath: TENKI_RUNNER_WORKFLOW_PATH,
