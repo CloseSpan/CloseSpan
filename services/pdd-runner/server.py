@@ -1685,6 +1685,17 @@ def execute_prompt_evaluation_reserved(job: dict) -> None:
 class Handler(BaseHTTPRequestHandler):
     server_version = "CloseSpanPDD/1"
 
+    def send_json_error(self, status: int, message: str) -> None:
+        payload = json.dumps(
+            {"error": message.strip()[:1_000] or "Invalid Prompt Testing request"},
+            separators=(",", ":"),
+        ).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_GET(self) -> None:
         if self.path == "/health":
             payload = health_payload()
@@ -1718,8 +1729,11 @@ class Handler(BaseHTTPRequestHandler):
                 job = validate_prompt_evaluation_status(decoded)
             else:
                 job = validate_job(decoded)
-        except (ValueError, json.JSONDecodeError):
-            self.send_error(400)
+        except ValueError as error:
+            self.send_json_error(400, str(error))
+            return
+        except json.JSONDecodeError:
+            self.send_json_error(400, "Invalid Prompt Testing JSON request")
             return
         if self.path == "/prompt-evaluations/status":
             record = prompt_evaluation_status(job["requestId"], job["promptHash"])

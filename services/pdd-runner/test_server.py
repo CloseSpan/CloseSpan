@@ -666,8 +666,12 @@ class PddHandlerV2ValidationTest(unittest.TestCase):
         payload["executionProfileSnapshot"]["config"]["secretBindings"][0][
             "value"
         ] = "plaintext-must-not-reach-pdd"
-        status, _ = self.post(payload)
+        status, body = self.post(payload)
         self.assertEqual(status, 400)
+        self.assertEqual(
+            json.loads(body)["error"],
+            "PDD execution profile secretBindings must contain metadata only",
+        )
         self.execute_mock.assert_not_called()
 
     def signed_post(self, path, payload, *, immediate=False):
