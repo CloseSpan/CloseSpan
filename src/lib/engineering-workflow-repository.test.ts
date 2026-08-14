@@ -8,10 +8,12 @@ import {
   getEngineeringWorkflow,
   rejectImplementationApproval,
   requestImplementationApproval,
+  reviewedProfileSourceForRetry,
   resetMemoryEngineeringWorkflows,
   saveEngineeringSpecification,
   generatePddAcceptanceContract,
 } from "./engineering-workflow-repository";
+import { SAFE_GENERIC_EXECUTION_PROFILE_CONFIG } from "./execution-profile";
 
 const actor = { actorId: "admin", actorName: "Admin", traceId: "trace", idempotencyKey: "workflow_test_1" };
 
@@ -217,5 +219,46 @@ describe("approval-bound engineering workflow", () => {
     expect(tested.specification?.userStory).toBe(
       initial.specification!.userStory,
     );
+  });
+});
+
+describe("terminal coding-run retry context", () => {
+  it("pins a retry snapshot to the reviewed active profile commit", () => {
+    const sourceSha = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+    expect(reviewedProfileSourceForRetry({
+      detectionEvidence: { defaultBranch: " main ", sourceSha },
+      repository: "samshanmukh/zup",
+      workspaceRoot: "ZupNative",
+      profileId: "profile_ios_v8",
+      version: 8,
+      source: "confirmed",
+      contentHash: "profile-hash-v8",
+      config: SAFE_GENERIC_EXECUTION_PROFILE_CONFIG,
+    })).toEqual({
+      baseBranch: "main",
+      baseSha: sourceSha.toLowerCase(),
+      snapshot: {
+        profileId: "profile_ios_v8",
+        repository: "samshanmukh/zup",
+        workspaceRoot: "ZupNative",
+        version: 8,
+        source: "confirmed",
+        contentHash: "profile-hash-v8",
+        config: SAFE_GENERIC_EXECUTION_PROFILE_CONFIG,
+      },
+    });
+  });
+
+  it("rejects a profile without an exact reviewed commit", () => {
+    expect(reviewedProfileSourceForRetry({
+      detectionEvidence: { defaultBranch: "main", sourceSha: "main" },
+      repository: "samshanmukh/zup",
+      workspaceRoot: "ZupNative",
+      profileId: "profile_ios_v8",
+      version: 8,
+      source: "confirmed",
+      contentHash: "profile-hash-v8",
+      config: SAFE_GENERIC_EXECUTION_PROFILE_CONFIG,
+    })).toBeNull();
   });
 });

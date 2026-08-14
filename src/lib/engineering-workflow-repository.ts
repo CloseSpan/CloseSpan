@@ -48,6 +48,7 @@ import {
 } from "./execution-profile";
 import { assertTenkiRunnerWorkflowSetupInstalled } from "./tenki-runner-workflow-setup-repository";
 import {
+  getExecutionProfileVersion,
   resolveExecutionProfileForTicket,
 } from "./execution-profile-repository";
 import {
@@ -992,6 +993,179 @@ async function reopenPromptAfterTerminalAgentRun(
   return reopened;
 }
 
+export function reviewedProfileSourceForRetry(input: {
+  detectionEvidence: Record<string, unknown>;
+  repository: string;
+  workspaceRoot: string;
+  profileId: string;
+  version: number;
+  source: ExecutionProfileSnapshot["source"];
+  contentHash: string;
+  config: ExecutionProfileSnapshot["config"];
+}): { baseBranch: string; baseSha: string; snapshot: ExecutionProfileSnapshot } | null {
+  const baseBranch = input.detectionEvidence.defaultBranch;
+  const baseSha = input.detectionEvidence.sourceSha;
+  if (
+    typeof baseBranch !== "string"
+    || !baseBranch.trim()
+    || typeof baseSha !== "string"
+    || !/^[a-f0-9]{40}$/i.test(baseSha)
+  ) return null;
+  return {
+    baseBranch: baseBranch.trim(),
+    baseSha: baseSha.toLowerCase(),
+    snapshot: {
+      profileId: input.profileId,
+      repository: input.repository,
+      workspaceRoot: input.workspaceRoot,
+      version: input.version,
+      source: input.source,
+      contentHash: input.contentHash,
+      config: input.config,
+    },
+  };
+}
+
+/**
+ * A retry is a new authorization, not permission to keep executing an old
+ * repository snapshot. When an administrator has confirmed a newer profile
+ * after a terminal run, advance the mutable ticket specification to that
+ * profile's reviewed commit and supersede the old prompt/acceptance contract.
+ * The caller then renders and tests a new immutable prompt revision.
+ */
+async function rebindTerminalRetryToCurrentProfile(
+  orgId: string,
+  workflow: EngineeringWorkflowView,
+  actor: ActorContext,
+): Promise<boolean> {
+  if (
+    workspacePersistenceMode(orgId) !== "postgres"
+    || !workflow.specification
+    || !workflow.prompt
+    || !workflow.run
+    || !RETRYABLE_AGENT_RUN_STATUSES.has(workflow.run.status)
+  ) return false;
+
+  const match = await getActiveConfirmedProblemRepositoryMatch(
+    orgId,
+    workflow.problemId,
+  );
+  if (!match) return false;
+  const profile = await getExecutionProfileVersion(orgId, match.profileId);
+  if (
+    !profile
+    || profile.repository !== match.repository
+    || profile.workspaceRoot !== match.workspaceRoot
+    || profile.contentHash !== match.profileHash
+    || !["confirmed", "override"].includes(profile.source)
+  ) return false;
+  const reviewed = reviewedProfileSourceForRetry({
+    detectionEvidence: profile.detectionEvidence,
+    repository: profile.repository,
+    workspaceRoot: profile.workspaceRoot,
+    profileId: profile.id,
+    version: profile.version,
+    source: profile.source,
+    contentHash: profile.contentHash,
+    config: profile.config,
+  });
+  if (!reviewed) {
+    throw new EngineeringWorkflowError(
+      "The active execution profile does not include a reviewed default-branch commit. Refresh repository detection before preparing another coding run.",
+      409,
+    );
+  }
+  assertExecutionProfileNarrowing(reviewed.snapshot, {
+    permittedPaths: workflow.specification.permittedPaths,
+    requiredCommands: workflow.specification.requiredCommands,
+  });
+  const promptNeedsRebinding = workflow.prompt.baseSha.toLowerCase() !== reviewed.baseSha;
+  let rebound = false;
+  await transaction(async (client) => {
+    const pendingApproval = await client.query(
+      `SELECT 1 FROM approval_requests
+        WHERE org_id=$1 AND problem_id=$2 AND action_type='agent_run'
+          AND status='Pending'
+        LIMIT 1 FOR UPDATE`,
+      [orgId, workflow.problemId],
+    );
+    if (pendingApproval.rowCount) {
+      throw new EngineeringWorkflowError(
+        "Reject or expire the pending implementation approval before refreshing the retry context.",
+        409,
+      );
+    }
+    const activeRun = await client.query(
+      `SELECT 1 FROM agent_runs
+        WHERE org_id=$1 AND problem_id=$2
+          AND status IN ('Queued','Running','Tests passed')
+        LIMIT 1 FOR UPDATE`,
+      [orgId, workflow.problemId],
+    );
+    if (activeRun.rowCount) {
+      throw new EngineeringWorkflowError(
+        "Wait for the active coding run before refreshing the retry context.",
+        409,
+      );
+    }
+    const updated = await client.query(
+      `UPDATE engineering_ticket_specifications
+          SET revision=revision+1,implementation_state='Draft specification',
+              repository=$3,base_branch=$4,base_sha=$5,
+              execution_profile_id=$6,execution_profile_hash=$7,
+              execution_profile_snapshot=$8,updated_by=$9,updated_at=now()
+        WHERE org_id=$1 AND problem_id=$2
+          AND (repository<>$3 OR base_branch<>$4 OR base_sha<>$5
+            OR execution_profile_id IS DISTINCT FROM $6
+            OR execution_profile_hash IS DISTINCT FROM $7
+            OR $10::boolean)`,
+      [
+        orgId,
+        workflow.problemId,
+        profile.repository,
+        reviewed.baseBranch,
+        reviewed.baseSha,
+        reviewed.snapshot.profileId,
+        reviewed.snapshot.contentHash,
+        JSON.stringify(reviewed.snapshot),
+        actor.actorId,
+        promptNeedsRebinding,
+      ],
+    );
+    if (!updated.rowCount) return;
+    await client.query(
+      `UPDATE implementation_prompts
+          SET status='Superseded'
+        WHERE org_id=$1 AND problem_id=$2 AND status<>'Superseded'`,
+      [orgId, workflow.problemId],
+    );
+    await client.query(
+      `UPDATE pdd_prompt_verifications verification
+          SET status='Superseded',
+              completed_at=coalesce(verification.completed_at,now())
+        WHERE verification.org_id=$1 AND verification.problem_id=$2
+          AND verification.status NOT IN ('Failed','Superseded')
+          AND NOT EXISTS (
+            SELECT 1 FROM agent_runs run
+             WHERE run.org_id=verification.org_id
+               AND run.pdd_verification_id=verification.id
+               AND run.status IN ('Queued','Running','Tests passed')
+          )`,
+      [orgId, workflow.problemId],
+    );
+    await audit(
+      client,
+      orgId,
+      actor,
+      `Prepared a new immutable retry context at ${profile.repository}@${reviewed.baseSha} with execution profile ${profile.id}`,
+      "EngineeringTicket",
+      workflow.problemId,
+    );
+    rebound = true;
+  });
+  return rebound;
+}
+
 export async function listEngineeringApprovalWorkflows(
   orgId: string,
 ): Promise<EngineeringWorkflowView[]> {
@@ -1428,6 +1602,9 @@ export async function getPromptAlignmentContext(
   if (issue) throw new EngineeringWorkflowError(issue, 400);
   const story = (userStory as string).trim();
   let workflow = await getEngineeringWorkflow(orgId, problemId);
+  if (await rebindTerminalRetryToCurrentProfile(orgId, workflow, actor)) {
+    workflow = await generateImplementationPrompt(orgId, problemId, actor);
+  }
   const promptHasExactRepositoryContext = Boolean(
     workflow.prompt?.evidenceBinding?.repositoryContext
       && workflow.prompt.evidenceBinding.repositoryContext.repository === workflow.prompt.repository
