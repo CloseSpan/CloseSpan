@@ -2,6 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AgentRunAutoRefresh } from "@/components/agent-run-auto-refresh";
 import { RuntimeInteractionEvidence } from "@/components/runtime-interaction-evidence";
+import {
+  getRuntimeVerificationBadgeClass,
+  getRuntimeVerificationLabel,
+  getRuntimeVerificationState,
+} from "@/lib/agent-run-runtime-status";
 import { requireWorkspaceUser } from "@/lib/auth-user";
 import { getAgentRunById } from "@/lib/engineering-workflow-repository";
 
@@ -14,6 +19,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
   if (!result) notFound();
   const { run, problemId } = result;
   const runtime = run.runtimeEvidence;
+  const runtimeState = getRuntimeVerificationState(run.status, runtime);
   return (
     <>
       <section className="card">
@@ -30,14 +36,8 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
             <h2>Runtime and Prompt Testing verification</h2>
             <p className="subtle">Install, build, health checks, tool interactions, and immutable user-story replay from the isolated Tenki environment.</p>
           </div>
-          <span className={`badge ${runtime?.healthStatus === "passed" && runtime.userStoryReplay !== "failed" ? "success" : runtime?.healthStatus === "failed" || runtime?.userStoryReplay === "failed" ? "high" : "medium"}`}>
-            {runtime?.healthStatus === "passed" && runtime.userStoryReplay !== "failed"
-              ? "Runtime passed"
-              : runtime?.healthStatus === "failed" || runtime?.userStoryReplay === "failed"
-                ? "Runtime failed"
-                : runtime?.configured
-                  ? "Runtime pending"
-                  : "Not configured"}
+          <span className={`badge ${getRuntimeVerificationBadgeClass(runtimeState)}`}>
+            {getRuntimeVerificationLabel(runtimeState)}
           </span>
         </div>
         <div className="card-body detail-stack">
