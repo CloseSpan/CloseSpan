@@ -19,6 +19,7 @@ import {
   applyPddPromptRevision,
   approveImplementationRun,
   claimQueuedAgentRun,
+  failAgentRun,
   getAgentRunExecutionContext,
   markAgentRunRunning,
   rejectImplementationApproval,
@@ -147,6 +148,28 @@ describe("PostgreSQL engineering workflow state guards", () => {
     await markAgentRunRunning("org-1", "run-1", "sandbox-1");
     expect(normalizedSql(database.pool.query.mock.calls[0]?.[0]))
       .toContain("status IN ('Queued','Running')");
+  });
+
+  it("returns the bound immutable prompt to Ready when an agent run fails", async () => {
+    database.client.query.mockImplementation(async (sql: unknown) => {
+      const normalized = normalizedSql(sql);
+      if (normalized.includes("UPDATE agent_runs SET status='Failed'")) {
+        return { rows: [{ started_at: new Date() }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await failAgentRun({
+      orgId: "org-1",
+      problemId: "problem-1",
+      runId: "run-1",
+      promptId,
+    } as Parameters<typeof failAgentRun>[0], "executor_failed", "The executor stopped.");
+
+    expect(database.client.query).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE implementation_prompts SET status='Ready'"),
+      ["org-1", promptId],
+    );
   });
 
   it("atomically claims a queued run only once before provisioning Tenki", async () => {

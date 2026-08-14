@@ -920,6 +920,78 @@ export async function getEngineeringWorkflow(orgId: string, problemId: string): 
   return postgresWorkflow(orgId, problemId);
 }
 
+const RETRYABLE_AGENT_RUN_STATUSES = new Set<AgentRunView["status"]>([
+  "Failed",
+  "No changes",
+]);
+
+async function reopenPromptAfterTerminalAgentRun(
+  orgId: string,
+  workflow: EngineeringWorkflowView,
+  actor: ActorContext,
+): Promise<boolean> {
+  const prompt = workflow.prompt;
+  const run = workflow.run;
+  if (
+    !prompt
+    || prompt.status !== "Approved"
+    || !run
+    || !RETRYABLE_AGENT_RUN_STATUSES.has(run.status)
+  ) return false;
+
+  if (workspacePersistenceMode(orgId) === "memory") {
+    const current = memoryWorkflow(orgId, workflow.problemId);
+    if (
+      current.prompt?.id !== prompt.id
+      || current.prompt.status !== "Approved"
+      || current.run?.id !== run.id
+      || !RETRYABLE_AGENT_RUN_STATUSES.has(current.run.status)
+    ) return false;
+    current.prompt.status = "Ready";
+    current.specification.implementationState = "Prompt ready";
+    return true;
+  }
+
+  let reopened = false;
+  await transaction(async (client) => {
+    const latestRun = await client.query<{
+      id: string;
+      status: AgentRunView["status"];
+    }>(
+      `SELECT id,status
+         FROM agent_runs
+        WHERE org_id=$1 AND prompt_revision_id=$2
+        ORDER BY queued_at DESC LIMIT 1 FOR UPDATE`,
+      [orgId, prompt.id],
+    );
+    if (
+      latestRun.rows[0]?.id !== run.id
+      || !RETRYABLE_AGENT_RUN_STATUSES.has(latestRun.rows[0].status)
+    ) return;
+    const result = await client.query(
+      `UPDATE implementation_prompts
+          SET status='Ready'
+        WHERE org_id=$1 AND id=$2 AND status='Approved'`,
+      [orgId, prompt.id],
+    );
+    if (!result.rowCount) return;
+    await client.query(
+      "UPDATE engineering_ticket_specifications SET implementation_state='Prompt ready',updated_at=now() WHERE org_id=$1 AND problem_id=$2",
+      [orgId, workflow.problemId],
+    );
+    await audit(
+      client,
+      orgId,
+      actor,
+      `Reopened immutable prompt ${prompt.contentHash} after terminal agent run ${run.id}`,
+      "ImplementationPrompt",
+      prompt.id,
+    );
+    reopened = true;
+  });
+  return reopened;
+}
+
 export async function listEngineeringApprovalWorkflows(
   orgId: string,
 ): Promise<EngineeringWorkflowView[]> {
@@ -1382,10 +1454,20 @@ export async function getPromptAlignmentContext(
     );
   }
   if (workflow.prompt.status === "Approved") {
-    throw new EngineeringWorkflowError(
-      "This implementation prompt has already been approved for execution.",
-      409,
-    );
+    const reopened = await reopenPromptAfterTerminalAgentRun(orgId, workflow, actor);
+    if (!reopened) {
+      throw new EngineeringWorkflowError(
+        "This implementation prompt has already been approved for execution.",
+        409,
+      );
+    }
+    workflow = await getEngineeringWorkflow(orgId, problemId);
+    if (!workflow.prompt) {
+      throw new EngineeringWorkflowError(
+        "The implementation prompt could not be prepared for another coding run.",
+        409,
+      );
+    }
   }
   return {
     workflow,
@@ -1545,17 +1627,27 @@ export async function generatePddAcceptanceContract(
     );
   }
   const prompt = workflow.prompt;
+  const existingVerification = workflow.verification;
   if (
-    workflow.verification?.promptHash === prompt.contentHash &&
-    workflow.verification.userStory === story &&
-    !["Failed", "Superseded"].includes(workflow.verification.status)
+    existingVerification?.promptHash === prompt.contentHash &&
+    existingVerification.userStory === story &&
+    !["Failed", "Superseded"].includes(existingVerification.status)
   ) {
+    if (
+      prompt.status === "Ready"
+      && existingVerification.status === "Ready for approval"
+    ) {
+      const level = await readAutonomyLevel(orgId);
+      if (autonomyCapabilities(level).requestAgentExecution) {
+        workflow = await requestImplementationApproval(orgId, prompt.id, actor);
+      }
+    }
     return {
       workflow,
       storyTest: {
-        id: workflow.verification.id,
-        status: workflow.verification.status,
-        message: verificationMessage(workflow.verification.status),
+        id: existingVerification.id,
+        status: existingVerification.status,
+        message: verificationMessage(existingVerification.status),
         promptHash: prompt.contentHash,
       },
     };
@@ -2294,6 +2386,12 @@ export async function completeAgentRun(
         ? "Tests passed"
         : "Prompt ready";
     await client.query("UPDATE engineering_ticket_specifications SET implementation_state=$3,updated_at=now() WHERE org_id=$1 AND problem_id=$2", [context.orgId, context.problemId, implementationState]);
+    if (finalStatus === "Failed" || finalStatus === "No changes") {
+      await client.query(
+        "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
+        [context.orgId, context.promptId],
+      );
+    }
     await client.query(
       `INSERT INTO audit_events(id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id)
        VALUES($1,$2,'agent_executor','CloseSpan agent executor',$3,'AgentRun',$4,$5)`,
@@ -2326,6 +2424,22 @@ export async function failAgentRun(
   code: string,
   message: string,
 ): Promise<void> {
+  if (workspacePersistenceMode(context.orgId) === "memory") {
+    const current = memoryWorkflow(context.orgId, context.problemId);
+    if (
+      current.run?.id !== context.runId
+      || !["Queued", "Running", "Tests passed"].includes(current.run.status)
+    ) return;
+    current.run.status = "Failed";
+    current.run.failureCode = code.slice(0, 120);
+    current.run.failureMessage = message.slice(0, 2_000);
+    current.run.completedAt = new Date().toISOString();
+    if (current.prompt?.id === context.promptId && current.prompt.status === "Approved") {
+      current.prompt.status = "Ready";
+    }
+    current.specification.implementationState = "Prompt ready";
+    return;
+  }
   await transaction(async (client) => {
     const result = await client.query<{ started_at: Date | null }>(
       `UPDATE agent_runs SET status='Failed',failure_code=$3,failure_message=$4,completed_at=now()
@@ -2337,6 +2451,10 @@ export async function failAgentRun(
     await client.query(
       "UPDATE engineering_ticket_specifications SET implementation_state='Prompt ready',updated_at=now() WHERE org_id=$1 AND problem_id=$2",
       [context.orgId, context.problemId],
+    );
+    await client.query(
+      "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
+      [context.orgId, context.promptId],
     );
     await client.query(
       `INSERT INTO audit_events(id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id)

@@ -591,6 +591,9 @@ export function EngineeringTicketPanel({
   }
 
   const promptStatus = workflow.prompt?.status ?? "No prompt yet";
+  const retryableRun = Boolean(
+    workflow.run && ["Failed", "No changes"].includes(workflow.run.status),
+  );
   const preparesPromptAutomatically = autonomyCapabilities(autonomyLevel).preparePrompt;
   const verification = workflow.verification;
   const verificationReady = verification?.status === "Ready for approval";
@@ -958,7 +961,9 @@ export function EngineeringTicketPanel({
               {busy
                 ? "Testing prompt"
                 : canTestPrompt
-                  ? backgroundPromptTask?.status === "failed"
+                  ? retryableRun
+                    ? "Prepare another coding run"
+                    : backgroundPromptTask?.status === "failed"
                     ? "Run prompt test again"
                     : "Run prompt test"
                   : "Suggested prompt required"}
@@ -1109,14 +1114,23 @@ export function EngineeringTicketPanel({
           )}
 
         {workflow.run && (
-          <div className="callout" role="status">
-            <div className="callout-title">Run {workflow.run.status}</div>
+          <div className={`callout ${retryableRun ? "warning" : ""}`} role="status">
+            <div className="callout-title">
+              {workflow.run.status === "Failed"
+                ? "Coding run failed"
+                : workflow.run.status === "No changes"
+                  ? "Coding run returned no changes"
+                  : `Run ${workflow.run.status}`}
+            </div>
             <p className="subtle">
-              The approved run continues automatically. Open the run to follow coding,
-              tests, independent verification, and the draft pull request.
+              {workflow.run.status === "Failed"
+                ? "This one-run authorization ended before a draft pull request was opened. Review the failure, then prepare another coding run to reuse the immutable prompt and acceptance contract with a fresh approval."
+                : workflow.run.status === "No changes"
+                  ? "The coding agent did not produce repository changes. Review the run, then prepare another coding run if the implementation still needs work."
+                  : "The approved run continues automatically. Open the run to follow coding, tests, independent verification, and the draft pull request."}
             </p>
             <Link className="btn secondary" href={`/agent-runs/${workflow.run.id}`}>
-              View run
+              {retryableRun ? "Review run" : "View run"}
             </Link>
           </div>
         )}

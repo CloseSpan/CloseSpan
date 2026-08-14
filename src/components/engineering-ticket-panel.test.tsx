@@ -507,6 +507,33 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     );
   });
 
+  it("explains a failed one-run authorization and offers a fresh coding run", () => {
+    const candidate = readyPromptWorkflow();
+    const markup = renderPanel({
+      ...candidate,
+      prompt: { ...candidate.prompt!, status: "Approved" },
+      run: {
+        id: "run-1",
+        status: "Failed",
+        branchName: "closespan/run-1",
+        changedFiles: [],
+        testResults: [],
+        criterionResults: [],
+        failureCode: "executor_failed",
+        failureMessage: "The coding run stopped.",
+        pullRequestUrl: null,
+        queuedAt: "2026-08-11T12:00:00.000Z",
+        completedAt: "2026-08-11T12:01:00.000Z",
+      },
+    });
+
+    expect(markup).toContain("Prepare another coding run");
+    expect(markup).toContain("Coding run failed");
+    expect(markup).toContain("This one-run authorization ended");
+    expect(markup).toContain("Review run");
+    expect(markup).not.toContain("The approved run continues automatically");
+  });
+
   it("shows backend and frontend production verification independently", () => {
     const markup = renderPanel(workflow({
           releaseEvidence: {

@@ -3,6 +3,8 @@ import { ORG_ID, primaryProblem } from "./seed";
 import {
   applyPddPromptRevision,
   approveImplementationRun,
+  failAgentRun,
+  getPromptAlignmentContext,
   getEngineeringWorkflow,
   rejectImplementationApproval,
   requestImplementationApproval,
@@ -68,6 +70,45 @@ describe("approval-bound engineering workflow", () => {
     expect(expired.approval?.status).toBe("Expired");
     expect((await requestImplementationApproval(ORG_ID, awaiting.prompt!.id, actor)).approval?.status)
       .toBe("Pending");
+  });
+
+  it("reopens a failed one-run prompt and creates a fresh approval for the same immutable contract", async () => {
+    const awaiting = await prepareApproval();
+    const approved = await approveImplementationRun(ORG_ID, awaiting.approval!.id, actor);
+    await failAgentRun({
+      orgId: ORG_ID,
+      problemId: primaryProblem.id,
+      runId: approved.run!.id,
+      promptId: approved.prompt!.id,
+    } as Parameters<typeof failAgentRun>[0], "executor_failed", "The coding run stopped.");
+
+    const failed = await getEngineeringWorkflow(ORG_ID, primaryProblem.id);
+    expect(failed.run?.status).toBe("Failed");
+    expect(failed.prompt?.status).toBe("Ready");
+
+    // Simulate a run that failed before older deployments repaired prompt state.
+    const memory = (globalThis as typeof globalThis & {
+      __closeSpanEngineeringWorkflows?: Map<string, { prompt?: { status: string } }>;
+    }).__closeSpanEngineeringWorkflows;
+    memory!.get(`${ORG_ID}:${primaryProblem.id}`)!.prompt!.status = "Approved";
+    const alignment = await getPromptAlignmentContext(
+      ORG_ID,
+      primaryProblem.id,
+      failed.specification!.userStory,
+      actor,
+    );
+    expect(alignment.workflow.prompt?.status).toBe("Ready");
+
+    const retried = await generatePddAcceptanceContract(
+      ORG_ID,
+      primaryProblem.id,
+      failed.specification!.userStory,
+      actor,
+    );
+    expect(retried.workflow.prompt?.id).toBe(awaiting.prompt!.id);
+    expect(retried.workflow.prompt?.status).toBe("Awaiting approval");
+    expect(retried.workflow.approval?.status).toBe("Pending");
+    expect(retried.workflow.approval?.id).not.toBe(awaiting.approval!.id);
   });
 
   it("rejects ticket mutation while an implementation approval is pending", async () => {
