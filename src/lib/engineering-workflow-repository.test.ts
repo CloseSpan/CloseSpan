@@ -6,6 +6,7 @@ import {
   failAgentRun,
   getPromptAlignmentContext,
   getEngineeringWorkflow,
+  implementationPermittedPathsForRetry,
   rejectImplementationApproval,
   requestImplementationApproval,
   reviewedProfileSourceForRetry,
@@ -223,6 +224,37 @@ describe("approval-bound engineering workflow", () => {
 });
 
 describe("terminal coding-run retry context", () => {
+  it("adds only evidence-cited product files inside the confirmed profile", () => {
+    const profile = {
+      profileId: "profile_ios_v8",
+      repository: "samshanmukh/zup",
+      workspaceRoot: "ZupNative",
+      version: 8,
+      source: "confirmed" as const,
+      contentHash: "profile-hash-v8",
+      config: {
+        ...SAFE_GENERIC_EXECUTION_PROFILE_CONFIG,
+        workingDirectory: "ZupNative",
+        permittedPaths: ["ZupNative/**"],
+      },
+    };
+    expect(implementationPermittedPathsForRetry({
+      currentPermittedPaths: ["ZupNative/tests/**"],
+      suspectedFiles: [
+        "README.md",
+        "ZupNative/tests/CloseSpanPDDTests.swift",
+        "ZupNative/Zup/ContentView.swift",
+        "ZupNative/Zup/AppModel.swift",
+      ],
+      generatedTestPaths: ["ZupNative/tests/CloseSpanPDDTests.swift"],
+      profile,
+    })).toEqual([
+      "ZupNative/tests/**",
+      "ZupNative/Zup/ContentView.swift",
+      "ZupNative/Zup/AppModel.swift",
+    ]);
+  });
+
   it("pins a retry snapshot to the reviewed active profile commit", () => {
     const sourceSha = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
     expect(reviewedProfileSourceForRetry({

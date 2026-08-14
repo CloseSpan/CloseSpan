@@ -1026,6 +1026,47 @@ export function reviewedProfileSourceForRetry(input: {
   };
 }
 
+function isGeneratedOrTestArtifactPath(path: string): boolean {
+  const normalized = path.trim().replaceAll("\\", "/");
+  const baseName = normalized.split("/").at(-1) ?? normalized;
+  return normalized.startsWith(".github/workflows/")
+    || normalized.startsWith(".prompt/")
+    || /(^|\/)(__tests__|tests?|specs?)(\/|$)/i.test(normalized)
+    || /(^|[._-])(test|tests|spec)([._-]|$)/i.test(baseName);
+}
+
+export function implementationPermittedPathsForRetry(input: {
+  currentPermittedPaths: string[];
+  suspectedFiles: string[];
+  generatedTestPaths: string[];
+  profile: ExecutionProfileSnapshot;
+}): string[] {
+  const generatedTests = new Set(
+    input.generatedTestPaths.map((path) => path.trim().replaceAll("\\", "/")),
+  );
+  const permitted = [...input.currentPermittedPaths];
+  for (const candidate of input.suspectedFiles) {
+    const normalized = candidate.trim().replaceAll("\\", "/");
+    if (
+      !normalized
+      || generatedTests.has(normalized)
+      || isGeneratedOrTestArtifactPath(normalized)
+      || permitted.includes(normalized)
+    ) continue;
+    try {
+      assertExecutionProfileNarrowing(input.profile, {
+        permittedPaths: [normalized],
+        requiredCommands: [],
+      });
+      permitted.push(normalized);
+    } catch {
+      // Repository evidence is a lead, not authorization. Ignore candidates
+      // outside the already confirmed execution-profile boundary.
+    }
+  }
+  return permitted;
+}
+
 /**
  * A retry is a new authorization, not permission to keep executing an old
  * repository snapshot. When an administrator has confirmed a newer profile
@@ -1075,11 +1116,29 @@ async function rebindTerminalRetryToCurrentProfile(
       409,
     );
   }
+  const scopeEvidence = await databasePool().query<{ suspected_files: string[] | null }>(
+    "SELECT suspected_files FROM product_problems WHERE org_id=$1 AND id=$2",
+    [orgId, workflow.problemId],
+  );
+  const retryPermittedPaths = implementationPermittedPathsForRetry({
+    currentPermittedPaths: workflow.specification.permittedPaths,
+    suspectedFiles: scopeEvidence.rows[0]?.suspected_files ?? [],
+    generatedTestPaths: workflow.verification?.generatedTests.map((test) => test.path) ?? [],
+    profile: reviewed.snapshot,
+  });
+  if (!retryPermittedPaths.some((path) => !isGeneratedOrTestArtifactPath(path))) {
+    throw new EngineeringWorkflowError(
+      "CloseSpan could not identify an evidence-backed product file inside the active execution profile. Review the ticket implementation scope before preparing another coding run.",
+      409,
+    );
+  }
   assertExecutionProfileNarrowing(reviewed.snapshot, {
-    permittedPaths: workflow.specification.permittedPaths,
+    permittedPaths: retryPermittedPaths,
     requiredCommands: workflow.specification.requiredCommands,
   });
   const promptNeedsRebinding = workflow.prompt.baseSha.toLowerCase() !== reviewed.baseSha;
+  const scopeNeedsRebinding =
+    JSON.stringify(retryPermittedPaths) !== JSON.stringify(workflow.specification.permittedPaths);
   let rebound = false;
   await transaction(async (client) => {
     const pendingApproval = await client.query(
@@ -1113,12 +1172,13 @@ async function rebindTerminalRetryToCurrentProfile(
           SET revision=revision+1,implementation_state='Draft specification',
               repository=$3,base_branch=$4,base_sha=$5,
               execution_profile_id=$6,execution_profile_hash=$7,
-              execution_profile_snapshot=$8,updated_by=$9,updated_at=now()
+              execution_profile_snapshot=$8,updated_by=$9,permitted_paths=$10,
+              updated_at=now()
         WHERE org_id=$1 AND problem_id=$2
           AND (repository<>$3 OR base_branch<>$4 OR base_sha<>$5
             OR execution_profile_id IS DISTINCT FROM $6
             OR execution_profile_hash IS DISTINCT FROM $7
-            OR $10::boolean)`,
+            OR $11::boolean OR $12::boolean)`,
       [
         orgId,
         workflow.problemId,
@@ -1129,7 +1189,9 @@ async function rebindTerminalRetryToCurrentProfile(
         reviewed.snapshot.contentHash,
         JSON.stringify(reviewed.snapshot),
         actor.actorId,
+        JSON.stringify(retryPermittedPaths),
         promptNeedsRebinding,
+        scopeNeedsRebinding,
       ],
     );
     if (!updated.rowCount) return;
