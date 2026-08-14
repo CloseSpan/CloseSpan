@@ -5,7 +5,11 @@ import { getIssueRuntimeVerificationContext } from "@/lib/issue-runtime-verifica
 import { noStoreHeaders } from "@/lib/request-security";
 
 export const maxDuration = 300;
-const MAX_REQUEST_BYTES = 2_000_000;
+// Runtime verification can include a bounded simulator transcript and a few
+// targeted source excerpts. Keep this below common serverless body limits while
+// leaving enough room for a long-running Responses conversation to finish and
+// write its attested report.
+const MAX_REQUEST_BYTES = 4_000_000;
 
 function outputTokenCeiling(): number {
   const value = Number(process.env.AGENT_RUNNER_MAX_OUTPUT_TOKENS ?? 12_000);

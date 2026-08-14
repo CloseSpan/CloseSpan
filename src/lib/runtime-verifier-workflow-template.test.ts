@@ -32,4 +32,15 @@ describe("current-issue runtime verifier workflow template", () => {
     expect(workflow).toContain("mkdir -p .closespan-run");
     expect(workflow).toContain("The verifier could not fetch its approval-bound CloseSpan job.");
   });
+
+  it("creates a valid provisional report before the model begins runtime work", () => {
+    const provisionalReport = workflow.indexOf(
+      'fs.writeFileSync(".closespan-run/runtime-verification.json"',
+    );
+    const modelStep = workflow.indexOf("name: Run current-issue verifier");
+
+    expect(provisionalReport).toBeGreaterThan(-1);
+    expect(modelStep).toBeGreaterThan(provisionalReport);
+    expect(workflow).toContain("A provisional report was created before runtime execution");
+  });
 });

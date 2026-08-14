@@ -105,6 +105,19 @@ jobs:
           const safe = value => typeof value === "string" && value.length > 0 && !path.isAbsolute(value) && !value.split(/[\\/]/).includes("..");
           if (config.workingDirectory !== "." && !safe(config.workingDirectory)) throw new Error("Unsafe runtime working directory");
           fs.writeFileSync(".closespan-run/runtime-verification.prompt.md", job.verificationPrompt);
+          fs.writeFileSync(".closespan-run/runtime-verification.json", JSON.stringify({
+            schemaVersion: 1,
+            runId: job.runId,
+            baseSha: job.baseSha,
+            outcome: "Verification blocked",
+            summary: "The runtime verifier started but did not complete a decisive product check.",
+            expectedBehavior: "The reported product path should complete with the expected behavior.",
+            actualBehavior: "The verifier was interrupted before it recorded a decisive result.",
+            reproductionSteps: ["Started the repository-scoped runtime verification plan."],
+            commands: [],
+            observations: ["A provisional report was created before runtime execution and must be replaced or updated by the verifier."],
+            artifacts: [],
+          }));
           for (const item of config.publicEnvironment) {
             const delimiter = `CLOSESPAN_${require("node:crypto").randomBytes(12).toString("hex")}`;
             fs.appendFileSync(process.env.GITHUB_ENV, `${item.name}<<${delimiter}\n${item.value}\n${delimiter}\n`);

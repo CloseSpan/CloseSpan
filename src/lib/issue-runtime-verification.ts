@@ -351,6 +351,10 @@ function verificationPrompt(input: {
     "- Reproduce the user-visible path with the approved platform runtime, simulator/emulator, test framework, or local service.",
     "- On macOS, the runner has already booted an approved iOS Simulator. Use CLOSESPAN_IOS_SIMULATOR_UDID and the CLOSESPAN_IOS_SIMULATOR_HARNESS helper to inspect, install, launch, terminate, open URLs, and capture screenshots.",
     "- Capture simulator screenshots only through CLOSESPAN_IOS_SIMULATOR_HARNESS; it produces model-safe evidence. Do not inline image bytes, base64 data, full process listings, or other bulky artifacts into model messages. Record artifact paths in the report instead.",
+    "- Keep every inspection bounded: use targeted rg/find queries, read at most 200 relevant lines from a file at a time, and redirect verbose build/test output to .closespan-run/artifacts before summarizing only the decisive tail.",
+    "- Never print entire source files, project trees, simulator inventories, build logs, or generated files into the model conversation.",
+    "- Create the required runtime-verification.json immediately after the initial evidence pass, then update it as checks complete. Do not postpone the report until after broad repository exploration.",
+    "- Stop investigating once the available runtime evidence supports one allowed outcome; additional source reading is not a substitute for executing the reported path.",
     "- Prefer an existing XCTest or UI-test target. If the repository has no test target, build and launch the app on the prepared simulator and create only an ephemeral repository-specific harness under .closespan-run/; never add a test target to the product project during verification.",
     "- A missing repository test target alone is not a blocker when the user-visible path can be exercised through the prepared simulator harness.",
     "- Do not fix the issue. Do not push, commit, publish, or modify product source files.",
@@ -367,7 +371,7 @@ function verificationPrompt(input: {
     "",
     "## Retrieved repository context",
     input.repositoryEvidence,
-  ].join("\n").slice(0, 120_000);
+  ].join("\n").slice(0, 48_000);
 }
 
 export async function startIssueRuntimeVerification(input: {
@@ -438,7 +442,7 @@ export async function startIssueRuntimeVerification(input: {
       repository: match.repository,
       expectedCommitSha: baseSha,
       query: `${problem.title}\n${problem.statement}\n${problem.hypothesis}`,
-      maxOutputLength: 50_000,
+      maxOutputLength: 18_000,
       excludePathPrefixes: CLOSESPAN_SYSTEM_PATH_PREFIXES,
     })).retrieval;
   } catch {
