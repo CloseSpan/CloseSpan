@@ -17,6 +17,7 @@ import {
   type ProblemRepositoryMatchRefreshResult,
 } from "@/lib/problem-repository-match-repository";
 import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
+import { activateReadyDetectedExecutionProfiles } from "@/lib/tenki-runner-onboarding";
 import {
   authorizeMutation,
   authorizeRead,
@@ -146,6 +147,11 @@ export async function PUT(
         repository: repository.repository,
         defaultBranch: repository.defaultBranch,
         actor: context,
+      });
+      await activateReadyDetectedExecutionProfiles({
+        orgId: context.orgId,
+        repository: repository.repository,
+        actor: { ...context, actorId: "system:repository-detector" },
       });
       refresh = await refreshProblemRepositoryMatch(context.orgId, problemId);
     } else if (body.action === "confirm") {

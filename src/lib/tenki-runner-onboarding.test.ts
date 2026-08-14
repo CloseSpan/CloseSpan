@@ -115,6 +115,83 @@ describe("Tenki repository onboarding", () => {
     }));
   });
 
+  it("activates a ready runner profile without waiting for adaptive sizing", async () => {
+    profiles.list.mockResolvedValue({
+      assignments: [{
+        repository: "acme/app",
+        workspaceRoot: "ZupNative",
+        activeProfile: null,
+        automaticActivationDisabled: false,
+        detectedProfile: {
+          id: "detected-runner",
+          repository: "acme/app",
+          workspaceRoot: "ZupNative",
+          detectionEvidence: { confidence: 0.96 },
+          config: {
+            schemaVersion: 3,
+            language: "swift",
+            framework: "iOS",
+            packageManager: "xcode",
+            runtimeVersion: "xcode 16",
+            workingDirectory: "ZupNative",
+            installCommands: [],
+            buildCommands: ["xcodebuild build"],
+            testCommands: [],
+            typecheckCommands: [],
+            permittedPaths: ["ZupNative/**"],
+            tenkiImage: null,
+            tenkiSnapshotId: null,
+            cpuCores: 4,
+            memoryMb: 14_336,
+            allowInbound: false,
+            allowOutbound: false,
+            maxDurationMs: 3_600_000,
+            idleTimeoutMinutes: 2,
+            automaticInstall: false,
+            automaticBuild: true,
+            publicEnvironment: [],
+            secretBindings: [],
+            startCommand: null,
+            applicationPort: null,
+            healthCheckPath: null,
+            healthCheckTimeoutMs: 90_000,
+            previewEnabled: false,
+            previewTtlMs: 600_000,
+            runtimeTools: { http: false, browser: false, logs: false },
+            executor: {
+              kind: "tenki_github_actions",
+              platform: "macos",
+              architecture: "arm64",
+              runnerLabel: "tenki-macos-15-small",
+              workflowPath: ".github/workflows/closespan-agent-runner.yml",
+              workflowSha256: "a".repeat(64),
+              xcode: {
+                version: "16",
+                containerKind: "project",
+                containerPath: "Zup.xcodeproj",
+                scheme: "Zup",
+                configuration: "Debug",
+                destination: "platform=iOS Simulator,name=iPhone 16",
+                sdk: "iphonesimulator",
+                signingPolicy: "simulator_only",
+              },
+              androidEmulator: null,
+            },
+          },
+        },
+      }],
+    });
+
+    await expect(activateReadyDetectedExecutionProfiles({
+      orgId: "org-1",
+      repository: "acme/app",
+      actor: { actorId: "system:repository-detector" },
+    })).resolves.toBe(1);
+    expect(profiles.confirm).toHaveBeenCalledWith(expect.objectContaining({
+      detectedProfileId: "detected-runner",
+    }));
+  });
+
   it("only requires a setup pull request for detected runner platforms", () => {
     expect(repositoryDetectionNeedsTenki(detection("generic"))).toBe(false);
     expect(repositoryDetectionNeedsTenki(detection("ios"))).toBe(true);

@@ -1522,7 +1522,7 @@ export function ExecutionProfileSettings({
       {error && <div className="toast error" role="alert">{error}</div>}
       <div className="callout">
         <div className="callout-title">Profiles are immutable execution contracts</div>
-        <p className="subtle">Detected metadata remains inactive until an admin confirms it. The selected profile ID, version, hash, and full snapshot are then bound to Prompt Testing, approval, implementation, and independent verification.</p>
+        <p className="subtle">The latest high-confidence, execution-ready detection activates automatically. Administrators can deactivate a repository root to stop future automatic activation. The selected profile ID, version, hash, and full snapshot are bound to Prompt Testing, approval, implementation, and independent verification.</p>
       </div>
 
       <RuntimeSecretManager

@@ -14,6 +14,7 @@ const review = vi.hoisted(() => ({
   reject: vi.fn(),
 }));
 const detector = vi.hoisted(() => ({ detect: vi.fn() }));
+const activation = vi.hoisted(() => ({ activate: vi.fn() }));
 
 vi.mock("@/lib/execution-profile-repository", () => ({
   listExecutionProfileSettings: profiles.settings,
@@ -31,6 +32,9 @@ vi.mock("@/lib/problem-repository-match-repository", () => ({
 }));
 vi.mock("@/lib/repository-profile-detection", () => ({
   detectAndSaveGithubRepositoryProfiles: detector.detect,
+}));
+vi.mock("@/lib/tenki-runner-onboarding", () => ({
+  activateReadyDetectedExecutionProfiles: activation.activate,
 }));
 vi.mock("@/lib/workspace-persistence", () => ({
   workspacePersistenceMode: () => "postgres",
@@ -102,6 +106,7 @@ describe("problem repository match API", () => {
     });
     review.reject.mockReset().mockResolvedValue({ ...match, status: "Rejected" });
     detector.detect.mockReset().mockResolvedValue({ profiles: [] });
+    activation.activate.mockReset().mockResolvedValue(1);
   });
 
   it("returns a tenant-scoped read view without granting viewer mutations", async () => {
@@ -157,6 +162,10 @@ describe("problem repository match API", () => {
     expect(detector.detect).toHaveBeenCalledWith(expect.objectContaining({
       orgId: "org-1",
       installationId: "42",
+      repository: "acme/app",
+    }));
+    expect(activation.activate).toHaveBeenCalledWith(expect.objectContaining({
+      orgId: "org-1",
       repository: "acme/app",
     }));
     expect(review.refresh).toHaveBeenCalledWith("org-1", problemId);

@@ -23,7 +23,6 @@ import {
   type TenkiRunnerWorkflowSetupView,
 } from "./tenki-runner-workflow-setup-repository";
 import {
-  getProfileTenkiRunnerSizingProbe,
   type TenkiRunnerSizingProbe,
 } from "./tenki-runner-sizing-probe-repository";
 import { queueAndDispatchTenkiRunnerSizingProbe } from "./tenki-runner-sizing-probe";
@@ -55,15 +54,9 @@ export async function activateReadyDetectedExecutionProfiles(input: {
   let activated = 0;
   for (const profile of detected) {
     try {
-      const executor = executionProfileExecutor(profile.config);
-      if (executor.kind === "tenki_github_actions") {
-        const probe = await getProfileTenkiRunnerSizingProbe(input.orgId, profile.id);
-        const recommendationMatches = probe?.recommendedRunnerLabel === executor.runnerLabel;
-        const commandSucceeded = probe?.telemetry?.exitCode === 0;
-        if (probe?.status !== "Completed" || !recommendationMatches || !commandSucceeded) {
-          continue;
-        }
-      }
+      // A validated baseline runner is enough to activate a detected profile.
+      // Adaptive sizing can promote a later immutable version when its probe
+      // completes; it must not leave the latest repository detection inactive.
       assertExecutionProfileReadyForActivation(profile.config);
       assertTenkiProviderResourceLimits(profile.config);
       await assertManagedTenkiBootSourceAllowed({
