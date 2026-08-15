@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useId, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import {
   AlertCircle,
+  ArrowUp,
   CheckCircle2,
   Circle,
   ExternalLink,
@@ -43,6 +51,24 @@ interface PromptComparisonSnapshot {
   };
   applied: boolean;
 }
+
+type PromptTestingChatMessage =
+  | {
+      id: string;
+      role: "user";
+      content: string;
+    }
+  | {
+      id: string;
+      role: "assistant";
+      aligned: boolean;
+      changes: StructuredPddChange[];
+      summary: string | null | undefined;
+      pddVersion: string;
+      executionMode: "cloud" | "local";
+      model: string | null;
+      costUsd: number | null;
+    };
 
 export type PreparationStepState = "complete" | "current" | "upcoming";
 
@@ -228,7 +254,7 @@ function PddResultEnglishView({
       {summary && <p>{summary}</p>}
       {changes.length > 0 ? (
         <section>
-          <h4>What Prompt Testing recommends</h4>
+          <h4>What CloseSpan recommends</h4>
           <ol>
             {changes.map((change, index) => (
               <li key={`${index}-${change.summary}`}>
@@ -241,7 +267,7 @@ function PddResultEnglishView({
           </ol>
         </section>
       ) : aligned ? (
-        <p>The prompt matches the user story and is ready for the executable acceptance-contract step.</p>
+        <p>The prompt satisfies your request and is ready for the executable acceptance-contract step.</p>
       ) : null}
     </div>
   );
@@ -398,12 +424,51 @@ export function EngineeringTicketPanel({
   initialRepositoryProfileReady?: boolean;
   initialPddTiming?: PddPromptTimingSummary;
 }) {
+  const initialPromptReview = initialWorkflow.promptEvaluation?.review;
+  const initialPromptEvaluationKey = initialPromptReview
+    && initialWorkflow.promptEvaluation?.id
+    ? `${initialWorkflow.promptEvaluation.id}:${initialPromptReview.promptHash}:${initialPromptReview.verdict}`
+    : null;
   const [storedWorkflow, setWorkflow] = useState(initialWorkflow);
   const [repositoryProfileReady, setRepositoryProfileReady] = useState(
     initialRepositoryProfileReady,
   );
   const [userStory, setUserStory] = useState(
     initialWorkflow.specification?.userStory ?? "",
+  );
+  const [promptQuestion, setPromptQuestion] = useState("");
+  const [chatMessages, setChatMessages] = useState<PromptTestingChatMessage[]>(
+    () => {
+      const messages: PromptTestingChatMessage[] = [];
+      if (initialWorkflow.specification?.userStory) {
+        messages.push({
+          id: "initial-product-request",
+          role: "user",
+          content: initialWorkflow.specification.userStory,
+        });
+      }
+      if (initialPromptReview && initialPromptEvaluationKey) {
+        const changes = structurePddChanges(initialPromptReview.changes);
+        messages.push({
+          id: `closespan-response-${initialPromptEvaluationKey}`,
+          role: "assistant",
+          aligned: initialPromptReview.verdict === "Passed",
+          changes,
+          summary: initialPromptReview.verdict === "Needs revision" && changes.length > 0
+            ? `Prompt Testing found ${changes.length} ${changes.length === 1 ? "change" : "changes"} to make before approval.`
+            : initialPromptReview.summary,
+          pddVersion: initialPromptReview.pddVersion,
+          executionMode: initialPromptReview.executionMode,
+          model: initialPromptReview.model,
+          costUsd: initialPromptReview.costUsd,
+        });
+      }
+      return messages;
+    },
+  );
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const lastChatEvaluationRef = useRef<string | null>(
+    initialPromptEvaluationKey,
   );
   const [storyTest, setStoryTest] = useState<UserStoryPromptTestView>();
   const [storedError, setError] = useState<string>();
@@ -474,8 +539,8 @@ export function EngineeringTicketPanel({
     return () => window.clearInterval(timer);
   }, [durablePromptEvaluationRunning, orgId, problemId, workflow.verification]);
 
-  function testAgainstPrompt() {
-    const issue = userStoryInputIssue(userStory);
+  function testAgainstPrompt(question = userStory) {
+    const issue = userStoryInputIssue(question);
     if (issue) {
       setStoryTest(undefined);
       setError(issue);
@@ -486,10 +551,31 @@ export function EngineeringTicketPanel({
     setStoryTest(undefined);
     startPromptTest({
       problemId,
-      userStory: userStory.trim(),
+      userStory: question.trim(),
       estimatedDurationMs: pddTiming.estimatedDurationMs,
       triggerSource: "manual",
     });
+  }
+
+  function submitPromptQuestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const question = promptQuestion.trim();
+    const issue = userStoryInputIssue(question);
+    if (issue) {
+      setError(issue);
+      return;
+    }
+    setUserStory(question);
+    setPromptQuestion("");
+    setChatMessages((messages) => [
+      ...messages,
+      {
+        id: `product-request-${crypto.randomUUID()}`,
+        role: "user",
+        content: question,
+      },
+    ]);
+    testAgainstPrompt(question);
   }
 
   async function createSuggestedPrompt() {
@@ -741,6 +827,47 @@ export function EngineeringTicketPanel({
       </button>
     </div>
   ) : null;
+  const promptEvaluationKey = promptEvaluation && currentPromptEvaluationId
+    ? `${currentPromptEvaluationId}:${promptEvaluation.promptHash}:${promptEvaluation.verdict}`
+    : null;
+
+  useEffect(() => {
+    if (
+      busy
+      || !promptEvaluation
+      || !promptEvaluationKey
+      || lastChatEvaluationRef.current === promptEvaluationKey
+    ) return;
+    lastChatEvaluationRef.current = promptEvaluationKey;
+    setChatMessages((messages) => [
+      ...messages,
+      {
+        id: `closespan-response-${promptEvaluationKey}`,
+        role: "assistant",
+        aligned: promptAligned,
+        changes: incompletePromptEvaluation
+          ? []
+          : structurePddChanges(promptEvaluation.changes),
+        summary: promptEvaluationSummary,
+        pddVersion: promptEvaluation.pddVersion,
+        executionMode: promptEvaluation.executionMode,
+        model: promptEvaluation.model,
+        costUsd: promptEvaluation.costUsd,
+      },
+    ]);
+  }, [
+    busy,
+    promptAligned,
+    promptEvaluation,
+    promptEvaluationKey,
+    promptEvaluationSummary,
+    incompletePromptEvaluation,
+  ]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ block: "nearest" });
+  }, [busy, chatMessages]);
+
   useEffect(() => {
     if (!repositoryProfileReady) return;
     if (!shouldAutomaticallyPreparePrompt({
@@ -894,11 +1021,13 @@ export function EngineeringTicketPanel({
                 <PromptViewSwitcher
                   ariaLabel={`${promptComparison.applied ? "Current" : "Proposed"} prompt revision ${promptComparison.proposed.revision}`}
                   english={(
-                    <PddResultEnglishView
-                      aligned={promptAligned}
-                      changes={recommendedChanges}
-                      summary={promptEvaluationSummary}
-                    />
+                    <div className="prompt-english-copy">
+                      <p>
+                        {promptComparison.applied
+                          ? "This is the saved prompt revision produced from your conversation with CloseSpan."
+                          : "This proposed revision incorporates CloseSpan's response in the conversation below. Switch to .prompt to inspect the exact immutable content."}
+                      </p>
+                    </div>
                   )}
                   prompt={promptComparison.proposed.content}
                 />
@@ -916,42 +1045,6 @@ export function EngineeringTicketPanel({
               </div>
             )}
 
-            {!promptComparison.applied && recommendedChanges.length > 0 && (
-              <section className="prompt-comparison-changes" aria-labelledby="pdd-recommended-changes">
-                <div className="prompt-comparison-changes-heading">
-                  <strong id="pdd-recommended-changes">What Prompt Testing changed</strong>
-                  <span className="badge medium">
-                    {recommendedChanges.length} {recommendedChanges.length === 1 ? "change" : "changes"}
-                  </span>
-                </div>
-                <div className="pdd-change-list">
-                  {recommendedChanges.map((structured, index) => (
-                    <article className="pdd-change-card" key={`${index}-${structured.summary}`}>
-                      <span className="pdd-change-number">{index + 1}</span>
-                      <div>
-                        <h4>{structured.summary}</h4>
-                        {structured.steps.length > 0 && (
-                          <ol>
-                            {structured.steps.map((step) => <li key={step}>{step}</li>)}
-                          </ol>
-                        )}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {!promptComparison.applied && promptEvaluation && (
-              <details className="pdd-evaluation-technical">
-                <summary>Technical details</summary>
-                <p className="subtle">
-                  Prompt Testing {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "Prompt Testing Cloud" : "local fallback"}
-                  {promptEvaluation.model ? ` · ${promptEvaluation.model}` : ""}
-                  {promptEvaluation.costUsd !== null ? ` · $${promptEvaluation.costUsd.toFixed(4)}` : ""}
-                </p>
-              </details>
-            )}
           </section>
         ) : workflow.prompt ? (
           <section className="prompt-version-card" aria-label="Prompt currently under test">
@@ -962,7 +1055,7 @@ export function EngineeringTicketPanel({
               <span className="badge brand">SHA {workflow.prompt.contentHash.slice(0, 10)}</span>
             </div>
             <p className="subtle">
-              This is the exact prompt Prompt Testing will compare with the user story below.
+              This is the exact prompt CloseSpan will discuss with you below.
             </p>
             <PromptViewSwitcher
               ariaLabel="Prompt currently under test"
@@ -973,45 +1066,6 @@ export function EngineeringTicketPanel({
             />
           </section>
         ) : null}
-
-        {promptEvaluation && !promptComparison && (
-          <div
-            className={`callout pdd-evaluation-result ${promptAligned ? "success" : "warning"}`}
-            role="status"
-          >
-            <div className="callout-title">
-              {promptAligned ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-              {incompletePromptEvaluation
-                ? "Prompt Testing result incomplete"
-                : promptAligned
-                  ? "Prompt alignment passed"
-                  : "Prompt Testing needs another evaluation"}
-            </div>
-            {workflow.prompt ? (
-              <PromptViewSwitcher
-                ariaLabel="Saved Prompt Testing response"
-                english={(
-                  <PddResultEnglishView
-                    aligned={promptAligned}
-                    changes={recommendedChanges}
-                    summary={promptEvaluationSummary}
-                  />
-                )}
-                prompt={promptEvaluation.suggestedRevision ?? workflow.prompt.content}
-              />
-            ) : (
-              <p>{promptEvaluationSummary}</p>
-            )}
-            <details className="pdd-evaluation-technical">
-              <summary>Technical details</summary>
-              <p className="subtle">
-                Prompt Testing {promptEvaluation.pddVersion} · {promptEvaluation.executionMode === "cloud" ? "Prompt Testing Cloud" : "local fallback"}
-                {promptEvaluation.model ? ` · ${promptEvaluation.model}` : ""}
-                {promptEvaluation.costUsd !== null ? ` · $${promptEvaluation.costUsd.toFixed(4)}` : ""}
-              </p>
-            </details>
-          </div>
-        )}
 
         {!promptComparison && promptOverrideAction}
 
@@ -1032,45 +1086,142 @@ export function EngineeringTicketPanel({
           </div>
         )}
 
-        <label className="field">
-          User story
-          <textarea
-            rows={5}
-            value={userStory}
-            placeholder="As a customer, I want…, so that…"
-            onChange={(event) => {
-              setUserStory(event.target.value);
-              setStoryTest(undefined);
-              setError(undefined);
-              setRecentPromptComparison(undefined);
-            }}
-          />
-        </label>
-        <p className="subtle">
-          Use the format: As a…, I want…, so that…
-        </p>
-
-        <div className="top-actions" id="pdd-test-controls">
-          <button
-            type="button"
-            className="btn primary"
-            disabled={busy || !canTestPrompt}
-            onClick={testAgainstPrompt}
-          >
-            <CheckCircle2 size={14} />
-            <span className={busy ? "pdd-testing-shimmer-text" : undefined}>
+        <section className="prompt-testing-chat" aria-labelledby="prompt-testing-chat-title">
+          <header className="prompt-testing-chat-heading">
+            <div>
+              <h3 id="prompt-testing-chat-title">Ask CloseSpan about this prompt</h3>
+              <p>
+                Ask a question, describe the behavior you want, or paste product notes. No user-story template is required.
+              </p>
+            </div>
+            <span className={`badge ${busy ? "medium" : "brand"}`}>
               {busy
-                ? "Testing prompt"
+                ? "Checking"
                 : canTestPrompt
-                  ? retryableRun
-                    ? "Prepare another coding run"
-                    : backgroundPromptTask?.status === "failed"
-                    ? "Run prompt test again"
-                    : "Run prompt test"
+                  ? "Prompt chat"
                   : "Suggested prompt required"}
             </span>
-          </button>
-        </div>
+          </header>
+
+          <div className="prompt-testing-chat-thread" role="log" aria-live="polite">
+            {chatMessages.length === 0 && (
+              <article className="prompt-testing-message is-assistant">
+                <span className="prompt-testing-message-author">CloseSpan</span>
+                <p>
+                  What would you like me to check? You can ask whether the prompt covers a feature, constraint, edge case, or expected outcome.
+                </p>
+              </article>
+            )}
+            {chatMessages.map((message) => (
+              <article
+                className={`prompt-testing-message is-${message.role}`}
+                key={message.id}
+              >
+                <span className="prompt-testing-message-author">
+                  {message.role === "user" ? "You" : "CloseSpan"}
+                </span>
+                {message.role === "user" ? (
+                  <p>{message.content}</p>
+                ) : (
+                  <>
+                    <PddResultEnglishView
+                      aligned={message.aligned}
+                      changes={message.changes}
+                      summary={message.summary}
+                    />
+                    <details className="pdd-evaluation-technical">
+                      <summary>Technical details</summary>
+                      <p className="subtle">
+                        Prompt Testing {message.pddVersion} · {message.executionMode === "cloud" ? "Prompt Testing Cloud" : "local fallback"}
+                        {message.model ? ` · ${message.model}` : ""}
+                        {message.costUsd !== null ? ` · $${message.costUsd.toFixed(4)}` : ""}
+                      </p>
+                    </details>
+                  </>
+                )}
+              </article>
+            ))}
+            {busy && (
+              <article className="prompt-testing-message is-assistant is-working">
+                <span className="prompt-testing-message-author">CloseSpan</span>
+                <div className="pdd-testing-progress" role="status">
+                  <div className="pdd-testing-progress-copy">
+                    <strong>
+                      <span className="pdd-testing-shimmer-text">
+                        {promptPreparationLabel(preparationPhase)}
+                      </span>
+                    </strong>
+                    <span>{pddProgress}%</span>
+                  </div>
+                  <p className="pdd-testing-progress-detail">
+                    I’m checking your request against the exact saved prompt. {pddTiming.sampleCount > 0
+                      ? `Recent successful checks average ${formatPddDuration(pddTiming.estimatedDurationMs)}.`
+                      : `The first check uses a ${formatPddDuration(pddTiming.estimatedDurationMs)} estimate.`}
+                  </p>
+                  <div
+                    className="pdd-testing-progress-track"
+                    role="progressbar"
+                    aria-label="Prompt evaluation in progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={pddProgress}
+                  >
+                    <span style={{ inlineSize: `${pddProgress}%` }} />
+                  </div>
+                </div>
+              </article>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          <form
+            className="prompt-testing-composer"
+            id="pdd-test-controls"
+            onSubmit={submitPromptQuestion}
+          >
+            <textarea
+              aria-label="Message CloseSpan about this prompt"
+              rows={2}
+              maxLength={2_000}
+              value={promptQuestion}
+              placeholder="Ask CloseSpan to check this prompt…"
+              onChange={(event) => {
+                setPromptQuestion(event.target.value);
+                setError(undefined);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+            />
+            <button
+              type="submit"
+              className="prompt-testing-send"
+              aria-label={busy ? "CloseSpan is checking the prompt" : "Send message to CloseSpan"}
+              disabled={busy || !canTestPrompt || !promptQuestion.trim()}
+            >
+              {busy ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />}
+            </button>
+          </form>
+          <p className="prompt-testing-composer-hint">
+            Press Enter to send · Shift + Enter for a new line
+          </p>
+          {retryableRun && (
+            <div className="prompt-testing-quick-actions">
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={busy || Boolean(userStoryInputIssue(userStory))}
+                onClick={() => testAgainstPrompt(userStory)}
+              >
+                <CheckCircle2 size={14} />
+                Prepare another coding run
+              </button>
+            </div>
+          )}
+        </section>
 
         {ticketContextMissing && (
           <div className="callout warning" role="status">
@@ -1098,30 +1249,6 @@ export function EngineeringTicketPanel({
                 </button>
               </div>
             )}
-          </div>
-        )}
-
-        {busy && (
-          <div className="pdd-testing-progress" role="status" aria-live="polite">
-            <div className="pdd-testing-progress-copy">
-              <strong>{promptPreparationLabel(preparationPhase)}</strong>
-              <span>{pddProgress}%</span>
-            </div>
-            <p className="pdd-testing-progress-detail">
-              This continues in the background. Automatic mode runs once for this ticket revision. {pddTiming.sampleCount > 0
-                ? `Recent successful tests average ${formatPddDuration(pddTiming.estimatedDurationMs)}.`
-                : `The first run uses a ${formatPddDuration(pddTiming.estimatedDurationMs)} estimate.`}
-            </p>
-            <div
-              className="pdd-testing-progress-track"
-              role="progressbar"
-              aria-label="Prompt evaluation in progress"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={pddProgress}
-            >
-              <span style={{ inlineSize: `${pddProgress}%` }} />
-            </div>
           </div>
         )}
 

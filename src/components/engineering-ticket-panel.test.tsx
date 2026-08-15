@@ -204,7 +204,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     )).toBe(true);
   });
 
-  it("places the tested and proposed prompts side by side before the user story", () => {
+  it("places the tested and proposed prompts before the prompt conversation", () => {
     const candidate = readyPromptWorkflow();
     const markup = renderPanel({
       ...candidate,
@@ -244,8 +244,9 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("Fix the input.");
     expect(markup).toContain("Fix the input and preserve the existing workflow.");
     expect(markup.indexOf("Review the proposed prompt")).toBeLessThan(
-      markup.indexOf("User story"),
+      markup.indexOf("Ask CloseSpan about this prompt"),
     );
+    expect(markup).toContain("What CloseSpan recommends");
     expect(markup).not.toContain("Test again");
   });
 
@@ -325,7 +326,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(formatPddDuration(75_000)).toBe("1m 15s");
   });
 
-  it("shimmers the Prompt Testing button label only while testing is in progress", () => {
+  it("shows the in-chat progress state while Prompt Testing is in progress", () => {
     const candidate = readyPromptWorkflow();
     const markup = renderPanel({
       ...candidate,
@@ -347,7 +348,8 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
       },
     });
 
-    expect(markup).toContain('<span class="pdd-testing-shimmer-text">Testing prompt</span>');
+    expect(markup).toContain('class="prompt-testing-message is-assistant is-working"');
+    expect(markup).toContain('<span class="pdd-testing-shimmer-text">Evaluating the suggested prompt</span>');
   });
 
   it("keeps the execution-profile blocker visible beside a passed alignment result", () => {
@@ -385,7 +387,8 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
       },
     });
 
-    expect(markup).toContain("Prompt alignment passed");
+    expect(markup).toContain("The prompt and user story are aligned.");
+    expect(markup).toContain("The prompt satisfies your request");
     expect(markup).not.toContain("Prompt Testing passed");
     expect(markup).toContain("Execution setup blocked");
     expect(markup).toContain(blocker.replaceAll("'", "&#x27;"));
@@ -434,7 +437,8 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).not.toContain("Invalid input: expected object, received null");
     expect(markup).toContain("leaves the saved result ready for review");
     expect(markup).not.toContain("Repository execution context");
-    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>.*Suggested prompt required/s);
+    expect(markup).toContain("Suggested prompt required");
+    expect(markup).toMatch(/<button[^>]*class="prompt-testing-send"[^>]*disabled=""/s);
   });
 
   it("does not confuse incomplete ticket context with prompt evaluation", () => {
@@ -494,9 +498,19 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("English");
     expect(markup).toContain(".prompt");
     expect(markup).toContain("# Correct large exports");
-    expect(markup).toContain("This is the exact prompt Prompt Testing will compare");
+    expect(markup).toContain("This is the exact prompt CloseSpan will discuss with you below");
     expect(markup).toContain("Agent-created prompt queued for Prompt Testing");
     expect(markup).toContain("will not restart the check when you revisit this page");
+  });
+
+  it("accepts free-form product questions through a chat composer", () => {
+    const markup = renderPanel(readyPromptWorkflow());
+
+    expect(markup).toContain("Ask CloseSpan about this prompt");
+    expect(markup).toContain("No user-story template is required");
+    expect(markup).toContain("Message CloseSpan about this prompt");
+    expect(markup).toContain("Send message to CloseSpan");
+    expect(markup).not.toContain("Use the format: As a");
   });
 
   it("places the execution approval action below the explanatory callout", () => {

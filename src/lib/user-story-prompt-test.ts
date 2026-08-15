@@ -16,24 +16,16 @@ function normalize(value: string): string {
   return value.replace(/\r\n?/g, "\n").trim().replace(/\s+/g, " ");
 }
 
-function hasUserStoryStructure(value: string): boolean {
-  const match =
-    /^As an?\s+(.+?)\s*,?\s+I want\s+(.+?)\s*,?\s+so that\s+(.+?)\.?$/iu.exec(
-      value,
-    );
-  return Boolean(
-    match &&
-      match.slice(1).every((part) => /[\p{L}\p{N}]/u.test(part)),
-  );
-}
-
 export function userStoryInputIssue(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) {
-    return "Write a user story before testing the prompt.";
+    return "Ask CloseSpan what you want checked against the prompt.";
   }
   const story = value.trim();
-  if (story.length < 15 || story.length > 2_000 || !hasUserStoryStructure(story)) {
-    return "Use the format: As a…, I want…, so that…";
+  if (story.length < 3) {
+    return "Add a little more detail so CloseSpan can check the prompt.";
+  }
+  if (story.length > 2_000) {
+    return "Keep the message under 2,000 characters.";
   }
   return null;
 }

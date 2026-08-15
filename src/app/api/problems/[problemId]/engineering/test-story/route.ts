@@ -39,14 +39,14 @@ export async function POST(
     const declaredLength = Number(request.headers.get("content-length") ?? 0);
     if (declaredLength > MAX_BODY_BYTES) {
       return NextResponse.json(
-        { error: "User story is too large" },
+        { error: "Prompt Testing message is too large" },
         { status: 413, headers: noStoreHeaders },
       );
     }
     const bodyText = await request.text();
     if (new TextEncoder().encode(bodyText).byteLength > MAX_BODY_BYTES) {
       return NextResponse.json(
-        { error: "User story is too large" },
+        { error: "Prompt Testing message is too large" },
         { status: 413, headers: noStoreHeaders },
       );
     }
@@ -55,7 +55,7 @@ export async function POST(
       body = JSON.parse(bodyText);
     } catch {
       return NextResponse.json(
-        { error: "User story request is invalid" },
+        { error: "Prompt Testing message is invalid" },
         { status: 400, headers: noStoreHeaders },
       );
     }

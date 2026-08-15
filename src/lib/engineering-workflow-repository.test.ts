@@ -188,16 +188,19 @@ describe("approval-bound engineering workflow", () => {
     }, actor)).rejects.toThrow("changed; test it again");
   });
 
-  it("rejects a vague story without changing prompt state", async () => {
-    await expect(
-      generatePddAcceptanceContract(
-        ORG_ID,
-        primaryProblem.id,
-        "Exports should work",
-        actor,
-      ),
-    ).rejects.toThrow("Use the format");
-    expect((await getEngineeringWorkflow(ORG_ID, primaryProblem.id)).prompt).toBeNull();
+  it("accepts a free-form PM request without requiring a user-story template", async () => {
+    const result = await generatePddAcceptanceContract(
+      ORG_ID,
+      primaryProblem.id,
+      "Can you check whether large exports keep every selected row?",
+      actor,
+    );
+
+    expect(result.storyTest.status).toBe("Ready for approval");
+    expect(result.workflow.prompt).toMatchObject({
+      status: "Awaiting approval",
+      revision: 1,
+    });
   });
 
   it("does not rewrite the prompt or approval when a different story is tested", async () => {

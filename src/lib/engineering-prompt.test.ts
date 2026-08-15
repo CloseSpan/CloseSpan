@@ -161,8 +161,9 @@ describe("engineering prompt contract", () => {
     const artifactPath = promptArtifactPath(snapshot.evidence.problemId, snapshot.evidence.title);
     const prompt = renderImplementationPrompt(snapshot, { promptRevision: 1, artifactPath });
     expect(evaluateUserStoryPromptMatch("   ", prompt)).toMatchObject({ status: "empty", matches: false });
-    expect(evaluateUserStoryPromptMatch("Users need exports to work", prompt)).toMatchObject({ status: "malformed", matches: false });
-    expect(evaluateUserStoryPromptMatch("As a   I want   so that  .", prompt)).toMatchObject({ status: "malformed", matches: false });
+    expect(evaluateUserStoryPromptMatch("Users need exports to work", prompt)).toMatchObject({ status: "mismatch", matches: false });
+    expect(evaluateUserStoryPromptMatch("As a   I want   so that  .", prompt)).toMatchObject({ status: "mismatch", matches: false });
+    expect(evaluateUserStoryPromptMatch("x", prompt)).toMatchObject({ status: "malformed", matches: false });
     expect(evaluateUserStoryPromptMatch(ticket.userStory, prompt)).toMatchObject({ status: "match", matches: true });
 
     const storyWithXmlCharacters = "As an <admin>, I want exports to preserve A&B values so that I can audit reports.";
