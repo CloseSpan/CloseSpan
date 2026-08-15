@@ -882,7 +882,13 @@ function detectSwift(files: ReadManifest[]): ProfileDraft {
     };
   }
   const containerFlag = container.kind === "workspace" ? "-workspace" : "-project";
-  const base = `xcodebuild ${containerFlag} ${shellArgument(container.path)} -scheme ${shellArgument(scheme)} -configuration Debug -sdk iphonesimulator -destination ${shellArgument("platform=iOS Simulator,name=iPhone 16")} CODE_SIGNING_ALLOWED=NO`;
+  // Build against the generic simulator platform instead of pinning a device
+  // model. Tenki images can legitimately add or remove simulator models while
+  // remaining compatible with the approved Xcode major line. A build-only
+  // command does not need a bootable device; runtime verification discovers an
+  // installed simulator separately when it needs to launch the product.
+  const simulatorDestination = "generic/platform=iOS Simulator";
+  const base = `xcodebuild ${containerFlag} ${shellArgument(container.path)} -scheme ${shellArgument(scheme)} -configuration Debug -sdk iphonesimulator -destination ${shellArgument(simulatorDestination)} CODE_SIGNING_ALLOWED=NO`;
   return {
     platform: "ios",
     language: "swift",
@@ -906,7 +912,7 @@ function detectSwift(files: ReadManifest[]): ProfileDraft {
       containerPath: container.path,
       scheme,
       configuration: "Debug",
-      destination: "platform=iOS Simulator,name=iPhone 16",
+      destination: simulatorDestination,
     },
   };
 }

@@ -263,6 +263,7 @@ describe("repository execution-profile detection", () => {
       language: "swift",
       xcode: { version: "26.1", containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
       commands: {
+        build: "xcodebuild -project 'Zup.xcodeproj' -scheme 'Zup' -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build",
         test: "swiftc -parse-as-library tests/CloseSpanPDDTests.swift -o /tmp/closespan-pdd-tests && /tmp/closespan-pdd-tests",
       },
       runnerWorkflowSha256: createHash("sha256").update(workflow).digest("hex"),
@@ -278,7 +279,12 @@ describe("repository execution-profile detection", () => {
           architecture: "arm64",
           workflowPath: ".github/workflows/closespan-agent-runner.yml",
           workflowSha256: createHash("sha256").update(workflow).digest("hex"),
-          xcode: expect.objectContaining({ version: "26.1", scheme: "Zup", signingPolicy: "simulator_only" }),
+          xcode: expect.objectContaining({
+            version: "26.1",
+            scheme: "Zup",
+            destination: "generic/platform=iOS Simulator",
+            signingPolicy: "simulator_only",
+          }),
         }),
       }),
       detectionEvidence: expect.objectContaining({
@@ -328,6 +334,7 @@ describe("repository execution-profile detection", () => {
       root: "ZupNative",
       xcode: { containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
       commands: {
+        build: "xcodebuild -project 'Zup.xcodeproj' -scheme 'Zup' -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build",
         test: "swiftc -parse-as-library tests/CloseSpanPDDTests.swift -o /tmp/closespan-pdd-tests && /tmp/closespan-pdd-tests",
       },
       runnerWorkflowSha256: createHash("sha256").update(workflow).digest("hex"),
