@@ -307,6 +307,72 @@ describe("agent-run completion callback", () => {
     }));
   });
 
+  it("accepts the routed GitHub runner label for a macOS capacity profile", async () => {
+    const baseContext = runnerContext();
+    const macContext = {
+      ...baseContext,
+      executionProfileSnapshot: {
+        ...baseContext.executionProfileSnapshot,
+        config: {
+          ...baseContext.executionProfileSnapshot.config,
+          executor: {
+            kind: "tenki_github_actions" as const,
+            platform: "macos" as const,
+            architecture: "arm64" as const,
+            runnerLabel: "tenki-macos-15-large",
+            workflowPath: ".github/workflows/closespan-agent-runner.yml",
+            workflowSha256: "e".repeat(64),
+            xcode: {
+              version: "26.1",
+              containerKind: "project" as const,
+              containerPath: "Zup.xcodeproj",
+              scheme: "Zup",
+              configuration: "Debug",
+              destination: "generic/platform=iOS Simulator",
+              sdk: "iphonesimulator",
+              signingPolicy: "simulator_only" as const,
+            },
+            androidEmulator: null,
+          },
+        },
+      },
+    };
+    workflow.context.mockResolvedValue(macContext);
+    const githubReport = {
+      ...report,
+      independentVerification: {
+        provider: "Tenki GitHub Actions",
+        workflowRunId: 123,
+        runnerLabel: "macos-26",
+        platform: "macos",
+        implementationJobId: "implementation:123:1",
+        verificationJobId: "verification:123:1",
+        status: "passed",
+        completedAt: "2026-08-14T00:00:00.000Z",
+        durationMs: 1_000,
+      },
+    };
+
+    const response = await POST(
+      oidcCallbackRequest({ event: "completed", orgId: "org-1", report: githubReport }),
+      { params: Promise.resolve({ runId }) },
+    );
+
+    expect(response.status).toBe(202);
+    expect(background.tasks).toHaveLength(1);
+
+    await background.tasks[0]!();
+
+    expect(github.publish).toHaveBeenCalledOnce();
+    expect(workflow.complete).toHaveBeenCalledTimes(2);
+    expect(workflow.complete).toHaveBeenLastCalledWith(
+      macContext,
+      expect.objectContaining({ status: "Draft PR opened" }),
+      expect.objectContaining({ pullRequestNumber: 2 }),
+    );
+    expect(workflow.fail).not.toHaveBeenCalled();
+  });
+
   it("does not publish when independent verification fails", async () => {
     tenki.verify.mockResolvedValue({
       ...report,

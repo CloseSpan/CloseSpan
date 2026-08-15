@@ -27,6 +27,7 @@ import {
   verifyGithubActionsOidcToken,
 } from "@/lib/github-actions-oidc";
 import { buildTenkiGithubActionsJob } from "@/lib/tenki-github-actions-job";
+import { githubActionsRunnerLabel } from "@/lib/github-actions-runner-label";
 
 export const maxDuration = 300;
 const MAX_CALLBACK_BYTES = 6_000_000;
@@ -178,11 +179,12 @@ export async function POST(
         const executor = profile ? executionProfileExecutor(profile) : { kind: "tenki_sandbox" as const };
         if (executor.kind === "tenki_github_actions") {
           const attestation = report.independentVerification;
+          const expectedRunnerLabel = githubActionsRunnerLabel(executor);
           if (
             !attestation
             || attestation.provider !== "Tenki GitHub Actions"
             || attestation.status !== "passed"
-            || attestation.runnerLabel !== executor.runnerLabel
+            || attestation.runnerLabel !== expectedRunnerLabel
             || attestation.platform !== executor.platform
             || attestation.implementationJobId === attestation.verificationJobId
           ) {
