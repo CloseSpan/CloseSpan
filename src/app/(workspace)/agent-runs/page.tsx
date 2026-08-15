@@ -84,7 +84,7 @@ export default async function AgentRunsPage() {
                     <td>
                       <Link
                         className="text-link"
-                        href={`/pdd/${run.problemId}#engineering-ticket`}
+                        href={`/agent-runs/${run.id}`}
                       >
                         <strong>{run.problemTitle}</strong>
                       </Link>
