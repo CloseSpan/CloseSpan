@@ -1388,6 +1388,7 @@ export function EngineeringTicketPanel({
             onSubmit={submitPromptQuestion}
           >
             <textarea
+              className="neumorphic-composite-field"
               aria-label="Message CloseSpan about this prompt"
               rows={2}
               maxLength={2_000}

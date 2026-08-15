@@ -3135,7 +3135,7 @@ table tbody tr:hover {
 }
 
 .app-shell .agent-runs-table {
-  padding: var(--space-2);
+  padding: 0;
   overflow: visible;
   border: 0;
   border-radius: var(--radius-xl);
@@ -3151,23 +3151,23 @@ table tbody tr:hover {
 }
 
 .app-shell .agent-runs-table thead tr {
-  background: var(--surface-pressed);
-  box-shadow: var(--shadow-inset-sm);
-}
-
-.app-shell .agent-runs-table thead th {
-  border: 0;
   background: transparent;
   box-shadow: none;
 }
 
+.app-shell .agent-runs-table thead th {
+  border: 0;
+  background: var(--surface-pressed);
+  box-shadow: none;
+}
+
 .app-shell .agent-runs-table thead th:first-child {
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  border-radius: var(--radius-xl) 0 0;
 }
 
 .app-shell .agent-runs-table thead th:last-child {
   width: 64px;
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  border-radius: 0 var(--radius-xl) 0 0;
 }
 
 .app-shell .agent-runs-table tbody td {
@@ -10562,7 +10562,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 :is(.app-shell, .shell-immersive, .landing, .feature-requests-page, .login-page)
   :is(
     input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.neumorphic-composite-field),
-    textarea,
+    textarea:not(.neumorphic-composite-field),
     select
   ):focus {
   border-color: transparent !important;
@@ -10573,7 +10573,7 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 :is(.app-shell, .shell-immersive, .landing, .feature-requests-page, .login-page)
   :is(
     input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.neumorphic-composite-field),
-    textarea,
+    textarea:not(.neumorphic-composite-field),
     select
   ):focus-visible {
   border-color: transparent !important;
