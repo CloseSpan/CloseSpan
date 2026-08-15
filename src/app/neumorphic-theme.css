@@ -73,6 +73,9 @@
   --shadow-inset-sm:
     inset 3px 3px 7px rgba(174, 185, 207, 0.27),
     inset -3px -3px 7px rgba(255, 255, 255, 0.88);
+  --shadow-inset-y-sm:
+    inset 0 5px 10px -8px rgba(174, 185, 207, 0.46),
+    inset 0 -5px 10px -8px rgba(255, 255, 255, 0.96);
   --shadow-disabled-inset:
     inset 3px 3px 7px rgba(174, 185, 207, 0.32),
     inset -3px -3px 7px rgba(255, 255, 255, 0.72);
@@ -274,6 +277,9 @@
   --shadow-inset-sm:
     inset 3px 3px 7px rgba(3, 7, 14, 0.58),
     inset -3px -3px 7px rgba(49, 60, 81, 0.36);
+  --shadow-inset-y-sm:
+    inset 0 5px 10px -8px rgba(3, 7, 14, 0.74),
+    inset 0 -5px 10px -8px rgba(54, 66, 89, 0.5);
   --shadow-disabled-inset:
     inset 3px 3px 7px rgba(3, 7, 14, 0.72),
     inset -3px -3px 7px rgba(49, 60, 81, 0.25);
@@ -3158,7 +3164,7 @@ table tbody tr:hover {
 .app-shell .agent-runs-table thead th {
   border: 0;
   background: var(--surface-pressed);
-  box-shadow: none;
+  box-shadow: var(--shadow-inset-y-sm);
 }
 
 .app-shell .agent-runs-table thead th:first-child {
@@ -3952,6 +3958,13 @@ pre.code-block {
   overscroll-behavior-inline: contain;
   white-space: pre;
   word-break: normal;
+}
+
+.test-output-scroll {
+  max-height: clamp(16rem, 42vh, 30rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 /* Menus, drawers, and dialogs */

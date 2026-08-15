@@ -2335,6 +2335,101 @@ export async function requestImplementationApproval(
   return postgresWorkflow(orgId, problemId);
 }
 
+/**
+ * Prepare a fresh, single-use authorization for an exact retry of a terminal
+ * coding run. This path deliberately reuses the already tested immutable
+ * prompt and acceptance contract; it does not rerun Prompt Testing or widen
+ * the approved repository scope.
+ */
+export async function prepareImplementationRunRetry(
+  orgId: string,
+  runId: string,
+  actor: ActorContext,
+): Promise<EngineeringWorkflowView> {
+  await assertAgentExecutionAllowed(orgId);
+  const located = await getAgentRunById(orgId, runId);
+  if (!located) {
+    throw new EngineeringWorkflowError("The coding run was not found", 404);
+  }
+  if (!RETRYABLE_AGENT_RUN_STATUSES.has(located.run.status)) {
+    throw new EngineeringWorkflowError(
+      "Only a failed run or a run that returned no changes can be retried",
+      409,
+    );
+  }
+  if (
+    located.run.failureCode === "stale_base"
+    || located.run.failureMessage?.startsWith("stale_base:")
+  ) {
+    throw new EngineeringWorkflowError(
+      "The approved branch changed after this run was authorized. Prepare another coding run from Prompt Testing so CloseSpan can bind the latest reviewed commit.",
+      409,
+    );
+  }
+
+  let workflow = await getEngineeringWorkflow(orgId, located.problemId);
+  if (workflow.run?.id !== runId) {
+    throw new EngineeringWorkflowError(
+      "A newer coding run already exists for this ticket. Open the latest run instead.",
+      409,
+    );
+  }
+
+  if (workspacePersistenceMode(orgId) === "postgres") {
+    const binding = await databasePool().query<{ prompt_revision_id: string }>(
+      `SELECT prompt_revision_id
+         FROM agent_runs
+        WHERE org_id=$1 AND id=$2 AND problem_id=$3`,
+      [orgId, runId, located.problemId],
+    );
+    if (!binding.rows[0] || workflow.prompt?.id !== binding.rows[0].prompt_revision_id) {
+      throw new EngineeringWorkflowError(
+        "The ticket prompt changed after this run. Prepare another coding run from Prompt Testing to review the updated contract.",
+        409,
+      );
+    }
+    if (!located.run.repository || !located.run.baseBranch || !located.run.baseSha) {
+      throw new EngineeringWorkflowError(
+        "The original run is missing its immutable repository binding",
+        409,
+      );
+    }
+    let currentHead: GithubAuthorizedBranchHead;
+    try {
+      currentHead = await resolveAuthorizedGithubBranchHead({
+        orgId,
+        repository: located.run.repository,
+      });
+    } catch (error) {
+      throw new EngineeringWorkflowError(
+        error instanceof Error
+          ? `CloseSpan could not verify the approved branch before retrying: ${error.message}`
+          : "CloseSpan could not verify the approved branch before retrying",
+        409,
+      );
+    }
+    if (
+      currentHead.branch !== located.run.baseBranch
+      || currentHead.sha.toLowerCase() !== located.run.baseSha.toLowerCase()
+    ) {
+      throw new EngineeringWorkflowError(
+        "The approved branch changed after this run. Prepare another coding run from Prompt Testing so CloseSpan can bind the latest reviewed commit.",
+        409,
+      );
+    }
+  }
+
+  await reopenPromptAfterTerminalAgentRun(orgId, workflow, actor);
+  workflow = await getEngineeringWorkflow(orgId, located.problemId);
+  if (!workflow.prompt || workflow.prompt.status !== "Ready") {
+    throw new EngineeringWorkflowError(
+      "The immutable prompt is not ready for a fresh one-run authorization",
+      409,
+    );
+  }
+  return requestImplementationApproval(orgId, workflow.prompt.id, actor);
+}
+
 export async function approveImplementationRun(
   orgId: string,
   approvalId: string,

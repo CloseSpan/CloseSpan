@@ -8,6 +8,7 @@ import {
   getEngineeringWorkflow,
   implementationPermittedPathsForRetry,
   evidenceBackedProductPathsForRetry,
+  prepareImplementationRunRetry,
   rejectImplementationApproval,
   requestImplementationApproval,
   reviewedProfileSourceForRetry,
@@ -113,6 +114,43 @@ describe("approval-bound engineering workflow", () => {
     expect(retried.workflow.prompt?.status).toBe("Awaiting approval");
     expect(retried.workflow.approval?.status).toBe("Pending");
     expect(retried.workflow.approval?.id).not.toBe(awaiting.approval!.id);
+  });
+
+  it("retries a failed coding run directly with a fresh single-use authorization", async () => {
+    const awaiting = await prepareApproval();
+    const approved = await approveImplementationRun(
+      ORG_ID,
+      awaiting.approval!.id,
+      actor,
+    );
+    await failAgentRun(
+      {
+        orgId: ORG_ID,
+        problemId: primaryProblem.id,
+        runId: approved.run!.id,
+        promptId: approved.prompt!.id,
+      } as Parameters<typeof failAgentRun>[0],
+      "github_workflow_failure",
+      "GitHub Actions did not start this run.",
+    );
+
+    const retried = await prepareImplementationRunRetry(
+      ORG_ID,
+      approved.run!.id,
+      { ...actor, idempotencyKey: "workflow_retry_1" },
+    );
+
+    expect(retried.prompt).toMatchObject({
+      id: awaiting.prompt!.id,
+      contentHash: awaiting.prompt!.contentHash,
+      status: "Awaiting approval",
+    });
+    expect(retried.approval).toMatchObject({
+      status: "Pending",
+      promptHash: awaiting.prompt!.contentHash,
+      baseSha: awaiting.prompt!.baseSha,
+    });
+    expect(retried.approval?.id).not.toBe(awaiting.approval!.id);
   });
 
   it("rejects ticket mutation while an implementation approval is pending", async () => {

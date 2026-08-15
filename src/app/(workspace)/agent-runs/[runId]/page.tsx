@@ -2,6 +2,7 @@ import { Info } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AgentRunAutoRefresh } from "@/components/agent-run-auto-refresh";
+import { AgentRunRetryButton } from "@/components/agent-run-retry-button";
 import { RuntimeInteractionEvidence } from "@/components/runtime-interaction-evidence";
 import {
   getRuntimeVerificationBadgeClass,
@@ -10,7 +11,10 @@ import {
 } from "@/lib/agent-run-runtime-status";
 import { requireWorkspaceUser } from "@/lib/auth-user";
 import { getAgentRunById } from "@/lib/engineering-workflow-repository";
-import { agentRunVerificationExplanation } from "@/lib/agent-run-presentation";
+import {
+  agentRunVerificationExplanation,
+  canRetryAgentRunDirectly,
+} from "@/lib/agent-run-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +29,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
   const verificationExplanation = run.independentVerification
     ? null
     : agentRunVerificationExplanation(run);
+  const canRetryDirectly = user.role === "Admin" && canRetryAgentRunDirectly(run);
   return (
     <>
       <section className="card">
@@ -32,7 +37,18 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
         <div className="card-body detail-stack">
           <p>{run.implementationSummary ?? run.failureMessage ?? "The executor has not returned a report yet."}</p>
           <p className="subtle">Coding environment: Tenki Sandbox · Branch: {run.branchName}</p>
-          <div className="top-actions"><Link className="btn" href={`/pdd/${problemId}#engineering-ticket`}>Open Prompt Testing preparation</Link>{run.approvalId ? <Link className="btn" href={`/approvals/${run.approvalId}`}>View authorizing approval</Link> : null}{run.pullRequestUrl && <a className="btn primary" href={run.pullRequestUrl}>Open draft PR</a>}</div>
+          {canRetryDirectly ? (
+            <p className="subtle">
+              Retry authorizes one fresh run with the same tested prompt, acceptance contract,
+              repository, and pinned commit. Prompt Testing is not repeated.
+            </p>
+          ) : null}
+          <div className="top-actions">
+            {canRetryDirectly ? <AgentRunRetryButton runId={run.id} /> : null}
+            <Link className="btn" href={`/pdd/${problemId}#engineering-ticket`}>Open Prompt Testing preparation</Link>
+            {run.approvalId ? <Link className="btn" href={`/approvals/${run.approvalId}`}>View authorizing approval</Link> : null}
+            {run.pullRequestUrl && <a className="btn primary" href={run.pullRequestUrl}>Open draft PR</a>}
+          </div>
         </div>
       </section>
       <section className="card section-gap">

@@ -4,6 +4,7 @@ import type {
   AgentRunView,
 } from "./engineering-workflow-repository";
 import {
+  canRetryAgentRunDirectly,
   agentRunVerificationExplanation,
   agentRunVerificationState,
 } from "./agent-run-presentation";
@@ -28,6 +29,21 @@ function run(
 }
 
 describe("agent run verification presentation", () => {
+  it("offers an exact retry for infrastructure failures but not stale approvals", () => {
+    expect(canRetryAgentRunDirectly({
+      status: "Failed",
+      failureCode: "github_workflow_failure",
+      failureMessage: "GitHub Actions did not start.",
+      pullRequestUrl: null,
+    })).toBe(true);
+    expect(canRetryAgentRunDirectly({
+      status: "Failed",
+      failureCode: "stale_base",
+      failureMessage: "stale_base: repository branch moved after approval",
+      pullRequestUrl: null,
+    })).toBe(false);
+  });
+
   it.each(["Failed", "Cancelled", "No changes"] as const)(
     "shows Not run when a %s implementation never reached verification",
     (status) => {

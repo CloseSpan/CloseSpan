@@ -37,6 +37,20 @@ export interface AgentRunVerificationExplanation {
   message: string;
 }
 
+export function canRetryAgentRunDirectly(
+  run: Pick<
+    AgentRunView | AgentRunSummaryView,
+    "status" | "failureCode" | "failureMessage" | "pullRequestUrl"
+  >,
+): boolean {
+  if (!new Set(["Failed", "No changes"]).has(run.status)) return false;
+  if (run.pullRequestUrl) return false;
+  return !(
+    run.failureCode === "stale_base"
+    || run.failureMessage?.startsWith("stale_base:")
+  );
+}
+
 export function agentRunVerificationExplanation(
   run: Pick<
     AgentRunView | AgentRunSummaryView,
