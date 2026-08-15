@@ -4,6 +4,7 @@ import {
   sanitizeExecutionProfileConfig,
 } from "./execution-profile";
 import { githubActionsRunnerLabel } from "./github-actions-runner-label";
+import { normalizeSwiftAcceptanceHarnessCommand } from "./swift-acceptance-harness";
 
 /**
  * Produce the secret-free, approval-bound job consumed by the repository's
@@ -15,7 +16,10 @@ export function buildTenkiGithubActionsJob(context: AgentRunExecutionContext) {
   if (executor.kind !== "tenki_github_actions") {
     throw new Error("Agent run is not bound to a Tenki GitHub Actions execution profile");
   }
-  const generatedTests = context.generatedTests ?? [];
+  const generatedTests = (context.generatedTests ?? []).map((test) => ({
+    ...test,
+    command: normalizeSwiftAcceptanceHarnessCommand(test.command),
+  }));
   const selectedRunnerLabel = githubActionsRunnerLabel(executor);
   return {
     schemaVersion: 1 as const,
@@ -30,7 +34,9 @@ export function buildTenkiGithubActionsJob(context: AgentRunExecutionContext) {
     executionProfileHash: context.executionProfileHash,
     executionProfileSnapshot: context.executionProfileSnapshot,
     requiredCommands: [...new Set([
-      ...context.promptSnapshot.ticket.requiredCommands,
+      ...context.promptSnapshot.ticket.requiredCommands.map(
+        normalizeSwiftAcceptanceHarnessCommand,
+      ),
       ...generatedTests.map((test) => test.command),
     ])],
     permittedPaths: context.promptSnapshot.ticket.permittedPaths,

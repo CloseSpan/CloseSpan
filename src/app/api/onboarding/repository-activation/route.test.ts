@@ -74,7 +74,11 @@ describe("repository activation onboarding API", () => {
         repository: "acme/app",
         workspaceRoot: ".",
         activeProfile: null,
-        detectedProfile: { id: "profile-1", config: { schemaVersion: 3, executor: { kind: "tenki_github_actions" } } },
+        detectedProfile: {
+          id: "profile-1",
+          detectionEvidence: { confidence: 0.95 },
+          config: { schemaVersion: 3, executor: { kind: "tenki_github_actions", platform: "macos" } },
+        },
       }],
     });
     setups.list.mockResolvedValue([{
@@ -100,6 +104,8 @@ describe("repository activation onboarding API", () => {
         profileDetected: true,
         executionReady: false,
         tenkiRequired: true,
+        compatibilityStatus: "validating",
+        compatibilitySummary: "Validating toolchain compatibility",
         setup: { status: "Pending", pullRequestNumber: 12 },
       }],
     });

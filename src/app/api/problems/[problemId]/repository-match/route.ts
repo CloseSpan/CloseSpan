@@ -17,7 +17,11 @@ import {
   type ProblemRepositoryMatchRefreshResult,
 } from "@/lib/problem-repository-match-repository";
 import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
-import { activateReadyDetectedExecutionProfiles } from "@/lib/tenki-runner-onboarding";
+import {
+  activateReadyDetectedExecutionProfiles,
+  prepareDetectedTenkiRunner,
+  prepareTenkiRunnerSizingProbes,
+} from "@/lib/tenki-runner-onboarding";
 import {
   authorizeMutation,
   authorizeRead,
@@ -141,12 +145,25 @@ export async function PUT(
       if (!repository) {
         throw new HttpError(404, "Authorized repository was not found");
       }
-      await detectAndSaveGithubRepositoryProfiles({
+      const detection = await detectAndSaveGithubRepositoryProfiles({
         orgId: context.orgId,
         installationId: repository.installationId,
         repository: repository.repository,
         defaultBranch: repository.defaultBranch,
         actor: context,
+      });
+      await prepareDetectedTenkiRunner({
+        orgId: context.orgId,
+        installationId: repository.installationId,
+        repository: repository.repository,
+        defaultBranch: repository.defaultBranch,
+        detection,
+      });
+      await prepareTenkiRunnerSizingProbes({
+        orgId: context.orgId,
+        installationId: repository.installationId,
+        repository: repository.repository,
+        callbackBaseUrl: request.nextUrl.origin,
       });
       await activateReadyDetectedExecutionProfiles({
         orgId: context.orgId,

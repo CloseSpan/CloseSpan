@@ -16,7 +16,7 @@ describe("RepositoryActivationProgress", () => {
       <RepositoryActivationProgress orgId="org-1" />,
     );
     expect(markup).toContain("Preparing repository execution");
-    expect(markup).toContain("running alongside repository indexing");
+    expect(markup).toContain("continue in the background alongside indexing");
     expect(markup).toContain('aria-live="polite"');
   });
 });

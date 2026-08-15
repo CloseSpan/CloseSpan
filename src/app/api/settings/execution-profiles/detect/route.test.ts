@@ -5,13 +5,17 @@ const repositories = vi.hoisted(() => ({ list: vi.fn() }));
 const detector = vi.hoisted(() => ({ detect: vi.fn() }));
 const profiles = vi.hoisted(() => ({ list: vi.fn() }));
 const matches = vi.hoisted(() => ({ refresh: vi.fn() }));
-const activation = vi.hoisted(() => ({ activate: vi.fn() }));
+const activation = vi.hoisted(() => ({ activate: vi.fn(), setup: vi.fn(), probes: vi.fn() }));
 
 vi.mock("@/lib/github-repository-allowlist", () => ({ listGithubRepositoryAuthorizations: repositories.list }));
 vi.mock("@/lib/repository-profile-detection", () => ({ detectAndSaveGithubRepositoryProfiles: detector.detect }));
 vi.mock("@/lib/execution-profile-repository", () => ({ listExecutionProfileSettings: profiles.list }));
 vi.mock("@/lib/problem-repository-match-repository", () => ({ refreshPendingProblemRepositoryMatches: matches.refresh }));
-vi.mock("@/lib/tenki-runner-onboarding", () => ({ activateReadyDetectedExecutionProfiles: activation.activate }));
+vi.mock("@/lib/tenki-runner-onboarding", () => ({
+  activateReadyDetectedExecutionProfiles: activation.activate,
+  prepareDetectedTenkiRunner: activation.setup,
+  prepareTenkiRunnerSizingProbes: activation.probes,
+}));
 
 import { POST } from "./route";
 
@@ -43,6 +47,8 @@ describe("execution profile detection API", () => {
     profiles.list.mockReset().mockResolvedValue({ assignments: [] });
     matches.refresh.mockReset().mockResolvedValue([]);
     activation.activate.mockReset().mockResolvedValue(1);
+    activation.setup.mockReset().mockResolvedValue(null);
+    activation.probes.mockReset().mockResolvedValue([]);
   });
 
   it("detects only metadata from an explicitly authorized repository", async () => {
@@ -59,6 +65,14 @@ describe("execution profile detection API", () => {
       orgId: "org-1",
       repository: "acme/app",
       actor: expect.objectContaining({ actorId: "system:repository-detector" }),
+    }));
+    expect(activation.setup).toHaveBeenCalledWith(expect.objectContaining({
+      repository: "acme/app",
+      detection: { profiles: [{ root: "." }] },
+    }));
+    expect(activation.probes).toHaveBeenCalledWith(expect.objectContaining({
+      repository: "acme/app",
+      callbackBaseUrl: "http://localhost",
     }));
   });
 

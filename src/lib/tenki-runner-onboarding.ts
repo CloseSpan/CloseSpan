@@ -23,10 +23,15 @@ import {
   type TenkiRunnerWorkflowSetupView,
 } from "./tenki-runner-workflow-setup-repository";
 import {
+  getProfileTenkiRunnerSizingProbe,
   type TenkiRunnerSizingProbe,
 } from "./tenki-runner-sizing-probe-repository";
 import { queueAndDispatchTenkiRunnerSizingProbe } from "./tenki-runner-sizing-probe";
 import type { TenkiWorkloadClass } from "./tenki-runner-sizing";
+import {
+  executionCompatibilityReadiness,
+  executionCompatibilityRequirements,
+} from "./execution-compatibility";
 
 export function repositoryDetectionNeedsTenki(
   detection: GithubRepositoryProfileDetection,
@@ -54,9 +59,6 @@ export async function activateReadyDetectedExecutionProfiles(input: {
   let activated = 0;
   for (const profile of detected) {
     try {
-      // A validated baseline runner is enough to activate a detected profile.
-      // Adaptive sizing can promote a later immutable version when its probe
-      // completes; it must not leave the latest repository detection inactive.
       assertExecutionProfileReadyForActivation(profile.config);
       assertTenkiProviderResourceLimits(profile.config);
       await assertManagedTenkiBootSourceAllowed({
@@ -65,6 +67,17 @@ export async function activateReadyDetectedExecutionProfiles(input: {
         workspaceRoot: profile.workspaceRoot,
         config: profile.config,
       });
+      const executor = executionProfileExecutor(profile.config);
+      const probe = executor.kind === "tenki_github_actions"
+        ? await getProfileTenkiRunnerSizingProbe(input.orgId, profile.id)
+        : null;
+      const hasCompatibilityContract = Boolean(
+        executionCompatibilityRequirements(profile.detectionEvidence),
+      );
+      if (executor.kind === "tenki_github_actions" || hasCompatibilityContract) {
+        const readiness = executionCompatibilityReadiness({ profile, probe });
+        if (readiness.status !== "compatible") throw new Error(readiness.detail);
+      }
     } catch (error) {
       // Repository detection can find multiple independent roots. One root
       // that still needs a workflow, managed image, or other activation

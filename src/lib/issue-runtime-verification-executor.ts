@@ -37,15 +37,7 @@ export function runtimeVerificationRunnerLabel(
   const override = executor.platform === "macos"
     ? process.env.RUNTIME_VERIFICATION_MACOS_RUNNER_LABEL?.trim()
     : undefined;
-  const requiredXcodeMajor = executor.xcode
-    ? Number.parseInt(executor.xcode.version.split(".")[0] || "", 10)
-    : Number.NaN;
-  const compatibleGithubRunner = executor.platform === "macos"
-    && Number.isFinite(requiredXcodeMajor)
-    && requiredXcodeMajor >= 26
-    ? `macos-${requiredXcodeMajor}`
-    : undefined;
-  const label = override || compatibleGithubRunner || githubActionsRunnerLabel(executor);
+  const label = override || githubActionsRunnerLabel(executor);
   if (!RUNNER_LABEL_PATTERN.test(label)) {
     throw new Error(
       "RUNTIME_VERIFICATION_MACOS_RUNNER_LABEL must be a valid GitHub Actions runner label",

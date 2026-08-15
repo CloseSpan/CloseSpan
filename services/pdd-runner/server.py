@@ -1744,7 +1744,8 @@ def execute(job: dict) -> None:
 
 Swift acceptance-test contract:
 - Write one standalone Swift script at the requested output path.
-- It will run as `swift tests/CloseSpanPDDTests.swift` from the Xcode project root.
+- It will compile and run as `swiftc -parse-as-library tests/CloseSpanPDDTests.swift -o /tmp/closespan-pdd-tests && /tmp/closespan-pdd-tests` from the Xcode project root.
+- Define an `@main` entry point so the harness is valid in parse-as-library mode; do not use top-level executable statements.
 - Do not import XCTest or the application module, because the repository may not have a test target yet.
 - Use Foundation and deterministic source/fixture assertions, print concise failure evidence, and exit non-zero when any assertion fails.
 - Resolve repository files relative to the script location; never use absolute machine paths or network access.

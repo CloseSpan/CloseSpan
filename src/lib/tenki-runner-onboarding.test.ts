@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const workflow = vi.hoisted(() => ({ install: vi.fn() }));
 const profiles = vi.hoisted(() => ({ list: vi.fn(), confirm: vi.fn() }));
 const catalog = vi.hoisted(() => ({ assertAllowed: vi.fn() }));
+const sizing = vi.hoisted(() => ({ getProfile: vi.fn() }));
 const setups = vi.hoisted(() => ({
   get: vi.fn(),
   preparing: vi.fn(),
@@ -28,6 +29,9 @@ vi.mock("./execution-profile-repository", () => ({
 }));
 vi.mock("./tenki-environment-catalog-repository", () => ({
   assertManagedTenkiBootSourceAllowed: catalog.assertAllowed,
+}));
+vi.mock("./tenki-runner-sizing-probe-repository", () => ({
+  getProfileTenkiRunnerSizingProbe: sizing.getProfile,
 }));
 
 import {
@@ -63,6 +67,7 @@ describe("Tenki repository onboarding", () => {
     setups.failed.mockResolvedValue(undefined);
     profiles.confirm.mockResolvedValue({});
     catalog.assertAllowed.mockResolvedValue(null);
+    sizing.getProfile.mockResolvedValue(null);
   });
 
   it("respects an administrator deactivation during automatic refreshes", async () => {
@@ -117,7 +122,7 @@ describe("Tenki repository onboarding", () => {
     }));
   });
 
-  it("activates a ready runner profile without waiting for adaptive sizing", async () => {
+  it("does not activate a runner profile before its compatibility probe passes", async () => {
     profiles.list.mockResolvedValue({
       assignments: [{
         repository: "acme/app",
@@ -188,6 +193,86 @@ describe("Tenki repository onboarding", () => {
       orgId: "org-1",
       repository: "acme/app",
       actor: { actorId: "system:repository-detector" },
+    })).resolves.toBe(0);
+    expect(profiles.confirm).not.toHaveBeenCalled();
+  });
+
+  it("activates a runner profile after its compatibility probe passes", async () => {
+    const config = {
+      schemaVersion: 3,
+      language: "swift",
+      framework: "iOS",
+      packageManager: "xcode",
+      runtimeVersion: "xcode 16",
+      workingDirectory: "ZupNative",
+      installCommands: [],
+      buildCommands: ["xcodebuild build"],
+      testCommands: [],
+      typecheckCommands: [],
+      permittedPaths: ["ZupNative/**"],
+      tenkiImage: null,
+      tenkiSnapshotId: null,
+      cpuCores: 4,
+      memoryMb: 14_336,
+      allowInbound: false,
+      allowOutbound: false,
+      maxDurationMs: 3_600_000,
+      idleTimeoutMinutes: 2,
+      automaticInstall: false,
+      automaticBuild: true,
+      publicEnvironment: [],
+      secretBindings: [],
+      startCommand: null,
+      applicationPort: null,
+      healthCheckPath: null,
+      healthCheckTimeoutMs: 90_000,
+      previewEnabled: false,
+      previewTtlMs: 600_000,
+      runtimeTools: { http: false, browser: false, logs: false },
+      executor: {
+        kind: "tenki_github_actions",
+        platform: "macos",
+        architecture: "arm64",
+        runnerLabel: "tenki-macos-15-small",
+        workflowPath: ".github/workflows/closespan-agent-runner.yml",
+        workflowSha256: "a".repeat(64),
+        xcode: {
+          version: "16",
+          containerKind: "project",
+          containerPath: "Zup.xcodeproj",
+          scheme: "Zup",
+          configuration: "Debug",
+          destination: "platform=iOS Simulator,name=iPhone 16",
+          sdk: "iphonesimulator",
+          signingPolicy: "simulator_only",
+        },
+        androidEmulator: null,
+      },
+    };
+    profiles.list.mockResolvedValue({
+      assignments: [{
+        repository: "acme/app",
+        workspaceRoot: "ZupNative",
+        activeProfile: null,
+        automaticActivationDisabled: false,
+        detectedProfile: {
+          id: "detected-runner",
+          repository: "acme/app",
+          workspaceRoot: "ZupNative",
+          detectionEvidence: { confidence: 0.96 },
+          config,
+        },
+      }],
+    });
+    sizing.getProfile.mockResolvedValue({
+      status: "Completed",
+      telemetry: { exitCode: 0 },
+    });
+
+    await expect(activateReadyDetectedExecutionProfiles({
+      orgId: "org-1",
+      repository: "acme/app",
+      actor: { actorId: "system:repository-detector" },
     })).resolves.toBe(1);
     expect(profiles.confirm).toHaveBeenCalledWith(expect.objectContaining({
       detectedProfileId: "detected-runner",
@@ -233,6 +318,10 @@ describe("Tenki repository onboarding", () => {
           ))
         : Promise.resolve(null),
     );
+    sizing.getProfile.mockResolvedValue({
+      status: "Completed",
+      telemetry: { exitCode: 0 },
+    });
     const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     await expect(activateReadyDetectedExecutionProfiles({

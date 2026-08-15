@@ -27,6 +27,7 @@ import {
   type ManagedTenkiEnvironmentArtifact,
 } from "@/lib/tenki-environment-catalog";
 import type { PendingTenkiRunnerWorkflowSetup } from "@/lib/tenki-runner-workflow-setup-repository";
+import type { ExecutionCompatibilityReadiness } from "@/lib/execution-compatibility";
 import {
   tenkiRunnerSize,
   tenkiRunnerSizesForPlatform,
@@ -37,6 +38,7 @@ interface ExecutionProfileApiView extends ExecutionProfileSettingsView {
   repositories: GithubRepositoryAuthorization[];
   managedEnvironments: ManagedTenkiEnvironmentArtifact[];
   runnerWorkflowSetups: PendingTenkiRunnerWorkflowSetup[];
+  compatibilityByProfileId: Record<string, ExecutionCompatibilityReadiness>;
 }
 
 interface ApiResult {
@@ -1681,10 +1683,26 @@ export function ExecutionProfileSettings({
               ) : assignments.map((assignment) => {
                 const shown = assignment.activeProfile ?? assignment.detectedProfile;
                 if (!shown) return null;
+                const detectedCompatibility = assignment.detectedProfile
+                  ? view.compatibilityByProfileId?.[assignment.detectedProfile.id]
+                  : undefined;
+                const shownCompatibility = view.compatibilityByProfileId?.[shown.id];
                 return (
                   <div className="execution-profile-root" key={`${assignment.repository}:${assignment.workspaceRoot}`}>
                     <div className="split">
-                      <div><strong>Root <code>{assignment.workspaceRoot}</code></strong><p className="subtle">{assignment.activeProfile ? profileLabel(assignment.activeProfile) : assignment.automaticActivationDisabled ? "Deactivated by an administrator" : "Activating automatically when ready"}</p></div>
+                      <div>
+                        <strong>Root <code>{assignment.workspaceRoot}</code></strong>
+                        <p className="subtle">
+                          {assignment.activeProfile
+                            ? profileLabel(assignment.activeProfile)
+                            : assignment.automaticActivationDisabled
+                              ? "Deactivated by an administrator"
+                              : shownCompatibility?.summary ?? "Validating compatibility in the background"}
+                        </p>
+                        {shownCompatibility?.detail && (
+                          <small className="subtle">{shownCompatibility.detail}</small>
+                        )}
+                      </div>
                       <div className="top-actions">
                         {assignment.activeProfile && <span className="badge success">Active</span>}
                         {assignment.activeProfile && (
@@ -1693,7 +1711,19 @@ export function ExecutionProfileSettings({
                           </button>
                         )}
                         {assignment.detectedProfile && (
-                          <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyProfile)} onClick={() => confirm(assignment.detectedProfile!.id, repository)}>
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            disabled={
+                              !isAdmin
+                              || Boolean(busyProfile)
+                              || detectedCompatibility?.status !== "compatible"
+                            }
+                            title={detectedCompatibility?.status !== "compatible"
+                              ? detectedCompatibility?.detail ?? "Compatibility validation is still running"
+                              : undefined}
+                            onClick={() => confirm(assignment.detectedProfile!.id, repository)}
+                          >
                             {busyProfile === assignment.detectedProfile.id ? "Activating…" : assignment.activeProfile ? "Activate detected update" : "Activate"}
                           </button>
                         )}

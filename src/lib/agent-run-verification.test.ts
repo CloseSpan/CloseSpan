@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { validateAgentImplementationReport } from "./agent-run-verification";
 import type { ImplementationPromptSnapshot } from "./engineering-prompt";
+import { CLOSESPAN_SWIFT_ACCEPTANCE_TEST_COMMAND } from "./swift-acceptance-harness";
 
 const runId = "11111111-1111-4111-8111-111111111111";
 const promptHash = "a".repeat(64);
@@ -62,6 +63,30 @@ describe("agent implementation report verification", () => {
     const report = validReport();
     report.tests = [];
     expect(() => validateAgentImplementationReport(report, { runId, promptHash, baseSha, promptArtifactPath: ".prompt/tickets/CS-1.prompt.md", promptSnapshot: snapshot })).toThrow("Required command did not pass");
+  });
+
+  it("accepts the corrected Swift harness result for a legacy saved ticket", () => {
+    const legacySnapshot: ImplementationPromptSnapshot = {
+      ...snapshot,
+      ticket: {
+        ...snapshot.ticket,
+        requiredCommands: ["swift tests/CloseSpanPDDTests.swift"],
+      },
+    };
+    const report = validReport();
+    report.tests = [{
+      command: CLOSESPAN_SWIFT_ACCEPTANCE_TEST_COMMAND,
+      status: "passed",
+      output: "native acceptance harness passed",
+    }];
+
+    expect(validateAgentImplementationReport(report, {
+      runId,
+      promptHash,
+      baseSha,
+      promptArtifactPath: ".prompt/tickets/CS-1.prompt.md",
+      promptSnapshot: legacySnapshot,
+    }).status).toBe("Tests passed");
   });
 
   it("rejects high-confidence secrets in the final diff", () => {

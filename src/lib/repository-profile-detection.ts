@@ -20,8 +20,14 @@ import {
   assertTenkiRunnerLabel,
   tenkiRunnerSize,
 } from "./tenki-runner-sizing";
+import { CLOSESPAN_SWIFT_ACCEPTANCE_TEST_COMMAND } from "./swift-acceptance-harness";
+import {
+  runtimeConstraint,
+  type ExecutionCompatibilityRequirements,
+  type ToolchainRequirement,
+} from "./execution-compatibility";
 
-const DETECTOR_VERSION = 6;
+const DETECTOR_VERSION = 9;
 const TENKI_RUNNER_WORKFLOW_PATH = ".github/workflows/closespan-agent-runner.yml";
 const TENKI_RUNNER_PROBE_WORKFLOW_PATH = ".github/workflows/closespan-runner-sizing.yml";
 const PRIMARY_MANIFESTS = new Set([
@@ -59,8 +65,14 @@ const AUXILIARY_MANIFESTS = new Set([
   "Gemfile.lock",
   "composer.lock",
   "gradle.properties",
+  "gradle-wrapper.properties",
   "settings.gradle",
   "settings.gradle.kts",
+  ".node-version",
+  ".nvmrc",
+  ".python-version",
+  ".xcode-version",
+  "runtime.txt",
   "Package.resolved",
   "Podfile.lock",
   "contents.xcworkspacedata",
@@ -198,6 +210,7 @@ export interface DetectedRepositoryProfileSuggestion {
     deviceProfile: string;
     gradleTask: string;
   } | null;
+  compatibilityRequirements: ExecutionCompatibilityRequirements;
 }
 
 export interface GithubRepositoryProfileDetection {
@@ -542,7 +555,10 @@ function detectJavascript(files: ReadManifest[]): ProfileDraft {
   const typecheckScript = ["typecheck", "type-check", "check:types"]
     .find((name) => typeof scripts[name] === "string");
   const engines = record(packageJson.engines);
-  const nodeVersion = stringField(engines.node);
+  const nodeVersion = stringField(engines.node)
+    ?? files.find((file) => file.name === ".node-version" || file.name === ".nvmrc")
+      ?.content.trim().slice(0, 80)
+    ?? null;
   const usesTypescript = dependencies.has("typescript") || Boolean(typecheckScript);
   return {
     platform: "generic",
@@ -582,7 +598,9 @@ function detectPython(files: ReadManifest[]): ProfileDraft {
       : names.has("Pipfile") || names.has("Pipfile.lock")
         ? "pipenv"
         : "pip";
-  const runtimeVersion = /requires-python\s*=\s*["']([^"']{1,80})["']/i.exec(content)?.[1];
+  const runtimeVersion = /requires-python\s*=\s*["']([^"']{1,80})["']/i.exec(content)?.[1]
+    ?? files.find((file) => file.name === ".python-version")?.content.trim().slice(0, 80)
+    ?? /^python-(.{1,80})$/im.exec(files.find((file) => file.name === "runtime.txt")?.content ?? "")?.[1];
   const framework = containsDependency(content, "django")
     ? "Django"
     : containsDependency(content, "fastapi")
@@ -652,6 +670,9 @@ function detectCompiled(files: ReadManifest[]): ProfileDraft {
   const kotlin = /org\.jetbrains\.kotlin|kotlin\s*\(/i.test(content);
   const maven = names.has("pom.xml");
   if (android) {
+    const compileSdk = Number(
+      /compileSdk(?:Version)?\s*(?:=|\()?\s*["']?(\d{2})/i.exec(content)?.[1] ?? 35,
+    );
     return {
       platform: "android",
       language: kotlin ? "kotlin" : "java",
@@ -667,7 +688,9 @@ function detectCompiled(files: ReadManifest[]): ProfileDraft {
       runtimeFamily: "android",
       confidence: 0.96,
       androidEmulator: {
-        apiLevel: 35,
+        apiLevel: Number.isSafeInteger(compileSdk) && compileSdk >= 21 && compileSdk <= 99
+          ? compileSdk
+          : 35,
         target: "google_apis",
         architecture: "x86_64",
         deviceProfile: "pixel_7",
@@ -686,6 +709,74 @@ function detectCompiled(files: ReadManifest[]): ProfileDraft {
       : { install: "./gradlew dependencies", build: "./gradlew assemble", test: "./gradlew test", typecheck: "./gradlew check" },
     runtimeFamily: "jvm",
     confidence: 0.88,
+  };
+}
+
+function declaredPackageManagerTool(files: ReadManifest[]): ToolchainRequirement | null {
+  const packageFile = files.find((file) => file.name === "package.json");
+  if (!packageFile) return null;
+  try {
+    const declared = stringField(record(JSON.parse(packageFile.content)).packageManager);
+    const match = /^([a-z][a-z0-9_-]*)@([^\s]{1,80})$/i.exec(declared ?? "");
+    return match ? { name: match[1], constraint: match[2] } : null;
+  } catch {
+    return null;
+  }
+}
+
+function compatibilityToolchains(
+  draft: ProfileDraft,
+  files: ReadManifest[],
+): ToolchainRequirement[] {
+  const content = files.map((file) => file.content).join("\n");
+  const tools: ToolchainRequirement[] = [];
+  if (draft.xcode?.version) tools.push({ name: "Xcode", constraint: draft.xcode.version });
+  const swiftVersion = /^\s*\/\/\s*swift-tools-version:\s*([^\s]+)/im.exec(content)?.[1];
+  if (swiftVersion) tools.push({ name: "Swift", constraint: swiftVersion });
+  if (draft.platform === "android") {
+    if (draft.androidEmulator) {
+      tools.push({ name: "Android SDK API", constraint: String(draft.androidEmulator.apiLevel) });
+      tools.push({ name: "Android emulator ABI", constraint: draft.androidEmulator.architecture });
+    }
+    const java = /(?:jvmToolchain\s*\(|JavaVersion\.VERSION_)(\d{1,2})/i.exec(content)?.[1]
+      ?? /(?:sourceCompatibility|jvmTarget)\s*(?:=)?\s*["']?(?:JavaVersion\.VERSION_)?(\d{1,2})/i.exec(content)?.[1];
+    if (java) tools.push({ name: "JDK", constraint: java });
+    const gradle = /distributionUrl=.*gradle-([0-9]+(?:\.[0-9]+){1,2})-(?:all|bin)\.zip/i.exec(content)?.[1];
+    if (gradle) tools.push({ name: "Gradle", constraint: gradle });
+    const kotlin = /org\.jetbrains\.kotlin[^\n]{0,120}?version\s*["']([^"']+)/i.exec(content)?.[1];
+    if (kotlin) tools.push({ name: "Kotlin", constraint: kotlin });
+  }
+  const packageManager = declaredPackageManagerTool(files);
+  if (packageManager) tools.push(packageManager);
+  return tools
+    .filter((tool, index, all) => all.findIndex((item) => item.name === tool.name) === index)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function compatibilityRequirements(input: {
+  draft: ProfileDraft;
+  files: ReadManifest[];
+  sourceSha: string;
+  dependencyFingerprint: string;
+}): ExecutionCompatibilityRequirements {
+  const runner = input.draft.platform === "ios" || input.draft.platform === "android";
+  return {
+    schemaVersion: 1,
+    sourceSha: input.sourceSha,
+    dependencyFingerprint: input.dependencyFingerprint,
+    ecosystem: input.draft.platform === "generic"
+      ? input.draft.runtimeFamily ?? input.draft.language
+      : input.draft.platform,
+    runtimeFamily: input.draft.runtimeFamily,
+    runtimeConstraint: runtimeConstraint(input.draft.runtimeFamily, input.draft.runtime),
+    packageManager: input.draft.packageManager,
+    toolchains: compatibilityToolchains(input.draft, input.files),
+    capabilities: [
+      ...(input.draft.application?.browserDependencyDetected ? ["browser"] : []),
+      ...(input.draft.platform === "ios" ? ["ios-simulator"] : []),
+      ...(input.draft.platform === "android" ? ["android-emulator", "nested-kvm"] : []),
+    ],
+    validationKind: runner ? "runner_probe" : "managed_environment",
   };
 }
 
@@ -745,13 +836,18 @@ function shellArgument(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
-function detectedXcodeVersion(content: string): string {
-  const checks = [...content.matchAll(/(?:LastUpgradeCheck|LastSwiftUpdateCheck)\s*=\s*(\d{4})\s*;/g)]
-    .map((match) => Number.parseInt(match[1], 10))
-    .filter(Number.isFinite);
-  if (!checks.length) return "16";
-  const newest = Math.max(...checks);
-  return `${Math.floor(newest / 100)}.${Math.floor((newest % 100) / 10)}`;
+function detectedXcodeVersion(files: ReadManifest[]): string {
+  const declared = files.find((file) => file.name === ".xcode-version")
+    ?.content.trim();
+  const version = /^(\d{1,2}(?:\.\d{1,2}){0,2})$/.exec(declared ?? "")?.[1];
+  if (version) return version;
+
+  // LastUpgradeCheck and LastSwiftUpdateCheck only identify the IDE that last
+  // touched a project. They do not declare its minimum compatible Xcode and
+  // must never be promoted into an approval-bound runtime requirement.
+  // Xcode 16 is the conservative iOS 18 baseline; the runner probe still
+  // executes the exact approved build command before this profile activates.
+  return "16";
 }
 
 function detectSwift(files: ReadManifest[]): ProfileDraft {
@@ -788,13 +884,13 @@ function detectSwift(files: ReadManifest[]): ProfileDraft {
       // PDD materializes this immutable, standalone Swift acceptance script
       // before implementation and verification commands run. It does not
       // require a repository to already maintain an XCTest target.
-      test: "swift tests/CloseSpanPDDTests.swift",
+      test: CLOSESPAN_SWIFT_ACCEPTANCE_TEST_COMMAND,
       typecheck: null,
     },
     runtimeFamily: "ios",
     confidence: 0.96,
     xcode: {
-      version: detectedXcodeVersion(content),
+      version: detectedXcodeVersion(files),
       containerKind: container.kind,
       containerPath: container.path,
       scheme,
@@ -872,12 +968,28 @@ function suggestion(input: {
     runnerProbeWorkflowSha256: input.runnerProbeWorkflowSha256,
     xcode: draft.xcode ?? null,
     androidEmulator: draft.androidEmulator ?? null,
+    compatibilityRequirements: compatibilityRequirements({
+      draft,
+      files: draftFiles,
+      sourceSha: input.sourceSha,
+      dependencyFingerprint,
+    }),
   };
   return { ...base, detectionHash: detectionHash(base) };
 }
 
 function filesForRoot(files: ReadManifest[], root: string): ReadManifest[] {
-  const direct = files.filter((file) => file.root === root);
+  const rootFiles = files.filter((file) => file.root === root);
+  const rootNames = new Set(rootFiles.map((file) => file.name));
+  const gradlePrefix = root === "." ? "gradle/wrapper/" : `${root}/gradle/wrapper/`;
+  const direct = [
+    ...rootFiles,
+    ...files.filter((file) =>
+      file.name === "gradle-wrapper.properties"
+      && file.path.startsWith(gradlePrefix)
+      && (rootNames.has("build.gradle") || rootNames.has("build.gradle.kts"))
+    ),
+  ];
   if (root === ".") return direct;
   const directNames = new Set(direct.map((file) => file.name));
   const inheritable = directNames.has("package.json")
@@ -886,11 +998,21 @@ function filesForRoot(files: ReadManifest[], root: string): ReadManifest[] {
       ? new Set(["uv.lock", "poetry.lock", "Pipfile.lock"])
       : directNames.has("Cargo.toml")
         ? new Set(["Cargo.lock"])
-        : directNames.has("go.mod")
+      : directNames.has("go.mod")
           ? new Set(["go.sum"])
+          : directNames.has("build.gradle") || directNames.has("build.gradle.kts")
+            ? new Set(["gradle-wrapper.properties"])
           : new Set<string>();
-  const repositoryLevel = files.filter(
-    (file) => file.root === "." && inheritable.has(file.name),
+  const repositoryLevel = files.filter((file) =>
+    inheritable.has(file.name)
+    && (
+      file.root === "."
+      || (
+        (directNames.has("build.gradle") || directNames.has("build.gradle.kts"))
+        && file.name === "gradle-wrapper.properties"
+        && file.path.startsWith(root === "." ? "gradle/wrapper/" : `${root}/gradle/wrapper/`)
+      )
+    ),
   );
   return [...direct, ...repositoryLevel.filter(
     (file) => !direct.some((candidate) => candidate.name === file.name),
@@ -1108,7 +1230,6 @@ export function executionProfileSuggestionStore(
               workflowSha256: detected.runnerWorkflowSha256,
               xcode: detected.xcode ? {
                 ...detected.xcode,
-                version: process.env.TENKI_XCODE_VERSION?.trim() || detected.xcode.version,
                 sdk: "iphonesimulator" as const,
                 signingPolicy: "simulator_only" as const,
               } : null,
@@ -1159,6 +1280,7 @@ export function executionProfileSuggestionStore(
             snapshotId: managedEnvironment.snapshotId,
             registryDigestRef: managedEnvironment.registryDigestRef,
           } : null,
+          compatibilityRequirements: detected.compatibilityRequirements,
           scan: evidence,
         },
         actor,

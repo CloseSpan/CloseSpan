@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRunExecutionContext } from "./engineering-workflow-repository";
 import { hashExecutionProfileConfig } from "./execution-profile";
 import { dispatchTenkiGithubActionsRun } from "./tenki-github-actions-executor";
+import { buildTenkiGithubActionsJob } from "./tenki-github-actions-job";
 import {
   TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
   buildIssueRuntimeVerificationJob,
@@ -11,6 +12,7 @@ import {
 } from "./issue-runtime-verification-executor";
 import type { IssueRuntimeVerificationContext } from "./issue-runtime-verification";
 import { RUNTIME_VERIFIER_WORKFLOW_NOT_INSTALLED_MESSAGE } from "./runtime-verifier-errors";
+import { CLOSESPAN_SWIFT_ACCEPTANCE_TEST_COMMAND } from "./swift-acceptance-harness";
 
 const runId = "11111111-1111-4111-8111-111111111111";
 const profileId = "22222222-2222-4222-8222-222222222222";
@@ -130,6 +132,75 @@ function runtimeContext(): IssueRuntimeVerificationContext {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Tenki GitHub Actions executor dispatch", () => {
+  it("routes Xcode 26 jobs compatibly and upgrades legacy Swift commands", () => {
+    const runContext = context();
+    const legacyCommand = "swift tests/CloseSpanPDDTests.swift";
+    const xcode = {
+      ...config.executor.xcode!,
+      version: "26.1",
+    };
+    const compatibleConfig = {
+      ...config,
+      executor: { ...config.executor, xcode },
+    };
+    runContext.executionProfileSnapshot = {
+      ...runContext.executionProfileSnapshot,
+      config: compatibleConfig,
+    };
+    runContext.promptSnapshot = {
+      schemaVersion: 1,
+      evidence: {
+        problemId: "problem-1",
+        title: "Undo captions",
+        statement: "Undo is missing",
+        summary: "Undo is missing",
+        severity: "Low",
+        productArea: "Captions",
+        team: "Mobile",
+        assumptions: [],
+        missingInformation: [],
+        suspectedFiles: [],
+        redactedEvidence: [],
+      },
+      ticket: {
+        userStory: "As a user, I want to undo a regenerated caption.",
+        currentBehavior: "Undo is missing.",
+        expectedBehavior: "Undo restores the saved caption.",
+        reproductionSteps: ["Regenerate a caption."],
+        businessOutcome: "Users can recover their work.",
+        acceptanceCriteria: [],
+        testScenarios: [],
+        regressionScenarios: [],
+        negativeScenarios: [],
+        qualityExpectations: [],
+        requiredTestLevels: [],
+        releaseVerification: "Run the native harness.",
+        nonGoals: [],
+        permittedPaths: ["ZupNative/**"],
+        requiredCommands: [legacyCommand],
+        repository: runContext.repository,
+        baseBranch: runContext.baseBranch,
+        baseSha: runContext.baseSha,
+      },
+    };
+    runContext.generatedTests = [{
+      path: "ZupNative/tests/CloseSpanPDDTests.swift",
+      content: "@main struct CloseSpanPDDTests { static func main() {} }",
+      contentHash: "c".repeat(64),
+      command: legacyCommand,
+    }];
+
+    const job = buildTenkiGithubActionsJob(runContext);
+
+    expect(job.runner.label).toBe("macos-26");
+    expect(job.requiredCommands).toEqual([
+      CLOSESPAN_SWIFT_ACCEPTANCE_TEST_COMMAND,
+    ]);
+    expect(job.generatedTests[0]?.command).toBe(
+      CLOSESPAN_SWIFT_ACCEPTANCE_TEST_COMMAND,
+    );
+  });
+
   it("verifies the workflow at the approved SHA and dispatches a dedicated immutable ref", async () => {
     vi.stubEnv("TENKI_GITHUB_ACTIONS_ENABLED", "true");
     vi.stubEnv(

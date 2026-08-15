@@ -3,7 +3,11 @@ import { NextRequest } from "next/server";
 
 const repositories = vi.hoisted(() => ({ list: vi.fn() }));
 const detection = vi.hoisted(() => ({ detect: vi.fn() }));
-const activation = vi.hoisted(() => ({ activate: vi.fn() }));
+const activation = vi.hoisted(() => ({
+  activate: vi.fn(),
+  setup: vi.fn(),
+  probes: vi.fn(),
+}));
 const matches = vi.hoisted(() => ({ refresh: vi.fn() }));
 
 vi.mock("@/lib/github-repository-allowlist", () => ({
@@ -14,6 +18,8 @@ vi.mock("@/lib/repository-profile-detection", () => ({
 }));
 vi.mock("@/lib/tenki-runner-onboarding", () => ({
   activateReadyDetectedExecutionProfiles: activation.activate,
+  prepareDetectedTenkiRunner: activation.setup,
+  prepareTenkiRunnerSizingProbes: activation.probes,
 }));
 vi.mock("@/lib/problem-repository-match-repository", () => ({
   refreshPendingProblemRepositoryMatches: matches.refresh,
@@ -44,6 +50,8 @@ describe("internal execution-profile refresh", () => {
     }]);
     detection.detect.mockReset().mockResolvedValue({ profiles: [{ root: "." }] });
     activation.activate.mockReset().mockResolvedValue(1);
+    activation.setup.mockReset().mockResolvedValue(null);
+    activation.probes.mockReset().mockResolvedValue([]);
     matches.refresh.mockReset().mockResolvedValue([]);
   });
 
@@ -64,6 +72,14 @@ describe("internal execution-profile refresh", () => {
       orgId: "org-1",
       repository: "acme/app",
     }));
+    expect(activation.setup).toHaveBeenCalledWith(expect.objectContaining({
+      repository: "acme/app",
+      detection: { profiles: [{ root: "." }] },
+    }));
+    expect(activation.probes).toHaveBeenCalledWith(expect.objectContaining({
+      repository: "acme/app",
+      callbackBaseUrl: "http://localhost",
+    }));
     expect(matches.refresh).toHaveBeenCalledWith("org-1");
   });
 
@@ -71,5 +87,7 @@ describe("internal execution-profile refresh", () => {
     expect((await POST(request("wrong-secret"))).status).toBe(401);
     expect(detection.detect).not.toHaveBeenCalled();
     expect(activation.activate).not.toHaveBeenCalled();
+    expect(activation.setup).not.toHaveBeenCalled();
+    expect(activation.probes).not.toHaveBeenCalled();
   });
 });

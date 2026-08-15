@@ -140,7 +140,7 @@ describe("Tenki runner sizing probe persistence", () => {
     await expect(listTenkiRunnerSizingProbes("org_demo")).resolves.toHaveLength(1);
   });
 
-  it("maps a macOS capacity selector to a real GitHub runner for sizing", async () => {
+  it("maps a macOS capacity selector to an Xcode-compatible runner for sizing", async () => {
     const sizingWorkflow = "name: CloseSpan runner sizing probe\n";
     const workflowHash = createHash("sha256").update(sizingWorkflow).digest("hex");
     const createWorkflowDispatch = vi.fn().mockResolvedValue({ data: {} });
@@ -178,7 +178,7 @@ describe("Tenki runner sizing probe persistence", () => {
     expect(result.runnerLabel).toBe("tenki-macos-15-small");
     expect(createWorkflowDispatch).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
-        closespan_runner_label: "macos-15",
+        closespan_runner_label: "macos-26",
       }),
     }));
   });

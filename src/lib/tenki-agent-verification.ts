@@ -7,6 +7,7 @@ import {
 } from "@tenkicloud/sandbox";
 import type { AgentImplementationReport } from "./agent-run-verification";
 import type { AgentRunExecutionContext } from "./engineering-workflow-repository";
+import { normalizeSwiftAcceptanceHarnessCommand } from "./swift-acceptance-harness";
 import { createRepositoryArchiveUrl } from "./github-agent-publisher";
 import {
   assertTenkiProviderResourceLimits,
@@ -349,8 +350,12 @@ function publicEnvironment(profile: ExecutionProfileConfig | null): Record<strin
 
 function approvedVerificationCommands(context: AgentRunExecutionContext): string[] {
   return [...new Set([
-    ...context.promptSnapshot.ticket.requiredCommands,
-    ...(context.generatedTests ?? []).map((test) => test.command),
+    ...context.promptSnapshot.ticket.requiredCommands.map(
+      normalizeSwiftAcceptanceHarnessCommand,
+    ),
+    ...(context.generatedTests ?? []).map((test) =>
+      normalizeSwiftAcceptanceHarnessCommand(test.command)
+    ),
   ])];
 }
 
@@ -968,7 +973,9 @@ export async function verifyAgentRunWithTenki(
     }
 
     const generatedCommands = new Set(
-      (context.generatedTests ?? []).map((generatedTest) => generatedTest.command),
+      (context.generatedTests ?? []).map((generatedTest) =>
+        normalizeSwiftAcceptanceHarnessCommand(generatedTest.command)
+      ),
     );
     const testByCommand = new Map(tests.map((test) => [test.command, test]));
     const userStoryReplay = generatedCommands.size === 0

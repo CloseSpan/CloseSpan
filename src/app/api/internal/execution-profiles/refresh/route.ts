@@ -4,7 +4,11 @@ import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allo
 import { refreshPendingProblemRepositoryMatches } from "@/lib/problem-repository-match-repository";
 import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
 import { noStoreHeaders } from "@/lib/request-security";
-import { activateReadyDetectedExecutionProfiles } from "@/lib/tenki-runner-onboarding";
+import {
+  activateReadyDetectedExecutionProfiles,
+  prepareDetectedTenkiRunner,
+  prepareTenkiRunnerSizingProbes,
+} from "@/lib/tenki-runner-onboarding";
 
 export const maxDuration = 300;
 
@@ -61,6 +65,19 @@ export async function POST(request: NextRequest) {
         actorName: "Tenki environment reconciler",
       },
     });
+    const setup = await prepareDetectedTenkiRunner({
+      orgId: body.orgId,
+      installationId: repository.installationId,
+      repository: repository.repository,
+      defaultBranch: repository.defaultBranch,
+      detection,
+    });
+    const compatibilityProbes = await prepareTenkiRunnerSizingProbes({
+      orgId: body.orgId,
+      installationId: repository.installationId,
+      repository: repository.repository,
+      callbackBaseUrl: request.nextUrl.origin,
+    });
     const activatedProfiles = await activateReadyDetectedExecutionProfiles({
       orgId: body.orgId,
       repository: repository.repository,
@@ -71,7 +88,13 @@ export async function POST(request: NextRequest) {
     });
     await refreshPendingProblemRepositoryMatches(body.orgId);
     return NextResponse.json(
-      { ok: true, profiles: detection.profiles.length, activatedProfiles },
+      {
+        ok: true,
+        profiles: detection.profiles.length,
+        setup,
+        compatibilityProbes,
+        activatedProfiles,
+      },
       { headers: noStoreHeaders },
     );
   } catch (error) {

@@ -16,6 +16,16 @@ export function githubActionsRunnerLabel(
 ): string {
   if (executor.platform !== "macos") return executor.runnerLabel;
 
+  // GitHub's Xcode 26 images are published on the matching macOS major label.
+  // A stored capacity selector such as tenki-macos-15-small describes sizing,
+  // not Xcode compatibility, and must not force an Xcode 26 profile onto 16.x.
+  const requiredXcodeMajor = executor.xcode
+    ? Number.parseInt(executor.xcode.version.split(".")[0] || "", 10)
+    : Number.NaN;
+  if (Number.isFinite(requiredXcodeMajor) && requiredXcodeMajor >= 26) {
+    return `macos-${requiredXcodeMajor}`;
+  }
+
   const match = MACOS_CAPACITY_SELECTOR.exec(executor.runnerLabel);
   return match?.groups?.version
     ? `macos-${match.groups.version}`

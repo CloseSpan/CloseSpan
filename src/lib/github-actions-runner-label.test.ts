@@ -23,6 +23,22 @@ describe("GitHub Actions runner label resolution", () => {
     expect(githubActionsRunnerLabel(macosExecutor)).toBe("macos-15");
   });
 
+  it("routes an Xcode 26 profile to the compatible hosted macOS image", () => {
+    expect(githubActionsRunnerLabel({
+      ...macosExecutor,
+      xcode: {
+        version: "26.1",
+        containerKind: "project",
+        containerPath: "App.xcodeproj",
+        scheme: "App",
+        configuration: "Debug",
+        destination: "platform=iOS Simulator,name=iPhone 16",
+        sdk: "iphonesimulator",
+        signingPolicy: "simulator_only",
+      },
+    })).toBe("macos-26");
+  });
+
   it("preserves an explicitly onboarded macOS custom label", () => {
     expect(githubActionsRunnerLabel({
       ...macosExecutor,

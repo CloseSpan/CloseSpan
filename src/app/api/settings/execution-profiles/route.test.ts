@@ -6,6 +6,7 @@ const profiles = vi.hoisted(() => ({ list: vi.fn(), override: vi.fn(), clear: vi
 const repositories = vi.hoisted(() => ({ list: vi.fn() }));
 const runtimeSecrets = vi.hoisted(() => ({ validate: vi.fn() }));
 const runnerSetups = vi.hoisted(() => ({ list: vi.fn() }));
+const sizing = vi.hoisted(() => ({ list: vi.fn() }));
 
 vi.mock("@/lib/execution-profile-repository", () => ({
   listExecutionProfileSettings: profiles.list,
@@ -23,6 +24,9 @@ vi.mock("@/lib/runtime-secret-repository", () => ({
 }));
 vi.mock("@/lib/tenki-runner-workflow-setup-repository", () => ({
   listPendingTenkiRunnerWorkflowSetups: runnerSetups.list,
+}));
+vi.mock("@/lib/tenki-runner-sizing-probe-repository", () => ({
+  listTenkiRunnerSizingProbes: sizing.list,
 }));
 
 import { DELETE, GET, PUT } from "./route";
@@ -59,6 +63,7 @@ describe("execution profile settings API", () => {
       pullRequestUrl: "https://github.example/pull/12",
       updatedAt: "2026-08-11T12:00:00.000Z",
     }]);
+    sizing.list.mockReset().mockResolvedValue([]);
   });
 
   it("returns profiles and the workspace's GitHub-authorized repositories", async () => {
@@ -72,9 +77,11 @@ describe("execution profile settings API", () => {
         repository: "acme/app",
         pullRequestNumber: 12,
       }],
+      compatibilityByProfileId: {},
     });
     expect(profiles.list).toHaveBeenCalledWith("org-1");
     expect(runnerSetups.list).toHaveBeenCalledWith("org-1");
+    expect(sizing.list).toHaveBeenCalledWith("org-1");
   });
 
   it("does not disclose execution profiles or repository access to non-admin members", async () => {

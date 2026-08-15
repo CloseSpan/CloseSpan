@@ -70,6 +70,7 @@ describe("managed Tenki environment catalog", () => {
       catalogKey: "owner-repo-web",
       version: 2,
       dependencyFingerprint: "lock-1",
+      runtimeVersion: "24.2",
     });
     expect(selectManagedTenkiEnvironment([global, privateArtifact], {
       orgId: "org-1",
@@ -80,6 +81,17 @@ describe("managed Tenki environment catalog", () => {
       packageManager: "npm",
       dependencyFingerprint: "lock-1",
     })?.id).toBe(privateArtifact.id);
+  });
+
+  it("rejects an environment below the repository's exact runtime constraint", () => {
+    expect(selectManagedTenkiEnvironment([artifact({ runtimeVersion: "22.12" })], {
+      orgId: "org-1",
+      repository: "owner/repo",
+      workspaceRoot: ".",
+      runtimeFamily: "node",
+      runtimeVersion: ">=22.13",
+      packageManager: "npm",
+    })).toBeNull();
   });
 
   it("rejects mutable, expired, unapproved, and mismatched artifacts", () => {

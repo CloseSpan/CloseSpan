@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executionProfileExecutor } from "@/lib/execution-profile";
+import {
+  executionCompatibilityReadiness,
+  type ExecutionCompatibilityReadiness,
+} from "@/lib/execution-compatibility";
 import { listExecutionProfileSettings } from "@/lib/execution-profile-repository";
 import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
 import {
@@ -39,6 +43,9 @@ export async function GET(request: NextRequest) {
     const setupByRepository = new Map(
       setups.map((setup) => [setup.repository, setup] as const),
     );
+    const probeByProfileId = new Map(
+      probes.map((probe) => [probe.profileId, probe] as const),
+    );
     return NextResponse.json({
       repositories: repositories.map((repository) => {
         const assignments = settings.assignments.filter(
@@ -48,6 +55,32 @@ export async function GET(request: NextRequest) {
           assignment.activeProfile,
           assignment.detectedProfile,
         ]).filter((profile) => profile !== null);
+        const compatibility = assignments.flatMap((assignment) => {
+          const readiness: ExecutionCompatibilityReadiness[] = [];
+          if (assignment.activeProfile) {
+            readiness.push(executionCompatibilityReadiness({
+              profile: assignment.activeProfile,
+              probe: probeByProfileId.get(assignment.activeProfile.id),
+              active: true,
+            }));
+          }
+          if (assignment.detectedProfile) {
+            readiness.push(executionCompatibilityReadiness({
+              profile: assignment.detectedProfile,
+              probe: probeByProfileId.get(assignment.detectedProfile.id),
+            }));
+          }
+          return readiness;
+        });
+        const compatibilityState = compatibility.find((state) => state.status === "compatible")
+          ?? compatibility.find((state) => state.status === "incompatible")
+          ?? compatibility.find((state) => state.status === "validating")
+          ?? compatibility.find((state) => state.status === "awaiting_environment")
+          ?? {
+            status: "validating" as const,
+            summary: "Analyzing repository compatibility",
+            detail: "CloseSpan is reading repository-owned toolchain declarations in the background.",
+          };
         return {
           repository: repository.repository,
           defaultBranch: repository.defaultBranch,
@@ -58,6 +91,9 @@ export async function GET(request: NextRequest) {
           ),
           setup: setupByRepository.get(repository.repository) ?? null,
           sizingProbes: probes.filter((probe) => probe.repository === repository.repository),
+          compatibilityStatus: compatibilityState.status,
+          compatibilitySummary: compatibilityState.summary,
+          compatibilityDetail: compatibilityState.detail,
         };
       }),
     }, { headers: noStoreHeaders });

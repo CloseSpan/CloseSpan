@@ -91,7 +91,12 @@ function mobileGithubFixture(platform: "ios" | "android") {
       ["scheme", encoded("<Scheme version=\"1.7\"></Scheme>")],
       ["internal-workspace", encoded("<Workspace version=\"1.0\"></Workspace>")],
     ] : [
-      ["gradle", encoded("plugins { id(\"com.android.application\") version \"8.8.0\" }")],
+      ["gradle", encoded([
+        "plugins { id(\"com.android.application\") version \"8.8.0\"; id(\"org.jetbrains.kotlin.android\") version \"2.1.0\" }",
+        "android { compileSdk = 34 }",
+        "kotlin { jvmToolchain(17) }",
+      ].join("\n"))],
+      ["wrapper", encoded("distributionUrl=https\\://services.gradle.org/distributions/gradle-8.9-bin.zip")],
     ]),
   ] as Array<[string, ReturnType<typeof encoded>]>);
   const trees = new Map<string, Array<Record<string, unknown>>>([
@@ -101,8 +106,16 @@ function mobileGithubFixture(platform: "ios" | "android") {
       { path: ".github", type: "tree", sha: "github-tree" },
     ] : [
       { path: "build.gradle.kts", type: "blob", sha: "gradle", size: blobs.get("gradle")?.size },
+      { path: "gradle", type: "tree", sha: "gradle-tree" },
       { path: ".github", type: "tree", sha: "github-tree" },
     ]],
+    ["gradle-tree", [{ path: "wrapper", type: "tree", sha: "wrapper-tree" }]],
+    ["wrapper-tree", [{
+      path: "gradle-wrapper.properties",
+      type: "blob",
+      sha: "wrapper",
+      size: blobs.get("wrapper")?.size,
+    }]],
     ["project-tree", [
       { path: "project.pbxproj", type: "blob", sha: "project", size: blobs.get("project")?.size },
       ...(platform === "ios" ? [{ path: "project.xcworkspace", type: "tree", sha: "internal-workspace-tree" }] : []),
@@ -171,8 +184,19 @@ describe("repository execution-profile detection", () => {
       },
       reviewState: "Pending review",
       active: false,
-      detectorVersion: 6,
+      detectorVersion: 9,
       environment: { image: "sandbox", snapshotId: null, runtimeFamily: "node" },
+      compatibilityRequirements: {
+        schemaVersion: 1,
+        sourceSha: COMMIT_SHA,
+        ecosystem: "node",
+        runtimeFamily: "node",
+        runtimeConstraint: ">=22",
+        packageManager: "npm",
+        toolchains: [{ name: "npm", constraint: "11.0.0" }],
+        capabilities: [],
+        validationKind: "managed_environment",
+      },
     });
     expect(result.profiles.find((profile) => profile.root === "apps/web")).toMatchObject({
       framework: "Vite",
@@ -191,6 +215,13 @@ describe("repository execution-profile detection", () => {
       packageManager: "uv",
       runtime: "python >=3.12",
       commands: { test: "python -m pytest", typecheck: "python -m mypy ." },
+      compatibilityRequirements: {
+        ecosystem: "python",
+        runtimeFamily: "python",
+        runtimeConstraint: ">=3.12",
+        packageManager: "uv",
+        validationKind: "managed_environment",
+      },
     });
     expect(result.profiles.every((profile) => /^[a-f0-9]{64}$/.test(profile.detectionHash))).toBe(true);
     expect(methods.getBlob).not.toHaveBeenCalledWith(expect.objectContaining({ file_sha: "readme" }));
@@ -215,7 +246,7 @@ describe("repository execution-profile detection", () => {
     }));
   });
 
-  it("routes an Xcode repository to a digest-bound Tenki macOS runner profile even when package.json exists", async () => {
+  it("does not treat LastUpgradeCheck as a minimum Xcode runtime requirement", async () => {
     profileRepository.save.mockReset().mockResolvedValue({ id: "profile-ios" });
     const { github, workflow } = mobileGithubFixture("ios");
     const detected = await detectAndSaveGithubRepositoryProfiles({
@@ -230,8 +261,10 @@ describe("repository execution-profile detection", () => {
       root: ".",
       platform: "ios",
       language: "swift",
-      xcode: { version: "26.1", containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
-      commands: { test: "swift tests/CloseSpanPDDTests.swift" },
+      xcode: { version: "16", containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
+      commands: {
+        test: "swiftc -parse-as-library tests/CloseSpanPDDTests.swift -o /tmp/closespan-pdd-tests && /tmp/closespan-pdd-tests",
+      },
       runnerWorkflowSha256: createHash("sha256").update(workflow).digest("hex"),
     });
     expect(profileRepository.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -245,10 +278,20 @@ describe("repository execution-profile detection", () => {
           architecture: "arm64",
           workflowPath: ".github/workflows/closespan-agent-runner.yml",
           workflowSha256: createHash("sha256").update(workflow).digest("hex"),
-          xcode: expect.objectContaining({ version: "26.1", scheme: "Zup", signingPolicy: "simulator_only" }),
+          xcode: expect.objectContaining({ version: "16", scheme: "Zup", signingPolicy: "simulator_only" }),
         }),
       }),
-      detectionEvidence: expect.objectContaining({ platform: "ios" }),
+      detectionEvidence: expect.objectContaining({
+        platform: "ios",
+        compatibilityRequirements: expect.objectContaining({
+          ecosystem: "ios",
+          validationKind: "runner_probe",
+          capabilities: ["ios-simulator"],
+          toolchains: expect.arrayContaining([
+            { name: "Xcode", constraint: "16" },
+          ]),
+        }),
+      }),
     }));
   });
 
@@ -284,7 +327,9 @@ describe("repository execution-profile detection", () => {
     expect(detected.profiles[0]).toMatchObject({
       root: "ZupNative",
       xcode: { containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
-      commands: { test: "swift tests/CloseSpanPDDTests.swift" },
+      commands: {
+        test: "swiftc -parse-as-library tests/CloseSpanPDDTests.swift -o /tmp/closespan-pdd-tests && /tmp/closespan-pdd-tests",
+      },
       runnerWorkflowSha256: createHash("sha256").update(workflow).digest("hex"),
     });
   });
@@ -309,13 +354,27 @@ describe("repository execution-profile detection", () => {
           architecture: "x64",
           runnerLabel: "tenki-standard-large-8c-16g",
           androidEmulator: expect.objectContaining({
-            apiLevel: 35,
+            apiLevel: 34,
             architecture: "x86_64",
             gradleTask: ":app:connectedDebugAndroidTest",
           }),
         }),
       }),
-      detectionEvidence: expect.objectContaining({ platform: "android" }),
+      detectionEvidence: expect.objectContaining({
+        platform: "android",
+        compatibilityRequirements: expect.objectContaining({
+          ecosystem: "android",
+          validationKind: "runner_probe",
+          capabilities: ["android-emulator", "nested-kvm"],
+          toolchains: expect.arrayContaining([
+            { name: "Android SDK API", constraint: "34" },
+            { name: "Android emulator ABI", constraint: "x86_64" },
+            { name: "Gradle", constraint: "8.9" },
+            { name: "JDK", constraint: "17" },
+            { name: "Kotlin", constraint: "2.1.0" },
+          ]),
+        }),
+      }),
     }));
   });
 

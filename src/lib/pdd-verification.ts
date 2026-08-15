@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ImplementationPromptSnapshot } from "./engineering-prompt";
+import { normalizeSwiftAcceptanceHarnessCommand } from "./swift-acceptance-harness";
 
 export const PDD_CLI_VERSION = "0.0.309";
 
@@ -98,7 +99,7 @@ function pddUsesNativeRuntimeHarness(
   snapshot: ImplementationPromptSnapshot,
   tests: ReadonlyArray<{ path: string; command: string }>,
 ): boolean {
-  const nativeCommand = /(?:^|\s)(?:xcodebuild|swift|\.\/gradlew|gradlew|flutter\s+test)(?:\s|$)/i;
+  const nativeCommand = /(?:^|\s)(?:xcodebuild|swiftc?|\.\/gradlew|gradlew|flutter\s+test)(?:\s|$)/i;
   const nativeArtifact = /\.(?:swift|m|mm|kt|kts|java|dart)$/i;
   return tests.length > 0
     && tests.every((test) => nativeArtifact.test(test.path))
@@ -122,7 +123,9 @@ export function validateGeneratedTests(
   snapshot: ImplementationPromptSnapshot,
 ): PddRunnerResult {
   const parsed = pddRunnerResultSchema.parse(result);
-  const commands = new Set(snapshot.ticket.requiredCommands);
+  const commands = new Set(
+    snapshot.ticket.requiredCommands.map(normalizeSwiftAcceptanceHarnessCommand),
+  );
   for (const test of parsed.generatedTests) {
     if (test.path.startsWith("/") || test.path.split("/").includes("..")) {
       throw new Error(`Prompt Testing returned an unsafe test path: ${test.path}`);
@@ -133,7 +136,7 @@ export function validateGeneratedTests(
     if (!snapshot.ticket.permittedPaths.some((pattern) => pathMatches(pattern, test.path))) {
       throw new Error(`Prompt Testing returned a test outside the ticket's permitted paths: ${test.path}`);
     }
-    if (!commands.has(test.command)) {
+    if (!commands.has(normalizeSwiftAcceptanceHarnessCommand(test.command))) {
       throw new Error(`Prompt Testing selected a validation command that was not approved: ${test.command}`);
     }
   }

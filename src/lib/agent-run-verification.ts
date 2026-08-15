@@ -5,6 +5,7 @@ import type {
   ImplementationPromptSnapshot,
 } from "./engineering-prompt";
 import type { PddGeneratedTest } from "./pdd-verification";
+import { normalizeSwiftAcceptanceHarnessCommand } from "./swift-acceptance-harness";
 
 const changedFileSchema = z.object({
   path: z.string().trim().min(1).max(500),
@@ -187,7 +188,10 @@ export function validateAgentImplementationReport(
   }
   if (totalBytes > 5_000_000) throw new Error("Agent diff exceeds the 5 MB approval boundary");
 
-  const testsByCommand = new Map(report.tests.map((test) => [test.command, test]));
+  const testsByCommand = new Map(report.tests.map((test) => [
+    normalizeSwiftAcceptanceHarnessCommand(test.command),
+    test,
+  ]));
   const successful = report.status === "Tests passed" || report.status === "Draft PR opened";
   const changedPaths = new Set(report.changedFiles.map((file) => file.path));
   const generatedTestPaths = new Set((expected.generatedTests ?? []).map((test) => test.path));
@@ -221,7 +225,9 @@ export function validateAgentImplementationReport(
     throw new Error("Successful automated acceptance requires a changed test file");
   if (successful) {
     for (const command of ticket.requiredCommands) {
-      const result = testsByCommand.get(command);
+      const result = testsByCommand.get(
+        normalizeSwiftAcceptanceHarnessCommand(command),
+      );
       if (!result || result.status !== "passed")
         throw new Error(`Required command did not pass: ${command}`);
     }

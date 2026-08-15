@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { TenkiRunnerWorkflowSetupView } from "@/lib/tenki-runner-workflow-setup-repository";
 import type { TenkiRunnerSizingProbe } from "@/lib/tenki-runner-sizing-probe-repository";
+import type { ExecutionCompatibilityStatus } from "@/lib/execution-compatibility";
 
 interface RepositoryActivationItem {
   repository: string;
@@ -21,6 +22,9 @@ interface RepositoryActivationItem {
   tenkiRequired: boolean;
   setup: TenkiRunnerWorkflowSetupView | null;
   sizingProbes: TenkiRunnerSizingProbe[];
+  compatibilityStatus: ExecutionCompatibilityStatus;
+  compatibilitySummary: string;
+  compatibilityDetail: string;
 }
 
 interface RepositoryActivationResponse {
@@ -56,13 +60,14 @@ function itemState(item: RepositoryActivationItem):
   | "detecting"
   | "preparing"
   | "approval"
-  | "probing"
+  | "validating"
   | "activating"
   | "ready"
   | "failed" {
   const sizingProbes = item.sizingProbes ?? [];
   if (item.setup?.status === "Failed") return "failed";
   if (sizingProbes.some((probe) => probe.status === "Failed")) return "failed";
+  if (item.compatibilityStatus === "incompatible") return "failed";
   if (item.setup?.status === "Pending") return "approval";
   if (!item.profileDetected) return "detecting";
   if (item.tenkiRequired && !item.setup) return "preparing";
@@ -75,12 +80,16 @@ function itemState(item: RepositoryActivationItem):
       sizingProbes.length === 0
       || sizingProbes.some((probe) => ["Queued", "Dispatched", "Running"].includes(probe.status))
     )
-  ) return "probing";
+  ) return "validating";
   if (
     item.tenkiRequired
     && !item.executionReady
     && sizingProbes.some((probe) => probe.status === "Completed" && probe.telemetry?.exitCode !== 0)
   ) return "failed";
+  if (
+    !item.executionReady
+    && ["validating", "awaiting_environment"].includes(item.compatibilityStatus)
+  ) return "validating";
   if (!item.executionReady) return "activating";
   return "ready";
 }
@@ -89,7 +98,7 @@ function stateLabel(state: ReturnType<typeof itemState>): string {
   if (state === "detecting") return "Detecting configuration";
   if (state === "preparing") return "Preparing setup";
   if (state === "approval") return "Approval needed";
-  if (state === "probing") return "Measuring runner workload";
+  if (state === "validating") return "Validating toolchain compatibility";
   if (state === "activating") return "Activating execution";
   if (state === "failed") return "Needs attention";
   return "Ready";
@@ -228,7 +237,7 @@ export function RepositoryActivationProgress({ orgId }: { orgId: string }) {
         ? "CloseSpan prepared the reviewed Tenki workflows. Approve the merge to enable runtime verification and approved coding runs."
         : loadError && !response
           ? "Reconnecting to background setup…"
-        : "Configuration detection, runner sizing, and workflow preparation are running alongside repository indexing.";
+        : "Repository analysis starts immediately. Exact toolchain compatibility and workflow preparation continue in the background alongside indexing.";
 
   return (
     <section
@@ -255,7 +264,7 @@ export function RepositoryActivationProgress({ orgId }: { orgId: string }) {
               <div className="repository-activation-row" key={item.repository}>
                 <div className="repository-activation-repository">
                   <strong>{shortRepository(item.repository)}</strong>
-                  <span>{stateLabel(state)}</span>
+                  <span>{item.compatibilitySummary || stateLabel(state)}</span>
                 </div>
                 {state === "approval" && item.setup && (
                   <div className="repository-activation-actions">
@@ -273,8 +282,8 @@ export function RepositoryActivationProgress({ orgId }: { orgId: string }) {
                 )}
                 {state === "failed" && (
                   <div className="repository-activation-recovery">
-                    {(item.setup?.failureMessage || item.sizingProbes?.find((probe) => probe.status === "Failed")?.failureMessage) && (
-                      <p>{item.setup?.failureMessage || item.sizingProbes?.find((probe) => probe.status === "Failed")?.failureMessage}</p>
+                    {(item.setup?.failureMessage || item.sizingProbes?.find((probe) => probe.status === "Failed")?.failureMessage || item.compatibilityDetail) && (
+                      <p>{item.setup?.failureMessage || item.sizingProbes?.find((probe) => probe.status === "Failed")?.failureMessage || item.compatibilityDetail}</p>
                     )}
                     <button className="btn" type="button" disabled={busy} onClick={() => void prepare(item.repository)}>
                       {busy ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <RotateCcw size={15} aria-hidden="true" />}

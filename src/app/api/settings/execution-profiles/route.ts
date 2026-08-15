@@ -29,6 +29,8 @@ import {
 } from "@/lib/tenki-environment-catalog-repository";
 import { listPendingTenkiRunnerWorkflowSetups } from "@/lib/tenki-runner-workflow-setup-repository";
 import { assertTenkiRunnerLabel, tenkiRunnerSize } from "@/lib/tenki-runner-sizing";
+import { listTenkiRunnerSizingProbes } from "@/lib/tenki-runner-sizing-probe-repository";
+import { executionCompatibilityReadiness } from "@/lib/execution-compatibility";
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -80,14 +82,42 @@ export async function GET(request: NextRequest) {
         { headers: noStoreHeaders },
       );
     }
-    const [settings, repositories, managedEnvironments, runnerWorkflowSetups] = await Promise.all([
+    const [settings, repositories, managedEnvironments, runnerWorkflowSetups, compatibilityProbes] = await Promise.all([
       listExecutionProfileSettings(context.orgId),
       listGithubRepositoryAuthorizations(context.orgId),
       listManagedTenkiEnvironmentArtifacts(context.orgId),
       listPendingTenkiRunnerWorkflowSetups(context.orgId),
+      listTenkiRunnerSizingProbes(context.orgId),
     ]);
+    const probeByProfileId = new Map(
+      compatibilityProbes.map((probe) => [probe.profileId, probe] as const),
+    );
+    const compatibilityByProfileId = Object.fromEntries(
+      settings.assignments.flatMap((assignment) => [
+        assignment.activeProfile
+          ? [assignment.activeProfile.id, executionCompatibilityReadiness({
+              profile: assignment.activeProfile,
+              probe: probeByProfileId.get(assignment.activeProfile.id),
+              active: true,
+            })] as const
+          : null,
+        assignment.detectedProfile
+          ? [assignment.detectedProfile.id, executionCompatibilityReadiness({
+              profile: assignment.detectedProfile,
+              probe: probeByProfileId.get(assignment.detectedProfile.id),
+            })] as const
+          : null,
+      ].filter((entry) => entry !== null)),
+    );
     return NextResponse.json(
-      { available: true, ...settings, repositories, managedEnvironments, runnerWorkflowSetups },
+      {
+        available: true,
+        ...settings,
+        repositories,
+        managedEnvironments,
+        runnerWorkflowSetups,
+        compatibilityByProfileId,
+      },
       { headers: noStoreHeaders },
     );
   } catch (error) {

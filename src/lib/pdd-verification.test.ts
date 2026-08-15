@@ -131,10 +131,18 @@ describe("Prompt Testing acceptance verification", () => {
         })),
         requiredTestLevels: ["component"],
         permittedPaths: ["ZupNative/tests/**"],
-        requiredCommands: ["swift tests/CloseSpanPDDTests.swift"],
+        requiredCommands: [
+          "swiftc -parse-as-library tests/CloseSpanPDDTests.swift -o /tmp/closespan-pdd-tests && /tmp/closespan-pdd-tests",
+        ],
       },
     };
-    const content = "import Foundation\nprint(\"native acceptance harness\")";
+    const content = [
+      "import Foundation",
+      "@main",
+      "struct CloseSpanPDDTests {",
+      "  static func main() { print(\"native acceptance harness\") }",
+      "}",
+    ].join("\n");
 
     const result = validateGeneratedTests({
       schemaVersion: 1,
@@ -149,7 +157,7 @@ describe("Prompt Testing acceptance verification", () => {
         path: "ZupNative/tests/CloseSpanPDDTests.swift",
         content,
         contentHash: sha256(content),
-        command: "swift tests/CloseSpanPDDTests.swift",
+        command: "swiftc -parse-as-library tests/CloseSpanPDDTests.swift -o /tmp/closespan-pdd-tests && /tmp/closespan-pdd-tests",
       }],
       failureMessage: null,
     }, nativeSnapshot);

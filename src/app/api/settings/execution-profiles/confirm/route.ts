@@ -16,7 +16,13 @@ import { assertManagedTenkiBootSourceAllowed } from "@/lib/tenki-environment-cat
 import {
   assertExecutionProfileReadyForActivation,
   assertTenkiProviderResourceLimits,
+  executionProfileExecutor,
 } from "@/lib/execution-profile";
+import { getProfileTenkiRunnerSizingProbe } from "@/lib/tenki-runner-sizing-probe-repository";
+import {
+  executionCompatibilityReadiness,
+  executionCompatibilityRequirements,
+} from "@/lib/execution-compatibility";
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,6 +54,19 @@ export async function POST(request: NextRequest) {
       workspaceRoot: detected.workspaceRoot,
       config: detected.config,
     });
+    const executor = executionProfileExecutor(detected.config);
+    const probe = executor.kind === "tenki_github_actions"
+      ? await getProfileTenkiRunnerSizingProbe(context.orgId, detected.id)
+      : null;
+    const hasCompatibilityContract = Boolean(
+      executionCompatibilityRequirements(detected.detectionEvidence),
+    );
+    if (executor.kind === "tenki_github_actions" || hasCompatibilityContract) {
+      const readiness = executionCompatibilityReadiness({ profile: detected, probe });
+      if (readiness.status !== "compatible") {
+        throw new HttpError(409, readiness.detail);
+      }
+    }
     const profile = await confirmDetectedExecutionProfile({
       orgId: context.orgId,
       detectedProfileId: body.detectedProfileId,

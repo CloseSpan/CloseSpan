@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ExecutionProfileConfig } from "./execution-profile";
+import { runtimeVersionSatisfies } from "./execution-compatibility";
 
 export const managedTenkiEnvironmentScopes = [
   "managed_toolchain",
@@ -112,12 +113,6 @@ export function strictManagedTenkiCatalogMode(): boolean {
     .toLowerCase() === "true";
 }
 
-function runtimeMajor(value: string | null): number | null {
-  if (!value) return null;
-  const match = /(?:^|\s|[<>=~^])v?(\d{1,3})(?:\D|$)/i.exec(value);
-  return match ? Number(match[1]) : null;
-}
-
 function normalized(value: string | null): string | null {
   const result = value?.trim().toLowerCase() ?? "";
   return result || null;
@@ -182,10 +177,8 @@ function matchScore(
     if (artifactManager !== requestManager) return -1;
     score += 30;
   }
-  const artifactMajor = runtimeMajor(artifact.runtimeVersion);
-  const requestMajor = runtimeMajor(request.runtimeVersion);
-  if (artifactMajor !== null && requestMajor !== null) {
-    if (artifactMajor !== requestMajor) return -1;
+  if (request.runtimeVersion) {
+    if (!runtimeVersionSatisfies(artifact.runtimeVersion, request.runtimeVersion)) return -1;
     score += 50;
   } else if (artifact.runtimeVersion) {
     score += 5;

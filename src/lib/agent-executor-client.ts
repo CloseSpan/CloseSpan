@@ -8,6 +8,7 @@ import {
   sanitizeExecutionProfileConfig,
 } from "./execution-profile";
 import { dispatchTenkiGithubActionsRun } from "./tenki-github-actions-executor";
+import { normalizeSwiftAcceptanceHarnessCommand } from "./swift-acceptance-harness";
 
 function callbackConfiguration(): { callbackBaseUrl: string } | null {
   const callbackBaseUrl = process.env.CLOSESPAN_INTERNAL_BASE_URL?.trim().replace(/\/$/, "");
@@ -57,7 +58,10 @@ export async function dispatchAgentRun(context: AgentRunExecutionContext): Promi
     return;
   }
   const archiveUrl = await createRepositoryArchiveUrl(context);
-  const generatedTests = context.generatedTests ?? [];
+  const generatedTests = (context.generatedTests ?? []).map((test) => ({
+    ...test,
+    command: normalizeSwiftAcceptanceHarnessCommand(test.command),
+  }));
   const pddCommands = generatedTests.map((test) => test.command);
   const body = JSON.stringify({
     schemaVersion: 2,
@@ -72,7 +76,12 @@ export async function dispatchAgentRun(context: AgentRunExecutionContext): Promi
     executionProfileHash: context.executionProfileHash,
     executionProfileSnapshot: context.executionProfileSnapshot,
     repositoryArchiveUrl: archiveUrl,
-    requiredCommands: [...new Set([...context.promptSnapshot.ticket.requiredCommands, ...pddCommands])],
+    requiredCommands: [...new Set([
+      ...context.promptSnapshot.ticket.requiredCommands.map(
+        normalizeSwiftAcceptanceHarnessCommand,
+      ),
+      ...pddCommands,
+    ])],
     permittedPaths: context.promptSnapshot.ticket.permittedPaths,
     generatedTests,
     acceptanceCriteria: context.promptSnapshot.ticket.acceptanceCriteria.map((criterion) => ({

@@ -3,7 +3,11 @@ import { listExecutionProfileSettings } from "@/lib/execution-profile-repository
 import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
 import { refreshPendingProblemRepositoryMatches } from "@/lib/problem-repository-match-repository";
 import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
-import { activateReadyDetectedExecutionProfiles } from "@/lib/tenki-runner-onboarding";
+import {
+  activateReadyDetectedExecutionProfiles,
+  prepareDetectedTenkiRunner,
+  prepareTenkiRunnerSizingProbes,
+} from "@/lib/tenki-runner-onboarding";
 import {
   authorizeAdminMutation,
   errorResponse,
@@ -33,6 +37,19 @@ export async function POST(request: NextRequest) {
       defaultBranch: repository.defaultBranch,
       actor: context,
     });
+    const setup = await prepareDetectedTenkiRunner({
+      orgId: context.orgId,
+      installationId: repository.installationId,
+      repository: repository.repository,
+      defaultBranch: repository.defaultBranch,
+      detection,
+    });
+    const compatibilityProbes = await prepareTenkiRunnerSizingProbes({
+      orgId: context.orgId,
+      installationId: repository.installationId,
+      repository: repository.repository,
+      callbackBaseUrl: request.nextUrl.origin,
+    });
     const activatedProfiles = await activateReadyDetectedExecutionProfiles({
       orgId: context.orgId,
       repository: repository.repository,
@@ -42,6 +59,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         detection,
+        setup,
+        compatibilityProbes,
         activatedProfiles,
         repositoryMatches,
         settings: await listExecutionProfileSettings(context.orgId),
