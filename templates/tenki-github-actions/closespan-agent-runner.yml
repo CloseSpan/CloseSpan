@@ -158,10 +158,7 @@ jobs:
             const output = `${result.stdout}${result.stderr}`;
             const actual = output.match(/^Xcode\s+(\d+(?:\.\d+){0,2})/m)?.[1]?.split(".").map(Number);
             const required = String(mobile.xcode.version).match(/^(\d+(?:\.\d+){0,2})$/)?.[1]?.split(".").map(Number);
-            const comparison = actual && required
-              ? [0, 1, 2].reduce((value, index) => value || (actual[index] ?? 0) - (required[index] ?? 0), 0)
-              : -1;
-            const compatible = Boolean(actual && required && actual[0] === required[0] && comparison >= 0);
+            const compatible = Boolean(actual && required && actual[0] === required[0]);
             if (result.status !== 0 || !compatible) throw new Error(`Tenki runner Xcode ${actual?.join(".") ?? "unknown"} is not compatible with approved Xcode ${mobile.xcode.version}`);
           }
           if (mobile.androidEmulator) {
@@ -334,10 +331,7 @@ jobs:
             const output = `${result.stdout}${result.stderr}`;
             const actual = output.match(/^Xcode\s+(\d+(?:\.\d+){0,2})/m)?.[1]?.split(".").map(Number);
             const required = String(mobile.xcode.version).match(/^(\d+(?:\.\d+){0,2})$/)?.[1]?.split(".").map(Number);
-            const comparison = actual && required
-              ? [0, 1, 2].reduce((value, index) => value || (actual[index] ?? 0) - (required[index] ?? 0), 0)
-              : -1;
-            const compatible = Boolean(actual && required && actual[0] === required[0] && comparison >= 0);
+            const compatible = Boolean(actual && required && actual[0] === required[0]);
             if (result.status !== 0 || !compatible) throw new Error(`Tenki runner Xcode ${actual?.join(".") ?? "unknown"} is not compatible with approved Xcode ${mobile.xcode.version}`);
           }
           if (mobile.androidEmulator) {

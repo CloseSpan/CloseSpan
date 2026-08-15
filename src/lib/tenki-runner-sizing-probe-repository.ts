@@ -58,6 +58,11 @@ function now(): string {
   return new Date().toISOString();
 }
 
+function retryableProbe(probe: Pick<ProbeRecord, "status" | "telemetry">): boolean {
+  return probe.status === "Failed"
+    || probe.status === "Completed" && probe.telemetry?.exitCode !== 0;
+}
+
 type ProbeRow = {
   id: string;
   org_id: string;
@@ -171,7 +176,7 @@ export async function queueTenkiRunnerSizingProbe(input: {
       (candidate) => candidate.orgId === input.orgId && candidate.profileId === input.profile.id,
     );
     if (existing) {
-      if (existing.status !== "Failed") return existing;
+      if (!retryableProbe(existing)) return existing;
       const retried: ProbeRecord = {
         ...existing,
         status: "Queued",
@@ -198,16 +203,16 @@ export async function queueTenkiRunnerSizingProbe(input: {
        probe_commands,working_directory,status
      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'Queued')
      ON CONFLICT (org_id,profile_id) DO UPDATE SET
-       status=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN 'Queued' ELSE tenki_runner_sizing_probes.status END,
-       telemetry=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN NULL ELSE tenki_runner_sizing_probes.telemetry END,
-       recommended_runner_label=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN NULL ELSE tenki_runner_sizing_probes.recommended_runner_label END,
-       recommendation_reasons=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN '[]'::jsonb ELSE tenki_runner_sizing_probes.recommendation_reasons END,
-       github_workflow_run_id=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN NULL ELSE tenki_runner_sizing_probes.github_workflow_run_id END,
-       failure_code=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN NULL ELSE tenki_runner_sizing_probes.failure_code END,
-       failure_message=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN NULL ELSE tenki_runner_sizing_probes.failure_message END,
-       started_at=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN NULL ELSE tenki_runner_sizing_probes.started_at END,
-       completed_at=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN NULL ELSE tenki_runner_sizing_probes.completed_at END,
-       updated_at=CASE WHEN tenki_runner_sizing_probes.status='Failed' THEN now() ELSE tenki_runner_sizing_probes.updated_at END
+       status=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN 'Queued' ELSE tenki_runner_sizing_probes.status END,
+       telemetry=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN NULL ELSE tenki_runner_sizing_probes.telemetry END,
+       recommended_runner_label=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN NULL ELSE tenki_runner_sizing_probes.recommended_runner_label END,
+       recommendation_reasons=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN '[]'::jsonb ELSE tenki_runner_sizing_probes.recommendation_reasons END,
+       github_workflow_run_id=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN NULL ELSE tenki_runner_sizing_probes.github_workflow_run_id END,
+       failure_code=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN NULL ELSE tenki_runner_sizing_probes.failure_code END,
+       failure_message=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN NULL ELSE tenki_runner_sizing_probes.failure_message END,
+       started_at=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN NULL ELSE tenki_runner_sizing_probes.started_at END,
+       completed_at=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN NULL ELSE tenki_runner_sizing_probes.completed_at END,
+       updated_at=CASE WHEN tenki_runner_sizing_probes.status='Failed' OR (tenki_runner_sizing_probes.status='Completed' AND COALESCE((tenki_runner_sizing_probes.telemetry->>'exitCode')::int,-1)<>0) THEN now() ELSE tenki_runner_sizing_probes.updated_at END
      RETURNING ${SELECT_FIELDS}`,
     [
       record.id, input.orgId, record.repository, record.workspaceRoot,

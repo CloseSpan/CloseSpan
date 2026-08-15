@@ -26,6 +26,7 @@ import {
 import { noStoreHeaders } from "@/lib/request-security";
 import { listGithubRepositoryAuthorizations } from "@/lib/github-repository-allowlist";
 import { queueAndDispatchTenkiRunnerSizingProbe } from "@/lib/tenki-runner-sizing-probe";
+import { xcodeMajorCompatibilityCommand } from "@/lib/xcode-version-compatibility";
 
 export const maxDuration = 60;
 const MAX_CALLBACK_BYTES = 128_000;
@@ -82,7 +83,7 @@ export async function GET(
       `echo no | avdmanager create avd --force --name closespan --package 'system-images;android-${executor.androidEmulator.apiLevel};${executor.androidEmulator.target};${executor.androidEmulator.architecture}' --device ${shellArgument(executor.androidEmulator.deviceProfile)}`,
       `emulator -avd closespan -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect >/tmp/closespan-emulator.log 2>&1 & adb wait-for-device && for attempt in $(seq 1 90); do test "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 && exit 0; sleep 2; done; exit 1`,
     ] : executor.xcode ? [
-      `xcodebuild -version | grep -F ${shellArgument(`Xcode ${executor.xcode.version}`)}`,
+      xcodeMajorCompatibilityCommand(executor.xcode.version),
     ] : [];
     return NextResponse.json({
       probeId,

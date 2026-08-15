@@ -140,6 +140,48 @@ describe("Tenki runner sizing probe persistence", () => {
     await expect(listTenkiRunnerSizingProbes("org_demo")).resolves.toHaveLength(1);
   });
 
+  it("requeues a completed probe whose compatibility or workload command failed", async () => {
+    const input = {
+      orgId: "org_demo",
+      profile: profile(),
+      sourceSha: "c".repeat(40),
+      workflowPath: ".github/workflows/closespan-runner-sizing.yml",
+      workflowSha256: "d".repeat(64),
+      runnerLabel: "tenki-standard-large-8c-16g",
+      workloadClass: "application" as const,
+      workloadReasons: ["Application build"],
+      probeCommands: ["npm run build"],
+      workingDirectory: ".",
+    };
+    const queued = await queueTenkiRunnerSizingProbe(input);
+    await completeTenkiRunnerSizingProbe({
+      orgId: "org_demo",
+      probeId: queued.id,
+      githubWorkflowRunId: 92,
+      telemetry: {
+        durationMs: 250,
+        cpuSaturationRatio: 0.1,
+        memoryPressureRatio: 0.1,
+        peakMemoryMb: 256,
+        memoryLimitMb: 16_384,
+        exitCode: 1,
+        signal: null,
+        oomKilled: false,
+        timedOut: false,
+        sampledAt: new Date().toISOString(),
+        samples: 1,
+      },
+    });
+
+    await expect(queueTenkiRunnerSizingProbe(input)).resolves.toMatchObject({
+      id: queued.id,
+      status: "Queued",
+      telemetry: null,
+      githubWorkflowRunId: null,
+      completedAt: null,
+    });
+  });
+
   it("maps a macOS capacity selector to an Xcode-compatible runner for sizing", async () => {
     const sizingWorkflow = "name: CloseSpan runner sizing probe\n";
     const workflowHash = createHash("sha256").update(sizingWorkflow).digest("hex");
