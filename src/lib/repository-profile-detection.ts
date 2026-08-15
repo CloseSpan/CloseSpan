@@ -27,7 +27,7 @@ import {
   type ToolchainRequirement,
 } from "./execution-compatibility";
 
-const DETECTOR_VERSION = 9;
+const DETECTOR_VERSION = 10;
 const TENKI_RUNNER_WORKFLOW_PATH = ".github/workflows/closespan-agent-runner.yml";
 const TENKI_RUNNER_PROBE_WORKFLOW_PATH = ".github/workflows/closespan-runner-sizing.yml";
 const PRIMARY_MANIFESTS = new Set([
@@ -842,11 +842,22 @@ function detectedXcodeVersion(files: ReadManifest[]): string {
   const version = /^(\d{1,2}(?:\.\d{1,2}){0,2})$/.exec(declared ?? "")?.[1];
   if (version) return version;
 
-  // LastUpgradeCheck and LastSwiftUpdateCheck only identify the IDE that last
-  // touched a project. They do not declare its minimum compatible Xcode and
-  // must never be promoted into an approval-bound runtime requirement.
-  // Xcode 16 is the conservative iOS 18 baseline; the runner probe still
-  // executes the exact approved build command before this profile activates.
+  // Xcode does not create a version declaration by default. In that common
+  // case, the project-format markers are the only repository-owned evidence
+  // available for selecting a compatible image. A marker such as 2610 means
+  // Xcode 26.1, while 1640 means Xcode 16.4. The compatibility probe still
+  // runs the exact approved build before the detected profile is activated.
+  const markers = files.flatMap((file) => Array.from(
+    file.content.matchAll(/\b(?:LastUpgradeCheck|LastSwiftUpdateCheck)\s*=\s*(\d{3,4})\s*;/g),
+    (match) => Number.parseInt(match[1] ?? "", 10),
+  )).filter(Number.isFinite);
+  const marker = markers.length > 0 ? Math.max(...markers) : null;
+  if (marker !== null) {
+    const major = Math.floor(marker / 100);
+    const minor = Math.floor((marker % 100) / 10);
+    if (major > 0) return `${major}.${minor}`;
+  }
+
   return "16";
 }
 

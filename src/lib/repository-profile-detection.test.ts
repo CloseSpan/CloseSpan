@@ -184,7 +184,7 @@ describe("repository execution-profile detection", () => {
       },
       reviewState: "Pending review",
       active: false,
-      detectorVersion: 9,
+      detectorVersion: 10,
       environment: { image: "sandbox", snapshotId: null, runtimeFamily: "node" },
       compatibilityRequirements: {
         schemaVersion: 1,
@@ -246,7 +246,7 @@ describe("repository execution-profile detection", () => {
     }));
   });
 
-  it("does not treat LastUpgradeCheck as a minimum Xcode runtime requirement", async () => {
+  it("routes an Xcode project using its repository-owned compatibility marker", async () => {
     profileRepository.save.mockReset().mockResolvedValue({ id: "profile-ios" });
     const { github, workflow } = mobileGithubFixture("ios");
     const detected = await detectAndSaveGithubRepositoryProfiles({
@@ -261,7 +261,7 @@ describe("repository execution-profile detection", () => {
       root: ".",
       platform: "ios",
       language: "swift",
-      xcode: { version: "16", containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
+      xcode: { version: "26.1", containerKind: "project", containerPath: "Zup.xcodeproj", scheme: "Zup" },
       commands: {
         test: "swiftc -parse-as-library tests/CloseSpanPDDTests.swift -o /tmp/closespan-pdd-tests && /tmp/closespan-pdd-tests",
       },
@@ -278,7 +278,7 @@ describe("repository execution-profile detection", () => {
           architecture: "arm64",
           workflowPath: ".github/workflows/closespan-agent-runner.yml",
           workflowSha256: createHash("sha256").update(workflow).digest("hex"),
-          xcode: expect.objectContaining({ version: "16", scheme: "Zup", signingPolicy: "simulator_only" }),
+          xcode: expect.objectContaining({ version: "26.1", scheme: "Zup", signingPolicy: "simulator_only" }),
         }),
       }),
       detectionEvidence: expect.objectContaining({
@@ -288,7 +288,7 @@ describe("repository execution-profile detection", () => {
           validationKind: "runner_probe",
           capabilities: ["ios-simulator"],
           toolchains: expect.arrayContaining([
-            { name: "Xcode", constraint: "16" },
+            { name: "Xcode", constraint: "26.1" },
           ]),
         }),
       }),
