@@ -12560,6 +12560,8 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   max-height: 120px;
   padding: 10px 0;
   resize: none;
+  -webkit-appearance: none;
+  appearance: none;
   border: 0 !important;
   outline: 0 !important;
   color: var(--text-strong);
