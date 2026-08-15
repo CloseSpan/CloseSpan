@@ -1,5 +1,6 @@
 import { Bot, ExternalLink, Info, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { AgentRunDeleteButton } from "@/components/agent-run-delete-button";
 import { PageTitle } from "@/components/screens";
 import { requireWorkspaceUser } from "@/lib/auth-user";
 import {
@@ -68,6 +69,9 @@ export default async function AgentRunsPage() {
                 <th>Repository</th>
                 <th>Queued</th>
                 <th>Result</th>
+                <th className="agent-run-actions-heading">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -111,7 +115,7 @@ export default async function AgentRunsPage() {
                     </td>
                     <td>{run.repository ?? "Repository unavailable"}</td>
                     <td>{dateFormatter.format(new Date(run.queuedAt))}</td>
-                    <td>
+                    <td className="agent-run-result-links">
                       <Link className="text-link" href={`/agent-runs/${run.id}`}>
                         View run
                       </Link>
@@ -137,6 +141,14 @@ export default async function AgentRunsPage() {
                           <ShieldCheck aria-hidden="true" size={12} /> Verified
                         </small>
                       ) : null}
+                    </td>
+                    <td className="agent-run-delete-cell">
+                      <AgentRunDeleteButton
+                        runId={run.id}
+                        runLabel={run.problemTitle}
+                        status={run.status}
+                        canDelete={user.role === "Admin"}
+                      />
                     </td>
                   </tr>
                 );

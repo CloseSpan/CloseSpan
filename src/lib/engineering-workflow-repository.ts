@@ -2880,6 +2880,80 @@ export async function cancelAgentRun(orgId: string, runId: string, actor: ActorC
   return postgresWorkflow(orgId, problemId);
 }
 
+export async function deleteAgentRun(
+  orgId: string,
+  runId: string,
+  actor: ActorContext,
+): Promise<void> {
+  if (workspacePersistenceMode(orgId) === "memory") {
+    const pair = [...memoryWorkflows.entries()].find(
+      ([key, item]) => key.startsWith(`${orgId}:`) && item.run?.id === runId,
+    );
+    if (!pair?.[1].run) {
+      throw new EngineeringWorkflowError("Agent run was not found", 404);
+    }
+    if (["Queued", "Running"].includes(pair[1].run.status)) {
+      throw new EngineeringWorkflowError(
+        "Cancel the active agent run before deleting it",
+        409,
+      );
+    }
+    pair[1].run = null;
+    pair[1].finalApproval = null;
+    return;
+  }
+
+  await transaction(async (client) => {
+    const result = await client.query<{
+      problem_id: string;
+      status: AgentRunView["status"];
+    }>(
+      `SELECT problem_id,status
+         FROM agent_runs
+        WHERE org_id=$1 AND id=$2
+        FOR UPDATE`,
+      [orgId, runId],
+    );
+    const run = result.rows[0];
+    if (!run) throw new EngineeringWorkflowError("Agent run was not found", 404);
+    if (["Queued", "Running"].includes(run.status)) {
+      throw new EngineeringWorkflowError(
+        "Cancel the active agent run before deleting it",
+        409,
+      );
+    }
+
+    await client.query(
+      "DELETE FROM post_release_verification_jobs WHERE org_id=$1 AND agent_run_id=$2",
+      [orgId, runId],
+    );
+    await client.query(
+      "DELETE FROM release_events WHERE org_id=$1 AND agent_run_id=$2",
+      [orgId, runId],
+    );
+    await client.query(
+      "DELETE FROM final_execution_attempts WHERE org_id=$1 AND agent_run_id=$2",
+      [orgId, runId],
+    );
+    await client.query(
+      "DELETE FROM approval_requests WHERE org_id=$1 AND agent_run_id=$2 AND action_type='final_execution'",
+      [orgId, runId],
+    );
+    await client.query(
+      "DELETE FROM agent_runs WHERE org_id=$1 AND id=$2",
+      [orgId, runId],
+    );
+    await audit(
+      client,
+      orgId,
+      actor,
+      "Permanently deleted agent run and linked execution records",
+      "AgentRun",
+      runId,
+    );
+  });
+}
+
 export function verificationReportJson(report: AgentImplementationReport): string {
   return `${JSON.stringify(report, null, 2)}\n`;
 }

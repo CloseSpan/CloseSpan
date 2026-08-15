@@ -19,6 +19,7 @@ import {
   applyPddPromptRevision,
   approveImplementationRun,
   claimQueuedAgentRun,
+  deleteAgentRun,
   failAgentRun,
   getAgentRunExecutionContext,
   markAgentRunRunning,
@@ -189,6 +190,48 @@ describe("PostgreSQL engineering workflow state guards", () => {
     database.pool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     database.pool.query.mockResolvedValueOnce({ rows: [{ status: "Failed" }], rowCount: 1 });
     await expect(claimQueuedAgentRun("org-1", "run-1")).resolves.toBe("terminal");
+  });
+
+  it("deletes terminal run dependencies in foreign-key-safe order", async () => {
+    database.client.query.mockImplementation(async (sql: unknown) => {
+      const normalized = normalizedSql(sql);
+      if (normalized.includes("FROM agent_runs") && normalized.includes("FOR UPDATE")) {
+        return {
+          rows: [{ problem_id: "problem-1", status: "Failed" }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await deleteAgentRun("org-1", "run-1", actor);
+
+    const mutations = database.client.query.mock.calls
+      .map(([sql]) => normalizedSql(sql))
+      .filter((sql) => sql.startsWith("DELETE FROM"));
+    expect(mutations).toEqual([
+      expect.stringContaining("DELETE FROM post_release_verification_jobs"),
+      expect.stringContaining("DELETE FROM release_events"),
+      expect.stringContaining("DELETE FROM final_execution_attempts"),
+      expect.stringContaining("DELETE FROM approval_requests"),
+      expect.stringContaining("DELETE FROM agent_runs"),
+    ]);
+    expect(database.client.query).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO audit_events"),
+      expect.arrayContaining(["org-1", "run-1"]),
+    );
+  });
+
+  it("requires active work to be cancelled before deletion", async () => {
+    database.client.query.mockResolvedValueOnce({
+      rows: [{ problem_id: "problem-1", status: "Running" }],
+      rowCount: 1,
+    });
+
+    await expect(deleteAgentRun("org-1", "run-1", actor))
+      .rejects.toThrow("Cancel the active agent run");
+    expect(database.client.query.mock.calls.some(([sql]) =>
+      normalizedSql(sql).startsWith("DELETE FROM"))).toBe(false);
   });
 
   it("returns the immutable prompt to Ready when an approval is rejected", async () => {

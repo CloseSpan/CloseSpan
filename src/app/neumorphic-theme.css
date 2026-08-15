@@ -3135,7 +3135,120 @@ table tbody tr:hover {
 }
 
 .app-shell .agent-runs-table {
+  padding: var(--space-2);
   overflow: visible;
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.app-shell .agent-runs-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .agent-runs-table thead tr {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .agent-runs-table thead th {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .agent-runs-table thead th:first-child {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.app-shell .agent-runs-table thead th:last-child {
+  width: 64px;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.app-shell .agent-runs-table tbody td {
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 64%, transparent);
+  background: transparent;
+  transition:
+    background-color var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease;
+}
+
+.app-shell .agent-runs-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.app-shell .agent-runs-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--surface-hover) 70%, transparent);
+}
+
+.app-shell .agent-runs-table tbody tr:hover td:first-child {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 52%, transparent);
+}
+
+.app-shell .agent-runs-table tbody tr:hover td:last-child {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.app-shell .agent-runs-table .agent-run-result-links {
+  min-width: 132px;
+}
+
+.app-shell .agent-runs-table .agent-run-result-links .text-link {
+  width: fit-content;
+}
+
+.app-shell .agent-run-delete-cell,
+.app-shell .agent-run-actions-heading {
+  width: 64px;
+  padding-inline: var(--space-2);
+  text-align: center;
+}
+
+.app-shell .agent-run-delete-trigger {
+  display: inline-grid;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-raised-sm);
+  cursor: pointer;
+  place-items: center;
+}
+
+.app-shell .agent-run-delete-trigger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+.app-shell .agent-run-delete-trigger:active:not(:disabled) {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.app-shell .agent-run-delete-trigger:focus-visible {
+  outline: 0;
+  color: var(--danger);
+  box-shadow: var(--shadow-raised-sm), var(--shadow-focus);
+}
+
+.app-shell .agent-run-delete-trigger:disabled {
+  color: color-mix(in srgb, var(--text-muted) 52%, transparent);
+  box-shadow: var(--shadow-disabled-inset);
+  cursor: not-allowed;
 }
 
 .app-shell .agent-runs-table td:has(.status-help[open]) {
@@ -3154,6 +3267,65 @@ table tbody tr:hover {
     overflow-x: auto;
     overflow-y: visible;
   }
+}
+
+.agent-run-delete-dialog {
+  width: min(500px, calc(100% - 28px));
+}
+
+.agent-run-delete-panel {
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.agent-run-delete-dialog .organization-create-head .eyebrow {
+  color: var(--danger);
+}
+
+.agent-run-delete-body {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 var(--space-3) var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.agent-run-delete-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  color: var(--danger);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.agent-run-delete-warning > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.agent-run-delete-warning strong {
+  color: var(--danger);
+}
+
+.agent-run-delete-warning p {
+  margin: var(--space-1) 0 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.agent-run-delete-actions {
+  padding-top: 0;
+}
+
+.agent-run-delete-actions .organization-delete-submit {
+  min-width: 132px;
 }
 
 .app-shell .investigation-metric-tooltip {
