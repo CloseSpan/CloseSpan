@@ -1785,7 +1785,11 @@ export async function getPromptAlignmentContext(
 export async function applyPddPromptRevision(
   orgId: string,
   problemId: string,
-  input: { currentPromptHash: string; revisedPrompt: string },
+  input: {
+    currentPromptHash: string;
+    revisedPrompt: string;
+    source?: "Prompt Testing" | "CloseSpan conversation";
+  },
   actor: ActorContext,
 ): Promise<EngineeringWorkflowView> {
   await assertPromptPreparationAllowed(orgId);
@@ -1877,7 +1881,14 @@ export async function applyPddPromptRevision(
         current.base_branch, current.base_sha, current.artifact_path,
         JSON.stringify(current.structured_snapshot), revisedPrompt, revisedHash, actor.actorId],
     );
-    await audit(client, orgId, actor, `Applied Prompt Testing-guided implementation prompt revision ${revision} with SHA-256 ${revisedHash}`, "ImplementationPrompt", problemId);
+    await audit(
+      client,
+      orgId,
+      actor,
+      `Applied ${input.source ?? "Prompt Testing"}-guided implementation prompt revision ${revision} with SHA-256 ${revisedHash}`,
+      "ImplementationPrompt",
+      problemId,
+    );
   });
   return getEngineeringWorkflow(orgId, problemId);
 }

@@ -510,6 +510,7 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("No user-story template is required");
     expect(markup).toContain("Message CloseSpan about this prompt");
     expect(markup).toContain("Send message to CloseSpan");
+    expect(markup).toContain("sending a message never starts Prompt Testing");
     expect(markup).not.toContain("Use the format: As a");
   });
 

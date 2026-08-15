@@ -52,6 +52,23 @@ interface PromptComparisonSnapshot {
   applied: boolean;
 }
 
+type PromptConversationChatMessage = {
+  id: string;
+  role: "assistant";
+  kind: "conversation";
+  content: string;
+  question: string;
+  improved: boolean;
+  improvementSummary: string | null;
+  suggestedRevision: string | null;
+  currentPromptHash: string | null;
+  revisionReceipt: string | null;
+  provider: string;
+  model: string;
+  applied: boolean;
+  testStarted: boolean;
+};
+
 type PromptTestingChatMessage =
   | {
       id: string;
@@ -61,6 +78,7 @@ type PromptTestingChatMessage =
   | {
       id: string;
       role: "assistant";
+      kind: "evaluation";
       aligned: boolean;
       changes: StructuredPddChange[];
       summary: string | null | undefined;
@@ -68,7 +86,8 @@ type PromptTestingChatMessage =
       executionMode: "cloud" | "local";
       model: string | null;
       costUsd: number | null;
-    };
+    }
+  | PromptConversationChatMessage;
 
 export type PreparationStepState = "complete" | "current" | "upcoming";
 
@@ -452,6 +471,7 @@ export function EngineeringTicketPanel({
         messages.push({
           id: `closespan-response-${initialPromptEvaluationKey}`,
           role: "assistant",
+          kind: "evaluation",
           aligned: initialPromptReview.verdict === "Passed",
           changes,
           summary: initialPromptReview.verdict === "Needs revision" && changes.length > 0
@@ -473,6 +493,7 @@ export function EngineeringTicketPanel({
   const [storyTest, setStoryTest] = useState<UserStoryPromptTestView>();
   const [storedError, setError] = useState<string>();
   const [draftBusy, setDraftBusy] = useState(false);
+  const [conversationBusy, setConversationBusy] = useState(false);
   const [revisionBusy, setRevisionBusy] = useState(false);
   const [recentPromptComparison, setRecentPromptComparison] =
     useState<PromptComparisonSnapshot>();
@@ -557,15 +578,23 @@ export function EngineeringTicketPanel({
     });
   }
 
-  function submitPromptQuestion(event: FormEvent<HTMLFormElement>) {
+  async function submitPromptQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const question = promptQuestion.trim();
-    const issue = userStoryInputIssue(question);
-    if (issue) {
-      setError(issue);
+    if (!question || question.length > 2_000 || conversationBusy || busy) {
+      if (question.length > 2_000) {
+        setError("Enter a prompt question of 2,000 characters or fewer.");
+      }
       return;
     }
-    setUserStory(question);
+    const history = chatMessages.slice(-10).map((message) => ({
+      role: message.role,
+      content: message.role === "user"
+        ? message.content
+        : message.kind === "conversation"
+          ? message.content
+          : message.summary ?? message.changes.map((change) => change.summary).join(" "),
+    })).filter((message) => message.content.trim());
     setPromptQuestion("");
     setChatMessages((messages) => [
       ...messages,
@@ -575,7 +604,138 @@ export function EngineeringTicketPanel({
         content: question,
       },
     ]);
-    testAgainstPrompt(question);
+    setConversationBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch(
+        `/api/problems/${problemId}/engineering/prompt-conversation`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-org-id": orgId,
+            "idempotency-key": crypto.randomUUID(),
+            "x-request-id": crypto.randomUUID(),
+          },
+          body: JSON.stringify({ message: question, history }),
+        },
+      );
+      const payload = await response.json() as {
+        answer?: string;
+        improved?: boolean;
+        improvementSummary?: string | null;
+        suggestedRevision?: string | null;
+        currentPromptHash?: string;
+        revisionReceipt?: string | null;
+        provider?: string;
+        model?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.answer) {
+        throw new Error(payload.error ?? "CloseSpan could not answer this prompt question.");
+      }
+      const answer = payload.answer;
+      setChatMessages((messages) => [
+        ...messages,
+        {
+          id: `closespan-conversation-${crypto.randomUUID()}`,
+          role: "assistant",
+          kind: "conversation",
+          content: answer,
+          question,
+          improved: Boolean(payload.improved),
+          improvementSummary: payload.improvementSummary ?? null,
+          suggestedRevision: payload.suggestedRevision ?? null,
+          currentPromptHash: payload.currentPromptHash ?? null,
+          revisionReceipt: payload.revisionReceipt ?? null,
+          provider: payload.provider ?? "CloseSpan AI",
+          model: payload.model ?? "configured model",
+          applied: false,
+          testStarted: false,
+        },
+      ]);
+    } catch (cause) {
+      setError(cause instanceof Error
+        ? cause.message
+        : "CloseSpan could not answer this prompt question.");
+    } finally {
+      setConversationBusy(false);
+    }
+  }
+
+  async function applyConversationImprovement(
+    message: PromptConversationChatMessage,
+  ) {
+    if (
+      revisionBusy
+      || busy
+      || message.applied
+      || !message.improved
+      || !message.suggestedRevision
+      || !message.currentPromptHash
+      || !message.revisionReceipt
+    ) return;
+    const testedPrompt = workflow.prompt;
+    setRevisionBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch(
+        `/api/problems/${problemId}/engineering/apply-conversation-revision`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-org-id": orgId,
+            "idempotency-key": crypto.randomUUID(),
+            "x-request-id": crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            message: message.question,
+            currentPromptHash: message.currentPromptHash,
+            revisedPrompt: message.suggestedRevision,
+            revisionReceipt: message.revisionReceipt,
+          }),
+        },
+      );
+      const payload = await response.json() as {
+        workflow?: EngineeringWorkflowView;
+        error?: string;
+      };
+      if (!response.ok || !payload.workflow?.prompt) {
+        throw new Error(payload.error ?? "The prompt improvement could not be applied.");
+      }
+      const appliedPrompt = payload.workflow.prompt;
+      setWorkflow(payload.workflow);
+      setChatMessages((messages) => messages.map((candidate) => (
+        candidate.id === message.id && candidate.role === "assistant" && candidate.kind === "conversation"
+          ? { ...candidate, applied: true, testStarted: true }
+          : candidate
+      )));
+      if (testedPrompt && testedPrompt.contentHash !== appliedPrompt.contentHash) {
+        setRecentPromptComparison({
+          tested: testedPrompt,
+          proposed: {
+            revision: appliedPrompt.revision,
+            content: appliedPrompt.content,
+            contentHash: appliedPrompt.contentHash,
+          },
+          applied: true,
+        });
+      }
+      discardProblemTasks(problemId);
+      startPromptTest({
+        problemId,
+        userStory: payload.workflow.specification?.userStory ?? userStory,
+        estimatedDurationMs: pddTiming.estimatedDurationMs,
+        triggerSource: "manual",
+      });
+    } catch (cause) {
+      setError(cause instanceof Error
+        ? cause.message
+        : "The prompt improvement could not be applied.");
+    } finally {
+      setRevisionBusy(false);
+    }
   }
 
   async function createSuggestedPrompt() {
@@ -844,6 +1004,7 @@ export function EngineeringTicketPanel({
       {
         id: `closespan-response-${promptEvaluationKey}`,
         role: "assistant",
+        kind: "evaluation",
         aligned: promptAligned,
         changes: incompletePromptEvaluation
           ? []
@@ -866,7 +1027,7 @@ export function EngineeringTicketPanel({
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ block: "nearest" });
-  }, [busy, chatMessages]);
+  }, [busy, chatMessages, conversationBusy]);
 
   useEffect(() => {
     if (!repositoryProfileReady) return;
@@ -1091,12 +1252,14 @@ export function EngineeringTicketPanel({
             <div>
               <h3 id="prompt-testing-chat-title">Ask CloseSpan about this prompt</h3>
               <p>
-                Ask a question, describe the behavior you want, or paste product notes. No user-story template is required.
+                Ask a question, describe the behavior you want, or paste product notes. No user-story template is required, and sending a message never starts Prompt Testing.
               </p>
             </div>
             <span className={`badge ${busy ? "medium" : "brand"}`}>
-              {busy
-                ? "Checking"
+              {conversationBusy
+                ? "Replying"
+                : busy
+                  ? "Prompt Test running"
                 : canTestPrompt
                   ? "Prompt chat"
                   : "Suggested prompt required"}
@@ -1122,6 +1285,42 @@ export function EngineeringTicketPanel({
                 </span>
                 {message.role === "user" ? (
                   <p>{message.content}</p>
+                ) : message.kind === "conversation" ? (
+                  <>
+                    <p>{message.content}</p>
+                    {message.improved && message.improvementSummary && (
+                      <div className="prompt-conversation-improvement" role="status">
+                        <CheckCircle2 size={16} aria-hidden="true" />
+                        <div>
+                          <strong>Prompt improved</strong>
+                          <span>{message.improvementSummary}</span>
+                        </div>
+                      </div>
+                    )}
+                    {message.improved && (
+                      <div className="prompt-testing-message-actions">
+                        <button
+                          type="button"
+                          className="btn primary"
+                          disabled={revisionBusy || busy || message.applied}
+                          onClick={() => applyConversationImprovement(message)}
+                        >
+                          <CheckCircle2 size={14} aria-hidden="true" />
+                          {message.testStarted
+                            ? "Improvement applied · Prompt Test started"
+                            : revisionBusy
+                              ? "Applying improvement…"
+                              : "Apply improvement & run Prompt Test"}
+                        </button>
+                      </div>
+                    )}
+                    <details className="pdd-evaluation-technical">
+                      <summary>Response details</summary>
+                      <p className="subtle">
+                        Conversational review · {message.provider} · {message.model}
+                      </p>
+                    </details>
+                  </>
                 ) : (
                   <>
                     <PddResultEnglishView
@@ -1141,6 +1340,15 @@ export function EngineeringTicketPanel({
                 )}
               </article>
             ))}
+            {conversationBusy && (
+              <article className="prompt-testing-message is-assistant is-working">
+                <span className="prompt-testing-message-author">CloseSpan</span>
+                <div className="prompt-conversation-thinking" role="status">
+                  <LoaderCircle className="spin" size={16} aria-hidden="true" />
+                  <span>Answering from the current prompt…</span>
+                </div>
+              </article>
+            )}
             {busy && (
               <article className="prompt-testing-message is-assistant is-working">
                 <span className="prompt-testing-message-author">CloseSpan</span>
@@ -1199,10 +1407,12 @@ export function EngineeringTicketPanel({
             <button
               type="submit"
               className="prompt-testing-send"
-              aria-label={busy ? "CloseSpan is checking the prompt" : "Send message to CloseSpan"}
-              disabled={busy || !canTestPrompt || !promptQuestion.trim()}
+              aria-label={conversationBusy ? "CloseSpan is answering" : "Send message to CloseSpan"}
+              disabled={conversationBusy || busy || !canTestPrompt || !promptQuestion.trim()}
             >
-              {busy ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />}
+              {conversationBusy
+                ? <LoaderCircle className="spin" size={18} />
+                : <ArrowUp size={18} />}
             </button>
           </form>
           <p className="prompt-testing-composer-hint">
