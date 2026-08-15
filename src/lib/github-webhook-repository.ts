@@ -62,6 +62,7 @@ const pullRequestActions = new Set([
   "closed",
 ]);
 const runtimeVerificationTitle = /^CloseSpan verification ([0-9a-f]{8}-[0-9a-f-]{27})$/i;
+const closespanRunBranch = /^closespan\/runs\/([0-9a-f]{8}-[0-9a-f-]{27})$/i;
 
 let schemaInitialization: Promise<void> | undefined;
 
@@ -275,9 +276,88 @@ function runtimeVerificationRunId(payload: GithubWebhookPayload): string | null 
   if (titleMatch?.[1]) return titleMatch[1].toLowerCase();
   const branch = payload.workflow_run?.head_branch;
   const branchMatch = typeof branch === "string"
-    ? /^closespan\/runs\/([0-9a-f]{8}-[0-9a-f-]{27})$/i.exec(branch)
+    ? closespanRunBranch.exec(branch)
     : null;
   return branchMatch?.[1]?.toLowerCase() ?? null;
+}
+
+function agentRunId(payload: GithubWebhookPayload): string | null {
+  const branch = payload.workflow_run?.head_branch;
+  const match = typeof branch === "string" ? closespanRunBranch.exec(branch) : null;
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+async function reconcileAgentWorkflow(
+  client: PoolClient,
+  orgId: string,
+  installationId: string,
+  action: string | null,
+  payload: GithubWebhookPayload,
+  deliveryId: string,
+): Promise<string> {
+  const workflow = payload.workflow_run;
+  if (action !== "completed" || workflow?.name !== "CloseSpan approval-bound agent") {
+    return "ignored_agent_workflow_action";
+  }
+  const runId = agentRunId(payload);
+  const repository = payload.repository?.full_name;
+  if (!runId || typeof repository !== "string") return "ignored_malformed_agent_workflow";
+
+  const tracked = await client.query<{
+    problem_id: string;
+    prompt_revision_id: string;
+    status: string;
+  }>(
+    `SELECT run.problem_id,run.prompt_revision_id,run.status
+       FROM agent_runs run
+       JOIN github_repository_allowlists allowlist
+         ON allowlist.org_id=run.org_id
+        AND allowlist.repository=run.repository
+        AND allowlist.installation_id=$3
+        AND allowlist.active=true
+      WHERE run.org_id=$1 AND run.id=$2 AND run.repository=$4
+      FOR UPDATE`,
+    [orgId, runId, installationId, repository],
+  );
+  const record = tracked.rows[0];
+  if (!record) return "ignored_untracked_agent_workflow";
+  if (["Draft PR opened", "Failed", "Cancelled", "No changes"].includes(record.status)) {
+    return "agent_workflow_already_terminal";
+  }
+
+  const conclusion = typeof workflow.conclusion === "string"
+    ? workflow.conclusion.replaceAll("_", " ")
+    : "without a result";
+  const workflowUrl = typeof workflow.html_url === "string" ? workflow.html_url : null;
+  const message = workflow.conclusion === "success"
+    ? "GitHub Actions completed, but CloseSpan did not receive the implementation report. Review the GitHub run, then prepare another coding run."
+    : `GitHub Actions ${conclusion} before CloseSpan received the implementation report. Review the GitHub run, resolve the account, runner, or workflow failure, then prepare another coding run.`;
+  const status = workflow.conclusion === "cancelled" ? "Cancelled" : "Failed";
+  const failureCode = `github_workflow_${typeof workflow.conclusion === "string" ? workflow.conclusion : "unknown"}`;
+  const failureMessage = workflowUrl ? `${message} ${workflowUrl}` : message;
+
+  const updated = await client.query(
+    `UPDATE agent_runs
+        SET status=$3,failure_code=$4,failure_message=$5,completed_at=coalesce(completed_at,now())
+      WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running','Tests passed')`,
+    [orgId, runId, status, failureCode.slice(0, 120), failureMessage.slice(0, 2_000)],
+  );
+  if (!updated.rowCount) return "agent_workflow_already_terminal";
+  await client.query(
+    "UPDATE engineering_ticket_specifications SET implementation_state='Prompt ready',updated_at=now() WHERE org_id=$1 AND problem_id=$2",
+    [orgId, record.problem_id],
+  );
+  await client.query(
+    "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
+    [orgId, record.prompt_revision_id],
+  );
+  await client.query(
+    `INSERT INTO audit_events(
+       id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+     ) VALUES($1,$2,'github','GitHub Actions',$3,'AgentRun',$4,$5)`,
+    [randomUUID(), orgId, failureMessage, runId, `github-webhook-${deliveryId}`],
+  );
+  return "agent_workflow_failed_from_github_workflow";
 }
 
 async function reconcileRuntimeVerificationWorkflow(
@@ -396,7 +476,17 @@ async function processWorkspaceEvent(
     return synchronizeInstallation(client, orgId, verified, input.deliveryId);
   if (input.event === "pull_request")
     return auditPullRequest(client, orgId, id, action, input.payload, input.deliveryId);
-  if (input.event === "workflow_run")
+  if (input.event === "workflow_run") {
+    if (input.payload.workflow_run?.name === "CloseSpan approval-bound agent") {
+      return reconcileAgentWorkflow(
+        client,
+        orgId,
+        id,
+        action,
+        input.payload,
+        input.deliveryId,
+      );
+    }
     return reconcileRuntimeVerificationWorkflow(
       client,
       orgId,
@@ -405,6 +495,7 @@ async function processWorkspaceEvent(
       input.payload,
       input.deliveryId,
     );
+  }
   if (input.event === "deployment_status")
     return recordGithubDeploymentStatus(client, orgId, input.deliveryId, input.payload);
   return "ignored_unhandled_event";

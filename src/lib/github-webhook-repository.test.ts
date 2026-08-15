@@ -278,4 +278,65 @@ describe("GitHub webhook persistence", () => {
       sql(query).includes("UPDATE investigations") && sql(query).includes("Verification blocked"),
     )).toBe(true);
   });
+
+  it("stops an approval-bound run when GitHub finishes before its callback", async () => {
+    const runId = "208b7b50-ad68-4e5b-9cd2-96e8b948aa8c";
+    database.pool.query.mockImplementation(async (query: unknown) =>
+      sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
+        ? { rows: [], rowCount: 0 }
+        : sql(query).includes("FROM github_app_installations")
+          ? { rows: [{ org_id: "org-1" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 },
+    );
+    database.client.query.mockImplementation(async (query: unknown) => {
+      if (sql(query).includes("INSERT INTO github_webhook_deliveries"))
+        return { rows: [{ delivery_id: deliveryId }], rowCount: 1 };
+      if (sql(query).includes("FROM agent_runs run")) {
+        return {
+          rows: [{ problem_id: "problem-1", prompt_revision_id: "prompt-1", status: "Queued" }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await processGithubWebhook({
+      deliveryId,
+      event: "workflow_run",
+      rawBody: '{"action":"completed"}',
+      payload: {
+        action: "completed",
+        installation: { id: 150109806 },
+        repository: { full_name: "samshanmukh/zup" },
+        workflow_run: {
+          id: 31851413609,
+          name: "CloseSpan approval-bound agent",
+          event: "workflow_dispatch",
+          status: "completed",
+          conclusion: "failure",
+          html_url: "https://github.com/samshanmukh/zup/actions/runs/31851413609",
+          head_branch: `closespan/runs/${runId}`,
+          head_sha: "a".repeat(40),
+        },
+      },
+    });
+
+    expect(result.outcome).toBe("agent_workflow_failed_from_github_workflow");
+    const runUpdate = database.client.query.mock.calls.find(([query]) =>
+      sql(query).includes("UPDATE agent_runs") && sql(query).includes("failure_code=$4"),
+    );
+    expect(runUpdate?.[1]).toEqual([
+      "org-1",
+      runId,
+      "Failed",
+      "github_workflow_failure",
+      expect.stringContaining("resolve the account, runner, or workflow failure"),
+    ]);
+    expect(database.client.query.mock.calls.some(([query]) =>
+      sql(query).includes("implementation_state='Prompt ready'"),
+    )).toBe(true);
+    expect(database.client.query.mock.calls.some(([query]) =>
+      sql(query).includes("UPDATE implementation_prompts SET status='Ready'"),
+    )).toBe(true);
+  });
 });
