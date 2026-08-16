@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -15,6 +16,7 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Activity,
+  ArrowRightLeft,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -24,6 +26,7 @@ import {
   Database,
   Filter,
   GitBranch,
+  GripVertical,
   Info,
   LoaderCircle,
   MonitorCheck,
@@ -113,7 +116,13 @@ import type {
   FeedbackType,
   FeedbackItem,
   ProductProblem,
+  Stage,
 } from "@/lib/domain";
+import {
+  isProductProblemStage,
+  problemStageTransitionPreview,
+  PRODUCT_PROBLEM_STAGES,
+} from "@/lib/problem-stage-transition";
 import {
   isProblemActiveWork,
   type ProblemActiveWork,
@@ -130,17 +139,7 @@ const compactMoney = (value: number) =>
   value >= 1_000_000
     ? `$${(value / 1_000_000).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}m`
     : money(value);
-const prioritizationStages = [
-  "Detected",
-  "Needs review",
-  "Approved",
-  "Planned",
-  "In progress",
-  "Release Ready",
-  "Released",
-  "Verified",
-  "Closed",
-] as const;
+const prioritizationStages = PRODUCT_PROBLEM_STAGES;
 const problemViews = ["problems", "classification", "board"] as const;
 type ProblemView = (typeof problemViews)[number];
 
@@ -2248,7 +2247,63 @@ export function ProblemLifecycleBoard({
   problems: OverviewAnalytics["problems"];
   activeWork?: ProblemActiveWork[];
 }) {
+  type BoardProblem = Omit<OverviewAnalytics["problems"][number], "stage"> & {
+    stage: Stage;
+  };
+  type TransitionRequest = { problem: BoardProblem; toStage: Stage };
+
   const backgroundPromptTests = useOptionalBackgroundPromptTests();
+  const [manualStages, setManualStages] = useState<Record<string, Stage>>({});
+  const [draggedProblemId, setDraggedProblemId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<Stage | null>(null);
+  const [transitionRequest, setTransitionRequest] =
+    useState<TransitionRequest | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [transitionError, setTransitionError] = useState("");
+  const [announcement, setAnnouncement] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
+
+  const boardProblems = useMemo(
+    () =>
+      problems.flatMap((problem) => {
+        const stage = manualStages[problem.id] ?? problem.stage;
+        return isProductProblemStage(stage) ? [{ ...problem, stage }] : [];
+      }) as BoardProblem[],
+    [manualStages, problems],
+  );
+
+  const closeTransition = useCallback(() => {
+    if (isSubmitting) return;
+    setTransitionRequest(null);
+    setTransitionError("");
+    window.requestAnimationFrame(() => lastTriggerRef.current?.focus());
+  }, [isSubmitting]);
+
+  const openTransition = (
+    problem: BoardProblem,
+    toStage: Stage,
+    trigger?: HTMLElement | null,
+  ) => {
+    if (problem.stage === toStage) return;
+    lastTriggerRef.current =
+      trigger ?? (document.activeElement as HTMLElement | null);
+    setTransitionError("");
+    setTransitionRequest({ problem, toStage });
+  };
+
+  useLayoutEffect(() => {
+    if (!transitionRequest || !dialogRef.current) return;
+    const dialog = dialogRef.current;
+    window.requestAnimationFrame(() => {
+      getModalFocusableElements(dialog)[0]?.focus({ preventScroll: true });
+    });
+    const onKeyDown = (event: KeyboardEvent) =>
+      containModalFocus(event, dialog, closeTransition);
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [closeTransition, transitionRequest]);
+
   const activeWorkByProblem = useMemo(() => {
     const values = new Map(
       activeWork.map((item) => [item.problemId, item.status]),
@@ -2261,73 +2316,223 @@ export function ProblemLifecycleBoard({
     return values;
   }, [activeWork, backgroundPromptTests?.tasks]);
 
+  const draggedProblem = draggedProblemId
+    ? boardProblems.find((problem) => problem.id === draggedProblemId)
+    : undefined;
+  const preview = transitionRequest
+    ? problemStageTransitionPreview(transitionRequest.toStage)
+    : null;
+
+  const confirmTransition = async () => {
+    if (!transitionRequest) return;
+    setIsSubmitting(true);
+    setTransitionError("");
+    try {
+      const response = await fetch(
+        `/api/problems/${transitionRequest.problem.id}/stage`,
+        {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": crypto.randomUUID(),
+            "x-request-id": crypto.randomUUID(),
+          },
+          body: JSON.stringify({ stage: transitionRequest.toStage }),
+        },
+      );
+      const payload = await response.json() as {
+        error?: string;
+        transition?: { toStage: Stage };
+      };
+      if (!response.ok || !payload.transition)
+        throw new Error(payload.error ?? "The lifecycle stage could not be updated");
+      const completed = transitionRequest;
+      setManualStages((current) => ({
+        ...current,
+        [completed.problem.id]: completed.toStage,
+      }));
+      setTransitionRequest(null);
+      setAnnouncement(
+        `${completed.problem.title} moved from ${completed.problem.stage} to ${completed.toStage}.`,
+      );
+      window.requestAnimationFrame(() => lastTriggerRef.current?.focus());
+    } catch (error) {
+      setTransitionError(
+        error instanceof Error ? error.message : "The lifecycle stage could not be updated",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="board" aria-label="Problems by lifecycle stage">
-      {prioritizationStages.map((stage) => {
-        const stageProblems = problems.filter(
-          (problem) => problem.stage === stage,
-        );
-        return (
-          <section className="board-col" key={stage}>
-            <div className="board-head">
-              <div>
-                <strong>{stage === "Approved" ? "Approval" : stage}</strong>
-                <small>
-                  {stage === "Approved" ? "Human decision" : "Agent managed"}
-                </small>
+    <>
+      <p className="sr-only" aria-live="polite">{announcement}</p>
+      <div className="board" aria-label="Problems by lifecycle stage">
+        {prioritizationStages.map((stage) => {
+          const stageProblems = boardProblems.filter(
+            (problem) => problem.stage === stage,
+          );
+          const isDropTarget = dropTarget === stage && draggedProblem?.stage !== stage;
+          return (
+            <section
+              className={`board-col${isDropTarget ? " is-drop-target" : ""}`}
+              key={stage}
+              onDragOver={(event) => {
+                if (!draggedProblem || draggedProblem.stage === stage) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setDropTarget(stage);
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                  setDropTarget(null);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDropTarget(null);
+                if (draggedProblem) openTransition(draggedProblem, stage);
+              }}
+            >
+              <div className="board-head">
+                <div>
+                  <strong>{stage === "Approved" ? "Approval" : stage}</strong>
+                  <small>
+                    {stage === "Approved" ? "Human decision" : "Agent managed"}
+                  </small>
+                </div>
+                <span>{stageProblems.length}</span>
               </div>
-              <span>{stageProblems.length}</span>
+              {stageProblems.length === 0 ? (
+                <p className="problem-board-empty">
+                  {isDropTarget ? "Drop to review move" : "No problems"}
+                </p>
+              ) : (
+                stageProblems.map((problem) => {
+                  const workStatus = activeWorkByProblem.get(problem.id);
+                  const currentIndex = prioritizationStages.indexOf(problem.stage);
+                  const suggestedStage =
+                    currentIndex < prioritizationStages.length - 1
+                      ? prioritizationStages[currentIndex + 1]
+                      : prioritizationStages[currentIndex - 1];
+                  return (
+                    <article
+                      className={`problem-card problem-card-shell${draggedProblemId === problem.id ? " is-dragging" : ""}`}
+                      draggable
+                      key={problem.id}
+                      onDragStart={(event) => {
+                        setDraggedProblemId(problem.id);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", problem.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedProblemId(null);
+                        setDropTarget(null);
+                      }}
+                    >
+                      <span className="problem-card-drag-indicator" aria-hidden="true">
+                        <GripVertical size={15} />
+                      </span>
+                      <Link className="problem-card-link" href={`/problems/${problem.id}`}>
+                        <div className="ticket-badges">
+                          <span className="badge">{problem.type}</span>
+                          <span className={`badge ${problem.severity.toLowerCase()}`}>
+                            {problem.severity}
+                          </span>
+                        </div>
+                        <h3>{problem.title}</h3>
+                        <p className="subtle">
+                          {problem.count} {problem.count === 1 ? "signal" : "signals"}
+                          {" · "}
+                          {money(problem.revenue)} ARR
+                        </p>
+                        <div className="mini-bar" aria-hidden="true">
+                          <span style={{ width: `${problem.confidence}%` }} />
+                        </div>
+                        <small>{problem.confidence}% evidence confidence</small>
+                        {workStatus && (
+                          <span className="problem-card-work-status" role="status" aria-label={`${workStatus} in progress`}>
+                            <strong>{workStatus}</strong>
+                            <LoaderCircle className="problem-card-work-spinner spin" aria-hidden="true" />
+                          </span>
+                        )}
+                      </Link>
+                      <button
+                        type="button"
+                        className="problem-card-move-button"
+                        onClick={(event) => openTransition(problem, suggestedStage, event.currentTarget)}
+                        aria-label={`Move ${problem.title} to another stage`}
+                      >
+                        <ArrowRightLeft size={13} aria-hidden="true" /> Move stage
+                      </button>
+                    </article>
+                  );
+                })
+              )}
+            </section>
+          );
+        })}
+      </div>
+      {transitionRequest && preview && typeof document !== "undefined" &&
+        createPortal(
+          <div className="stage-transition-backdrop" role="presentation" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeTransition();
+          }}>
+            <div
+              className="stage-transition-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="stage-transition-title"
+              aria-describedby="stage-transition-description"
+              ref={dialogRef}
+              tabIndex={-1}
+            >
+              <header>
+                <div>
+                  <span>Manual lifecycle authorization</span>
+                  <h2 id="stage-transition-title">{preview.title}</h2>
+                </div>
+                <button type="button" onClick={closeTransition} aria-label="Close stage review" disabled={isSubmitting}>
+                  <X size={18} />
+                </button>
+              </header>
+              <div className="stage-transition-body">
+                <p className="stage-transition-problem">{transitionRequest.problem.title}</p>
+                <div className="stage-transition-route" aria-label={`${transitionRequest.problem.stage} to ${transitionRequest.toStage}`}>
+                  <strong>{transitionRequest.problem.stage}</strong>
+                  <ChevronRight aria-hidden="true" size={17} />
+                  <label>
+                    <span>Destination stage</span>
+                    <select
+                      value={transitionRequest.toStage}
+                      disabled={isSubmitting}
+                      onChange={(event) => setTransitionRequest((current) => current ? { ...current, toStage: event.target.value as Stage } : current)}
+                    >
+                      {prioritizationStages.filter((candidate) => candidate !== transitionRequest.problem.stage).map((candidate) => (
+                        <option value={candidate} key={candidate}>{candidate}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p id="stage-transition-description">{preview.summary}</p>
+                <div className="stage-transition-effects">
+                  <strong>On confirmation, CloseSpan will</strong>
+                  <ul>{preview.effects.map((effect) => <li key={effect}>{effect}</li>)}</ul>
+                </div>
+                {preview.caution && <p className="stage-transition-caution"><Info size={15} aria-hidden="true" />{preview.caution}</p>}
+                {transitionError && <p className="stage-transition-error" role="alert">{transitionError}</p>}
+              </div>
+              <footer>
+                <button type="button" className="btn" onClick={closeTransition} disabled={isSubmitting}>Cancel</button>
+                <button type="button" className="btn primary" onClick={confirmTransition} disabled={isSubmitting}>
+                  {isSubmitting ? <><LoaderCircle className="spin" size={16} /> Updating stage</> : "Confirm stage update"}
+                </button>
+              </footer>
             </div>
-            {stageProblems.length === 0 ? (
-              <p className="problem-board-empty">No problems</p>
-            ) : (
-              stageProblems.map((problem) => {
-                const workStatus = activeWorkByProblem.get(problem.id);
-                return (
-                  <Link
-                    className="problem-card"
-                    href={`/problems/${problem.id}`}
-                    key={problem.id}
-                  >
-                    <div className="ticket-badges">
-                      <span className="badge">{problem.type}</span>
-                      <span
-                        className={`badge ${problem.severity.toLowerCase()}`}
-                      >
-                        {problem.severity}
-                      </span>
-                    </div>
-                    <h3>{problem.title}</h3>
-                    <p className="subtle">
-                      {problem.count} {problem.count === 1 ? "signal" : "signals"}
-                      {" · "}
-                      {money(problem.revenue)} ARR
-                    </p>
-                    <div className="mini-bar" aria-hidden="true">
-                      <span style={{ width: `${problem.confidence}%` }} />
-                    </div>
-                    <small>{problem.confidence}% evidence confidence</small>
-                    {workStatus && (
-                      <span
-                        className="problem-card-work-status"
-                        role="status"
-                        aria-label={`${workStatus} in progress`}
-                      >
-                        <strong>{workStatus}</strong>
-                        <LoaderCircle
-                          className="problem-card-work-spinner spin"
-                          aria-hidden="true"
-                        />
-                      </span>
-                    )}
-                  </Link>
-                );
-              })
-            )}
-          </section>
-        );
-      })}
-    </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
