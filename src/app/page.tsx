@@ -56,7 +56,7 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "CloseSpan turns customer voice into verified product fixes.",
+        alt: "CloseSpan turns customer feedback into product improvements.",
       },
     ],
   },
@@ -280,7 +280,7 @@ export default function LandingPage() {
         <section className="landing-hero">
           <div className="hero-copy">
             <h1>
-              Turn customer voice into <span>verified product fixes.</span>
+              Turn customer feedback into <span>product improvements.</span>
             </h1>
             <p>
               Connect support signals to revenue impact and engineering context,
@@ -348,7 +348,7 @@ export default function LandingPage() {
         <section className="landing-section" id="product">
           <div className="section-intro">
             <span>What is CloseSpan?</span>
-            <h2>AI customer voice intelligence that finishes the job.</h2>
+            <h2>AI customer feedback intelligence that finishes the job.</h2>
             <p>
               CloseSpan gives B2B SaaS product and operations teams one
               feedback-to-fix workspace. Every customer signal stays connected
@@ -356,7 +356,7 @@ export default function LandingPage() {
               your team made, and the outcome your customer experienced.
             </p>
             <Link className="text-link" href="/customer-feedback-operations">
-              Explore customer voice operations
+              Explore customer feedback operations
               <ChevronRight aria-hidden="true" size={15} />
             </Link>
           </div>
