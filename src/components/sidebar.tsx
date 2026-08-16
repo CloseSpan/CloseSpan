@@ -19,6 +19,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 import {
@@ -26,6 +27,10 @@ import {
   WORKSPACE_NAVIGATION_GROUPS,
   type WorkspaceNavigationId,
 } from "@/lib/workspace-navigation";
+import {
+  PENDING_APPROVAL_COUNT_EVENT,
+  type PendingApprovalCountChange,
+} from "@/lib/pending-approval-count-client";
 import { CloseSpan3DLogo } from "./closespan-3d-logo";
 import {
   OrganizationSwitcher,
@@ -87,11 +92,16 @@ function storeWorkflowPreference(expanded: boolean): void {
 
 function NavigationLinks({
   collapsibleWorkflow = false,
+  pendingApprovalCount = 0,
 }: {
   collapsibleWorkflow?: boolean;
+  pendingApprovalCount?: number;
 }) {
   const pathname = usePathname();
   const workflowContentId = useId();
+  const [visiblePendingApprovalCount, setVisiblePendingApprovalCount] = useState(
+    pendingApprovalCount,
+  );
   const storedWorkflowExpanded = useSyncExternalStore(
     subscribeToWorkflowPreference,
     readWorkflowPreference,
@@ -100,6 +110,16 @@ function NavigationLinks({
   const workflowExpanded = collapsibleWorkflow
     ? storedWorkflowExpanded
     : true;
+
+  useEffect(() => {
+    const handleCountChange = (event: Event) => {
+      const delta = (event as CustomEvent<PendingApprovalCountChange>).detail?.delta;
+      if (!Number.isFinite(delta)) return;
+      setVisiblePendingApprovalCount((current) => Math.max(0, current + delta));
+    };
+    window.addEventListener(PENDING_APPROVAL_COUNT_EVENT, handleCountChange);
+    return () => window.removeEventListener(PENDING_APPROVAL_COUNT_EVENT, handleCountChange);
+  }, []);
 
   function toggleWorkflow(): void {
     storeWorkflowPreference(!workflowExpanded);
@@ -158,13 +178,14 @@ function NavigationLinks({
                     const Icon = navigationIcons[id];
                     const active =
                       pathname === href || pathname.startsWith(`${href}/`);
+                    const pendingCount = id === "approvals" ? visiblePendingApprovalCount : 0;
                     return (
                       <Link
                         href={href}
                         prefetch={false}
                         className={active ? "active" : ""}
                         aria-current={active ? "page" : undefined}
-                        aria-label={label}
+                        aria-label={pendingCount > 0 ? `${label}, ${pendingCount} pending` : label}
                         data-nav-label={label}
                         style={{
                           "--nav-enter-delay": `${index * 34}ms`,
@@ -174,7 +195,14 @@ function NavigationLinks({
                       >
                         <Icon aria-hidden="true" />
                         <span>{label}</span>
-                        <NavigationPendingIndicator />
+                        <span className="nav-link-meta" aria-hidden="true">
+                          {pendingCount > 0 && (
+                            <span className="nav-pending-approval-count">
+                              {pendingCount > 99 ? "99+" : pendingCount}
+                            </span>
+                          )}
+                          <NavigationPendingIndicator />
+                        </span>
                       </Link>
                     );
                   })}
@@ -187,19 +215,27 @@ function NavigationLinks({
                     const Icon = navigationIcons[id];
                     const active =
                       pathname === href || pathname.startsWith(`${href}/`);
+                    const pendingCount = id === "approvals" ? visiblePendingApprovalCount : 0;
                     return (
                       <Link
                         href={href}
                         prefetch={false}
                         className={active ? "active" : ""}
                         aria-current={active ? "page" : undefined}
-                        aria-label={label}
+                        aria-label={pendingCount > 0 ? `${label}, ${pendingCount} pending` : label}
                         data-nav-label={label}
                         key={label}
                       >
                         <Icon aria-hidden="true" />
                         <span>{label}</span>
-                        <NavigationPendingIndicator />
+                        <span className="nav-link-meta" aria-hidden="true">
+                          {pendingCount > 0 && (
+                            <span className="nav-pending-approval-count">
+                              {pendingCount > 99 ? "99+" : pendingCount}
+                            </span>
+                          )}
+                          <NavigationPendingIndicator />
+                        </span>
                       </Link>
                     );
                   })}
@@ -218,11 +254,13 @@ export function Sidebar({
   activeOrganizationId,
   demoMode,
   canRenameWorkspace,
+  pendingApprovalCount,
 }: {
   organizations: OrganizationSwitcherItem[];
   activeOrganizationId: string;
   demoMode: boolean;
   canRenameWorkspace: boolean;
+  pendingApprovalCount: number;
 }) {
   return (
     <aside className="sidebar">
@@ -235,7 +273,11 @@ export function Sidebar({
         <CloseSpan3DLogo size="sm" />
       </Link>
       <nav className="nav" aria-label="Primary navigation">
-        <NavigationLinks collapsibleWorkflow />
+        <NavigationLinks
+          key={pendingApprovalCount}
+          collapsibleWorkflow
+          pendingApprovalCount={pendingApprovalCount}
+        />
       </nav>
       <div className="sidebar-footer">
         {demoMode && (
@@ -258,10 +300,12 @@ export function MobileNavigation({
   organizations,
   activeOrganizationId,
   canRenameWorkspace,
+  pendingApprovalCount,
 }: {
   organizations: OrganizationSwitcherItem[];
   activeOrganizationId: string;
   canRenameWorkspace: boolean;
+  pendingApprovalCount: number;
 }) {
   const pathname = usePathname();
   const menuRef = useRef<HTMLDetailsElement>(null);
@@ -285,7 +329,10 @@ export function MobileNavigation({
       <summary>Menu</summary>
       <div className="mobile-menu-panel">
         <nav aria-label="Mobile navigation">
-          <NavigationLinks />
+          <NavigationLinks
+            key={pendingApprovalCount}
+            pendingApprovalCount={pendingApprovalCount}
+          />
         </nav>
         <OrganizationSwitcher
           organizations={organizations}

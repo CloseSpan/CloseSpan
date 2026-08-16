@@ -874,11 +874,55 @@ textarea {
   display: block;
   width: 7px;
   height: 7px;
-  margin-left: auto;
   border-radius: var(--radius-pill);
   background: var(--accent-fill);
   box-shadow: 0 0 0 4px var(--accent-soft);
   animation: nav-pending-pulse 900ms var(--ease-standard) infinite alternate;
+}
+
+.app-shell .nav-link-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.app-shell .nav-pending-approval-count {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  padding-inline: 6px;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1050px) and (min-width: 721px) {
+  .app-shell .nav .nav-link-meta {
+    display: flex;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    margin: 0;
+  }
+
+  .app-shell .nav a {
+    position: relative;
+  }
+
+  .app-shell .nav .nav-pending-approval-count {
+    display: inline-grid;
+    min-width: 17px;
+    height: 17px;
+    padding-inline: 4px;
+    font-size: 8px;
+  }
 }
 
 @keyframes nav-pending-pulse {

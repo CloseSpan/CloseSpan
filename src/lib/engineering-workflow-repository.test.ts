@@ -9,6 +9,7 @@ import {
   implementationPermittedPathsForRetry,
   evidenceBackedProductPathsForRetry,
   prepareImplementationRunRetry,
+  pendingActionApprovalCount,
   rejectImplementationApproval,
   requestImplementationApproval,
   reviewedProfileSourceForRetry,
@@ -33,6 +34,15 @@ async function prepareApproval() {
 describe("approval-bound engineering workflow", () => {
   beforeEach(() => resetMemoryEngineeringWorkflows());
   afterEach(() => vi.useRealTimers());
+
+  it("counts only approvals that are still pending", async () => {
+    expect(await pendingActionApprovalCount(ORG_ID)).toBe(0);
+    const awaiting = await prepareApproval();
+    expect(await pendingActionApprovalCount(ORG_ID)).toBe(1);
+
+    await approveImplementationRun(ORG_ID, awaiting.approval!.id, actor);
+    expect(await pendingActionApprovalCount(ORG_ID)).toBe(0);
+  });
 
   it("consumes one approval exactly once", async () => {
     const approvalWorkflow = await prepareApproval();

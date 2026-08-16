@@ -21,6 +21,7 @@ import { WorkspaceRouteTransition } from "./workspace-route-transition";
 import { BackgroundPromptTestProvider } from "./background-prompt-tests";
 import { unreadPromptReviewNotificationCount } from "@/lib/prompt-review-notification-repository";
 import { isCloseSpanPlatformAdmin } from "@/lib/workspace-access-policy";
+import { pendingActionApprovalCount } from "@/lib/engineering-workflow-repository";
 
 function initials(name: string): string {
   return (
@@ -74,11 +75,14 @@ export async function AppShell({
   children: React.ReactNode;
   immersive?: boolean;
 }) {
-  const demoGuide = await getWorkspaceDemoGuide(user.orgId);
+  const [demoGuide, unreadNotifications, pendingApprovals] = await Promise.all([
+    getWorkspaceDemoGuide(user.orgId),
+    unreadPromptReviewNotificationCount(user.orgId, user.id),
+    pendingActionApprovalCount(user.orgId),
+  ]);
   const durableWorkspace = workspacePersistenceMode(user.orgId) === "postgres";
   const canRenameWorkspace = durableWorkspace && user.role === "Admin";
   const showWaitlistAdmin = isCloseSpanPlatformAdmin(user);
-  const unreadNotifications = await unreadPromptReviewNotificationCount(user.orgId, user.id);
   if (immersive) {
     return (
       <div className="shell shell-immersive">
@@ -128,6 +132,7 @@ export async function AppShell({
         activeOrganizationId={user.orgId}
         demoMode={!durableWorkspace || Boolean(demoGuide)}
         canRenameWorkspace={canRenameWorkspace}
+        pendingApprovalCount={pendingApprovals}
       />
       <main className="main">
         <header className="topbar">
@@ -135,6 +140,7 @@ export async function AppShell({
             organizations={user.organizations}
             activeOrganizationId={user.orgId}
             canRenameWorkspace={canRenameWorkspace}
+            pendingApprovalCount={pendingApprovals}
           />
           <WorkspaceBreadcrumb />
           <div className="top-actions">

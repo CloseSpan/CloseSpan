@@ -1333,6 +1333,28 @@ export async function listEngineeringApprovalWorkflows(
   );
 }
 
+export async function pendingActionApprovalCount(orgId: string): Promise<number> {
+  if (workspacePersistenceMode(orgId) === "memory") {
+    return [...memoryWorkflows.entries()]
+      .filter(([key]) => key.startsWith(`${orgId}:`))
+      .reduce((count, [, workflow]) => (
+        count
+        + (workflow.approval?.status === "Pending" ? 1 : 0)
+        + (workflow.finalApproval?.status === "Pending" ? 1 : 0)
+      ), 0);
+  }
+
+  const result = await databasePool().query<{ count: number }>(
+    `SELECT count(*)::int AS count
+       FROM approval_requests
+      WHERE org_id=$1
+        AND action_type IN ('agent_run','final_execution')
+        AND status='Pending'`,
+    [orgId],
+  );
+  return result.rows[0]?.count ?? 0;
+}
+
 async function assertProblem(client: PoolClient, orgId: string, problemId: string): Promise<void> {
   const result = await client.query("SELECT 1 FROM product_problems WHERE org_id=$1 AND id=$2", [orgId, problemId]);
   if (!result.rowCount) throw new EngineeringWorkflowError("Product problem was not found", 404);

@@ -19,6 +19,7 @@ import type {
 import type { PddPromptReview } from "@/lib/pdd-prompt-review";
 import type { PddPromptTimingSummary } from "@/lib/pdd-prompt-timing-repository";
 import type { AutonomyLevel } from "@/lib/autonomy-policy";
+import { announcePendingApprovalCountChange } from "@/lib/pending-approval-count-client";
 
 export interface PromptTestResult {
   workflow: EngineeringWorkflowView;
@@ -358,6 +359,9 @@ export function BackgroundPromptTestProvider({
             result,
           }
         : item));
+        if (result.workflow.approval?.status === "Pending") {
+          announcePendingApprovalCountChange(1);
+        }
       })
       .catch((cause: unknown) => {
         const message = cause instanceof Error ? cause.message : "The prompt test failed";

@@ -118,6 +118,7 @@ import type {
   ProductProblem,
   Stage,
 } from "@/lib/domain";
+import { announcePendingApprovalCountChange } from "@/lib/pending-approval-count-client";
 import {
   isProductProblemStage,
   problemStageTransitionPreview,
@@ -4144,6 +4145,7 @@ export function ApprovalsScreen({
         throw new Error(payload.error ?? "Approval action failed");
       }
       replaceWorkflow(payload.workflow);
+      announcePendingApprovalCountChange(-1);
       setTab("history");
       setSelected(selectedItem.key);
       setNotice({
@@ -4188,6 +4190,7 @@ export function ApprovalsScreen({
         throw new Error(payload.error ?? "Final execution approval failed");
       }
       replaceWorkflow({ ...selectedItem.workflow, finalApproval: payload.approval });
+      announcePendingApprovalCountChange(-1);
       setTab("history");
       setSelected(selectedItem.key);
       const executionFailed =
