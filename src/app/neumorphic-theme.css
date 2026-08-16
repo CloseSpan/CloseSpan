@@ -6905,7 +6905,7 @@ pre.code-block {
   color: var(--text-strong);
 }
 
-.hero-copy h1 span {
+.hero-copy h1 .motion-text-reveal-accent {
   background: none;
   color: var(--accent);
   background-clip: border-box;

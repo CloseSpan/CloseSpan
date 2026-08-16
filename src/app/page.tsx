@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { CloseSpanLogo } from "@/components/closespan-logo";
 import { CloseSpan3DLogo } from "@/components/closespan-3d-logo";
+import { FitText } from "@/components/fit-text";
+import { MotionTextReveal } from "@/components/motion-text-reveal";
 import { launchPlans, launchPricingNote } from "@/lib/plans";
 import {
   LANDING_FAQS,
@@ -56,7 +58,7 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "CloseSpan turns customer feedback into product improvements.",
+        alt: "CloseSpan turns customer feedback into improvements ready to ship.",
       },
     ],
   },
@@ -279,9 +281,10 @@ export default function LandingPage() {
         <div className="landing-top">
         <section className="landing-hero">
           <div className="hero-copy">
-            <h1>
-              Turn customer feedback into <span>product improvements.</span>
-            </h1>
+            <MotionTextReveal
+              highlight="into improvements ready to ship"
+              text="Turn customer feedback into improvements ready to ship"
+            />
             <p>
               Connect support signals to revenue impact and engineering context,
               then move every fix through approval and customer follow-up.
@@ -348,7 +351,9 @@ export default function LandingPage() {
         <section className="landing-section" id="product">
           <div className="section-intro">
             <span>What is CloseSpan?</span>
-            <h2>AI customer feedback intelligence that finishes the job.</h2>
+            <FitText as="h2" maxFontSize={42} maxLines={3} minFontSize={28}>
+              AI customer feedback intelligence that finishes the job.
+            </FitText>
             <p>
               CloseSpan gives B2B SaaS product and operations teams one
               feedback-to-fix workspace. Every customer signal stays connected
@@ -369,7 +374,9 @@ export default function LandingPage() {
                   </div>
                   <span>{eyebrow}</span>
                 </div>
-                <h3>{title}</h3>
+                <FitText as="h3" maxFontSize={19} maxLines={2} minFontSize={14}>
+                  {title}
+                </FitText>
                 <p>{text}</p>
                 <div className="outcome-metric">{metric}</div>
               </article>
@@ -380,7 +387,9 @@ export default function LandingPage() {
         <section className="signal-story" aria-label="From noise to resolution">
           <div className="signal-story-copy">
             <span className="section-label">The must-win moment</span>
-            <h2>A release ships. Complaints spike. Every team sees only a fragment.</h2>
+            <FitText as="h2" maxFontSize={42} maxLines={3} minFontSize={28}>
+              A release ships. Complaints spike. Every team sees only a fragment.
+            </FitText>
             <p>
               CloseSpan gives product, engineering, support, and success one
               shared source of truth before a recurring defect becomes a lost
@@ -409,7 +418,9 @@ export default function LandingPage() {
             </div>
             <div className="signal-result-card">
               <small>Persistent problem · 92% confidence</small>
-              <strong>Large CSV exports produce empty files</strong>
+              <FitText as="strong" maxLines={2} minFontSize={12}>
+                Large CSV exports produce empty files
+              </FitText>
               <div>
                 <span>$394k ARR</span>
                 <span>High severity</span>
@@ -421,7 +432,9 @@ export default function LandingPage() {
         <section className="workflow-section" id="workflow">
           <div className="section-intro">
             <span>Signal → resolution</span>
-            <h2>One continuous, governed workflow.</h2>
+            <FitText as="h2" maxFontSize={42} maxLines={2} minFontSize={28}>
+              One continuous, governed workflow.
+            </FitText>
             <p>
               Automate the repetitive coordination while keeping meaningful
               decisions in human hands.
@@ -431,7 +444,9 @@ export default function LandingPage() {
             {workflow.map((item) => (
               <article className="workflow-step" key={item.number}>
                 <span>{item.number}</span>
-                <h3>{item.title}</h3>
+                <FitText as="h3" maxFontSize={17} maxLines={2} minFontSize={14}>
+                  {item.title}
+                </FitText>
                 <p>{item.text}</p>
               </article>
             ))}
@@ -470,7 +485,9 @@ export default function LandingPage() {
         <section className="trust-section" id="trust">
           <div>
             <span className="section-label">Trust by design</span>
-            <h2>AI recommendations you can inspect and refuse.</h2>
+            <FitText as="h2" maxFontSize={42} maxLines={2} minFontSize={28}>
+              AI recommendations you can inspect and refuse.
+            </FitText>
             <p>
               Customer content is evidence, never agent instruction. Confidence,
               assumptions, affected systems, shared data, and reversibility stay
@@ -501,7 +518,9 @@ export default function LandingPage() {
         <section className="pricing-section" id="pricing">
           <div className="section-intro">
             <span>Early-access pricing</span>
-            <h2>Free to evaluate. Paid when it owns a real workflow.</h2>
+            <FitText as="h2" maxFontSize={42} maxLines={2} minFontSize={28}>
+              Free to evaluate. Paid when it owns a real workflow.
+            </FitText>
             <p>
               Sign in with Google to evaluate the workflow, then prove accuracy
               and operational ROI in one tightly scoped design-partner pilot.
@@ -544,7 +563,15 @@ export default function LandingPage() {
         <section className="faq-section" id="faq" aria-labelledby="faq-title">
           <div className="section-intro">
             <span>CloseSpan FAQ</span>
-            <h2 id="faq-title">Customer feedback operations, explained.</h2>
+            <FitText
+              as="h2"
+              id="faq-title"
+              maxFontSize={42}
+              maxLines={2}
+              minFontSize={28}
+            >
+              Customer feedback operations, explained.
+            </FitText>
             <p>
               Clear answers about how CloseSpan connects customer evidence to
               prioritized product problems and governed engineering work.
@@ -563,7 +590,9 @@ export default function LandingPage() {
         <section className="landing-cta">
           <div>
             <span>Start with evidence</span>
-            <h2>See one customer defect move from signal to verified resolution.</h2>
+            <FitText as="h2" maxFontSize={45} maxLines={3} minFontSize={28}>
+              See one customer defect move from signal to verified resolution.
+            </FitText>
             <p>
               Sign in with Google to enter the workspace, or apply for a
               design-partner pilot built around one high-value workflow.

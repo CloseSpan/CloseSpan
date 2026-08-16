@@ -1026,18 +1026,30 @@ p { margin:0; line-height:1.55; }
   margin:0 auto;
   padding:106px 28px 98px;
   display:grid;
-  grid-template-columns:minmax(0,.88fr) minmax(540px,1.12fr);
+  grid-template-columns:minmax(0,1fr) minmax(500px,.95fr);
   align-items:center;
-  gap:70px;
+  gap:56px;
 }
 .hero-copy h1 {
-  max-width:660px;
+  max-width:640px;
   color:#f8f9fd;
-  font-size:clamp(48px,5.6vw,72px);
-  line-height:.98;
-  letter-spacing:-.06em;
+  font-size:clamp(48px,5vw,66px);
+  line-height:1.07;
+  letter-spacing:-.015em;
+  text-wrap:balance;
 }
-.hero-copy h1 span {
+.motion-text-reveal-mask {
+  display:inline-block;
+  overflow:hidden;
+  vertical-align:bottom;
+  padding:.08em .025em .12em;
+  margin:-.08em -.025em -.12em;
+}
+.motion-text-reveal-word {
+  display:inline-block;
+  transform:translateZ(0);
+}
+.hero-copy h1 .motion-text-reveal-accent {
   color:#aaa4ff;
 }
 .hero-copy > p {
@@ -1216,7 +1228,7 @@ p { margin:0; line-height:1.55; }
   font-weight:800;
 }
 .signal-story-flow { display:grid; grid-template-columns:1fr 38px 1fr; align-items:center; }
-.signal-source-list { display:grid; gap:8px; }
+.signal-source-list { display:grid; gap:var(--space-4,16px); }
 .signal-source-list > div {
   padding:11px 12px;
   display:flex;
@@ -1410,8 +1422,9 @@ p { margin:0; line-height:1.55; }
   to { opacity:1; transform:translateY(0); }
 }
 
-@media (max-width:1050px) {
+@media (max-width:1180px) {
   .landing-hero { grid-template-columns:1fr; gap:58px; }
+  .hero-copy { max-width:760px; }
   .hero-product { width:min(760px,100%); transform:none; }
   .hero-product-proof { grid-template-columns:repeat(4,1fr); }
   .hero-product-proof > span { grid-column:1/-1; margin-bottom:16px; }
@@ -1428,7 +1441,7 @@ p { margin:0; line-height:1.55; }
   .landing-nav > nav,.landing-actions > .btn { display:none; }
   .landing-mobile-menu { display:block; }
   .landing-hero { padding:76px 16px 66px; gap:48px; }
-  .hero-copy h1 { font-size:47px; }
+  .hero-copy h1 { max-width:600px; font-size:clamp(38px,10vw,44px); line-height:1.08; }
   .hero-copy > p { font-size:15px; }
   .hero-actions { flex-direction:column; align-items:stretch; }
   .hero-actions .btn { width:100%; }
@@ -1468,7 +1481,7 @@ p { margin:0; line-height:1.55; }
 
 @media (max-width:430px) {
   .landing-brand strong { max-width:none; }
-  .hero-copy h1 { font-size:40px; }
+  .hero-copy h1 { font-size:36px; line-height:1.08; }
   .preview-chrome { grid-template-columns:1fr 1fr; }
   .preview-chrome > span:nth-child(2) { display:none; }
   .preview-status { grid-column:2; }
