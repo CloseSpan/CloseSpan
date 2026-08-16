@@ -22,6 +22,7 @@ import {
   deleteAgentRun,
   failAgentRun,
   getAgentRunExecutionContext,
+  listAgentRuns,
   markAgentRunRunning,
   rejectImplementationApproval,
   requestImplementationApproval,
@@ -149,6 +150,43 @@ describe("PostgreSQL engineering workflow state guards", () => {
     await markAgentRunRunning("org-1", "run-1", "sandbox-1");
     expect(normalizedSql(database.pool.query.mock.calls[0]?.[0]))
       .toContain("status IN ('Queued','Running')");
+  });
+
+  it("returns the latest final execution status with each agent run", async () => {
+    database.pool.query.mockResolvedValueOnce({
+      rows: [{
+        id: "run-1",
+        approval_id: "approval-1",
+        problem_id: "problem-1",
+        problem_title: "Keep the final status current",
+        status: "Draft PR opened",
+        repository: "owner/repo",
+        branch_name: "feature/fix-status",
+        pull_request_url: "https://github.com/owner/repo/pull/1",
+        queued_at: new Date("2026-08-15T20:33:00Z"),
+        completed_at: new Date("2026-08-15T20:40:00Z"),
+        implementation_report: null,
+        final_execution_status: "Succeeded",
+        failure_code: null,
+        failure_message: null,
+        base_branch: "main",
+        base_sha: "a".repeat(40),
+      }],
+      rowCount: 1,
+    });
+
+    await expect(listAgentRuns("org-1")).resolves.toEqual([
+      expect.objectContaining({
+        id: "run-1",
+        status: "Draft PR opened",
+        finalExecutionStatus: "Succeeded",
+      }),
+    ]);
+
+    const query = normalizedSql(database.pool.query.mock.calls[0]?.[0]);
+    expect(query).toContain("LEFT JOIN LATERAL");
+    expect(query).toContain("FROM final_execution_attempts attempt");
+    expect(query).toContain("ORDER BY attempt.created_at DESC,attempt.id DESC");
   });
 
   it("returns the bound immutable prompt to Ready when an agent run fails", async () => {

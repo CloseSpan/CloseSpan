@@ -8,6 +8,39 @@ export interface AgentRunVerificationState {
   label: "Verified" | "Failed" | "Verifying" | "Not run" | "Pending";
 }
 
+export interface AgentRunStatusPresentation {
+  className: string;
+  label:
+    | AgentRunSummaryView["status"]
+    | "Merge queued"
+    | "Merging PR"
+    | "PR merged"
+    | "Merge failed";
+}
+
+export function agentRunStatusPresentation(
+  run: Pick<AgentRunSummaryView, "status" | "finalExecutionStatus">,
+): AgentRunStatusPresentation {
+  switch (run.finalExecutionStatus) {
+    case "Queued":
+      return { className: "badge medium", label: "Merge queued" };
+    case "Running":
+      return { className: "badge medium", label: "Merging PR" };
+    case "Succeeded":
+      return { className: "badge success", label: "PR merged" };
+    case "Failed":
+      return { className: "badge high", label: "Merge failed" };
+  }
+
+  if (["Draft PR opened", "Tests passed", "No changes"].includes(run.status)) {
+    return { className: "badge success", label: run.status };
+  }
+  if (["Failed", "Cancelled"].includes(run.status)) {
+    return { className: "badge high", label: run.status };
+  }
+  return { className: "badge medium", label: run.status };
+}
+
 const TERMINAL_WITHOUT_VERIFICATION = new Set<AgentRunSummaryView["status"]>([
   "Failed",
   "Cancelled",

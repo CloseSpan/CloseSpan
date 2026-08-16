@@ -5,9 +5,9 @@ import { PageTitle } from "@/components/screens";
 import { requireWorkspaceUser } from "@/lib/auth-user";
 import {
   listAgentRuns,
-  type AgentRunSummaryView,
 } from "@/lib/engineering-workflow-repository";
 import {
+  agentRunStatusPresentation,
   agentRunVerificationExplanation,
   agentRunVerificationState,
 } from "@/lib/agent-run-presentation";
@@ -18,14 +18,6 @@ const dateFormatter = new Intl.DateTimeFormat("en", {
   dateStyle: "medium",
   timeStyle: "short",
 });
-
-function statusClass(status: AgentRunSummaryView["status"]): string {
-  if (["Draft PR opened", "Tests passed", "No changes"].includes(status)) {
-    return "badge success";
-  }
-  if (["Failed", "Cancelled"].includes(status)) return "badge high";
-  return "badge medium";
-}
 
 export default async function AgentRunsPage() {
   const user = await requireWorkspaceUser();
@@ -76,6 +68,7 @@ export default async function AgentRunsPage() {
             </thead>
             <tbody>
               {runs.map((run) => {
+                const runStatus = agentRunStatusPresentation(run);
                 const verification = agentRunVerificationState(run);
                 const verificationExplanation =
                   agentRunVerificationExplanation(run);
@@ -91,8 +84,8 @@ export default async function AgentRunsPage() {
                       <small>{run.branchName}</small>
                     </td>
                     <td>
-                      <span className={statusClass(run.status)}>
-                        {run.status}
+                      <span className={runStatus.className}>
+                        {runStatus.label}
                       </span>
                     </td>
                     <td>

@@ -61,6 +61,7 @@ import {
 import {
   createFinalExecutionApproval,
   readFinalExecutionApproval,
+  type FinalExecutionAttemptStatus,
   type FinalExecutionApprovalView,
 } from "./final-execution-repository";
 import { parseReleaseVerificationPlan } from "./release-verification-plan";
@@ -188,6 +189,7 @@ export interface AgentRunSummaryView {
   queuedAt: string;
   completedAt: string | null;
   independentVerificationStatus: "passed" | "failed" | null;
+  finalExecutionStatus: FinalExecutionAttemptStatus | null;
   failureCode?: string | null;
   failureMessage?: string | null;
   baseBranch?: string;
@@ -684,6 +686,7 @@ export async function listAgentRuns(
           completedAt: run.completedAt,
           independentVerificationStatus:
             run.independentVerification?.status ?? null,
+          finalExecutionStatus: null,
           failureCode: run.failureCode ?? null,
           failureMessage: run.failureMessage ?? null,
           baseBranch: run.baseBranch,
@@ -705,6 +708,7 @@ export async function listAgentRuns(
     queued_at: Date;
     completed_at: Date | null;
     implementation_report: AgentImplementationReport | null;
+    final_execution_status: FinalExecutionAttemptStatus | null;
     failure_code: string | null;
     failure_message: string | null;
     base_branch: string;
@@ -721,6 +725,7 @@ export async function listAgentRuns(
             run.queued_at,
             run.completed_at,
             run.implementation_report,
+            final_execution.status AS final_execution_status,
             run.failure_code,
             run.failure_message,
             run.base_branch,
@@ -728,6 +733,13 @@ export async function listAgentRuns(
        FROM agent_runs run
        JOIN product_problems problem
          ON problem.org_id=run.org_id AND problem.id=run.problem_id
+       LEFT JOIN LATERAL (
+         SELECT attempt.status
+           FROM final_execution_attempts attempt
+          WHERE attempt.org_id=run.org_id AND attempt.agent_run_id=run.id
+          ORDER BY attempt.created_at DESC,attempt.id DESC
+          LIMIT 1
+       ) final_execution ON true
       WHERE run.org_id=$1
       ORDER BY run.queued_at DESC,run.id DESC
       LIMIT 100`,
@@ -747,6 +759,7 @@ export async function listAgentRuns(
     completedAt: row.completed_at?.toISOString() ?? null,
     independentVerificationStatus:
       row.implementation_report?.independentVerification?.status ?? null,
+    finalExecutionStatus: row.final_execution_status,
     failureCode: row.failure_code,
     failureMessage: row.failure_message,
     baseBranch: row.base_branch,

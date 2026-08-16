@@ -5,6 +5,7 @@ import type {
 } from "./engineering-workflow-repository";
 import {
   canRetryAgentRunDirectly,
+  agentRunStatusPresentation,
   agentRunVerificationExplanation,
   agentRunVerificationState,
 } from "./agent-run-presentation";
@@ -25,10 +26,32 @@ function run(
     queuedAt: "2026-08-14T12:00:00.000Z",
     completedAt: null,
     independentVerificationStatus,
+    finalExecutionStatus: null,
   };
 }
 
 describe("agent run verification presentation", () => {
+  it.each([
+    ["Queued", "Merge queued", "badge medium"],
+    ["Running", "Merging PR", "badge medium"],
+    ["Succeeded", "PR merged", "badge success"],
+    ["Failed", "Merge failed", "badge high"],
+  ] as const)(
+    "shows the %s final execution state instead of the stale coding-run state",
+    (finalExecutionStatus, label, className) => {
+      const item = run("Draft PR opened", "passed");
+      item.finalExecutionStatus = finalExecutionStatus;
+      expect(agentRunStatusPresentation(item)).toEqual({ className, label });
+    },
+  );
+
+  it("keeps the coding-run status before final execution begins", () => {
+    expect(agentRunStatusPresentation(run("Draft PR opened"))).toEqual({
+      className: "badge success",
+      label: "Draft PR opened",
+    });
+  });
+
   it("offers an exact retry for infrastructure failures but not stale approvals", () => {
     expect(canRetryAgentRunDirectly({
       status: "Failed",
