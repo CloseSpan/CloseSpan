@@ -204,6 +204,7 @@ export interface AgentTestResult {
 
 export interface CriterionResult {
   criterionId: string;
+  statement?: string;
   status: "Passed" | "Failed" | "Pending manual" | "Not verified";
   evidence: string;
   scenarioIds: string[];
@@ -618,12 +619,22 @@ async function readRun(
     changed_files: string[]; test_results: AgentTestResult[]; failure_code: string | null;
     failure_message: string | null; pull_request_url: string | null;
     queued_at: Date; completed_at: Date | null; implementation_report: AgentImplementationReport | null;
-  }>(`SELECT id,approval_id,status,repository,base_branch,base_sha,branch_name,changed_files,test_results,failure_code,
-             failure_message,pull_request_url,queued_at,completed_at,implementation_report
-        FROM agent_runs WHERE org_id=$1 AND problem_id=$2 AND ($3::uuid IS NULL OR id=$3)
-       ORDER BY queued_at DESC,id DESC LIMIT 1`, [orgId, problemId, runId ?? null]);
+    structured_snapshot: ImplementationPromptSnapshot;
+  }>(`SELECT run.id,run.approval_id,run.status,run.repository,run.base_branch,run.base_sha,
+             run.branch_name,run.changed_files,run.test_results,run.failure_code,
+             run.failure_message,run.pull_request_url,run.queued_at,run.completed_at,
+             run.implementation_report,prompt.structured_snapshot
+        FROM agent_runs run
+        JOIN implementation_prompts prompt
+          ON prompt.org_id=run.org_id AND prompt.id=run.prompt_revision_id
+       WHERE run.org_id=$1 AND run.problem_id=$2 AND ($3::uuid IS NULL OR run.id=$3)
+       ORDER BY run.queued_at DESC,run.id DESC LIMIT 1`, [orgId, problemId, runId ?? null]);
   const row = result.rows[0];
   if (!row) return null;
+  const criterionStatements = new Map(
+    (row.structured_snapshot?.ticket?.acceptanceCriteria ?? [])
+      .map((criterion) => [criterion.id, criterion.statement] as const),
+  );
   const criteria = await database.query<{
     criterion_id: string; status: CriterionResult["status"];
     evidence: string; scenario_ids: string[];
@@ -633,7 +644,13 @@ async function readRun(
     id: row.id, approvalId: row.approval_id, status: row.status, branchName: row.branch_name,
     repository: row.repository, baseBranch: row.base_branch, baseSha: row.base_sha,
     changedFiles: row.changed_files, testResults: row.test_results,
-    criterionResults: criteria.rows.map((item) => ({ criterionId: item.criterion_id, status: item.status, evidence: item.evidence, scenarioIds: item.scenario_ids })),
+    criterionResults: criteria.rows.map((item) => ({
+      criterionId: item.criterion_id,
+      statement: criterionStatements.get(item.criterion_id),
+      status: item.status,
+      evidence: item.evidence,
+      scenarioIds: item.scenario_ids,
+    })),
     failureCode: row.failure_code, failureMessage: row.failure_message,
     pullRequestUrl: row.pull_request_url, queuedAt: row.queued_at.toISOString(),
     completedAt: row.completed_at?.toISOString() ?? null,
@@ -650,7 +667,16 @@ async function readRun(
 export async function getAgentRunById(orgId: string, runId: string): Promise<{ problemId: string; run: AgentRunView } | null> {
   if (workspacePersistenceMode(orgId) === "memory") {
     const pair = [...memoryWorkflows.entries()].find(([key, item]) => key.startsWith(`${orgId}:`) && item.run?.id === runId);
-    return pair?.[1].run ? { problemId: pair[0].slice(orgId.length + 1), run: structuredClone(pair[1].run) } : null;
+    if (!pair?.[1].run) return null;
+    const run = structuredClone(pair[1].run);
+    const criterionStatements = new Map(
+      pair[1].specification.acceptanceCriteria.map((criterion) => [criterion.id, criterion.statement]),
+    );
+    run.criterionResults = run.criterionResults.map((criterion) => ({
+      ...criterion,
+      statement: criterionStatements.get(criterion.criterionId),
+    }));
+    return { problemId: pair[0].slice(orgId.length + 1), run };
   }
   const problem = await databasePool().query<{ problem_id: string }>(
     "SELECT problem_id FROM agent_runs WHERE org_id=$1 AND id=$2",

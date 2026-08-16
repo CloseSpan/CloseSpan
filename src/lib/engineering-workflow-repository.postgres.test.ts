@@ -21,6 +21,7 @@ import {
   claimQueuedAgentRun,
   deleteAgentRun,
   failAgentRun,
+  getAgentRunById,
   getAgentRunExecutionContext,
   listAgentRuns,
   markAgentRunRunning,
@@ -187,6 +188,58 @@ describe("PostgreSQL engineering workflow state guards", () => {
     expect(query).toContain("LEFT JOIN LATERAL");
     expect(query).toContain("FROM final_execution_attempts attempt");
     expect(query).toContain("ORDER BY attempt.created_at DESC,attempt.id DESC");
+  });
+
+  it("returns each acceptance criterion statement from the run's immutable prompt", async () => {
+    database.pool.query
+      .mockResolvedValueOnce({ rows: [{ problem_id: "problem-1" }], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [{
+          id: "run-1",
+          approval_id: "approval-1",
+          status: "Draft PR opened",
+          repository: "owner/repo",
+          base_branch: "main",
+          base_sha: "a".repeat(40),
+          branch_name: "closespan/problem-1-run-1",
+          changed_files: ["src/export.ts"],
+          test_results: [],
+          failure_code: null,
+          failure_message: null,
+          pull_request_url: "https://github.com/owner/repo/pull/1",
+          queued_at: new Date("2026-08-16T12:00:00Z"),
+          completed_at: new Date("2026-08-16T12:05:00Z"),
+          implementation_report: null,
+          structured_snapshot: { ticket: specificationDraft() },
+        }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({
+        rows: [{
+          criterion_id: "AC-1",
+          status: "Passed",
+          evidence: "The approved command completed successfully.",
+          scenario_ids: ["TEST-1"],
+        }],
+        rowCount: 1,
+      });
+
+    await expect(getAgentRunById("org-1", "run-1")).resolves.toEqual(
+      expect.objectContaining({
+        run: expect.objectContaining({
+          criterionResults: [{
+            criterionId: "AC-1",
+            statement: "Every row is exported.",
+            status: "Passed",
+            evidence: "The approved command completed successfully.",
+            scenarioIds: ["TEST-1"],
+          }],
+        }),
+      }),
+    );
+
+    expect(normalizedSql(database.pool.query.mock.calls[1]?.[0]))
+      .toContain("JOIN implementation_prompts prompt");
   });
 
   it("returns the bound immutable prompt to Ready when an agent run fails", async () => {

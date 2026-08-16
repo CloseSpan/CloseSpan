@@ -163,7 +163,26 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
           )}
         </div>
       </section>
-      <section className="card section-gap"><div className="card-head"><h2>Acceptance coverage</h2></div><div className="card-body detail-stack">{run.criterionResults.length ? run.criterionResults.map((criterion) => <article className="callout" key={criterion.criterionId}><div className="split"><strong>{criterion.criterionId}</strong><span className="badge">{criterion.status}</span></div><p>{criterion.evidence}</p><p className="subtle">{criterion.scenarioIds.join(", ")}</p></article>) : <p className="subtle">No criterion evidence has been returned.</p>}</div></section>
+      <section className="card section-gap">
+        <div className="card-head"><h2>Acceptance coverage</h2></div>
+        <div className="card-body detail-stack">
+          {run.criterionResults.length ? run.criterionResults.map((criterion) => (
+            <article className="callout" key={criterion.criterionId}>
+              <div className="split">
+                <strong>{criterion.criterionId}</strong>
+                <span className="badge">{criterion.status}</span>
+              </div>
+              <p>{criterion.statement ?? criterion.evidence}</p>
+              {criterion.statement && criterion.evidence ? (
+                <p className="subtle">Evidence: {criterion.evidence}</p>
+              ) : null}
+              {criterion.scenarioIds.length ? (
+                <p className="subtle">Tests: {criterion.scenarioIds.join(", ")}</p>
+              ) : null}
+            </article>
+          )) : <p className="subtle">No criterion evidence has been returned.</p>}
+        </div>
+      </section>
       <section className="card section-gap"><div className="card-head"><h2>Independent test results</h2></div><div className="card-body detail-stack">{run.testResults.length ? run.testResults.map((test) => <details className="callout" key={test.command}><summary>{test.status === "passed" ? "✓" : "✕"} {test.command}</summary><pre className="code-block">{test.output}</pre></details>) : <p className="subtle">No test results have been returned.</p>}</div></section>
       <section className="card section-gap"><div className="card-head"><h2>Changed files and unresolved work</h2></div><div className="card-body grid cols-2"><div><h3>Changed files</h3><ul className="list">{run.changedFiles.map((file) => <li key={file}>{file}{run.testFiles?.includes(file) ? " (test)" : ""}</li>)}</ul></div><div><h3>Remaining risks</h3><ul className="list">{(run.remainingRisks ?? []).map((risk) => <li key={risk}>{risk}</li>)}</ul><h3>Manual verification</h3><ul className="list">{(run.manualVerification ?? []).map((item) => <li key={item}>{item}</li>)}</ul></div></div></section>
       {run.logs?.length ? <section className="card section-gap"><div className="card-head"><h2>Executor logs</h2></div><div className="card-body"><details><summary>Show bounded logs</summary><pre className="code-block">{run.logs.join("\n\n")}</pre></details></div></section> : null}
