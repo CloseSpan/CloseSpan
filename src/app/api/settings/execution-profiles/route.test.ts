@@ -154,7 +154,7 @@ describe("execution profile settings API", () => {
     expect(profiles.override).toHaveBeenCalledOnce();
   });
 
-  it("allows only documented same-platform runner sizes with matching resources", async () => {
+  it("allows discovered runner labels while enforcing resources for documented sizes", async () => {
     const config = {
       schemaVersion: 3 as const,
       language: "swift",
@@ -188,7 +188,11 @@ describe("execution profile settings API", () => {
     }))).status).toBe(200);
     expect((await PUT(request("PUT", {
       repository: "acme/app", workspaceRoot: ".", parentProfileId: null,
-      config: { ...config, executor: { ...config.executor, runnerLabel: "tenki-auto" } },
+      config: { ...config, executor: { ...config.executor, runnerLabel: "tenki-macos-xcode-26" } },
+    }))).status).toBe(200);
+    expect((await PUT(request("PUT", {
+      repository: "acme/app", workspaceRoot: ".", parentProfileId: null,
+      config: { ...config, executor: { ...config.executor, runnerLabel: "invalid label" } },
     }))).status).toBe(409);
     expect((await PUT(request("PUT", {
       repository: "acme/app", workspaceRoot: ".", parentProfileId: null,

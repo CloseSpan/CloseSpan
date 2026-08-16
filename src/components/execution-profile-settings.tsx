@@ -32,6 +32,10 @@ import {
   tenkiRunnerSize,
   tenkiRunnerSizesForPlatform,
 } from "@/lib/tenki-runner-sizing";
+import {
+  githubActionsRunnerLabel,
+  runnerProviderForLabel,
+} from "@/lib/github-actions-runner-label";
 
 interface ExecutionProfileApiView extends ExecutionProfileSettingsView {
   available: boolean;
@@ -231,6 +235,24 @@ function profileLabel(profile: ExecutionProfileVersion): string {
   if (profile.source === "detected") return "Detected suggestion";
   if (profile.source === "confirmed") return "Confirmed detection";
   return "Admin override";
+}
+
+function runnerSelectionEvidence(profile: ExecutionProfileVersion): {
+  provider: "tenki" | "github_hosted";
+  fallbackReason: string | null;
+} | null {
+  const sizing = profile.detectionEvidence?.runnerSizing;
+  if (!sizing || typeof sizing !== "object" || Array.isArray(sizing)) return null;
+  const provider = "provider" in sizing && (sizing.provider === "tenki" || sizing.provider === "github_hosted")
+    ? sizing.provider
+    : null;
+  if (!provider) return null;
+  return {
+    provider,
+    fallbackReason: "fallbackReason" in sizing && typeof sizing.fallbackReason === "string"
+      ? sizing.fallbackReason
+      : null,
+  };
 }
 
 function runtimeSecretScopeLabel(secret: RuntimeSecretMetadata): string {
@@ -552,6 +574,13 @@ function RuntimeSecretManager({
 function ProfileSummary({ profile }: { profile: ExecutionProfileVersion }) {
   const config = profile.config;
   const executor = executionProfileExecutor(config);
+  const actualRunnerLabel = executor.kind === "tenki_github_actions"
+    ? githubActionsRunnerLabel(executor)
+    : null;
+  const runnerEvidence = runnerSelectionEvidence(profile);
+  const runnerProvider = actualRunnerLabel
+    ? runnerProviderForLabel(actualRunnerLabel)
+    : null;
   const commands = [
     ...config.installCommands,
     ...config.buildCommands,
@@ -565,16 +594,24 @@ function ProfileSummary({ profile }: { profile: ExecutionProfileVersion }) {
         <span><small>Framework</small><strong>{config.framework ?? "Not detected"}</strong></span>
         <span><small>Package manager</small><strong>{config.packageManager}</strong></span>
         <span><small>Resources</small><strong>{config.cpuCores} CPU · {Math.round(config.memoryMb / 1_024)} GB</strong></span>
-        <span><small>Executor</small><strong>{executor.kind === "tenki_github_actions" ? `Tenki Runner · ${executor.platform}` : "Tenki Sandbox"}</strong></span>
+        <span><small>Executor</small><strong>{executor.kind === "tenki_github_actions"
+          ? `${runnerProvider === "tenki" ? "Tenki Runner" : "GitHub-hosted fallback"} · ${executor.platform}`
+          : "Tenki Sandbox"}</strong></span>
       </div>
       <div className="execution-profile-meta subtle">
         <span>Working directory <code>{config.workingDirectory}</code></span>
         <span>Version {profile.version}</span>
         <span title={profile.contentHash}>Hash <code>{compactHash(profile.contentHash)}</code></span>
         <span>{config.allowOutbound ? "Outbound network enabled" : "Network isolated"}</span>
-        {executor.kind === "tenki_github_actions" && <span>Runner <code>{executor.runnerLabel}</code></span>}
+        {actualRunnerLabel && <span>Runner <code>{actualRunnerLabel}</code></span>}
         {executor.kind === "tenki_github_actions" && <span>{executor.workflowSha256 ? <>Workflow <code>{compactHash(executor.workflowSha256)}</code></> : "Runner workflow awaiting installation"}</span>}
       </div>
+      {runnerProvider === "github_hosted" && (
+        <div className="callout">
+          <div className="callout-title">GitHub-hosted compatibility fallback</div>
+          <p className="subtle">{runnerEvidence?.fallbackReason ?? "This immutable profile predates verified Tenki runner inventory and resolves to a GitHub-hosted runner."}</p>
+        </div>
+      )}
       {commands.length > 0 && (
         <div className="execution-profile-commands" aria-label="Detected execution commands">
           {commands.map((command) => <code key={command}>{command}</code>)}
@@ -613,6 +650,10 @@ function ProfileEditor({
   const [saved, setSaved] = useState(false);
   const executor = executionProfileExecutor(config);
   const runnerProfile = executor.kind === "tenki_github_actions";
+  const actualRunnerLabel = runnerProfile ? githubActionsRunnerLabel(executor) : null;
+  const runnerProvider = actualRunnerLabel ? runnerProviderForLabel(actualRunnerLabel) : null;
+  const inventorySelectedRunner = runnerProfile && !tenkiRunnerSize(executor.runnerLabel);
+  const runnerEvidence = runnerSelectionEvidence(profile);
   const secretOptions = useMemo(
     () => runtimeSecretBindingOptions(runtimeSecrets, repository, workspaceRoot),
     [repository, runtimeSecrets, workspaceRoot],
@@ -1062,26 +1103,32 @@ function ProfileEditor({
           )}
           {runnerProfile && (
             <div className="callout">
-              <div className="callout-title">Tenki GitHub Actions runner</div>
+              <div className="callout-title">GitHub Actions execution runner</div>
               <p className="subtle">
-                Platform <code>{executor.platform}</code> · architecture <code>{executor.architecture}</code> · runner <code>{executor.runnerLabel}</code>
+                Provider <strong>{runnerProvider === "tenki" ? "Tenki" : "GitHub-hosted fallback"}</strong> · platform <code>{executor.platform}</code> · architecture <code>{executor.architecture}</code> · runner <code>{actualRunnerLabel}</code>
               </p>
+              {runnerProvider === "github_hosted" && runnerEvidence?.fallbackReason && <p className="subtle">Fallback reason: {runnerEvidence.fallbackReason}</p>}
               <p className="subtle">
                 Workflow <code>{executor.workflowPath}</code> · {executor.workflowSha256 ? <>SHA-256 <code>{compactHash(executor.workflowSha256)}</code></> : "Install and verify this workflow before activation."}
               </p>
-              <label className="field">Tenki runner size
+              <label className="field">Runner selection
                 <select
                   value={executor.runnerLabel}
-                  disabled={!isAdmin}
+                  disabled={!isAdmin || inventorySelectedRunner}
                   onChange={(event) => changeRunnerLabel(event.target.value)}
                 >
+                  {inventorySelectedRunner && (
+                    <option value={executor.runnerLabel}>{executor.runnerLabel} · inventory selected</option>
+                  )}
                   {tenkiRunnerSizesForPlatform(executor.platform).map((size) => (
                     <option key={size.label} value={size.label}>
                       {size.label} · {size.cpuCores} CPU · {Math.round(size.memoryMb / 1_024)} GB
                     </option>
                   ))}
                 </select>
-                <small>CloseSpan selects a baseline during repository analysis, measures it during onboarding, and stores any administrator change as a new immutable profile version.</small>
+                <small>{inventorySelectedRunner
+                  ? "CloseSpan selected this exact enabled runner after platform and toolchain compatibility matching. Refresh repository detection after changing the Tenki catalog."
+                  : "This legacy profile uses a capacity selector. Refresh repository detection to replace it with an exact enabled runner label."}</small>
               </label>
               {executor.xcode && <p className="subtle">Xcode {executor.xcode.version} · <code>{executor.xcode.containerPath}</code> · scheme <code>{executor.xcode.scheme}</code> · {executor.xcode.destination}</p>}
               {executor.androidEmulator && <p className="subtle">Android API {executor.androidEmulator.apiLevel} · {executor.androidEmulator.deviceProfile} · <code>{executor.androidEmulator.gradleTask}</code> · nested KVM required</p>}

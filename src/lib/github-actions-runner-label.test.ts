@@ -46,6 +46,23 @@ describe("GitHub Actions runner label resolution", () => {
     })).toBe("tenki-macos-xcode-16");
   });
 
+  it("preserves an inventory-selected Xcode 26 Tenki label", () => {
+    expect(githubActionsRunnerLabel({
+      ...macosExecutor,
+      runnerLabel: "tenki-macos-xcode-26",
+      xcode: {
+        version: "26.1",
+        containerKind: "project",
+        containerPath: "App.xcodeproj",
+        scheme: "App",
+        configuration: "Debug",
+        destination: "generic/platform=iOS Simulator",
+        sdk: "iphonesimulator",
+        signingPolicy: "simulator_only",
+      },
+    })).toBe("tenki-macos-xcode-26");
+  });
+
   it("preserves documented Linux Tenki runner labels", () => {
     expect(githubActionsRunnerLabel({
       ...macosExecutor,

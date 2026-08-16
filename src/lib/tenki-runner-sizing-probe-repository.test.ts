@@ -224,4 +224,96 @@ describe("Tenki runner sizing probe persistence", () => {
       }),
     }));
   });
+
+  it("keeps an inventory-selected custom runner after a successful sizing probe", async () => {
+    const custom = iosProfile("d".repeat(64));
+    if (custom.config.schemaVersion !== 3) throw new Error("Expected a mobile execution profile");
+    custom.config = sanitizeExecutionProfileConfig({
+      ...custom.config,
+      executor: {
+        ...custom.config.executor,
+        runnerLabel: "tenki-macos-xcode-26",
+      },
+    });
+    const queued = await queueTenkiRunnerSizingProbe({
+      orgId: "org_demo",
+      profile: custom,
+      sourceSha: "c".repeat(40),
+      workflowPath: ".github/workflows/closespan-runner-sizing.yml",
+      workflowSha256: "d".repeat(64),
+      runnerLabel: "tenki-macos-xcode-26",
+      workloadClass: "ios_simulator",
+      workloadReasons: ["iOS Simulator build"],
+      probeCommands: ["xcodebuild build"],
+      workingDirectory: "ZupNative",
+    });
+    const completed = await completeTenkiRunnerSizingProbe({
+      orgId: "org_demo",
+      probeId: queued.id,
+      githubWorkflowRunId: 93,
+      telemetry: {
+        durationMs: 60_000,
+        cpuSaturationRatio: 0.45,
+        memoryPressureRatio: 0.5,
+        peakMemoryMb: 7_168,
+        memoryLimitMb: 14_336,
+        exitCode: 0,
+        signal: null,
+        oomKilled: false,
+        timedOut: false,
+        sampledAt: new Date().toISOString(),
+        samples: 60,
+      },
+    });
+
+    expect(completed).toMatchObject({
+      status: "Completed",
+      runnerLabel: "tenki-macos-xcode-26",
+      recommendedRunnerLabel: "tenki-macos-xcode-26",
+    });
+  });
+
+  it("records the next compatible inventory runner after resource pressure", async () => {
+    const custom = iosProfile("d".repeat(64));
+    const queued = await queueTenkiRunnerSizingProbe({
+      orgId: "org_demo",
+      profile: custom,
+      sourceSha: "c".repeat(40),
+      workflowPath: ".github/workflows/closespan-runner-sizing.yml",
+      workflowSha256: "d".repeat(64),
+      runnerLabel: "tenki-macos-xcode-26-small",
+      workloadClass: "ios_simulator",
+      workloadReasons: ["iOS Simulator build"],
+      probeCommands: ["xcodebuild build"],
+      workingDirectory: "ZupNative",
+    });
+
+    const completed = await completeTenkiRunnerSizingProbe({
+      orgId: "org_demo",
+      probeId: queued.id,
+      githubWorkflowRunId: 94,
+      recommendedRunnerLabel: "tenki-macos-xcode-26-large",
+      recommendationReasons: ["The smaller compatible runner reached its memory limit"],
+      telemetry: {
+        durationMs: 60_000,
+        cpuSaturationRatio: 0.8,
+        memoryPressureRatio: 0.98,
+        peakMemoryMb: 14_000,
+        memoryLimitMb: 14_336,
+        exitCode: 137,
+        signal: "SIGKILL",
+        oomKilled: true,
+        timedOut: false,
+        sampledAt: new Date().toISOString(),
+        samples: 60,
+      },
+    });
+
+    expect(completed).toMatchObject({
+      status: "Completed",
+      runnerLabel: "tenki-macos-xcode-26-small",
+      recommendedRunnerLabel: "tenki-macos-xcode-26-large",
+      recommendationReasons: ["The smaller compatible runner reached its memory limit"],
+    });
+  });
 });

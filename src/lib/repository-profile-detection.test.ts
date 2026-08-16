@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { TENKI_BROWSER_PREFLIGHT_COMMAND } from "./execution-profile";
+import type { AvailableRunnerInventoryEntry } from "./tenki-runner-inventory";
 
 const profileRepository = vi.hoisted(() => ({ save: vi.fn() }));
 
@@ -153,6 +154,25 @@ function mobileGithubFixture(platform: "ios" | "android") {
   };
 }
 
+function inventoryEntry(
+  overrides: Partial<AvailableRunnerInventoryEntry> = {},
+): AvailableRunnerInventoryEntry {
+  return {
+    label: "tenki-macos-xcode-26",
+    provider: "tenki",
+    source: "deployment_catalog",
+    platform: "macos",
+    architecture: "arm64",
+    cpuCores: 4,
+    memoryMb: 14_336,
+    xcodeMajors: [26],
+    androidApiLevels: [],
+    nestedKvm: false,
+    online: true,
+    ...overrides,
+  };
+}
+
 describe("repository execution-profile detection", () => {
   it("detects monorepo roots from bounded manifest metadata at the exact branch SHA", async () => {
     const { github, methods } = githubFixture();
@@ -254,7 +274,12 @@ describe("repository execution-profile detection", () => {
       installationId: "150109806",
       repository: "samshanmukh/zup",
       defaultBranch: "main",
-    }, { github });
+    }, {
+      github,
+      runnerInventoryResolver: {
+        resolve: vi.fn().mockResolvedValue([inventoryEntry()]),
+      },
+    });
 
     expect(detected.profiles).toHaveLength(1);
     expect(detected.profiles[0]).toMatchObject({
@@ -277,6 +302,7 @@ describe("repository execution-profile detection", () => {
           kind: "tenki_github_actions",
           platform: "macos",
           architecture: "arm64",
+          runnerLabel: "tenki-macos-xcode-26",
           workflowPath: ".github/workflows/closespan-agent-runner.yml",
           workflowSha256: createHash("sha256").update(workflow).digest("hex"),
           xcode: expect.objectContaining({
@@ -289,6 +315,11 @@ describe("repository execution-profile detection", () => {
       }),
       detectionEvidence: expect.objectContaining({
         platform: "ios",
+        runnerSizing: expect.objectContaining({
+          selectedRunnerLabel: "tenki-macos-xcode-26",
+          provider: "tenki",
+          fallbackReason: null,
+        }),
         compatibilityRequirements: expect.objectContaining({
           ecosystem: "ios",
           validationKind: "runner_probe",
@@ -296,6 +327,33 @@ describe("repository execution-profile detection", () => {
           toolchains: expect.arrayContaining([
             { name: "Xcode", constraint: "26.1" },
           ]),
+        }),
+      }),
+    }));
+  });
+
+  it("records an explicit GitHub-hosted fallback when no compatible Tenki runner is enabled", async () => {
+    profileRepository.save.mockReset().mockResolvedValue({ id: "profile-ios-fallback" });
+    const { github } = mobileGithubFixture("ios");
+    await detectAndSaveGithubRepositoryProfiles({
+      orgId: "org-1",
+      installationId: "150109806",
+      repository: "samshanmukh/zup",
+      defaultBranch: "main",
+    }, {
+      github,
+      runnerInventoryResolver: { resolve: vi.fn().mockResolvedValue([]) },
+    });
+
+    expect(profileRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      config: expect.objectContaining({
+        executor: expect.objectContaining({ runnerLabel: "macos-26" }),
+      }),
+      detectionEvidence: expect.objectContaining({
+        runnerSizing: expect.objectContaining({
+          provider: "github_hosted",
+          selectionSource: "github_hosted_fallback",
+          fallbackReason: "No enabled Tenki runner matched Xcode 26 on Apple Silicon",
         }),
       }),
     }));
@@ -328,7 +386,12 @@ describe("repository execution-profile detection", () => {
       installationId: "150109806",
       repository: "samshanmukh/zup",
       defaultBranch: "main",
-    }, { github });
+    }, {
+      github,
+      runnerInventoryResolver: {
+        resolve: vi.fn().mockResolvedValue([inventoryEntry()]),
+      },
+    });
 
     expect(detected.profiles[0]).toMatchObject({
       root: "ZupNative",
@@ -349,7 +412,23 @@ describe("repository execution-profile detection", () => {
       installationId: "150109806",
       repository: "acme/android",
       defaultBranch: "main",
-    }, { github });
+    }, {
+      github,
+      runnerInventoryResolver: {
+        resolve: vi.fn().mockResolvedValue([
+          inventoryEntry({
+            label: "tenki-android-api-34-large",
+            platform: "linux",
+            architecture: "x64",
+            cpuCores: 8,
+            memoryMb: 16_384,
+            xcodeMajors: [],
+            androidApiLevels: [34],
+            nestedKvm: true,
+          }),
+        ]),
+      },
+    });
 
     expect(profileRepository.save).toHaveBeenCalledWith(expect.objectContaining({
       config: expect.objectContaining({
@@ -359,7 +438,7 @@ describe("repository execution-profile detection", () => {
           kind: "tenki_github_actions",
           platform: "linux",
           architecture: "x64",
-          runnerLabel: "tenki-standard-large-8c-16g",
+          runnerLabel: "tenki-android-api-34-large",
           androidEmulator: expect.objectContaining({
             apiLevel: 34,
             architecture: "x86_64",
@@ -369,6 +448,10 @@ describe("repository execution-profile detection", () => {
       }),
       detectionEvidence: expect.objectContaining({
         platform: "android",
+        runnerSizing: expect.objectContaining({
+          selectedRunnerLabel: "tenki-android-api-34-large",
+          provider: "tenki",
+        }),
         compatibilityRequirements: expect.objectContaining({
           ecosystem: "android",
           validationKind: "runner_probe",

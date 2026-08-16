@@ -17,9 +17,13 @@ import type {
 } from "./tenki-environment-catalog";
 import {
   assessTenkiRunnerWorkload,
-  assertTenkiRunnerLabel,
-  tenkiRunnerSize,
 } from "./tenki-runner-sizing";
+import {
+  configuredRunnerInventory,
+  discoverAvailableRunnerInventory,
+  selectCompatibleRunner,
+  type AvailableRunnerInventoryEntry,
+} from "./tenki-runner-inventory";
 import { CLOSESPAN_SWIFT_ACCEPTANCE_TEST_COMMAND } from "./swift-acceptance-harness";
 import {
   runtimeConstraint,
@@ -240,6 +244,13 @@ export interface RepositoryProfileDetectionDependencies {
   limits?: Partial<RepositoryDetectionLimits>;
   managedEnvironmentResolver?: {
     resolve(input: ManagedTenkiEnvironmentRequest): Promise<ManagedTenkiEnvironmentArtifact | null>;
+  };
+  runnerInventoryResolver?: {
+    resolve(input: {
+      orgId: string;
+      installationId: string;
+      repository: string;
+    }): Promise<AvailableRunnerInventoryEntry[]>;
   };
 }
 
@@ -1147,19 +1158,19 @@ function detectedInstallCommands(
 export function executionProfileSuggestionStore(
   actor: ExecutionProfileActor = { actorId: "system:repository-detector" },
   dependencies: Pick<RepositoryProfileDetectionDependencies, "managedEnvironmentResolver"> = {},
+  runnerInventory: AvailableRunnerInventoryEntry[] = [],
 ): RepositoryProfileSuggestionStore {
   return {
     async saveDetectedSuggestion({ orgId, suggestion: detected, evidence }) {
       const runnerExecution = detected.platform === "ios" || detected.platform === "android";
       const workload = assessTenkiRunnerWorkload(detected);
-      const configuredRunnerLabel = detected.platform === "ios"
-        ? process.env.TENKI_MACOS_RUNNER_LABEL?.trim()
-        : detected.platform === "android"
-          ? process.env.TENKI_ANDROID_RUNNER_LABEL?.trim()
-          : undefined;
-      const runnerLabel = configuredRunnerLabel || workload.baselineRunnerLabel;
-      if (runnerExecution) assertTenkiRunnerLabel(runnerLabel, workload.platform);
-      const runnerSize = runnerExecution ? tenkiRunnerSize(runnerLabel) : null;
+      const runnerSelection = runnerExecution ? selectCompatibleRunner({
+        platform: detected.platform as "ios" | "android",
+        xcodeVersion: detected.xcode?.version,
+        androidApiLevel: detected.androidEmulator?.apiLevel,
+        workload,
+        inventory: runnerInventory,
+      }) : null;
       const managedEnvironment = runnerExecution ? null : await (
         dependencies.managedEnvironmentResolver?.resolve({
           orgId,
@@ -1225,8 +1236,8 @@ export function executionProfileSuggestionStore(
         permittedPaths: detected.root === "." ? ["**/*"] : [`${detected.root}/**`],
         tenkiImage: managedEnvironment?.registryDigestRef ?? null,
         tenkiSnapshotId: null,
-        cpuCores: runnerSize?.cpuCores ?? 2,
-        memoryMb: runnerSize?.memoryMb ?? 4_096,
+        cpuCores: runnerSelection?.cpuCores ?? 2,
+        memoryMb: runnerSelection?.memoryMb ?? 4_096,
         allowInbound: false,
         allowOutbound: managedEnvironment?.scopeType === "repository_private"
           ? false
@@ -1241,8 +1252,8 @@ export function executionProfileSuggestionStore(
           ? {
               kind: "tenki_github_actions" as const,
               platform: "macos" as const,
-              architecture: "arm64" as const,
-              runnerLabel,
+              architecture: runnerSelection!.architecture,
+              runnerLabel: runnerSelection!.label,
               workflowPath: TENKI_RUNNER_WORKFLOW_PATH,
               workflowSha256: detected.runnerWorkflowSha256,
               xcode: detected.xcode ? {
@@ -1255,8 +1266,8 @@ export function executionProfileSuggestionStore(
           : {
               kind: "tenki_github_actions" as const,
               platform: "linux" as const,
-              architecture: "x64" as const,
-              runnerLabel,
+              architecture: runnerSelection!.architecture,
+              runnerLabel: runnerSelection!.label,
               workflowPath: TENKI_RUNNER_WORKFLOW_PATH,
               workflowSha256: detected.runnerWorkflowSha256,
               xcode: null,
@@ -1286,8 +1297,13 @@ export function executionProfileSuggestionStore(
           runnerSizing: runnerExecution ? {
             workloadClass: workload.workloadClass,
             baselineRunnerLabel: workload.baselineRunnerLabel,
-            selectedRunnerLabel: runnerLabel,
-            selectionSource: configuredRunnerLabel ? "deployment_override" : "detected_workload",
+            selectedRunnerLabel: runnerSelection!.label,
+            capacityLabel: runnerSelection!.capacityLabel,
+            provider: runnerSelection!.provider,
+            selectionSource: runnerSelection!.source,
+            fallbackReason: runnerSelection!.fallbackReason,
+            compatibleCandidateCount: runnerSelection!.compatibleCandidateCount,
+            compatibleCandidates: runnerSelection!.compatibleCandidates,
             reasons: workload.reasons,
           } : null,
           managedEnvironment: managedEnvironment ? {
@@ -1316,9 +1332,31 @@ export async function detectAndSaveGithubRepositoryProfiles(
   },
   dependencies: RepositoryProfileDetectionDependencies = {},
 ): Promise<GithubRepositoryProfileDetection> {
+  let runnerInventory: AvailableRunnerInventoryEntry[];
+  if (dependencies.runnerInventoryResolver) {
+    runnerInventory = await dependencies.runnerInventoryResolver.resolve(input);
+  } else if (dependencies.github) {
+    runnerInventory = configuredRunnerInventory({
+      orgId: input.orgId,
+      repository: input.repository,
+    });
+  } else {
+    try {
+      runnerInventory = await discoverAvailableRunnerInventory(input);
+    } catch {
+      // GitHub runner inventory is an optional onboarding enhancement. A
+      // transient API failure must not block repository detection: use the
+      // reviewed deployment catalog, or the explicit hosted fallback selected
+      // later when no compatible Tenki entry is available.
+      runnerInventory = configuredRunnerInventory({
+        orgId: input.orgId,
+        repository: input.repository,
+      });
+    }
+  }
   return detectAndPersistGithubRepositoryProfiles(
     input,
-    executionProfileSuggestionStore(input.actor, dependencies),
+    executionProfileSuggestionStore(input.actor, dependencies, runnerInventory),
     dependencies,
   );
 }

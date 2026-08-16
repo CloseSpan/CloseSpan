@@ -155,16 +155,50 @@ export async function POST(
     if (!payload.telemetry || !payload.githubWorkflowRunId) {
       throw new Error("Completed runner sizing callbacks require telemetry and the GitHub workflow run ID");
     }
+    const sourceProfile = await getExecutionProfileVersion(payload.orgId, probe.profileId);
+    if (!sourceProfile || sourceProfile.contentHash !== probe.profileHash) {
+      throw new Error("Runner sizing profile no longer matches the completed probe");
+    }
+    const currentConfig = sanitizeExecutionProfileConfig(sourceProfile.config);
+    const executor = executionProfileExecutor(currentConfig);
+    if (executor.kind !== "tenki_github_actions") {
+      throw new Error("Completed sizing probe is not bound to a GitHub Actions runner profile");
+    }
+    const resourceFailure = payload.telemetry.exitCode === 137
+      || payload.telemetry.oomKilled
+      || payload.telemetry.memoryPressureRatio >= 0.9
+      || payload.telemetry.cpuSaturationRatio >= 0.9;
+    const runnerSizing = sourceProfile.detectionEvidence.runnerSizing;
+    const compatibleCandidates = runnerSizing && typeof runnerSizing === "object" && !Array.isArray(runnerSizing)
+      && "compatibleCandidates" in runnerSizing && Array.isArray(runnerSizing.compatibleCandidates)
+      ? runnerSizing.compatibleCandidates.filter((candidate): candidate is {
+          label: string;
+          cpuCores: number;
+          memoryMb: number;
+        } => Boolean(candidate) && typeof candidate === "object" && !Array.isArray(candidate)
+          && "label" in candidate && typeof candidate.label === "string"
+          && "cpuCores" in candidate && typeof candidate.cpuCores === "number"
+          && "memoryMb" in candidate && typeof candidate.memoryMb === "number")
+      : [];
+    const currentCandidateIndex = compatibleCandidates.findIndex(
+      (candidate) => candidate.label === probe.runnerLabel,
+    );
+    const nextInventoryCandidate = resourceFailure && currentCandidateIndex >= 0
+      ? compatibleCandidates[currentCandidateIndex + 1]
+      : undefined;
     const completed = await completeTenkiRunnerSizingProbe({
       orgId: payload.orgId,
       probeId,
       telemetry: payload.telemetry,
       githubWorkflowRunId: payload.githubWorkflowRunId,
+      ...(nextInventoryCandidate ? {
+        recommendedRunnerLabel: nextInventoryCandidate.label,
+        recommendationReasons: [
+          `Runner telemetry exceeded the verified capacity of ${probe.runnerLabel}`,
+          `Retry on the next compatible enabled runner ${nextInventoryCandidate.label}`,
+        ],
+      } : {}),
     });
-    const resourceFailure = payload.telemetry.exitCode === 137
-      || payload.telemetry.oomKilled
-      || payload.telemetry.memoryPressureRatio >= 0.9
-      || payload.telemetry.cpuSaturationRatio >= 0.9;
     if (payload.telemetry.exitCode !== 0 && !resourceFailure) {
       return NextResponse.json({ ok: true, activated: false }, { headers: noStoreHeaders });
     }
@@ -178,26 +212,28 @@ export async function POST(
         reason: "The workload still exceeds the largest available runner for this platform.",
       }, { headers: noStoreHeaders });
     }
-    const sourceProfile = await getExecutionProfileVersion(payload.orgId, probe.profileId);
-    if (!sourceProfile || sourceProfile.contentHash !== probe.profileHash) {
-      throw new Error("Runner sizing profile no longer matches the completed probe");
-    }
-    const currentConfig = sanitizeExecutionProfileConfig(sourceProfile.config);
-    const executor = executionProfileExecutor(currentConfig);
-    if (executor.kind !== "tenki_github_actions") {
-      throw new Error("Completed sizing probe is not bound to a GitHub Actions runner profile");
-    }
     const selectedLabel = completed.recommendedRunnerLabel ?? executor.runnerLabel;
     const selectedSize = tenkiRunnerSize(selectedLabel);
-    if (!selectedSize || selectedSize.platform !== executor.platform) {
+    const selectedInventoryCandidate = compatibleCandidates.find(
+      (candidate) => candidate.label === selectedLabel,
+    );
+    if (selectedSize && selectedSize.platform !== executor.platform) {
       throw new Error("Sizing recommendation is not valid for this execution platform");
+    }
+    if (resourceFailure && selectedLabel === probe.runnerLabel) {
+      return NextResponse.json({
+        ok: true,
+        activated: false,
+        reason: "The selected runner exhausted its verified capacity and no larger compatible runner is available in the active inventory.",
+      }, { headers: noStoreHeaders });
     }
     const config = {
       ...currentConfig,
-      cpuCores: selectedSize.cpuCores,
-      memoryMb: selectedSize.memoryMb,
-      executor: { ...executor, runnerLabel: selectedSize.label },
+      cpuCores: selectedSize?.cpuCores ?? selectedInventoryCandidate?.cpuCores ?? currentConfig.cpuCores,
+      memoryMb: selectedSize?.memoryMb ?? selectedInventoryCandidate?.memoryMb ?? currentConfig.memoryMb,
+      executor: { ...executor, runnerLabel: selectedLabel },
     };
+    const existingRunnerSizing = sourceProfile.detectionEvidence.runnerSizing;
     const detected = await saveDetectedExecutionProfileSuggestion({
       orgId: payload.orgId,
       repository: sourceProfile.repository,
@@ -206,10 +242,13 @@ export async function POST(
       detectionEvidence: {
         ...sourceProfile.detectionEvidence,
         runnerSizing: {
+          ...(existingRunnerSizing && typeof existingRunnerSizing === "object" && !Array.isArray(existingRunnerSizing)
+            ? existingRunnerSizing
+            : {}),
           probeId,
           workloadClass: probe.workloadClass,
           baselineRunnerLabel: probe.runnerLabel,
-          selectedRunnerLabel: selectedSize.label,
+          selectedRunnerLabel: selectedLabel,
           recommendationReasons: completed.recommendationReasons,
           telemetry: payload.telemetry,
           githubWorkflowRunId: payload.githubWorkflowRunId,
@@ -217,7 +256,7 @@ export async function POST(
       },
       actor: { actorId: "system:tenki-runner-sizing" },
     });
-    if (resourceFailure && selectedSize.label !== probe.runnerLabel) {
+    if (resourceFailure && selectedLabel !== probe.runnerLabel) {
       const authorization = (await listGithubRepositoryAuthorizations(payload.orgId)).find(
         (repository) => repository.active && repository.repository === probe.repository,
       );
@@ -237,7 +276,7 @@ export async function POST(
       return NextResponse.json({
         ok: true,
         activated: false,
-        selectedRunnerLabel: selectedSize.label,
+        selectedRunnerLabel: selectedLabel,
         nextProbeId: nextProbe.id,
       }, { headers: noStoreHeaders });
     }
@@ -247,7 +286,7 @@ export async function POST(
       actor: { actorId: "system:tenki-runner-sizing" },
     });
     return NextResponse.json(
-      { ok: true, activated: true, selectedRunnerLabel: selectedSize.label },
+      { ok: true, activated: true, selectedRunnerLabel: selectedLabel },
       { headers: noStoreHeaders },
     );
   } catch (error) {

@@ -3,6 +3,7 @@ import { databasePool } from "./db";
 import type { ExecutionProfileVersion } from "./execution-profile";
 import {
   recommendTenkiRunnerSize,
+  tenkiRunnerSize,
   tenkiRunnerTelemetrySchema,
   type TenkiRunnerTelemetry,
   type TenkiWorkloadClass,
@@ -319,11 +320,30 @@ export async function completeTenkiRunnerSizingProbe(input: {
   probeId: string;
   telemetry: TenkiRunnerTelemetry;
   githubWorkflowRunId: number;
+  recommendedRunnerLabel?: string;
+  recommendationReasons?: string[];
 }): Promise<TenkiRunnerSizingProbe> {
   const telemetry = tenkiRunnerTelemetrySchema.parse(input.telemetry);
   const existing = await getTenkiRunnerSizingProbe(input.orgId, input.probeId);
   if (!existing) throw new Error("Tenki runner sizing probe was not found");
-  const recommendation = recommendTenkiRunnerSize({ runnerLabel: existing.runnerLabel, telemetry });
+  const cataloguedSize = tenkiRunnerSize(existing.runnerLabel);
+  const recommendation = input.recommendedRunnerLabel
+    ? {
+        recommendedRunnerLabel: input.recommendedRunnerLabel,
+        reasons: input.recommendationReasons ?? [
+          "Repository compatibility inventory selected the next verified runner capacity",
+        ],
+      }
+    : cataloguedSize
+    ? recommendTenkiRunnerSize({ runnerLabel: existing.runnerLabel, telemetry })
+    : {
+        recommendedRunnerLabel: existing.runnerLabel,
+        reasons: [
+          telemetry.exitCode === 0
+            ? "The inventory-selected runner completed the compatibility and capacity probe"
+            : "The inventory-selected runner failed; no verified larger label is available in the active catalog",
+        ],
+      };
   if (workspacePersistenceMode(input.orgId) === "memory") {
     const updated: ProbeRecord = {
       ...existing,

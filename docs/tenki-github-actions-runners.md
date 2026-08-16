@@ -100,7 +100,7 @@ The runner implementation must enforce these properties:
   implementation reports and publishes draft implementation PRs through its
   GitHub App.
 
-## Platform routing
+## Platform and runner routing
 
 | Repository evidence | Backend | Required runner capability |
 | --- | --- | --- |
@@ -108,11 +108,40 @@ The runner implementation must enforce these properties:
 | Xcode project/workspace targeting iPhoneOS | Tenki GitHub Actions | macOS Apple Silicon, pinned Xcode, iOS Simulator |
 | Android Gradle plugin with instrumented tests | Tenki GitHub Actions | Linux x64, nested KVM, Android Emulator |
 
-Repository analysis selects only documented Tenki runner sizes. Administrators
-can save a different documented size from execution-profile settings; that
-choice creates a new immutable profile version. Deployment variables remain a
-bootstrap escape hatch, but must also contain a documented label. Configure
-`TENKI_XCODE_VERSION` separately from runner sizing.
+Runner selection is inventory-first. CloseSpan discovers the Tenki labels that
+are actually enabled for the customer, enriches them with the reviewed
+deployment catalog, and applies this order:
+
+1. Match ecosystem and platform (`macos` for iOS, `linux` for Android).
+2. Match architecture and toolchain (Xcode major or Android API + nested KVM).
+3. Reject offline and undersized candidates.
+4. Choose the smallest compatible Tenki capacity.
+5. Run the repository-owned compatibility and sizing probe.
+6. Activate the profile only after the probe succeeds.
+
+The actual `runs-on` label—not a CloseSpan capacity alias—is stored in the
+immutable execution profile. `TENKI_RUNNER_CATALOG_JSON` supplies metadata that
+GitHub runner labels do not carry. Entries may be scoped by `orgId` and/or
+`repository` and declare `platform`, `architecture`, `cpuCores`, `memoryMb`,
+`xcodeMajors`, `androidApiLevels`, and `nestedKvm`.
+
+CloseSpan first reads the repository-visible self-hosted runners, because
+organization runner groups can restrict a label to selected repositories. It
+consults organization inventory only when repository discovery is unavailable.
+That live discovery requires the optional GitHub App organization permission
+**Self-hosted runners: read**. If the permission is not granted, the reviewed
+deployment catalog remains authoritative. The legacy
+`TENKI_MACOS_RUNNER_LABEL` and `TENKI_ANDROID_RUNNER_LABEL` variables are only
+bootstrap overrides for older profiles.
+
+If no compatible Tenki candidate exists and
+`GITHUB_HOSTED_RUNNER_FALLBACK_ENABLED=true`, CloseSpan may select a compatible
+GitHub-hosted image. This is an explicit fallback: the profile stores
+`provider=github_hosted`, `selectionSource=github_hosted_fallback`, and the
+reason, and the UI labels it **GitHub-hosted fallback**. Set the variable to
+`false` to fail closed instead. A Tenki capacity/profile name is never silently
+translated into a GitHub-hosted label.
+
 `TENKI_CONTROL_RUNNER_LABEL` defaults to Tenki's documented small Linux runner
 `tenki-standard-small-2c-4g` and is used only for lightweight bootstrap and
 authenticated callback jobs. Never route
@@ -124,8 +153,9 @@ Android KVM label.
 ## Profile activation
 
 Static detection proposes the project/workspace, scheme, simulator destination,
-Gradle task and runner label. Before activation, a probe workflow must confirm
-those values on the chosen Tenki runner. The confirmed profile remains bound to
+Gradle task and the compatibility-filtered actual runner label. Before
+activation, a probe workflow must confirm those values on the selected runner.
+The confirmed profile remains bound to
 the repository root, workflow SHA-256, source commit, commands and platform
 contract. Any workflow or toolchain change creates a new detected version that
 requires review.
@@ -140,23 +170,26 @@ selected label, telemetry and reasons are stored with the immutable profile.
 At the largest tier, a resource failure remains visible instead of inventing a
 larger runner.
 
-Baseline selection uses repository evidence: lightweight Linux validation
+Capacity baseline selection uses repository evidence: lightweight Linux validation
 starts small, runnable applications start medium, build-heavy work starts
 large, Android Emulator work starts large (or large-plus for multi-module
-work), and iOS Simulator work starts from the corresponding macOS tier.
+work), and iOS Simulator work starts from the corresponding macOS tier. The
+baseline is a sizing requirement, not a substitute `runs-on` label.
 
 ## Deployment checklist
 
-1. Install Tenki's GitHub App on the repository and copy the exact runner label
-   from the Tenki Runners page. KVM must be enabled by Tenki for Android.
+1. Install Tenki's GitHub App on the repository and copy the exact enabled
+   runner labels from the Tenki Runners page. KVM must be enabled by Tenki for
+   Android and custom Xcode images must be provisioned by Tenki.
 2. Install all three reviewed templates as
    `.github/workflows/closespan-agent-runner.yml` and
    `.github/workflows/closespan-runtime-verifier.yml`, plus
    `.github/workflows/closespan-runner-sizing.yml`, through the CloseSpan
    runner-setup pull request.
-3. Grant the CloseSpan GitHub App Actions and Workflows read/write access, set
-   `CLOSESPAN_INTERNAL_BASE_URL`, `GITHUB_APP_BOT_LOGIN`, and the appropriate
-   Tenki runner-label environment variables, including
+3. Grant the CloseSpan GitHub App Actions and Workflows read/write access and,
+   when live inventory discovery is desired, organization Self-hosted runners
+   read access. Set `CLOSESPAN_INTERNAL_BASE_URL`, `GITHUB_APP_BOT_LOGIN`,
+   `TENKI_RUNNER_CATALOG_JSON`, and
    `TENKI_CONTROL_RUNNER_LABEL=tenki-standard-small-2c-4g`.
 4. Set `TENKI_GITHUB_ACTIONS_ENABLED=true`, re-detect the execution profile,
    run its probe, and confirm the new digest-bound profile.
@@ -173,6 +206,12 @@ operations:
 | Pull requests | Read and write | Create draft PRs and perform separately approved merges |
 | Actions | Read and write | Dispatch and observe the reviewed runner workflow |
 | Workflows | Read and write | Install the reviewed workflow under `.github/workflows/` |
+
+Optional organization permission:
+
+| Organization permission | Access | Purpose |
+| --- | --- | --- |
+| Self-hosted runners | Read | Discover the Tenki runner labels currently enabled for the customer |
 
 Keep Administration, Secrets, Variables, Deployments, Environments, Checks,
 Commit statuses, Issues, and all unrelated repository permissions at no access
