@@ -103,7 +103,7 @@ export async function recordGithubDeploymentStatus(
     await client.query(
       `UPDATE product_problems SET stage='Released',updated_at=now()
         WHERE org_id=$1 AND id=$2
-          AND stage IN ('Approved','Planned','In progress')`,
+          AND stage IN ('Approved','Planned','In progress','Release Ready')`,
       [orgId, run.problem_id],
     );
     await client.query(

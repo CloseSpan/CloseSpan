@@ -173,7 +173,7 @@ describe("GitHub webhook persistence", () => {
       if (sql(query).includes("INSERT INTO github_webhook_deliveries"))
         return { rows: [{ delivery_id: deliveryId }], rowCount: 1 };
       if (sql(query).includes("FROM agent_runs run"))
-        return { rows: [{ id: "run-1" }], rowCount: 1 };
+        return { rows: [{ id: "run-1", problem_id: "problem-1" }], rowCount: 1 };
       return { rows: [], rowCount: 1 };
     });
     const result = await processGithubWebhook({
@@ -194,6 +194,12 @@ describe("GitHub webhook persistence", () => {
       .toBe(false);
     expect(database.client.query.mock.calls.some(([query]) => sql(query).includes("UPDATE final_execution_attempts")))
       .toBe(true);
+    expect(database.client.query.mock.calls.some(([query]) =>
+      sql(query).includes("SET stage='Release Ready'"),
+    )).toBe(true);
+    expect(database.client.query.mock.calls.some(([query]) =>
+      sql(query).includes("implementation_state='Release Ready'"),
+    )).toBe(true);
   });
 
   it("invalidates a pending final approval when GitHub reports a new PR head", async () => {

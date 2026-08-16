@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { approveMemoryAction, resetMemoryState } from "./memory-store";
 import {
@@ -14,6 +16,7 @@ const noEvidence: StageEvidence = {
   hasPendingApproval: false,
   hasApprovedApproval: false,
   hasApprovedWork: false,
+  hasMergedPullRequest: false,
   hasReleaseRecord: false,
   hasPassingReleaseVerification: false,
   followUpComplete: false,
@@ -51,6 +54,19 @@ describe("problem stage automation", () => {
 
   it("does not fabricate release or verification progress", () => {
     expect(assessAutomatedStage("In progress", noEvidence).nextStage).toBeNull();
+    expect(
+      assessAutomatedStage("In progress", {
+        ...noEvidence,
+        hasMergedPullRequest: true,
+      }).nextStage,
+    ).toBe("Release Ready");
+    expect(assessAutomatedStage("Release Ready", noEvidence).nextStage).toBeNull();
+    expect(
+      assessAutomatedStage("Release Ready", {
+        ...noEvidence,
+        hasReleaseRecord: true,
+      }).nextStage,
+    ).toBe("Released");
     expect(assessAutomatedStage("Released", noEvidence).nextStage).toBeNull();
     expect(
       assessAutomatedStage("Released", {
@@ -124,6 +140,14 @@ describe("problem stage automation", () => {
       "org_id text PRIMARY KEY REFERENCES organizations(id)",
     );
   });
+
+  it("installs the Release Ready stage and backfills merged pull requests", async () => {
+    const migration = await readFile(
+      path.join(process.cwd(), "db/migrations/067_release_ready_stage.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("'Release Ready'");
+    expect(migration).toContain("final_execution_attempts");
+    expect(migration).toContain("attempt.status='Succeeded'");
+  });
 });
-import { readFile } from "node:fs/promises";
-import path from "node:path";

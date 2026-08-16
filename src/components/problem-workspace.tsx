@@ -6,7 +6,17 @@ import { Check, ChevronDown, Download, History, LockKeyhole, Sparkles } from "lu
 import { calculateImpact, type FeedbackItem, type ProductProblem, type Stage } from "@/lib/domain";
 import type { DemoState } from "@/lib/store";
 
-const stages: Stage[] = ["Detected", "Needs review", "Approved", "Planned", "In progress", "Released", "Verified", "Closed"];
+const stages: Stage[] = [
+  "Detected",
+  "Needs review",
+  "Approved",
+  "Planned",
+  "In progress",
+  "Release Ready",
+  "Released",
+  "Verified",
+  "Closed",
+];
 
 export function ProblemWorkspace({ initialState, problem: primaryProblem, feedbackItems: feedback }: { initialState: DemoState; problem: ProductProblem; feedbackItems: FeedbackItem[] }) {
   const state = initialState;

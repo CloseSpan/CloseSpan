@@ -59,6 +59,8 @@ describe("event-driven release lifecycle", () => {
     expect(database.client.query.mock.calls.some(([statement]) =>
       sql(statement).includes("SET stage='Released'"))).toBe(true);
     expect(database.client.query.mock.calls.some(([statement]) =>
+      sql(statement).includes("'Release Ready'"))).toBe(true);
+    expect(database.client.query.mock.calls.some(([statement]) =>
       sql(statement).includes("INSERT INTO post_release_verification_jobs"))).toBe(true);
   });
 

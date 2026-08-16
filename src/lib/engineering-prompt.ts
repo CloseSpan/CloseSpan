@@ -20,6 +20,7 @@ export type EngineeringImplementationState =
   | "Running"
   | "Tests passed"
   | "Draft PR opened"
+  | "Release Ready"
   | "Released"
   | "Verified";
 
@@ -159,6 +160,7 @@ export const engineeringTicketSpecificationSchema = z
       "Running",
       "Tests passed",
       "Draft PR opened",
+      "Release Ready",
       "Released",
       "Verified",
     ]).optional(),

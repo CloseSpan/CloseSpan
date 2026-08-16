@@ -33,6 +33,7 @@ export interface StageEvidence {
   hasPendingApproval: boolean;
   hasApprovedApproval: boolean;
   hasApprovedWork: boolean;
+  hasMergedPullRequest: boolean;
   hasReleaseRecord: boolean;
   hasPassingReleaseVerification: boolean;
   followUpComplete: boolean;
@@ -86,9 +87,14 @@ export function assessAutomatedStage(
       : { nextStage: null, reason: "Waiting for approved implementation work to start." };
   }
   if (stage === "In progress") {
+    return evidence.hasMergedPullRequest
+      ? { nextStage: "Release Ready", reason: "The approved pull request was merged." }
+      : { nextStage: null, reason: "Waiting for the approved pull request to merge." };
+  }
+  if (stage === "Release Ready") {
     return evidence.hasReleaseRecord
       ? { nextStage: "Released", reason: "A release record confirms the implementation reached its target environment." }
-      : { nextStage: null, reason: "Waiting for a truthful release signal." };
+      : { nextStage: null, reason: "The pull request is merged; waiting for a truthful release signal." };
   }
   if (stage === "Released") {
     return evidence.hasPassingReleaseVerification
@@ -116,6 +122,7 @@ function memoryEvidence(orgId: string, problemId: string): StageEvidence {
       hasPendingApproval: false,
       hasApprovedApproval: false,
       hasApprovedWork: false,
+      hasMergedPullRequest: false,
       hasReleaseRecord: false,
       hasPassingReleaseVerification: false,
       followUpComplete: false,
@@ -128,6 +135,9 @@ function memoryEvidence(orgId: string, problemId: string): StageEvidence {
     hasPendingApproval: state.approval.status === "Pending",
     hasApprovedApproval: state.approval.status === "Approved",
     hasApprovedWork: Boolean(state.workItem),
+    hasMergedPullRequest: ["Release Ready", "Released", "Verified", "Closed"].includes(
+      state.problemStage,
+    ),
     hasReleaseRecord: ["Released", "Verified", "Closed"].includes(
       state.problemStage,
     ),
@@ -156,6 +166,7 @@ function runMemoryTick(orgId: string): AutomationTickResult {
     "Approved",
     "Planned",
     "In progress",
+    "Release Ready",
     "Released",
     "Verified",
   ];
@@ -222,6 +233,16 @@ async function readCandidates(client: PoolClient, orgId: string) {
         )
       ) AS "hasApprovedWork",
       EXISTS (
+        SELECT 1
+        FROM agent_runs run
+        JOIN final_execution_attempts attempt
+          ON attempt.org_id=run.org_id AND attempt.agent_run_id=run.id
+        WHERE run.org_id=problem.org_id
+          AND run.problem_id=problem.id
+          AND run.pull_request_number IS NOT NULL
+          AND attempt.status='Succeeded'
+      ) AS "hasMergedPullRequest",
+      EXISTS (
         SELECT 1 FROM engineering_ticket_specifications specification
         WHERE specification.org_id=problem.org_id
           AND specification.problem_id=problem.id
@@ -254,8 +275,8 @@ async function readCandidates(client: PoolClient, orgId: string) {
     WHERE problem.org_id=$1 AND problem.stage <> 'Closed'
     ORDER BY CASE problem.stage
       WHEN 'Detected' THEN 1 WHEN 'Needs review' THEN 2 WHEN 'Approved' THEN 3
-      WHEN 'Planned' THEN 4 WHEN 'In progress' THEN 5 WHEN 'Released' THEN 6
-      WHEN 'Verified' THEN 7 ELSE 8 END,
+      WHEN 'Planned' THEN 4 WHEN 'In progress' THEN 5 WHEN 'Release Ready' THEN 6
+      WHEN 'Released' THEN 7 WHEN 'Verified' THEN 8 ELSE 9 END,
       CASE problem.severity
         WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 ELSE 4 END,
       problem.updated_at,problem.id
@@ -323,7 +344,7 @@ async function runPostgresTick(orgId: string): Promise<AutomationTickResult> {
          WHERE org_id=$1 AND id=$2 AND stage=$4`,
         [orgId, candidate.id, assessment.nextStage, candidate.stage],
       );
-      if (assessment.nextStage === "Released" || assessment.nextStage === "Verified") {
+      if (["Release Ready", "Released", "Verified"].includes(assessment.nextStage)) {
         await client.query(
           `UPDATE engineering_ticket_specifications
            SET implementation_state=$3,updated_at=now()

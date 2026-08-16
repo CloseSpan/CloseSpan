@@ -89,7 +89,14 @@ export function rejectMemoryAction(orgId: string, context: ActionContext): DemoS
 export function advanceMemoryLifecycle(orgId: string, context: ActionContext): DemoState {
   const state = getMemoryState(orgId);
   if (alreadyProcessed(state, context, "advance")) return state;
-  const next: Partial<Record<Stage, Stage>> = { Approved: "Planned", Planned: "In progress", "In progress": "Released", Released: "Verified", Verified: "Closed" };
+  const next: Partial<Record<Stage, Stage>> = {
+    Approved: "Planned",
+    Planned: "In progress",
+    "In progress": "Release Ready",
+    "Release Ready": "Released",
+    Released: "Verified",
+    Verified: "Closed",
+  };
   const target = next[state.problemStage];
   if (!target) throw new Error("The problem cannot advance from its current stage");
   state.problemStage = target;

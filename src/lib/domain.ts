@@ -1,7 +1,16 @@
 export type Source = "Intercom" | "Zendesk" | "Slack" | "Email" | "Survey";
 export type FeedbackType = "Bug" | "Feature request" | "Usability" | "Question" | "Incident";
 export type Severity = "Critical" | "High" | "Medium" | "Low";
-export type Stage = "Detected" | "Needs review" | "Approved" | "Planned" | "In progress" | "Released" | "Verified" | "Closed";
+export type Stage =
+  | "Detected"
+  | "Needs review"
+  | "Approved"
+  | "Planned"
+  | "In progress"
+  | "Release Ready"
+  | "Released"
+  | "Verified"
+  | "Closed";
 
 export interface EvidenceRef {
   id: string;

@@ -219,8 +219,8 @@ async function auditPullRequest(
   const number = payload.pull_request?.number;
   if (typeof repository !== "string" || typeof number !== "number" || !Number.isSafeInteger(number))
     return "ignored_malformed_pull_request";
-  const run = await client.query<{ id: string }>(
-    `SELECT run.id
+  const run = await client.query<{ id: string; problem_id: string }>(
+    `SELECT run.id,run.problem_id
        FROM agent_runs run
        JOIN github_repository_allowlists allowlist
          ON allowlist.org_id=run.org_id
@@ -232,8 +232,9 @@ async function auditPullRequest(
       ORDER BY run.queued_at DESC LIMIT 1`,
     [orgId, id, repository, number],
   );
-  const runId = run.rows[0]?.id;
-  if (!runId) return "ignored_untracked_pull_request";
+  const trackedRun = run.rows[0];
+  const runId = trackedRun?.id;
+  if (!trackedRun || !runId) return "ignored_untracked_pull_request";
   const merged = action === "closed" && payload.pull_request?.merged === true;
   const headSha = payload.pull_request?.head?.sha;
   if (action === "synchronize" && typeof headSha === "string") {
@@ -253,6 +254,39 @@ async function auditPullRequest(
         WHERE org_id=$1 AND agent_run_id=$2 AND status IN ('Queued','Running')`,
       [orgId, runId, typeof mergeSha === "string" ? mergeSha : null],
     );
+    const transitioned = await client.query(
+      `UPDATE product_problems
+          SET stage='Release Ready',updated_at=now()
+        WHERE org_id=$1 AND id=$2
+          AND stage IN ('Approved','Planned','In progress')
+        RETURNING id`,
+      [orgId, trackedRun.problem_id],
+    );
+    await client.query(
+      `UPDATE engineering_ticket_specifications
+          SET implementation_state='Release Ready',updated_at=now()
+        WHERE org_id=$1 AND problem_id=$2
+          AND implementation_state NOT IN ('Released','Verified')`,
+      [orgId, trackedRun.problem_id],
+    );
+    if (transitioned.rowCount) {
+      await client.query(
+        `UPDATE workspaces SET version=version+1,updated_at=now() WHERE org_id=$1`,
+        [orgId],
+      );
+      await client.query(
+        `INSERT INTO audit_events(
+           id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+         ) VALUES($1,$2,'github','GitHub',$3,'ProductProblem',$4,$5)`,
+        [
+          randomUUID(),
+          orgId,
+          `Moved problem to Release Ready after ${repository}#${number} merged`,
+          trackedRun.problem_id,
+          `github-webhook-${deliveryId}`,
+        ],
+      );
+    }
   }
   const description = merged ? "merged" : action === "closed" ? "closed without merge" : action.replaceAll("_", " ");
   await client.query(

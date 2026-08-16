@@ -168,7 +168,14 @@ export function rejectPostgresAction(orgId: string, context: ActionContext) {
 
 export function advancePostgresLifecycle(orgId: string, context: ActionContext) {
   return mutate(orgId, context, "advance", async (client,target) => {
-    const next: Partial<Record<Stage, Stage>> = { Approved: "Planned", Planned: "In progress", "In progress": "Released", Released: "Verified", Verified: "Closed" };
+    const next: Partial<Record<Stage, Stage>> = {
+      Approved: "Planned",
+      Planned: "In progress",
+      "In progress": "Release Ready",
+      "Release Ready": "Released",
+      Released: "Verified",
+      Verified: "Closed",
+    };
     const nextStage = next[target.stage];
     if (!nextStage)
       throw new WorkflowConflictError(
@@ -194,7 +201,7 @@ export function advancePostgresLifecycle(orgId: string, context: ActionContext) 
       }
     }
     await client.query("UPDATE product_problems SET stage=$3,updated_at=now() WHERE org_id=$1 AND id=$2", [orgId,target.problemId,nextStage]);
-    if (nextStage === "Released" || nextStage === "Verified") {
+    if (["Release Ready", "Released", "Verified"].includes(nextStage)) {
       await client.query(
         "UPDATE engineering_ticket_specifications SET implementation_state=$3,updated_at=now() WHERE org_id=$1 AND problem_id=$2",
         [orgId, target.problemId, nextStage],

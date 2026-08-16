@@ -35,6 +35,8 @@ describe("feedback-to-resolution workflow", () => {
     await advanceLifecycle(ORG_ID, context("advance_003"));
     expect((await getState(ORG_ID)).notifications).toBe("Not drafted");
     await advanceLifecycle(ORG_ID, context("advance_004"));
+    expect((await getState(ORG_ID)).problemStage).toBe("Released");
+    await advanceLifecycle(ORG_ID, context("advance_005"));
     expect((await getState(ORG_ID)).problemStage).toBe("Verified");
     expect((await getState(ORG_ID)).notifications).toBe("Drafted");
     expect((await approveNotifications(ORG_ID, context("notify_001"))).notifications).toBe("Approved");
