@@ -14,6 +14,37 @@ interface GithubPublisherDependencies {
   createClient?: (installationId: string) => Promise<Octokit> | Octokit;
 }
 
+const TENKI_REVIEW_REQUEST_MARKER = "<!-- closespan:tenki-code-review-request:v1 -->";
+
+async function requestTenkiCodeReview(
+  octokit: Octokit,
+  repository: { owner: string; repo: string },
+  pullRequestNumber: number,
+): Promise<void> {
+  try {
+    const comments = await octokit.paginate(octokit.rest.issues.listComments, {
+      ...repository,
+      issue_number: pullRequestNumber,
+      per_page: 100,
+    });
+    if (comments.some((comment) => comment.body?.includes(TENKI_REVIEW_REQUEST_MARKER))) return;
+    await octokit.rest.issues.createComment({
+      ...repository,
+      issue_number: pullRequestNumber,
+      body: [
+        TENKI_REVIEW_REQUEST_MARKER,
+        "@tenki-reviewer Please review this CloseSpan-generated draft pull request.",
+      ].join("\n"),
+    });
+  } catch (error) {
+    console.warn("Unable to request automatic Tenki code review", {
+      repository: `${repository.owner}/${repository.repo}`,
+      pullRequestNumber,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function installationClient(
   installationId: string,
   dependencies: GithubPublisherDependencies = {},
@@ -127,6 +158,7 @@ async function existingPublication(
     body: pullRequestBody(context, report),
     draft: true,
   })).data;
+  await requestTenkiCodeReview(octokit, repository, pull.number);
   return {
     promptCommitSha,
     implementationCommitSha: branchSha,
@@ -182,6 +214,7 @@ export async function publishAgentRun(
     body: pullRequestBody(context, report),
     draft: true,
   });
+  await requestTenkiCodeReview(octokit, repository, pull.data.number);
   return {
     promptCommitSha: promptCommit.commitSha,
     implementationCommitSha: implementationCommit.commitSha,
