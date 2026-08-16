@@ -58,7 +58,7 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "CloseSpan turns customer feedback into improvements ready to ship.",
+        alt: "CloseSpan turns customer feedback into product improvements.",
       },
     ],
   },
@@ -282,8 +282,8 @@ export default function LandingPage() {
         <section className="landing-hero">
           <div className="hero-copy">
             <MotionTextReveal
-              highlight="into improvements ready to ship"
-              text="Turn customer feedback into improvements ready to ship"
+              highlight="product improvements."
+              text="Turn customer feedback into product improvements."
             />
             <p>
               Connect support signals to revenue impact and engineering context,

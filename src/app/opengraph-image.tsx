@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const alt =
-  "CloseSpan: turn customer feedback into improvements ready to ship";
+  "CloseSpan: turn customer feedback into product improvements";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -77,7 +77,7 @@ export default function OpenGraphImage() {
               letterSpacing: "-0.045em",
             }}
           >
-            Turn customer feedback into improvements ready to ship.
+            Turn customer feedback into product improvements.
           </div>
           <div style={{ color: "#aeb8cb", fontSize: 26 }}>
             Evidence → impact → approved action → verified resolution
