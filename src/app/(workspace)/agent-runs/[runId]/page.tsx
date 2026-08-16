@@ -43,11 +43,11 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
               repository, and pinned commit. Prompt Testing is not repeated.
             </p>
           ) : null}
-          <div className="top-actions">
+          <div className="top-actions agent-run-detail-actions">
             {canRetryDirectly ? <AgentRunRetryButton runId={run.id} /> : null}
             <Link className="btn" href={`/pdd/${problemId}#engineering-ticket`}>Open Prompt Testing preparation</Link>
             {run.approvalId ? <Link className="btn" href={`/approvals/${run.approvalId}`}>View authorizing approval</Link> : null}
-            {run.pullRequestUrl && <a className="btn primary" href={run.pullRequestUrl}>Open draft PR</a>}
+            {run.pullRequestUrl && <a className="btn primary agent-run-draft-pr" href={run.pullRequestUrl}>Open draft PR</a>}
           </div>
         </div>
       </section>

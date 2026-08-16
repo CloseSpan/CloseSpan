@@ -3140,6 +3140,14 @@ table tbody tr:hover {
   overflow: visible;
 }
 
+.app-shell .agent-run-detail-actions {
+  width: 100%;
+}
+
+.app-shell .agent-run-detail-actions .agent-run-draft-pr {
+  margin-inline-start: auto;
+}
+
 .app-shell .agent-runs-table {
   padding: 0;
   overflow: visible;
