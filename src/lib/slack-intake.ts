@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { getAiRuntimeConfiguration } from "./ai-config";
 import {
   completeModelRun,
@@ -28,10 +29,149 @@ import { workspacePersistenceMode } from "./workspace-persistence";
 
 export const SLACK_INTAKE_CHANNEL = "closespan-feedback";
 export const SLACK_INTAKE_WELCOME_TEXT =
-  "CloseSpan is listening in #closespan-feedback. Messages, thread replies, reactions, and attachment metadata posted from now on can become customer signals. CloseSpan creates one thread per Product Problem and asks for human action only when approval, scope changes, or release verification is required.";
+  "CloseSpan is listening in #closespan-feedback. Nearby messages and thread replies are grouped into conversations. Clear product feedback is recorded automatically; ambiguous conversations are held for confirmation, and casual chat is ignored.";
 const MAX_THREAD_FETCHES_PER_TICK = 25;
 const MAX_SIGNAL_TEXT = 8_000;
 const IN_BATCH_CLUSTER_THRESHOLD = 0.9;
+const SLACK_CONVERSATION_GRACE_MS = 2 * 60_000;
+const SLACK_CONVERSATION_WINDOW_MS = 5 * 60_000;
+
+export type SlackConversationState =
+  | "Pending"
+  | "Review"
+  | "Confirmed"
+  | "Ignored"
+  | "Deleted";
+
+export interface SlackConversationDecision {
+  state: Exclude<SlackConversationState, "Pending" | "Deleted">;
+  classification:
+    | "Bug"
+    | "Feature request"
+    | "Usability"
+    | "Question"
+    | "Incident"
+    | "Noise";
+  confidence: number;
+  reason: string;
+}
+
+interface SlackMessageSnapshot {
+  ts: string;
+  activityTs?: string;
+  user?: string;
+  text?: string;
+  reactions?: SlackReaction[];
+  files?: SlackFile[];
+}
+
+interface SlackIntakeCandidateRow {
+  id: string;
+  anchor_ts: string;
+  author_id: string | null;
+  state: SlackConversationState;
+  classification: SlackConversationDecision["classification"] | null;
+  confidence: number;
+  decision_reason: string;
+  summary_text: string;
+  message_snapshots: unknown;
+  quiet_until: Date;
+  last_message_at: Date;
+  confirmation_message_ts: string | null;
+  promoted_feedback_id: string | null;
+}
+
+const SLACK_CONFIRM_FEEDBACK = /^(?:record|save|track|capture)(?: this)?(?: as)? feedback[.!]?$/i;
+const SLACK_IGNORE_FEEDBACK = /^(?:ignore|dismiss|cancel|do not record|don['’]?t record)(?: this)?[.!]?$/i;
+const SLACK_TRIVIAL_MESSAGE = /^(?:hi|hello|hey|thanks|thank you|thx|ok(?:ay)?|cool|great|nice|checking|check|test(?:ing)?|ping|got it|sounds good|yes|no|yep|nope|lol|👍|👋|🙏)[!.\s]*$/i;
+const SLACK_LINK_ONLY = /^(?:https?:\/\/\S+|<https?:\/\/[^>]+>)(?:\s+(?:https?:\/\/\S+|<https?:\/\/[^>]+>))*$/i;
+const SLACK_FEATURE_SIGNAL = /\b(?:please add|add support|feature request|would like|we need|needs? (?:an?|the)|should (?:have|support|allow)|could (?:we|you)|can (?:we|you) add|wish (?:it|we|there)|missing (?:an?|the)|new (?:feature|option|setting)|enable (?:us|users)|let (?:us|users))\b/i;
+const SLACK_USABILITY_SIGNAL = /\b(?:confus(?:ing|ed)|hard to (?:use|find|understand)|difficult to (?:use|find|understand)|can['’]?t find|cannot find|unclear|not obvious|too many clicks|usability|ux)\b/i;
+const SLACK_INCIDENT_SIGNAL = /\b(?:outage|downtime|service unavailable|system unavailable|production is down|all users? (?:are )?blocked)\b/i;
+const SLACK_PRODUCT_CONTEXT = /\b(?:app|product|page|screen|view|button|menu|form|field|caption|export|import|upload|download|login|sign[ -]?in|account|workspace|project|repository|repo|pull request|pr|notification|dashboard|report|search|filter|editor|generate|regenerate|undo|save|delete|sync|api|integration|slack|github|ios|android|web|mobile|desktop|workflow|setting|feature|error|crash)\b/i;
+const SLACK_BEHAVIOR_CONTEXT = /\b(?:when|after|before|because|instead|expected|currently|always|never|sometimes|steps?|reproduc|while|then)\b/i;
+
+function boundedConfidence(value: number): number {
+  return Math.max(0, Math.min(1, Math.round(value * 100) / 100));
+}
+
+export function slackConversationControl(
+  messages: Pick<SlackMessage, "text">[],
+): "confirm" | "ignore" | null {
+  for (const message of [...messages].reverse()) {
+    const text = message.text?.trim();
+    if (!text) continue;
+    if (SLACK_CONFIRM_FEEDBACK.test(text)) return "confirm";
+    if (SLACK_IGNORE_FEEDBACK.test(text)) return "ignore";
+  }
+  return null;
+}
+
+export function classifySlackConversation(input: {
+  text: string;
+  reactions?: Array<{ name: string; count: number }>;
+  files?: Array<{ id: string }>;
+  control?: "confirm" | "ignore" | null;
+}): SlackConversationDecision {
+  const text = input.text.replace(/\s+/g, " ").trim();
+  const words = text.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]*/gu) ?? [];
+  const hasFiles = (input.files?.length ?? 0) > 0;
+  const hasReactions = (input.reactions ?? []).some((reaction) => reaction.count > 0);
+
+  if (input.control === "ignore") {
+    return { state: "Ignored", classification: "Noise", confidence: 1, reason: "A person explicitly dismissed the candidate." };
+  }
+  if (
+    !text || SLACK_TRIVIAL_MESSAGE.test(text) || SLACK_LINK_ONLY.test(text) ||
+    /^\/[a-z0-9_-]+(?:\s.*)?$/i.test(text) ||
+    (words.length < 3 && !hasFiles)
+  ) {
+    return { state: "Ignored", classification: "Noise", confidence: 0.98, reason: "The conversation contains no actionable product feedback." };
+  }
+
+  const incident = SLACK_INCIDENT_SIGNAL.test(text);
+  const bug = hasExplicitMalfunctionSignal(text) || /\b(?:crash(?:es|ed|ing)?|error|incorrect|wrong result|data loss|times? out)\b/i.test(text);
+  const feature = SLACK_FEATURE_SIGNAL.test(text);
+  const usability = SLACK_USABILITY_SIGNAL.test(text);
+  const productContext = SLACK_PRODUCT_CONTEXT.test(text);
+  const behavioralDetail = SLACK_BEHAVIOR_CONTEXT.test(text);
+  const actionable = incident || bug || feature || usability;
+  const classification = incident
+    ? "Incident"
+    : bug
+      ? "Bug"
+      : feature
+        ? "Feature request"
+        : usability
+          ? "Usability"
+          : "Question";
+
+  let confidence = actionable ? 0.5 : 0.18;
+  if (incident) confidence += 0.15;
+  if (words.length >= 8) confidence += 0.15;
+  else if (words.length >= 5) confidence += 0.08;
+  if (productContext) confidence += 0.15;
+  if (behavioralDetail) confidence += 0.08;
+  if (hasFiles) confidence += 0.08;
+  if (hasReactions) confidence += 0.04;
+  confidence = boundedConfidence(confidence);
+
+  if (input.control === "confirm" && (productContext || actionable || hasFiles)) {
+    return {
+      state: "Confirmed",
+      classification: classification === "Question" ? "Feature request" : classification,
+      confidence: Math.max(0.9, confidence),
+      reason: "A person explicitly confirmed this conversation as feedback.",
+    };
+  }
+  if (actionable && confidence >= 0.75) {
+    return { state: "Confirmed", classification, confidence, reason: "The conversation contains a clear product behavior and actionable intent." };
+  }
+  if ((actionable || productContext || hasFiles) && confidence >= 0.4) {
+    return { state: "Review", classification, confidence, reason: "This may be product feedback, but the intent is ambiguous and needs confirmation." };
+  }
+  return { state: "Ignored", classification: "Noise", confidence, reason: "The conversation does not contain enough product context to create a signal." };
+}
 
 interface InBatchProblem {
   problemId: string;
@@ -126,6 +266,50 @@ function timestampNow(): string {
 function timestampNumber(value: string): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function timestampDate(value: string): Date {
+  return new Date(timestampNumber(value) * 1_000);
+}
+
+function messageActivityTimestamp(message: SlackMessage): string {
+  return message.edited?.ts ?? message.ts;
+}
+
+function candidateId(teamId: string, channelId: string, anchorTs: string): string {
+  return `slack_candidate_${createHash("sha256")
+    .update(`${teamId}:${channelId}:${anchorTs}`)
+    .digest("hex")
+    .slice(0, 24)}`;
+}
+
+function messageSnapshots(messages: SlackMessage[]): SlackMessageSnapshot[] {
+  return messages.filter(allowedSlackMessage).map((message) => ({
+    ts: message.ts,
+    ...(message.edited?.ts ? { activityTs: message.edited.ts } : {}),
+    ...(message.user ? { user: message.user } : {}),
+    ...(message.text ? { text: message.text } : {}),
+    ...(message.reactions ? { reactions: message.reactions } : {}),
+    ...(message.files ? { files: message.files } : {}),
+  }));
+}
+
+function parseMessageSnapshots(value: unknown): SlackMessageSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is SlackMessageSnapshot =>
+    Boolean(item && typeof item === "object" && typeof (item as { ts?: unknown }).ts === "string"),
+  );
+}
+
+function snapshotsAsMessages(value: unknown): SlackMessage[] {
+  return parseMessageSnapshots(value).map((snapshot) => ({
+    type: "message",
+    ts: snapshot.ts,
+    user: snapshot.user,
+    text: snapshot.text,
+    reactions: snapshot.reactions,
+    files: snapshot.files,
+  }));
 }
 
 function rowToStatus(row: SlackIntakeRow): SlackIntakeStatus {
@@ -269,7 +453,7 @@ export async function ensureSlackIntakeChannel(input: {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "Post customer feedback in this channel. CloseSpan will group related signals into Product Problems and keep each problem in one thread.",
+            text: "Post customer feedback or discuss it naturally. CloseSpan groups nearby messages, records clear product signals, asks before recording ambiguous conversations, and ignores casual chat.",
           },
         },
         {
@@ -330,7 +514,8 @@ export function summarizeSlackThread(messages: SlackMessage[]): {
   const parts: string[] = [];
   for (const message of customerMessages) {
     const body = message.text?.replace(/<@([A-Z0-9]+)>/g, "@$1").trim();
-    if (body) parts.push(body);
+    if (body && !SLACK_CONFIRM_FEEDBACK.test(body) && !SLACK_IGNORE_FEEDBACK.test(body))
+      parts.push(body);
     for (const reaction of message.reactions ?? []) {
       if (!validReaction(reaction)) continue;
       reactions.set(
@@ -401,18 +586,303 @@ async function sentSlackMessageTimestamps(orgId: string): Promise<Set<string>> {
       WHERE org_id=$1 AND welcome_message_ts IS NOT NULL
      UNION SELECT thread_ts AS ts FROM slack_problem_threads WHERE org_id=$1
      UNION SELECT slack_message_ts AS ts FROM slack_notification_outbox
-      WHERE org_id=$1 AND slack_message_ts IS NOT NULL`,
+      WHERE org_id=$1 AND slack_message_ts IS NOT NULL
+     UNION SELECT confirmation_message_ts AS ts FROM slack_intake_candidates
+      WHERE org_id=$1 AND confirmation_message_ts IS NOT NULL`,
     [orgId],
   );
   return new Set(result.rows.map((row) => row.ts));
 }
 
-async function knownSlackThreadTimestamps(orgId: string): Promise<Set<string>> {
-  const result = await databasePool().query<{ thread_ts: string }>(
-    "SELECT thread_ts FROM slack_feedback_sources WHERE org_id=$1",
+async function findSlackCandidate(
+  client: PoolClient,
+  input: {
+    orgId: string;
+    channelId: string;
+    anchorTs: string;
+    authorId: string | null;
+    messageTs: string[];
+    oldestSessionDate: Date;
+  },
+): Promise<SlackIntakeCandidateRow | null> {
+  const result = await client.query<SlackIntakeCandidateRow>(
+    `SELECT id,anchor_ts,author_id,state,classification,confidence,decision_reason,
+            summary_text,message_snapshots,quiet_until,last_message_at,
+            confirmation_message_ts,promoted_feedback_id
+       FROM slack_intake_candidates candidate
+      WHERE candidate.org_id=$1 AND candidate.channel_id=$2
+        AND (
+          candidate.anchor_ts=$3
+          OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements(candidate.message_snapshots) snapshot
+             WHERE snapshot->>'ts'=ANY($4::text[])
+          )
+          OR (
+            $5::text IS NOT NULL AND candidate.author_id=$5
+            AND candidate.state IN ('Pending','Review','Confirmed')
+            AND candidate.promoted_feedback_id IS NULL
+            AND candidate.last_message_at >= $6
+          )
+        )
+      ORDER BY CASE WHEN candidate.anchor_ts=$3 THEN 0 ELSE 1 END,
+               candidate.last_message_at DESC
+      LIMIT 1`,
+    [
+      input.orgId,
+      input.channelId,
+      input.anchorTs,
+      input.messageTs,
+      input.authorId,
+      input.oldestSessionDate,
+    ],
+  );
+  return result.rows[0] ?? null;
+}
+
+function mergeSlackSnapshots(
+  previous: unknown,
+  current: SlackMessageSnapshot[],
+): SlackMessageSnapshot[] {
+  const merged = new Map<string, SlackMessageSnapshot>();
+  for (const snapshot of [...parseMessageSnapshots(previous), ...current])
+    merged.set(snapshot.ts, snapshot);
+  return [...merged.values()].sort((left, right) =>
+    timestampNumber(left.ts) - timestampNumber(right.ts));
+}
+
+async function stageSlackConversation(
+  client: PoolClient,
+  input: {
+    orgId: string;
+    teamId: string;
+    channelId: string;
+    anchorTs: string;
+    messages: SlackMessage[];
+  },
+): Promise<boolean> {
+  const incoming = messageSnapshots(input.messages);
+  if (incoming.length === 0) return false;
+  const authorId = incoming.find((message) => message.user)?.user ?? null;
+  const lastTs = incoming.reduce(
+    (latest, message) => {
+      const activityTs = message.activityTs ?? message.ts;
+      return timestampNumber(activityTs) > timestampNumber(latest) ? activityTs : latest;
+    },
+    incoming[0].activityTs ?? incoming[0].ts,
+  );
+  const existing = await findSlackCandidate(client, {
+    orgId: input.orgId,
+    channelId: input.channelId,
+    anchorTs: input.anchorTs,
+    authorId,
+    messageTs: incoming.map((message) => message.ts),
+    oldestSessionDate: new Date(timestampDate(lastTs).getTime() - SLACK_CONVERSATION_WINDOW_MS),
+  });
+  const snapshots = mergeSlackSnapshots(existing?.message_snapshots, incoming);
+  const messages = snapshotsAsMessages(snapshots);
+  const summary = summarizeSlackThread(messages);
+  if (!summary) return false;
+  const control = slackConversationControl(messages);
+  const decision = classifySlackConversation({
+    text: summary.text,
+    reactions: summary.reactions,
+    files: summary.files,
+    control,
+  });
+  const anchorTs = existing?.anchor_ts ?? input.anchorTs;
+  const id = existing?.id ?? candidateId(input.teamId, input.channelId, anchorTs);
+  const lastMessageAt = timestampDate(lastTs);
+  const quietUntil = new Date(lastMessageAt.getTime() + SLACK_CONVERSATION_GRACE_MS);
+  await client.query(
+    `INSERT INTO slack_intake_candidates(
+       id,org_id,team_id,channel_id,anchor_ts,author_id,state,classification,
+       confidence,decision_reason,summary_text,message_snapshots,quiet_until,
+       last_message_at
+     ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14)
+     ON CONFLICT(org_id,id) DO UPDATE SET
+       author_id=COALESCE(slack_intake_candidates.author_id,excluded.author_id),
+       state=excluded.state,classification=excluded.classification,
+       confidence=excluded.confidence,decision_reason=excluded.decision_reason,
+       summary_text=excluded.summary_text,message_snapshots=excluded.message_snapshots,
+       quiet_until=excluded.quiet_until,last_message_at=excluded.last_message_at,
+       updated_at=now()`,
+    [
+      id,
+      input.orgId,
+      input.teamId,
+      input.channelId,
+      anchorTs,
+      authorId,
+      decision.state,
+      decision.classification,
+      decision.confidence,
+      decision.reason,
+      summary.text,
+      JSON.stringify(snapshots),
+      quietUntil,
+      lastMessageAt,
+    ],
+  );
+  return true;
+}
+
+async function deletePromotedSlackCandidate(
+  client: PoolClient,
+  orgId: string,
+  candidate: SlackIntakeCandidateRow,
+): Promise<void> {
+  if (!candidate.promoted_feedback_id) return;
+  await client.query(
+    `DELETE FROM feedback_cluster_memberships WHERE org_id=$1 AND feedback_id=$2`,
+    [orgId, candidate.promoted_feedback_id],
+  );
+  await client.query(
+    `DELETE FROM feedback_items WHERE org_id=$1 AND id=$2`,
+    [orgId, candidate.promoted_feedback_id],
+  );
+  await client.query(
+    `DELETE FROM product_problems problem
+      WHERE problem.org_id=$1 AND problem.stage IN ('Detected','Needs review')
+        AND NOT EXISTS (
+          SELECT 1 FROM feedback_cluster_memberships membership
+           WHERE membership.org_id=problem.org_id AND membership.problem_id=problem.id
+        )`,
     [orgId],
   );
-  return new Set(result.rows.map((row) => row.thread_ts));
+}
+
+async function promoteSlackCandidate(
+  client: PoolClient,
+  orgId: string,
+  connection: SlackIntakeRow,
+  candidate: SlackIntakeCandidateRow,
+): Promise<"created" | "updated"> {
+  const id = feedbackId(connection.team_id, connection.channel_id, candidate.anchor_ts);
+  const existing = await client.query(
+    "SELECT 1 FROM feedback_items WHERE org_id=$1 AND id=$2",
+    [orgId, id],
+  );
+  const messages = snapshotsAsMessages(candidate.message_snapshots);
+  const summary = summarizeSlackThread(messages);
+  if (!summary) throw new Error("Confirmed Slack feedback has no recordable content.");
+  const reactionText = summary.reactions.length
+    ? ` · reactions ${summary.reactions.map((item) => `:${item.name}: ×${item.count}`).join(", ")}`
+    : "";
+  const fileText = summary.files.length
+    ? ` · ${summary.files.length} attachment${summary.files.length === 1 ? "" : "s"}`
+    : "";
+  const feedbackType = candidate.classification === "Noise"
+    ? "Question"
+    : candidate.classification ?? "Question";
+  await client.query(
+    `INSERT INTO feedback_items(
+       id,org_id,source,customer_name,account_tier,arr,type,severity,
+       redacted,environment,confidence,observed_at,quote,integration_id,
+       source_namespace,external_id
+     ) VALUES($1,$2,'Slack',$3,'Unknown',0,$4,'Medium',true,$5,
+              $6,$7,$8,'int_slack',$9,$10)
+     ON CONFLICT(org_id,integration_id,source_namespace,external_id)
+       WHERE external_id IS NOT NULL
+     DO UPDATE SET type=excluded.type,quote=excluded.quote,environment=excluded.environment,
+       confidence=excluded.confidence,observed_at=excluded.observed_at,updated_at=now()`,
+    [
+      id,
+      orgId,
+      summary.authorId ? `Slack member ${summary.authorId}` : "Slack contributor",
+      feedbackType,
+      `Slack #${connection.channel_name}${reactionText}${fileText}`,
+      candidate.confidence,
+      timestampDate(candidate.anchor_ts).toISOString(),
+      summary.text,
+      `slack:${connection.team_id}:${connection.channel_id}`,
+      candidate.anchor_ts,
+    ],
+  );
+  await client.query(
+    `INSERT INTO slack_feedback_sources(
+       org_id,feedback_id,team_id,channel_id,message_ts,thread_ts,
+       author_id,reaction_summary,file_summary
+     ) VALUES($1,$2,$3,$4,$5,$5,$6,$7::jsonb,$8::jsonb)
+     ON CONFLICT(org_id,feedback_id) DO UPDATE SET
+       author_id=excluded.author_id,reaction_summary=excluded.reaction_summary,
+       file_summary=excluded.file_summary`,
+    [
+      orgId,
+      id,
+      connection.team_id,
+      connection.channel_id,
+      candidate.anchor_ts,
+      summary.authorId,
+      JSON.stringify(summary.reactions),
+      JSON.stringify(summary.files),
+    ],
+  );
+  await client.query(
+    `UPDATE slack_intake_candidates
+        SET promoted_feedback_id=$3,quiet_until='infinity',updated_at=now()
+      WHERE org_id=$1 AND id=$2`,
+    [orgId, candidate.id, id],
+  );
+  return existing.rowCount ? "updated" : "created";
+}
+
+async function matureSlackCandidates(
+  orgId: string,
+  context: SlackProxyContext,
+  connection: SlackIntakeRow,
+): Promise<{ created: number; updated: number }> {
+  const result = await databasePool().query<SlackIntakeCandidateRow>(
+    `SELECT id,anchor_ts,author_id,state,classification,confidence,decision_reason,
+            summary_text,message_snapshots,quiet_until,last_message_at,
+            confirmation_message_ts,promoted_feedback_id
+       FROM slack_intake_candidates
+      WHERE org_id=$1 AND quiet_until<=now()
+        AND state IN ('Review','Confirmed','Ignored','Deleted')
+      ORDER BY quiet_until,id LIMIT 50`,
+    [orgId],
+  );
+  let created = 0;
+  let updated = 0;
+  for (const candidate of result.rows) {
+    if (candidate.state === "Review") {
+      if (!candidate.confirmation_message_ts) {
+        const posted = await postSlackMessage(context, {
+          channelId: connection.channel_id,
+          threadTs: candidate.anchor_ts,
+          text: "CloseSpan found possible product feedback but will not record it without confirmation. Reply `record feedback` to confirm or `ignore` to dismiss.",
+        });
+        await databasePool().query(
+          `UPDATE slack_intake_candidates
+              SET confirmation_message_ts=$3,quiet_until='infinity',updated_at=now()
+            WHERE org_id=$1 AND id=$2`,
+          [orgId, candidate.id, posted.ts],
+        );
+      } else {
+        await databasePool().query(
+          `UPDATE slack_intake_candidates
+              SET quiet_until='infinity',updated_at=now()
+            WHERE org_id=$1 AND id=$2`,
+          [orgId, candidate.id],
+        );
+      }
+      continue;
+    }
+    await transaction(async (client) => {
+      if (candidate.state === "Deleted" || candidate.state === "Ignored") {
+        await deletePromotedSlackCandidate(client, orgId, candidate);
+        await client.query(
+          `UPDATE slack_intake_candidates SET quiet_until='infinity',updated_at=now()
+            WHERE org_id=$1 AND id=$2`,
+          [orgId, candidate.id],
+        );
+        return;
+      }
+      const outcome = await promoteSlackCandidate(client, orgId, connection, candidate);
+      if (outcome === "created") created += 1;
+      else updated += 1;
+    });
+  }
+  return { created, updated };
 }
 
 export async function syncSlackIntake(orgId: string): Promise<{
@@ -435,115 +905,74 @@ export async function syncSlackIntake(orgId: string): Promise<{
       connection.channel_id,
       Math.max(0, cursorNumber - 7 * 24 * 60 * 60).toFixed(6),
     );
-    const [sent, knownThreads] = await Promise.all([
-      sentSlackMessageTimestamps(orgId),
-      knownSlackThreadTimestamps(orgId),
-    ]);
+    const sent = await sentSlackMessageTimestamps(orgId);
     const candidates: Array<{ root: SlackMessage; messages: SlackMessage[] }> = [];
+    const deletedMessageTimestamps: string[] = [];
     let threadFetches = 0;
     let maxTimestamp = timestampNumber(connection.cursor_ts);
     for (const root of [...roots].sort((a, b) => timestampNumber(a.ts) - timestampNumber(b.ts))) {
-      maxTimestamp = Math.max(maxTimestamp, timestampNumber(root.ts));
+      maxTimestamp = Math.max(maxTimestamp, timestampNumber(messageActivityTimestamp(root)));
+      if (root.subtype === "message_deleted" && root.deleted_ts) {
+        deletedMessageTimestamps.push(root.deleted_ts);
+        continue;
+      }
       if (sent.has(root.ts)) continue;
       let messages = [root];
       if ((root.reply_count ?? 0) > 0 && threadFetches < MAX_THREAD_FETCHES_PER_TICK) {
         threadFetches += 1;
         messages = await listSlackThreadReplies(context, connection.channel_id, root.ts);
         for (const reply of messages)
-          maxTimestamp = Math.max(maxTimestamp, timestampNumber(reply.ts));
+          maxTimestamp = Math.max(maxTimestamp, timestampNumber(messageActivityTimestamp(reply)));
       }
-      if (
-        !knownThreads.has(root.ts) &&
-        !messages.some((message) => timestampNumber(message.ts) > cursorNumber)
-      ) continue;
       const customerMessages = messages.filter((message) => !sent.has(message.ts));
+      if (!customerMessages.some((message) =>
+        timestampNumber(messageActivityTimestamp(message)) > cursorNumber))
+        continue;
       if (summarizeSlackThread(customerMessages))
         candidates.push({ root, messages: customerMessages });
     }
 
-    let created = 0;
-    let updated = 0;
     await transaction(async (client) => {
+      for (const deletedTs of deletedMessageTimestamps) {
+        await client.query(
+          `UPDATE slack_intake_candidates candidate
+              SET state='Deleted',quiet_until=now(),updated_at=now()
+            WHERE candidate.org_id=$1 AND candidate.channel_id=$2
+              AND (
+                candidate.anchor_ts=$3 OR EXISTS (
+                  SELECT 1 FROM jsonb_array_elements(candidate.message_snapshots) snapshot
+                   WHERE snapshot->>'ts'=$3
+                )
+              )`,
+          [orgId, connection.channel_id, deletedTs],
+        );
+      }
       for (const candidate of candidates) {
-        const summary = summarizeSlackThread(candidate.messages);
-        if (!summary) continue;
-        const id = feedbackId(
-          connection.team_id,
-          connection.channel_id,
-          candidate.root.ts,
-        );
-        const existing = await client.query(
-          "SELECT 1 FROM feedback_items WHERE org_id=$1 AND id=$2",
-          [orgId, id],
-        );
-        const reactionText = summary.reactions.length
-          ? ` · reactions ${summary.reactions.map((item) => `:${item.name}: ×${item.count}`).join(", ")}`
-          : "";
-        const fileText = summary.files.length
-          ? ` · ${summary.files.length} attachment${summary.files.length === 1 ? "" : "s"}`
-          : "";
-        const feedbackType = hasExplicitMalfunctionSignal(summary.text)
-          ? "Bug"
-          : "Question";
-        await client.query(
-          `INSERT INTO feedback_items(
-             id,org_id,source,customer_name,account_tier,arr,type,severity,
-             redacted,environment,confidence,observed_at,quote,integration_id,
-             source_namespace,external_id
-           ) VALUES($1,$2,'Slack',$3,'Unknown',0,$4,'Medium',true,$5,
-                    0.60,$6,$7,'int_slack',$8,$9)
-           ON CONFLICT(org_id,integration_id,source_namespace,external_id)
-             WHERE external_id IS NOT NULL
-           DO UPDATE SET type=excluded.type,quote=excluded.quote,environment=excluded.environment,
-             observed_at=excluded.observed_at,updated_at=now()`,
-          [
-            id,
-            orgId,
-            summary.authorId ? `Slack member ${summary.authorId}` : "Slack contributor",
-            feedbackType,
-            `Slack #${connection.channel_name}${reactionText}${fileText}`,
-            new Date(timestampNumber(candidate.root.ts) * 1_000).toISOString(),
-            summary.text,
-            `slack:${connection.team_id}:${connection.channel_id}`,
-            candidate.root.ts,
-          ],
-        );
-        await client.query(
-          `INSERT INTO slack_feedback_sources(
-             org_id,feedback_id,team_id,channel_id,message_ts,thread_ts,
-             author_id,reaction_summary,file_summary
-           ) VALUES($1,$2,$3,$4,$5,$5,$6,$7::jsonb,$8::jsonb)
-           ON CONFLICT(org_id,feedback_id) DO UPDATE SET
-             author_id=excluded.author_id,reaction_summary=excluded.reaction_summary,
-             file_summary=excluded.file_summary`,
-          [
-            orgId,
-            id,
-            connection.team_id,
-            connection.channel_id,
-            candidate.root.ts,
-            summary.authorId,
-            JSON.stringify(summary.reactions),
-            JSON.stringify(summary.files),
-          ],
-        );
-        if (existing.rowCount) updated += 1;
-        else created += 1;
+        await stageSlackConversation(client, {
+          orgId,
+          teamId: connection.team_id,
+          channelId: connection.channel_id,
+          anchorTs: candidate.root.ts,
+          messages: candidate.messages,
+        });
       }
       await client.query(
         `UPDATE slack_intake_connections SET cursor_ts=$2,last_polled_at=now(),
            last_error=NULL,state='Connected',updated_at=now() WHERE org_id=$1`,
         [orgId, maxTimestamp.toFixed(6)],
       );
-      if (created + updated > 0) {
-        await client.query(
-          `UPDATE integrations SET connection_state='Connected',last_sync_at=now(),
-             error_message=NULL WHERE org_id=$1 AND id='int_slack'`,
-          [orgId],
-        );
-      }
+      await client.query(
+        `UPDATE integrations SET connection_state='Connected',last_sync_at=now(),
+           error_message=NULL WHERE org_id=$1 AND id='int_slack'`,
+        [orgId],
+      );
     });
-    return { fetched: candidates.length, created, updated };
+    const matured = await matureSlackCandidates(orgId, context, connection);
+    return {
+      fetched: candidates.length,
+      created: matured.created,
+      updated: matured.updated,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Slack intake failed";
     await databasePool().query(

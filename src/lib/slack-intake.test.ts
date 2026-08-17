@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { batchProblemSimilarity, summarizeSlackThread } from "./slack-intake";
+import {
+  batchProblemSimilarity,
+  classifySlackConversation,
+  slackConversationControl,
+  summarizeSlackThread,
+} from "./slack-intake";
 
 describe("Slack intake normalization", () => {
   it("turns a thread, reactions, and attachment metadata into one redacted signal", () => {
@@ -87,5 +92,54 @@ describe("Slack intake batch clustering", () => {
       "Undo caption regeneration after replacing an existing caption.",
       "Add bulk export filters for enterprise account reports.",
     )).toBeLessThan(0.9);
+  });
+});
+
+describe("Slack conversation intent gate", () => {
+  it("ignores greetings and accidental casual messages", () => {
+    expect(classifySlackConversation({ text: "hi" })).toMatchObject({
+      state: "Ignored",
+      classification: "Noise",
+    });
+    expect(classifySlackConversation({ text: "checking" })).toMatchObject({
+      state: "Ignored",
+      classification: "Noise",
+    });
+  });
+
+  it("automatically confirms detailed actionable product feedback", () => {
+    expect(classifySlackConversation({
+      text: "Please add an undo button after the caption is regenerated so users can restore the previous caption.",
+    })).toMatchObject({
+      state: "Confirmed",
+      classification: "Feature request",
+    });
+  });
+
+  it("holds ambiguous product conversation for confirmation", () => {
+    expect(classifySlackConversation({
+      text: "Does the export page support saved filters?",
+    })).toMatchObject({
+      state: "Review",
+      classification: "Question",
+    });
+  });
+
+  it("recognizes explicit confirmation and dismissal controls", () => {
+    expect(slackConversationControl([
+      { text: "Could the dashboard show the account owner?" },
+      { text: "record feedback" },
+    ])).toBe("confirm");
+    expect(slackConversationControl([
+      { text: "The export is confusing" },
+      { text: "ignore" },
+    ])).toBe("ignore");
+  });
+
+  it("does not include confirmation commands in the stored feedback quote", () => {
+    expect(summarizeSlackThread([
+      { type: "message", ts: "100.1", user: "U1", text: "Could the dashboard show the account owner?" },
+      { type: "message", ts: "101.1", user: "U1", text: "record feedback" },
+    ])?.text).toBe("Could the dashboard show the account owner?");
   });
 });

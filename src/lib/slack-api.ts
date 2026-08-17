@@ -26,6 +26,9 @@ export interface SlackMessage {
   type?: string;
   subtype?: string;
   ts: string;
+  deleted_ts?: string;
+  hidden?: boolean;
+  edited?: { user?: string; ts?: string };
   thread_ts?: string;
   user?: string;
   bot_id?: string;
@@ -171,7 +174,7 @@ export async function setSlackChannelPurpose(
   await slackPost(context, "conversations.setPurpose", {
     channel: channelId,
     purpose:
-      "Customer feedback monitored by CloseSpan. One thread is created per Product Problem; human action is requested only for approval, scope changes, and release verification.",
+      "Product conversations monitored by CloseSpan. Clear feedback is recorded, ambiguous feedback requires confirmation, and casual chat is ignored before Product Problems are created.",
   });
 }
 
