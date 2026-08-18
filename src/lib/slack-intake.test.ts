@@ -3,6 +3,7 @@ import {
   batchProblemSimilarity,
   classifySlackConversation,
   slackConversationControl,
+  slackConversationMentionsCloseSpan,
   summarizeSlackThread,
 } from "./slack-intake";
 
@@ -116,6 +117,55 @@ describe("Slack conversation intent gate", () => {
     });
   });
 
+  it("recognizes only the connected CloseSpan app mention", () => {
+    const messages = [
+      { text: "<@UCLOSESPAN> feature request: add undo after caption regeneration" },
+    ];
+    expect(slackConversationMentionsCloseSpan(messages, "UCLOSESPAN")).toBe(true);
+    expect(slackConversationMentionsCloseSpan(messages, "UOTHER")).toBe(false);
+    expect(slackConversationMentionsCloseSpan([
+      { text: "@CloseSpan issue: the export button is broken" },
+    ])).toBe(true);
+  });
+
+  it("requires Slack confirmation for an explicit CloseSpan report", () => {
+    expect(classifySlackConversation({
+      text: "Please add an undo button after the caption is regenerated.",
+      directMention: true,
+    })).toMatchObject({
+      state: "Review",
+      classification: "Feature request",
+    });
+  });
+
+  it("honors issue and feature labels in explicit CloseSpan reports", () => {
+    expect(classifySlackConversation({
+      text: "issue: export filters disappear after refresh",
+      directMention: true,
+    })).toMatchObject({
+      state: "Review",
+      classification: "Bug",
+    });
+    expect(classifySlackConversation({
+      text: "feature: add saved export filters",
+      directMention: true,
+    })).toMatchObject({
+      state: "Review",
+      classification: "Feature request",
+    });
+  });
+
+  it("records an explicit CloseSpan report only after confirmation", () => {
+    expect(classifySlackConversation({
+      text: "Please add an undo button after the caption is regenerated.",
+      directMention: true,
+      control: "confirm",
+    })).toMatchObject({
+      state: "Confirmed",
+      classification: "Feature request",
+    });
+  });
+
   it("holds ambiguous product conversation for confirmation", () => {
     expect(classifySlackConversation({
       text: "Does the export page support saved filters?",
@@ -141,5 +191,22 @@ describe("Slack conversation intent gate", () => {
       { type: "message", ts: "100.1", user: "U1", text: "Could the dashboard show the account owner?" },
       { type: "message", ts: "101.1", user: "U1", text: "record feedback" },
     ])?.text).toBe("Could the dashboard show the account owner?");
+  });
+
+  it("removes the CloseSpan app mention from the stored feedback quote", () => {
+    expect(summarizeSlackThread([
+      {
+        type: "message",
+        ts: "100.1",
+        user: "U1",
+        text: "<@UCLOSESPAN> issue: the export button is broken",
+      },
+    ], "UCLOSESPAN")?.text).toBe("issue: the export button is broken");
+  });
+
+  it("allows confirmation commands that mention CloseSpan", () => {
+    expect(slackConversationControl([
+      { text: "<@UCLOSESPAN> record feedback" },
+    ], "UCLOSESPAN")).toBe("confirm");
   });
 });

@@ -68,6 +68,15 @@ export interface SlackProxyContext {
   accountId: string;
 }
 
+export async function getSlackIdentity(
+  context: SlackProxyContext,
+): Promise<{ userId: string }> {
+  const response = await slackGet(context, "auth.test");
+  if (typeof response.user_id !== "string" || !response.user_id.trim())
+    throw new SlackApiError("auth.test", "missing_user_id");
+  return { userId: response.user_id };
+}
+
 async function slackGet(
   context: SlackProxyContext,
   method: string,
@@ -174,7 +183,7 @@ export async function setSlackChannelPurpose(
   await slackPost(context, "conversations.setPurpose", {
     channel: channelId,
     purpose:
-      "Product conversations monitored by CloseSpan. Clear feedback is recorded, ambiguous feedback requires confirmation, and casual chat is ignored before Product Problems are created.",
+      "Product conversations monitored by CloseSpan. Mention @CloseSpan to submit an issue or feature for confirmation. Other clear feedback is recorded, ambiguous feedback requires confirmation, and casual chat is ignored.",
   });
 }
 

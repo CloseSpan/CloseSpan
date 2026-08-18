@@ -15,6 +15,7 @@ import { hasExplicitMalfunctionSignal } from "./feedback-classification";
 import {
   createPublicSlackChannel,
   findPublicSlackChannel,
+  getSlackIdentity,
   getSlackTeam,
   listSlackChannelMessages,
   listSlackThreadReplies,
@@ -29,7 +30,7 @@ import { workspacePersistenceMode } from "./workspace-persistence";
 
 export const SLACK_INTAKE_CHANNEL = "closespan-feedback";
 export const SLACK_INTAKE_WELCOME_TEXT =
-  "CloseSpan is listening in #closespan-feedback. Nearby messages and thread replies are grouped into conversations. Clear product feedback is recorded automatically; ambiguous conversations are held for confirmation, and casual chat is ignored.";
+  "CloseSpan is listening in #closespan-feedback. Mention @CloseSpan to submit an issue or feature directly for confirmation. Nearby messages and thread replies are grouped into conversations; ambiguous conversations are held for confirmation, and casual chat is ignored.";
 const MAX_THREAD_FETCHES_PER_TICK = 25;
 const MAX_SIGNAL_TEXT = 8_000;
 const IN_BATCH_CLUSTER_THRESHOLD = 0.9;
@@ -90,6 +91,7 @@ const SLACK_USABILITY_SIGNAL = /\b(?:confus(?:ing|ed)|hard to (?:use|find|unders
 const SLACK_INCIDENT_SIGNAL = /\b(?:outage|downtime|service unavailable|system unavailable|production is down|all users? (?:are )?blocked)\b/i;
 const SLACK_PRODUCT_CONTEXT = /\b(?:app|product|page|screen|view|button|menu|form|field|caption|export|import|upload|download|login|sign[ -]?in|account|workspace|project|repository|repo|pull request|pr|notification|dashboard|report|search|filter|editor|generate|regenerate|undo|save|delete|sync|api|integration|slack|github|ios|android|web|mobile|desktop|workflow|setting|feature|error|crash)\b/i;
 const SLACK_BEHAVIOR_CONTEXT = /\b(?:when|after|before|because|instead|expected|currently|always|never|sometimes|steps?|reproduc|while|then)\b/i;
+const SLACK_PLAIN_CLOSESPAN_MENTION = /(^|\s)@closespan(?=\s|$|[,:;.!?\-])/i;
 
 function boundedConfidence(value: number): number {
   return Math.max(0, Math.min(1, Math.round(value * 100) / 100));
@@ -97,9 +99,10 @@ function boundedConfidence(value: number): number {
 
 export function slackConversationControl(
   messages: Pick<SlackMessage, "text">[],
+  botUserId?: string | null,
 ): "confirm" | "ignore" | null {
   for (const message of [...messages].reverse()) {
-    const text = message.text?.trim();
+    const text = stripCloseSpanMention(message.text ?? "", botUserId).trim();
     if (!text) continue;
     if (SLACK_CONFIRM_FEEDBACK.test(text)) return "confirm";
     if (SLACK_IGNORE_FEEDBACK.test(text)) return "ignore";
@@ -107,11 +110,39 @@ export function slackConversationControl(
   return null;
 }
 
+function validSlackUserId(value: string | null | undefined): value is string {
+  return typeof value === "string" && /^[A-Z0-9]+$/i.test(value);
+}
+
+function stripCloseSpanMention(
+  text: string,
+  botUserId?: string | null,
+): string {
+  const withoutSlackMention = validSlackUserId(botUserId)
+    ? text.replace(new RegExp(`<@${botUserId}>`, "gi"), " ")
+    : text;
+  return withoutSlackMention.replace(SLACK_PLAIN_CLOSESPAN_MENTION, "$1");
+}
+
+export function slackConversationMentionsCloseSpan(
+  messages: Pick<SlackMessage, "text">[],
+  botUserId?: string | null,
+): boolean {
+  return messages.some((message) => {
+    const text = message.text ?? "";
+    return (
+      (validSlackUserId(botUserId) && new RegExp(`<@${botUserId}>`, "i").test(text)) ||
+      SLACK_PLAIN_CLOSESPAN_MENTION.test(text)
+    );
+  });
+}
+
 export function classifySlackConversation(input: {
   text: string;
   reactions?: Array<{ name: string; count: number }>;
   files?: Array<{ id: string }>;
   control?: "confirm" | "ignore" | null;
+  directMention?: boolean;
 }): SlackConversationDecision {
   const text = input.text.replace(/\s+/g, " ").trim();
   const words = text.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]*/gu) ?? [];
@@ -124,14 +155,16 @@ export function classifySlackConversation(input: {
   if (
     !text || SLACK_TRIVIAL_MESSAGE.test(text) || SLACK_LINK_ONLY.test(text) ||
     /^\/[a-z0-9_-]+(?:\s.*)?$/i.test(text) ||
-    (words.length < 3 && !hasFiles)
+    (words.length < 3 && !hasFiles && !input.directMention)
   ) {
     return { state: "Ignored", classification: "Noise", confidence: 0.98, reason: "The conversation contains no actionable product feedback." };
   }
 
+  const explicitIssue = /^(?:issue|bug|problem)\s*[:\-]/i.test(text);
+  const explicitFeature = /^(?:feature|feature request|enhancement)\s*[:\-]/i.test(text);
   const incident = SLACK_INCIDENT_SIGNAL.test(text);
-  const bug = hasExplicitMalfunctionSignal(text) || /\b(?:crash(?:es|ed|ing)?|error|incorrect|wrong result|data loss|times? out)\b/i.test(text);
-  const feature = SLACK_FEATURE_SIGNAL.test(text);
+  const bug = explicitIssue || hasExplicitMalfunctionSignal(text) || /\b(?:crash(?:es|ed|ing)?|error|incorrect|wrong result|data loss|times? out)\b/i.test(text);
+  const feature = explicitFeature || SLACK_FEATURE_SIGNAL.test(text);
   const usability = SLACK_USABILITY_SIGNAL.test(text);
   const productContext = SLACK_PRODUCT_CONTEXT.test(text);
   const behavioralDetail = SLACK_BEHAVIOR_CONTEXT.test(text);
@@ -162,6 +195,14 @@ export function classifySlackConversation(input: {
       classification: classification === "Question" ? "Feature request" : classification,
       confidence: Math.max(0.9, confidence),
       reason: "A person explicitly confirmed this conversation as feedback.",
+    };
+  }
+  if (input.directMention) {
+    return {
+      state: "Review",
+      classification,
+      confidence: Math.max(0.6, confidence),
+      reason: "A person explicitly mentioned CloseSpan to report this conversation; Slack confirmation is required before recording it.",
     };
   }
   if (actionable && confidence >= 0.75) {
@@ -246,6 +287,7 @@ interface SlackIntakeRow {
   state: SlackIntakeStatus["state"];
   cursor_ts: string;
   welcome_message_ts: string | null;
+  bot_user_id: string | null;
   last_polled_at: Date | null;
   last_error: string | null;
 }
@@ -331,7 +373,7 @@ export async function getSlackIntakeStatus(
   if (workspacePersistenceMode(orgId) !== "postgres") return null;
   const result = await databasePool().query<SlackIntakeRow>(
     `SELECT org_id,account_id,team_id,team_name,channel_id,channel_name,state,
-            cursor_ts,welcome_message_ts,last_polled_at,last_error
+            cursor_ts,welcome_message_ts,bot_user_id,last_polled_at,last_error
        FROM slack_intake_connections WHERE org_id=$1`,
     [orgId],
   );
@@ -341,7 +383,7 @@ export async function getSlackIntakeStatus(
 async function getSlackIntakeRow(orgId: string): Promise<SlackIntakeRow | null> {
   const result = await databasePool().query<SlackIntakeRow>(
     `SELECT org_id,account_id,team_id,team_name,channel_id,channel_name,state,
-            cursor_ts,welcome_message_ts,last_polled_at,last_error
+            cursor_ts,welcome_message_ts,bot_user_id,last_polled_at,last_error
        FROM slack_intake_connections WHERE org_id=$1`,
     [orgId],
   );
@@ -359,18 +401,35 @@ export async function ensureSlackIntakeChannel(input: {
     throw new Error("Slack intake requires PostgreSQL persistence.");
 
   const previous = await getSlackIntakeRow(input.orgId);
-  if (
-    previous?.account_id === input.accountId &&
-    previous.state === "Connected"
-  ) {
-    return rowToStatus(previous);
-  }
-
   const context: SlackProxyContext = {
     orgId: input.orgId,
     accountId: input.accountId,
   };
-  const team = await getSlackTeam(context);
+  if (
+    previous?.account_id === input.accountId &&
+    previous.state === "Connected" &&
+    previous.bot_user_id
+  ) {
+    return rowToStatus(previous);
+  }
+  if (
+    previous?.account_id === input.accountId &&
+    previous.state === "Connected"
+  ) {
+    const identity = await getSlackIdentity(context);
+    await databasePool().query(
+      `UPDATE slack_intake_connections
+          SET bot_user_id=$2,updated_at=now()
+        WHERE org_id=$1`,
+      [input.orgId, identity.userId],
+    );
+    return (await getSlackIntakeStatus(input.orgId))!;
+  }
+
+  const [team, identity] = await Promise.all([
+    getSlackTeam(context),
+    getSlackIdentity(context),
+  ]);
   const existing = await findPublicSlackChannel(
     context,
     SLACK_INTAKE_CHANNEL,
@@ -391,13 +450,13 @@ export async function ensureSlackIntakeChannel(input: {
     await client.query(
       `INSERT INTO slack_intake_connections(
          org_id,account_id,team_id,team_name,channel_id,channel_name,state,
-         cursor_ts,connected_by,last_error
-       ) VALUES($1,$2,$3,$4,$5,$6,'Connected',$7,$8,NULL)
+         cursor_ts,connected_by,bot_user_id,last_error
+       ) VALUES($1,$2,$3,$4,$5,$6,'Connected',$7,$8,$9,NULL)
        ON CONFLICT(org_id) DO UPDATE SET
          account_id=excluded.account_id,team_id=excluded.team_id,
          team_name=excluded.team_name,channel_id=excluded.channel_id,
          channel_name=excluded.channel_name,state='Connected',
-         last_error=NULL,updated_at=now()`,
+         bot_user_id=excluded.bot_user_id,last_error=NULL,updated_at=now()`,
       [
         input.orgId,
         input.accountId,
@@ -407,6 +466,7 @@ export async function ensureSlackIntakeChannel(input: {
         SLACK_INTAKE_CHANNEL,
         cursor,
         input.actorId,
+        identity.userId,
       ],
     );
     await client.query(
@@ -453,7 +513,7 @@ export async function ensureSlackIntakeChannel(input: {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "Post customer feedback or discuss it naturally. CloseSpan groups nearby messages, records clear product signals, asks before recording ambiguous conversations, and ignores casual chat.",
+            text: `Post customer feedback or discuss it naturally. Mention <@${identity.userId}> to submit an issue or feature directly; CloseSpan will ask you to confirm it in Slack before recording anything. Other conversations are grouped and filtered automatically.`,
           },
         },
         {
@@ -497,7 +557,10 @@ export async function disconnectSlackIntake(
   );
 }
 
-export function summarizeSlackThread(messages: SlackMessage[]): {
+export function summarizeSlackThread(
+  messages: SlackMessage[],
+  botUserId?: string | null,
+): {
   text: string;
   authorId: string | null;
   reactions: Array<{ name: string; count: number }>;
@@ -513,7 +576,9 @@ export function summarizeSlackThread(messages: SlackMessage[]): {
   const files = new Map<string, ReturnType<typeof normalizedFile>>();
   const parts: string[] = [];
   for (const message of customerMessages) {
-    const body = message.text?.replace(/<@([A-Z0-9]+)>/g, "@$1").trim();
+    const body = stripCloseSpanMention(message.text ?? "", botUserId)
+      .replace(/<@([A-Z0-9]+)>/g, "@$1")
+      .trim();
     if (body && !SLACK_CONFIRM_FEEDBACK.test(body) && !SLACK_IGNORE_FEEDBACK.test(body))
       parts.push(body);
     for (const reaction of message.reactions ?? []) {
@@ -658,6 +723,7 @@ async function stageSlackConversation(
     channelId: string;
     anchorTs: string;
     messages: SlackMessage[];
+    botUserId?: string | null;
   },
 ): Promise<boolean> {
   const incoming = messageSnapshots(input.messages);
@@ -680,19 +746,23 @@ async function stageSlackConversation(
   });
   const snapshots = mergeSlackSnapshots(existing?.message_snapshots, incoming);
   const messages = snapshotsAsMessages(snapshots);
-  const summary = summarizeSlackThread(messages);
+  const directMention = slackConversationMentionsCloseSpan(messages, input.botUserId);
+  const summary = summarizeSlackThread(messages, input.botUserId);
   if (!summary) return false;
-  const control = slackConversationControl(messages);
+  const control = slackConversationControl(messages, input.botUserId);
   const decision = classifySlackConversation({
     text: summary.text,
     reactions: summary.reactions,
     files: summary.files,
     control,
+    directMention,
   });
   const anchorTs = existing?.anchor_ts ?? input.anchorTs;
   const id = existing?.id ?? candidateId(input.teamId, input.channelId, anchorTs);
   const lastMessageAt = timestampDate(lastTs);
-  const quietUntil = new Date(lastMessageAt.getTime() + SLACK_CONVERSATION_GRACE_MS);
+  const quietUntil = directMention || control
+    ? new Date()
+    : new Date(lastMessageAt.getTime() + SLACK_CONVERSATION_GRACE_MS);
   await client.query(
     `INSERT INTO slack_intake_candidates(
        id,org_id,team_id,channel_id,anchor_ts,author_id,state,classification,
@@ -763,7 +833,7 @@ async function promoteSlackCandidate(
     [orgId, id],
   );
   const messages = snapshotsAsMessages(candidate.message_snapshots);
-  const summary = summarizeSlackThread(messages);
+  const summary = summarizeSlackThread(messages, connection.bot_user_id);
   if (!summary) throw new Error("Confirmed Slack feedback has no recordable content.");
   const reactionText = summary.reactions.length
     ? ` · reactions ${summary.reactions.map((item) => `:${item.name}: ×${item.count}`).join(", ")}`
@@ -846,10 +916,19 @@ async function matureSlackCandidates(
   for (const candidate of result.rows) {
     if (candidate.state === "Review") {
       if (!candidate.confirmation_message_ts) {
+        const directMention = slackConversationMentionsCloseSpan(
+          snapshotsAsMessages(candidate.message_snapshots),
+          connection.bot_user_id,
+        );
+        const classification = candidate.classification === "Noise" || !candidate.classification
+          ? "product feedback"
+          : candidate.classification.toLowerCase();
         const posted = await postSlackMessage(context, {
           channelId: connection.channel_id,
           threadTs: candidate.anchor_ts,
-          text: "CloseSpan found possible product feedback but will not record it without confirmation. Reply `record feedback` to confirm or `ignore` to dismiss.",
+          text: directMention
+            ? `You asked CloseSpan to report this as *${classification}*. Nothing has been recorded yet. Reply \`record feedback\` to confirm or \`ignore\` to dismiss.`
+            : "CloseSpan found possible product feedback but will not record it without confirmation. Reply `record feedback` to confirm or `ignore` to dismiss.",
         });
         await databasePool().query(
           `UPDATE slack_intake_candidates
@@ -899,6 +978,16 @@ export async function syncSlackIntake(orgId: string): Promise<{
     return { fetched: 0, created: 0, updated: 0 };
   const context = { orgId, accountId: connection.account_id };
   try {
+    if (!connection.bot_user_id) {
+      const identity = await getSlackIdentity(context);
+      connection.bot_user_id = identity.userId;
+      await databasePool().query(
+        `UPDATE slack_intake_connections
+            SET bot_user_id=$2,updated_at=now()
+          WHERE org_id=$1`,
+        [orgId, identity.userId],
+      );
+    }
     const cursorNumber = timestampNumber(connection.cursor_ts);
     const roots = await listSlackChannelMessages(
       context,
@@ -928,7 +1017,7 @@ export async function syncSlackIntake(orgId: string): Promise<{
       if (!customerMessages.some((message) =>
         timestampNumber(messageActivityTimestamp(message)) > cursorNumber))
         continue;
-      if (summarizeSlackThread(customerMessages))
+      if (summarizeSlackThread(customerMessages, connection.bot_user_id))
         candidates.push({ root, messages: customerMessages });
     }
 
@@ -954,6 +1043,7 @@ export async function syncSlackIntake(orgId: string): Promise<{
           channelId: connection.channel_id,
           anchorTs: candidate.root.ts,
           messages: candidate.messages,
+          botUserId: connection.bot_user_id,
         });
       }
       await client.query(
