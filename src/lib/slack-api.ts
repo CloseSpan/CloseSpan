@@ -68,8 +68,21 @@ export interface SlackProxyContext {
   accountId: string;
 }
 
+export interface SlackBotContext {
+  orgId: string;
+  accessToken: string;
+}
+
+export type SlackApiContext = SlackProxyContext | SlackBotContext;
+
+function isSlackBotContext(
+  context: SlackApiContext,
+): context is SlackBotContext {
+  return "accessToken" in context;
+}
+
 export async function getSlackIdentity(
-  context: SlackProxyContext,
+  context: SlackApiContext,
 ): Promise<{ userId: string }> {
   const response = await slackGet(context, "auth.test");
   if (typeof response.user_id !== "string" || !response.user_id.trim())
@@ -78,10 +91,24 @@ export async function getSlackIdentity(
 }
 
 async function slackGet(
-  context: SlackProxyContext,
+  context: SlackApiContext,
   method: string,
   params?: Record<string, string>,
 ): Promise<SlackResponse> {
+  if (isSlackBotContext(context)) {
+    const url = new URL(`${SLACK_API}/${method}`);
+    for (const [name, value] of Object.entries(params ?? {}))
+      url.searchParams.set(name, value);
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${context.accessToken}`,
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new SlackApiError(method, `http_${response.status}`);
+    return responseObject(await response.json(), method);
+  }
   const response = await getPipedreamClient().proxy.get(
     {
       url: `${SLACK_API}/${method}`,
@@ -96,10 +123,24 @@ async function slackGet(
 }
 
 async function slackPost(
-  context: SlackProxyContext,
+  context: SlackApiContext,
   method: string,
   body: Record<string, unknown>,
 ): Promise<SlackResponse> {
+  if (isSlackBotContext(context)) {
+    const response = await fetch(`${SLACK_API}/${method}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${context.accessToken}`,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new SlackApiError(method, `http_${response.status}`);
+    return responseObject(await response.json(), method);
+  }
   const response = await getPipedreamClient().proxy.post(
     {
       url: `${SLACK_API}/${method}`,
@@ -116,7 +157,7 @@ async function slackPost(
   return responseObject(response, method);
 }
 
-export async function getSlackTeam(context: SlackProxyContext): Promise<{
+export async function getSlackTeam(context: SlackApiContext): Promise<{
   id: string;
   name: string | null;
 }> {
@@ -131,7 +172,7 @@ export async function getSlackTeam(context: SlackProxyContext): Promise<{
 }
 
 export async function findPublicSlackChannel(
-  context: SlackProxyContext,
+  context: SlackApiContext,
   name: string,
 ): Promise<SlackChannel | null> {
   let cursor = "";
@@ -156,7 +197,7 @@ export async function findPublicSlackChannel(
 }
 
 export async function createPublicSlackChannel(
-  context: SlackProxyContext,
+  context: SlackApiContext,
   name: string,
 ): Promise<SlackChannel> {
   try {
@@ -177,7 +218,7 @@ export async function createPublicSlackChannel(
 }
 
 export async function setSlackChannelPurpose(
-  context: SlackProxyContext,
+  context: SlackApiContext,
   channelId: string,
 ): Promise<void> {
   await slackPost(context, "conversations.setPurpose", {
@@ -188,7 +229,7 @@ export async function setSlackChannelPurpose(
 }
 
 export async function postSlackMessage(
-  context: SlackProxyContext,
+  context: SlackApiContext,
   input: {
     channelId: string;
     text: string;
@@ -210,7 +251,7 @@ export async function postSlackMessage(
 }
 
 export async function listSlackChannelMessages(
-  context: SlackProxyContext,
+  context: SlackApiContext,
   channelId: string,
   oldest: string,
 ): Promise<SlackMessage[]> {
@@ -229,7 +270,7 @@ export async function listSlackChannelMessages(
 }
 
 export async function listSlackThreadReplies(
-  context: SlackProxyContext,
+  context: SlackApiContext,
   channelId: string,
   threadTs: string,
 ): Promise<SlackMessage[]> {
@@ -242,4 +283,11 @@ export async function listSlackThreadReplies(
   return Array.isArray(response.messages)
     ? response.messages as SlackMessage[]
     : [];
+}
+
+export async function joinSlackChannel(
+  context: SlackApiContext,
+  channelId: string,
+): Promise<void> {
+  await slackPost(context, "conversations.join", { channel: channelId });
 }

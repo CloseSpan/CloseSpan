@@ -16,7 +16,9 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Activity,
+  ArrowDown,
   ArrowRightLeft,
+  ArrowUp,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -494,6 +496,59 @@ export function classificationConfidenceLabel(confidence: number): string {
   return `${Math.round(confidence * 100)}% classification confidence`;
 }
 
+export type FeedbackReportedOrder = "recent" | "first";
+
+function feedbackReportedTimestamp(observedAt: string): number | null {
+  const timestamp = Date.parse(observedAt);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function orderFeedbackByReportedAt(
+  items: FeedbackItem[],
+  order: FeedbackReportedOrder,
+): FeedbackItem[] {
+  return items
+    .map((item, index) => ({
+      item,
+      index,
+      timestamp: feedbackReportedTimestamp(item.observedAt),
+    }))
+    .sort((left, right) => {
+      if (left.timestamp === null && right.timestamp === null)
+        return left.index - right.index;
+      if (left.timestamp === null) return 1;
+      if (right.timestamp === null) return -1;
+      const difference = order === "recent"
+        ? right.timestamp - left.timestamp
+        : left.timestamp - right.timestamp;
+      return difference || left.index - right.index;
+    })
+    .map(({ item }) => item);
+}
+
+export function formatFeedbackReportedAt(observedAt: string): {
+  date: string;
+  time: string | null;
+} {
+  const timestamp = feedbackReportedTimestamp(observedAt);
+  if (timestamp === null) return { date: "Date unavailable", time: null };
+  const reportedAt = new Date(timestamp);
+  return {
+    date: new Intl.DateTimeFormat("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(reportedAt),
+    time: new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "UTC",
+      timeZoneName: "short",
+    }).format(reportedAt),
+  };
+}
+
 export function FeedbackScreen({
   feedbackItems,
   orgId,
@@ -519,6 +574,8 @@ export function FeedbackScreen({
   const [source, setSource] = useState("All");
   const [severity, setSeverity] = useState("All");
   const [tier, setTier] = useState("All");
+  const [reportedOrder, setReportedOrder] =
+    useState<FeedbackReportedOrder>("recent");
   const [selected, setSelected] = useState<string[]>([]);
   const [openFeedbackId, setOpenFeedbackId] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(false);
@@ -543,8 +600,8 @@ export function FeedbackScreen({
   const feedbackDrawerTriggerRef = useRef<HTMLElement | null>(null);
   const router = useRouter();
   const visible = useMemo(
-    () =>
-      feedbackItems.filter(
+    () => {
+      const filtered = feedbackItems.filter(
         (item) =>
           (source === "All" || item.source === source) &&
           (severity === "All" || item.severity === severity) &&
@@ -552,8 +609,14 @@ export function FeedbackScreen({
           `${item.customer} ${item.quote}`
             .toLowerCase()
             .includes(query.toLowerCase()),
-      ),
-    [feedbackItems, query, source, severity, tier],
+      );
+      return orderFeedbackByReportedAt(filtered, reportedOrder);
+    },
+    [feedbackItems, query, reportedOrder, source, severity, tier],
+  );
+  const problemById = useMemo(
+    () => new Map(problemOptions.map((problem) => [problem.id, problem])),
+    [problemOptions],
   );
   const analysisByFeedback = useMemo(
     () => new Map(analyses.map((analysis) => [analysis.feedbackId, analysis])),
@@ -981,7 +1044,7 @@ export function FeedbackScreen({
         </section>
       )}
       <section className="card table-wrap">
-        <table>
+        <table className="feedback-inbox-table">
           <caption className="sr-only">Customer feedback signals</caption>
           <thead>
             <tr>
@@ -989,6 +1052,33 @@ export function FeedbackScreen({
                 <span className="sr-only">Select</span>
               </th>
               <th>Customer signal</th>
+              <th aria-sort={reportedOrder === "recent" ? "descending" : "ascending"}>
+                <button
+                  type="button"
+                  className="feedback-reported-sort"
+                  aria-label={`Reported date, ${reportedOrder === "recent" ? "newest" : "oldest"} first. Activate to show ${reportedOrder === "recent" ? "oldest" : "newest"} first.`}
+                  aria-keyshortcuts="ArrowUp ArrowDown"
+                  onClick={() =>
+                    setReportedOrder((current) => current === "recent" ? "first" : "recent")
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setReportedOrder("recent");
+                    } else if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setReportedOrder("first");
+                    }
+                  }}
+                >
+                  Reported
+                  {reportedOrder === "recent" ? (
+                    <ArrowDown size={13} aria-hidden="true" />
+                  ) : (
+                    <ArrowUp size={13} aria-hidden="true" />
+                  )}
+                </button>
+              </th>
               <th>Source</th>
               <th>Type</th>
               <th>Sentiment</th>
@@ -1000,6 +1090,13 @@ export function FeedbackScreen({
             {visible.map((item) => {
               const analysis = analysisByFeedback.get(item.id);
               const reviewedProblem = reviewedProblems[item.id];
+              const reportedAt = formatFeedbackReportedAt(item.observedAt);
+              const linkedProblem = item.problemId
+                ? problemById.get(item.problemId)
+                : undefined;
+              const proposedProblem = analysis?.proposedProblemId
+                ? problemById.get(analysis.proposedProblemId)
+                : undefined;
               return (
                 <tr key={item.id}>
                   <td>
@@ -1027,7 +1124,6 @@ export function FeedbackScreen({
                     </div>
                     <p className="truncate">{item.quote}</p>
                     <small>
-                      {item.observedAt} ·{" "}
                       {analysis
                         ? `${Math.round(analysis.classificationConfidence * 100)}% AI classification proposal`
                         : `${Math.round(item.confidence * 100)}% classification confidence`}{" "}
@@ -1044,6 +1140,12 @@ export function FeedbackScreen({
                         </ul>
                       </details>
                     )}
+                  </td>
+                  <td className="feedback-reported-date">
+                    <time dateTime={item.observedAt}>
+                      <strong>{reportedAt.date}</strong>
+                      {reportedAt.time && <small>{reportedAt.time}</small>}
+                    </time>
                   </td>
                   <td>
                     <span className="badge">{item.source}</span>
@@ -1080,18 +1182,18 @@ export function FeedbackScreen({
                       </>
                     ) : item.problemId ? (
                       <Link
-                        className="text-link"
+                        className="text-link feedback-problem-link"
                         href={`/problems/${item.problemId}`}
                       >
-                        {item.problemId}
+                        {linkedProblem?.title ?? "Linked product problem"}
                       </Link>
                     ) : analysis?.proposedProblemId && analysis.reviewStatus === "Proposed" ? (
                       <>
                         <Link
-                          className="text-link"
+                          className="text-link feedback-problem-link"
                           href={`/problems/${analysis.proposedProblemId}`}
                         >
-                          {analysis.proposedProblemId}
+                          {proposedProblem?.title ?? "Suggested product problem"}
                         </Link>
                         <small>
                           {Math.round(analysis.clusterConfidence * 100)}%
@@ -4832,7 +4934,7 @@ export function IntegrationsScreen({
   const [activeFilter, setActiveFilter] = useState<IntegrationFilter>("All");
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
-  >(null);
+  >(focusedIntegrationId === "int_slack" ? focusedIntegrationId : null);
   const [integrationDrawerMode, setIntegrationDrawerMode] =
     useState<IntegrationInspectionMode>("details");
   const connectedGithubRepositories = useMemo(
@@ -4882,6 +4984,9 @@ export function IntegrationsScreen({
       group: getIntegrationGroup({ connected, available }),
     };
   });
+  const connectedConnectionCount = connectorRows.filter(
+    (row) => row.connected,
+  ).length;
   const visibleRows = connectorRows.filter(
     (row) => activeFilter === "All" || row.experience.filter === activeFilter,
   );
@@ -5179,7 +5284,7 @@ export function IntegrationsScreen({
             >
               <Database size={15} aria-hidden="true" />
               Connections
-              <span>{connectedIds.length}</span>
+              <span>{connectedConnectionCount}</span>
             </button>
           </div>
         }

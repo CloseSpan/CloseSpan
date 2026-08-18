@@ -1,0 +1,32 @@
+{
+  "display_information": {
+    "name": "CloseSpan",
+    "description": "Turn confirmed Slack feedback into accountable product work.",
+    "background_color": "#171c2a"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "CloseSpan",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "redirect_urls": [
+      "https://closespan.com/api/integrations/slack/callback",
+      "https://www.closespan.com/api/integrations/slack/callback",
+      "http://localhost:3000/api/integrations/slack/callback"
+    ],
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "channels:join",
+        "chat:write"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

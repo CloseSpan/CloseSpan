@@ -4,6 +4,7 @@ import {
   classifySlackConversation,
   slackConversationControl,
   slackConversationMentionsCloseSpan,
+  shouldConsiderSlackConversation,
   summarizeSlackThread,
 } from "./slack-intake";
 
@@ -138,6 +139,27 @@ describe("Slack conversation intent gate", () => {
     });
   });
 
+  it("switches between full-channel and mention-only intake", () => {
+    const ordinaryConversation = [
+      { text: "The export button produces an empty file." },
+    ];
+    expect(shouldConsiderSlackConversation({
+      intakeMode: "channel",
+      messages: ordinaryConversation,
+      botUserId: "UCLOSESPAN",
+    })).toBe(true);
+    expect(shouldConsiderSlackConversation({
+      intakeMode: "mentions",
+      messages: ordinaryConversation,
+      botUserId: "UCLOSESPAN",
+    })).toBe(false);
+    expect(shouldConsiderSlackConversation({
+      intakeMode: "mentions",
+      messages: [{ text: "<@UCLOSESPAN> the export button is broken" }],
+      botUserId: "UCLOSESPAN",
+    })).toBe(true);
+  });
+
   it("honors issue and feature labels in explicit CloseSpan reports", () => {
     expect(classifySlackConversation({
       text: "issue: export filters disappear after refresh",
@@ -152,6 +174,26 @@ describe("Slack conversation intent gate", () => {
     })).toMatchObject({
       state: "Review",
       classification: "Feature request",
+    });
+  });
+
+  it("recognizes a request phrased as can we have as a feature", () => {
+    expect(classifySlackConversation({
+      text: "Can we have more options on the menu button?",
+      directMention: true,
+    })).toMatchObject({
+      state: "Review",
+      classification: "Feature request",
+    });
+  });
+
+  it("keeps explanatory questions out of feature-request classification", () => {
+    expect(classifySlackConversation({
+      text: "Could you explain how the export button works?",
+      directMention: true,
+    })).toMatchObject({
+      state: "Review",
+      classification: "Question",
     });
   });
 

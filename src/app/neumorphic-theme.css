@@ -4597,6 +4597,22 @@ pre.code-block {
   box-shadow: var(--shadow-focus);
 }
 
+.app-shell .feedback-reported-sort:hover {
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .feedback-reported-sort:active {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .feedback-reported-sort:focus-visible {
+  outline: none;
+  color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
 .feedback-select-control {
   width: var(--control-height);
   height: var(--control-height);
@@ -5701,6 +5717,21 @@ pre.code-block {
 
 .app-shell .integration-drawer .pipedream-account-row {
   padding: var(--space-5);
+}
+
+.app-shell .slack-intake-mode {
+  border-color: var(--border-subtle);
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .slack-intake-mode-icon {
+  background: var(--surface);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .slack-intake-mode-toggle {
+  border-color: var(--border-subtle);
 }
 
 .delphi-onboarding,

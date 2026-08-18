@@ -24,8 +24,14 @@ import {
   type SlackFile,
   type SlackMessage,
   type SlackReaction,
+  type SlackApiContext,
   type SlackProxyContext,
 } from "./slack-api";
+import {
+  getSlackAppInstallation,
+  getSlackBotContext,
+  slackAppConfigured,
+} from "./slack-app-repository";
 import { workspacePersistenceMode } from "./workspace-persistence";
 
 export const SLACK_INTAKE_CHANNEL = "closespan-feedback";
@@ -86,7 +92,7 @@ const SLACK_CONFIRM_FEEDBACK = /^(?:record|save|track|capture)(?: this)?(?: as)?
 const SLACK_IGNORE_FEEDBACK = /^(?:ignore|dismiss|cancel|do not record|don['’]?t record)(?: this)?[.!]?$/i;
 const SLACK_TRIVIAL_MESSAGE = /^(?:hi|hello|hey|thanks|thank you|thx|ok(?:ay)?|cool|great|nice|checking|check|test(?:ing)?|ping|got it|sounds good|yes|no|yep|nope|lol|👍|👋|🙏)[!.\s]*$/i;
 const SLACK_LINK_ONLY = /^(?:https?:\/\/\S+|<https?:\/\/[^>]+>)(?:\s+(?:https?:\/\/\S+|<https?:\/\/[^>]+>))*$/i;
-const SLACK_FEATURE_SIGNAL = /\b(?:please add|add support|feature request|would like|we need|needs? (?:an?|the)|should (?:have|support|allow)|could (?:we|you)|can (?:we|you) add|wish (?:it|we|there)|missing (?:an?|the)|new (?:feature|option|setting)|enable (?:us|users)|let (?:us|users))\b/i;
+const SLACK_FEATURE_SIGNAL = /\b(?:please add|add support|feature request|would like|we need|needs? (?:an?|the)|should (?:have|support|allow)|could (?:we|you) (?:add|have)|can (?:we|you) (?:add|have)|wish (?:it|we|there)|missing (?:an?|the)|new (?:feature|option|setting)|enable (?:us|users)|let (?:us|users))\b/i;
 const SLACK_USABILITY_SIGNAL = /\b(?:confus(?:ing|ed)|hard to (?:use|find|understand)|difficult to (?:use|find|understand)|can['’]?t find|cannot find|unclear|not obvious|too many clicks|usability|ux)\b/i;
 const SLACK_INCIDENT_SIGNAL = /\b(?:outage|downtime|service unavailable|system unavailable|production is down|all users? (?:are )?blocked)\b/i;
 const SLACK_PRODUCT_CONTEXT = /\b(?:app|product|page|screen|view|button|menu|form|field|caption|export|import|upload|download|login|sign[ -]?in|account|workspace|project|repository|repo|pull request|pr|notification|dashboard|report|search|filter|editor|generate|regenerate|undo|save|delete|sync|api|integration|slack|github|ios|android|web|mobile|desktop|workflow|setting|feature|error|crash)\b/i;
@@ -135,6 +141,17 @@ export function slackConversationMentionsCloseSpan(
       SLACK_PLAIN_CLOSESPAN_MENTION.test(text)
     );
   });
+}
+
+export function shouldConsiderSlackConversation(input: {
+  intakeMode: SlackIntakeStatus["intakeMode"];
+  messages: Pick<SlackMessage, "text">[];
+  botUserId?: string | null;
+}): boolean {
+  return (
+    input.intakeMode === "channel" ||
+    slackConversationMentionsCloseSpan(input.messages, input.botUserId)
+  );
 }
 
 export function classifySlackConversation(input: {
@@ -275,6 +292,9 @@ export interface SlackIntakeStatus {
   channelName: string;
   lastPolledAt: string | null;
   lastError: string | null;
+  intakeMode: "channel" | "mentions";
+  botInstalled: boolean;
+  botInstallAvailable: boolean;
 }
 
 interface SlackIntakeRow {
@@ -290,6 +310,9 @@ interface SlackIntakeRow {
   bot_user_id: string | null;
   last_polled_at: Date | null;
   last_error: string | null;
+  intake_mode: SlackIntakeStatus["intakeMode"];
+  native_bot_user_id: string | null;
+  native_bot_state: "Connected" | "Disconnected" | "Needs reconnect" | null;
 }
 
 type SlackNotificationEvent =
@@ -364,6 +387,9 @@ function rowToStatus(row: SlackIntakeRow): SlackIntakeStatus {
     channelName: row.channel_name,
     lastPolledAt: row.last_polled_at?.toISOString() ?? null,
     lastError: row.last_error,
+    intakeMode: row.intake_mode,
+    botInstalled: row.native_bot_state === "Connected",
+    botInstallAvailable: slackAppConfigured(),
   };
 }
 
@@ -372,9 +398,17 @@ export async function getSlackIntakeStatus(
 ): Promise<SlackIntakeStatus | null> {
   if (workspacePersistenceMode(orgId) !== "postgres") return null;
   const result = await databasePool().query<SlackIntakeRow>(
-    `SELECT org_id,account_id,team_id,team_name,channel_id,channel_name,state,
-            cursor_ts,welcome_message_ts,bot_user_id,last_polled_at,last_error
-       FROM slack_intake_connections WHERE org_id=$1`,
+    `SELECT connection.org_id,connection.account_id,connection.team_id,
+            connection.team_name,connection.channel_id,connection.channel_name,
+            connection.state,connection.cursor_ts,connection.welcome_message_ts,
+            connection.bot_user_id,connection.last_polled_at,connection.last_error,
+            connection.intake_mode,
+            installation.bot_user_id AS native_bot_user_id,
+            installation.state AS native_bot_state
+       FROM slack_intake_connections connection
+       LEFT JOIN slack_app_installations installation
+         ON installation.org_id=connection.org_id
+      WHERE connection.org_id=$1`,
     [orgId],
   );
   return result.rows[0] ? rowToStatus(result.rows[0]) : null;
@@ -382,9 +416,17 @@ export async function getSlackIntakeStatus(
 
 async function getSlackIntakeRow(orgId: string): Promise<SlackIntakeRow | null> {
   const result = await databasePool().query<SlackIntakeRow>(
-    `SELECT org_id,account_id,team_id,team_name,channel_id,channel_name,state,
-            cursor_ts,welcome_message_ts,bot_user_id,last_polled_at,last_error
-       FROM slack_intake_connections WHERE org_id=$1`,
+    `SELECT connection.org_id,connection.account_id,connection.team_id,
+            connection.team_name,connection.channel_id,connection.channel_name,
+            connection.state,connection.cursor_ts,connection.welcome_message_ts,
+            connection.bot_user_id,connection.last_polled_at,connection.last_error,
+            connection.intake_mode,
+            installation.bot_user_id AS native_bot_user_id,
+            installation.state AS native_bot_state
+       FROM slack_intake_connections connection
+       LEFT JOIN slack_app_installations installation
+         ON installation.org_id=connection.org_id
+      WHERE connection.org_id=$1`,
     [orgId],
   );
   return result.rows[0] ?? null;
@@ -555,6 +597,61 @@ export async function disconnectSlackIntake(
       WHERE org_id=$1 AND account_id=$2`,
     [orgId, accountId],
   );
+}
+
+export async function setSlackIntakeMode(input: {
+  orgId: string;
+  mode: SlackIntakeStatus["intakeMode"];
+  actor: { actorId: string; actorName: string; traceId: string };
+}): Promise<SlackIntakeStatus> {
+  if (workspacePersistenceMode(input.orgId) !== "postgres") {
+    throw new Error("Slack intake settings require PostgreSQL persistence.");
+  }
+  const connection = await getSlackIntakeRow(input.orgId);
+  if (!connection || connection.state === "Disconnected") {
+    throw new Error("Connect Slack before changing its intake mode.");
+  }
+  if (input.mode === "mentions") {
+    const installation = await getSlackAppInstallation(input.orgId);
+    if (!installation || installation.state !== "Connected") {
+      throw new Error(
+        "Install the CloseSpan Slack bot before enabling mention-only intake.",
+      );
+    }
+    if (installation.teamId !== connection.team_id) {
+      throw new Error(
+        "Install the CloseSpan bot in the same Slack workspace as the connected feedback channel.",
+      );
+    }
+  }
+  await transaction(async (client) => {
+    await client.query(
+      `UPDATE slack_intake_connections
+          SET intake_mode=$2,last_error=NULL,updated_at=now()
+        WHERE org_id=$1`,
+      [input.orgId, input.mode],
+    );
+    await client.query(
+      `INSERT INTO audit_events(
+         id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+       ) VALUES($1,$2,$3,$4,$5,'SlackIntake',$6,$7)
+       ON CONFLICT(org_id,trace_id,action) DO NOTHING`,
+      [
+        randomUUID(),
+        input.orgId,
+        input.actor.actorId,
+        input.actor.actorName,
+        input.mode === "mentions"
+          ? "Enabled mention-only Slack intake"
+          : "Enabled full-channel Slack intake",
+        connection.channel_id,
+        input.actor.traceId,
+      ],
+    );
+  });
+  const status = await getSlackIntakeStatus(input.orgId);
+  if (!status) throw new Error("Slack intake settings could not be loaded.");
+  return status;
 }
 
 export function summarizeSlackThread(
@@ -826,6 +923,7 @@ async function promoteSlackCandidate(
   orgId: string,
   connection: SlackIntakeRow,
   candidate: SlackIntakeCandidateRow,
+  botUserId: string | null,
 ): Promise<"created" | "updated"> {
   const id = feedbackId(connection.team_id, connection.channel_id, candidate.anchor_ts);
   const existing = await client.query(
@@ -833,7 +931,7 @@ async function promoteSlackCandidate(
     [orgId, id],
   );
   const messages = snapshotsAsMessages(candidate.message_snapshots);
-  const summary = summarizeSlackThread(messages, connection.bot_user_id);
+  const summary = summarizeSlackThread(messages, botUserId);
   if (!summary) throw new Error("Confirmed Slack feedback has no recordable content.");
   const reactionText = summary.reactions.length
     ? ` · reactions ${summary.reactions.map((item) => `:${item.name}: ×${item.count}`).join(", ")}`
@@ -898,8 +996,9 @@ async function promoteSlackCandidate(
 
 async function matureSlackCandidates(
   orgId: string,
-  context: SlackProxyContext,
+  context: SlackApiContext,
   connection: SlackIntakeRow,
+  botUserId: string | null,
 ): Promise<{ created: number; updated: number }> {
   const result = await databasePool().query<SlackIntakeCandidateRow>(
     `SELECT id,anchor_ts,author_id,state,classification,confidence,decision_reason,
@@ -918,7 +1017,7 @@ async function matureSlackCandidates(
       if (!candidate.confirmation_message_ts) {
         const directMention = slackConversationMentionsCloseSpan(
           snapshotsAsMessages(candidate.message_snapshots),
-          connection.bot_user_id,
+          botUserId,
         );
         const classification = candidate.classification === "Noise" || !candidate.classification
           ? "product feedback"
@@ -956,10 +1055,38 @@ async function matureSlackCandidates(
         );
         return;
       }
-      const outcome = await promoteSlackCandidate(client, orgId, connection, candidate);
+      const outcome = await promoteSlackCandidate(
+        client,
+        orgId,
+        connection,
+        candidate,
+        botUserId,
+      );
       if (outcome === "created") created += 1;
       else updated += 1;
     });
+    if (candidate.confirmation_message_ts) {
+      try {
+        const classification =
+          candidate.classification === "Noise" || !candidate.classification
+            ? "feedback"
+            : candidate.classification.toLowerCase();
+        await postSlackMessage(context, {
+          channelId: connection.channel_id,
+          threadTs: candidate.anchor_ts,
+          text:
+            candidate.state === "Ignored" || candidate.state === "Deleted"
+              ? "Okay—nothing from this conversation was recorded."
+              : `Feedback recorded as *${classification}*. CloseSpan will group it with related product evidence.`,
+        });
+      } catch (error) {
+        console.warn("Slack confirmation acknowledgement could not be posted", {
+          orgId,
+          candidateId: candidate.id,
+          errorType: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+    }
   }
   return { created, updated };
 }
@@ -976,10 +1103,13 @@ export async function syncSlackIntake(orgId: string): Promise<{
     connection.state === "Needs reconnect"
   )
     return { fetched: 0, created: 0, updated: 0 };
-  const context = { orgId, accountId: connection.account_id };
+  const readContext: SlackProxyContext = {
+    orgId,
+    accountId: connection.account_id,
+  };
   try {
     if (!connection.bot_user_id) {
-      const identity = await getSlackIdentity(context);
+      const identity = await getSlackIdentity(readContext);
       connection.bot_user_id = identity.userId;
       await databasePool().query(
         `UPDATE slack_intake_connections
@@ -988,9 +1118,19 @@ export async function syncSlackIntake(orgId: string): Promise<{
         [orgId, identity.userId],
       );
     }
+    const nativeBot = await getSlackBotContext({ orgId });
+    if (connection.intake_mode === "mentions" && !nativeBot) {
+      throw new Error(
+        "Mention-only Slack intake requires an active CloseSpan bot installation.",
+      );
+    }
+    const botUserId =
+      nativeBot?.installation.botUserId ?? connection.bot_user_id;
+    const responseContext: SlackApiContext =
+      nativeBot?.context ?? readContext;
     const cursorNumber = timestampNumber(connection.cursor_ts);
     const roots = await listSlackChannelMessages(
-      context,
+      readContext,
       connection.channel_id,
       Math.max(0, cursorNumber - 7 * 24 * 60 * 60).toFixed(6),
     );
@@ -1009,7 +1149,11 @@ export async function syncSlackIntake(orgId: string): Promise<{
       let messages = [root];
       if ((root.reply_count ?? 0) > 0 && threadFetches < MAX_THREAD_FETCHES_PER_TICK) {
         threadFetches += 1;
-        messages = await listSlackThreadReplies(context, connection.channel_id, root.ts);
+        messages = await listSlackThreadReplies(
+          readContext,
+          connection.channel_id,
+          root.ts,
+        );
         for (const reply of messages)
           maxTimestamp = Math.max(maxTimestamp, timestampNumber(messageActivityTimestamp(reply)));
       }
@@ -1017,7 +1161,14 @@ export async function syncSlackIntake(orgId: string): Promise<{
       if (!customerMessages.some((message) =>
         timestampNumber(messageActivityTimestamp(message)) > cursorNumber))
         continue;
-      if (summarizeSlackThread(customerMessages, connection.bot_user_id))
+      if (!shouldConsiderSlackConversation({
+        intakeMode: connection.intake_mode,
+        messages: customerMessages,
+        botUserId,
+      })) {
+        continue;
+      }
+      if (summarizeSlackThread(customerMessages, botUserId))
         candidates.push({ root, messages: customerMessages });
     }
 
@@ -1043,7 +1194,7 @@ export async function syncSlackIntake(orgId: string): Promise<{
           channelId: connection.channel_id,
           anchorTs: candidate.root.ts,
           messages: candidate.messages,
-          botUserId: connection.bot_user_id,
+          botUserId,
         });
       }
       await client.query(
@@ -1057,7 +1208,12 @@ export async function syncSlackIntake(orgId: string): Promise<{
         [orgId],
       );
     });
-    const matured = await matureSlackCandidates(orgId, context, connection);
+    const matured = await matureSlackCandidates(
+      orgId,
+      responseContext,
+      connection,
+      botUserId,
+    );
     return {
       fetched: candidates.length,
       created: matured.created,
@@ -1356,7 +1512,11 @@ export async function deliverSlackNotifications(
   );
   let sent = 0;
   let failed = 0;
-  const context = { orgId, accountId: connection.account_id };
+  const nativeBot = await getSlackBotContext({ orgId });
+  const context: SlackApiContext = nativeBot?.context ?? {
+    orgId,
+    accountId: connection.account_id,
+  };
   for (const row of result.rows) {
     const claimed = await databasePool().query(
       `UPDATE slack_notification_outbox SET status='Sending',attempts=attempts+1,

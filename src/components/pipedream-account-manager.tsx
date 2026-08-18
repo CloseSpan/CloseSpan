@@ -3,6 +3,10 @@
 import { Check, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { PipedreamConnectButton } from "@/components/pipedream-connect-button";
+import {
+  SlackIntakeModeControl,
+  type SlackIntakeModeStatus,
+} from "@/components/slack-intake-mode-control";
 import type { PipedreamConnectorId } from "@/lib/pipedream-connectors";
 import type { IntegrationConnectionState } from "@/lib/integration-client";
 
@@ -15,7 +19,7 @@ interface Account {
   lastImportCount: number;
 }
 
-interface SlackIntake {
+interface SlackIntake extends SlackIntakeModeStatus {
   state: "Connected" | "Needs reconnect" | "Disconnected" | "Error";
   channelName: string;
   lastPolledAt: string | null;
@@ -146,6 +150,17 @@ export function PipedreamAccountManager({
 
   return (
     <div className="pipedream-account-manager">
+      {integrationId === "int_slack" && slackIntake?.state === "Connected" && (
+        <SlackIntakeModeControl
+          orgId={orgId}
+          initialStatus={slackIntake}
+          onStatusChange={(nextStatus) =>
+            setSlackIntake((current) =>
+              current ? { ...current, ...nextStatus } : current,
+            )
+          }
+        />
+      )}
       {loading ? (
         <p className="subtle"><LoaderCircle className="spin" size={14} aria-hidden="true" /> Loading connected accounts...</p>
       ) : accounts.length > 0 ? (

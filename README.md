@@ -188,13 +188,31 @@ workspace's configured AI provider to classify and cluster high-confidence
 signals. Message text, thread replies, reaction counts, and bounded attachment
 metadata are included; file bodies and private channels are not read.
 
+The integration drawer offers two persisted intake modes. **Channel
+monitoring** reads the full configured channel and applies the existing
+conversation/noise gate. **Mention-only intake** records only conversations
+that mention `@CloseSpan`, and requires an explicit `record feedback` reply
+before promotion. Import `config/slack-app-manifest.json` into a Slack app and
+configure its OAuth credentials to make replies appear from the first-party
+CloseSpan bot:
+
+```bash
+SLACK_CLIENT_ID=<Slack app client id>
+SLACK_CLIENT_SECRET=<Slack app client secret>
+```
+
+The Slack app bot token is encrypted with the workspace-bound credential vault;
+Pipedream continues to hold the broader read credential. Turning mention-only
+intake off keeps Slack connected and immediately restores full-channel
+monitoring.
+
 Each Product Problem receives one Slack thread. CloseSpan posts only meaningful
 events: detection, approval required, blocked run, draft PR, release,
 verification required, and verification passed. Slack links return authorized
 users to CloseSpan for the three human decisions: approve one run, change
 scope, and verify a release. The scheduler and application deployment must use
-the same `CRON_SECRET`; Slack credentials remain in Pipedream rather than the
-CloseSpan database.
+the same `CRON_SECRET`. Pipedream stores the read credential, while the optional
+CloseSpan bot token is encrypted at rest and never returned to the browser.
 
 ### Configure optional public feedback discovery
 
