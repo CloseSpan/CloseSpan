@@ -2543,7 +2543,9 @@ export function ProblemLifecycleBoard({
                             {problem.severity}
                           </span>
                         </div>
-                        <h3>{problem.title}</h3>
+                        <h3 className="problem-card-title" title={problem.title}>
+                          {problem.title}
+                        </h3>
                         <p className="subtle">
                           {problem.count} {problem.count === 1 ? "signal" : "signals"}
                           {" · "}

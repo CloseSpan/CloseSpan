@@ -45,6 +45,8 @@ describe("ProblemsScreen", () => {
     expect(markup).toContain('aria-label="Tenki in progress"');
     expect(markup).toContain("problem-card-work-spinner");
     expect(markup.match(/problem-card-work-status/g)).toHaveLength(1);
+    expect(markup).toContain('class="problem-card-title"');
+    expect(markup).toContain(`title="${problem.title}"`);
     expect(markup).toContain("Release Ready");
   });
 });

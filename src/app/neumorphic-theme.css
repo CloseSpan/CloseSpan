@@ -4876,6 +4876,17 @@ pre.code-block {
   text-decoration: none;
 }
 
+.app-shell .problem-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-block: var(--space-3) var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .app-shell .problem-card-link:focus-visible {
   border-radius: var(--radius-md);
   outline: 2px solid var(--accent);
@@ -9934,6 +9945,10 @@ html[data-theme-transitioning="true"] .theme-toggle-thumb {
 
   .app-shell .board-col {
     scroll-snap-align: start;
+  }
+
+  .app-shell .problem-card-title {
+    -webkit-line-clamp: 1;
   }
 
   .app-shell .table-wrap {
