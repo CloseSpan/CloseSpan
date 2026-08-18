@@ -114,7 +114,7 @@ describe("PddScreen", () => {
     );
 
     expect(markup).toContain("Investigation");
-    expect(markup).toContain("Hypothesis—not confirmed");
+    expect(markup).toContain("Behavior confirmed · root cause unconfirmed");
     expect(markup).toContain("Evidence to collect");
     expect(markup).toContain("Recommended action");
     expect(markup).not.toContain("Investigation confidence");
@@ -173,7 +173,7 @@ describe("PddScreen", () => {
     expect(markup).toContain("Runtime commit");
     expect(markup).toContain("Repository context matches");
     expect(markup).toContain("Zup/PostContextView.swift:40-72");
-    expect(markup).toContain("Behavior runtime-confirmed · root cause unconfirmed");
+    expect(markup).toContain("Behavior confirmed · root cause unconfirmed");
     expect(markup).toContain("Capture the affected production configuration");
     expect(markup).not.toContain("Exact reproduction steps and the expected result");
   });
@@ -241,6 +241,7 @@ describe("PddScreen", () => {
     );
 
     expect(problemMarkup).toContain("Current issue verification");
+    expect(problemMarkup).toContain("Issue not yet reproduced");
     expect(problemMarkup).toContain("Run runtime verification");
     expect(problemMarkup).toContain("exercise the user-visible path on Tenki");
     expect(problemMarkup).toContain("Record external evidence");
@@ -430,7 +431,7 @@ describe("PddScreen", () => {
     );
 
     expect(markup).toContain("Investigation");
-    expect(markup).toContain("Hypothesis—not confirmed");
+    expect(markup).toContain("Behavior confirmed · root cause unconfirmed");
     expect(markup).not.toContain("Related signals");
     expect(markup).not.toContain("Evidence still needed");
   });

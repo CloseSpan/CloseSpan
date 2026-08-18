@@ -113,6 +113,7 @@ import {
   ISSUE_RUNTIME_VERIFICATION_RUNNING_TIMEOUT_MS,
 } from "@/lib/issue-runtime-verification-policy";
 import type { IssueRuntimeVerificationRunView } from "@/lib/issue-runtime-verification";
+import { investigationStatusCopy } from "@/lib/investigation-status-copy";
 import type { FinalExecutionApprovalView } from "@/lib/final-execution-repository";
 import type {
   FeedbackType,
@@ -3164,7 +3165,16 @@ export function ProductProblemInvestigationPanel({
     ? evidenceBundle.relevantCodePaths
     : investigation?.suspectedFiles ?? [];
   const runtimeEvidence = evidenceBundle?.runtimeVerification ?? null;
-  const runtimeConfirmed = runtimeEvidence?.outcome === "Confirmed current";
+  const statusCopy = investigation
+    ? investigationStatusCopy({
+        feedbackType: problem.type,
+        verificationStatus: investigation.verification.status,
+        verificationSummary: investigation.verification.summary,
+        runtimeOutcome: runtimeEvidence?.outcome ?? null,
+        runtimeSummary: runtimeEvidence?.summary ?? null,
+        hypothesis: investigation.hypothesis,
+      })
+    : null;
   const runtimeVerificationActive = runtimeVerification?.status === "Queued"
     || runtimeVerification?.status === "Running";
   const runtimeVerificationQueued = runtimeVerification?.status === "Queued";
@@ -3503,17 +3513,19 @@ export function ProductProblemInvestigationPanel({
               </section>
             )}
 
-            <section className={`callout ${runtimeConfirmed ? "success" : "warning"} investigation-hypothesis`}>
+            <section className={`callout ${statusCopy?.tone === "info" ? "" : statusCopy?.tone ?? "warning"} investigation-hypothesis`}>
               <div className="callout-title">
-                {runtimeConfirmed
+                {statusCopy?.icon === "confirmed"
                   ? <ShieldCheck size={14} aria-hidden="true" />
-                  : <AlertTriangle size={14} aria-hidden="true" />}
-                {runtimeConfirmed
-                  ? "Behavior runtime-confirmed · root cause unconfirmed"
-                  : "Hypothesis—not confirmed"}
+                  : statusCopy?.icon === "info"
+                    ? <Info size={14} aria-hidden="true" />
+                    : <AlertTriangle size={14} aria-hidden="true" />}
+                {statusCopy?.title}
               </div>
-              <p>{runtimeConfirmed ? runtimeEvidence.summary : investigation.hypothesis}</p>
-              {runtimeConfirmed && <p className="subtle">Working hypothesis: {investigation.hypothesis}</p>}
+              <p>{statusCopy?.detail}</p>
+              {statusCopy?.showWorkingHypothesis && (
+                <p className="subtle">Working hypothesis: {investigation.hypothesis}</p>
+              )}
             </section>
 
             <div className="investigation-detail-grid">
