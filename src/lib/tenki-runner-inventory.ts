@@ -64,7 +64,7 @@ const configuredRunnerSchema = z.object({
 }).strict();
 
 function inferredXcodeMajors(label: string): number[] {
-  const match = /(?:^|-)xcode-(?<major>[0-9]{1,2})(?:$|-)/i.exec(label);
+  const match = /(?:^|-)(?:xcode|macos)-(?<major>[0-9]{1,2})(?:$|-)/i.exec(label);
   const major = Number(match?.groups?.major);
   return Number.isInteger(major) && major > 0 ? [major] : [];
 }
@@ -191,7 +191,7 @@ export async function discoverAvailableRunnerInventory(input: {
   const github = dependencies.createClient
     ? await dependencies.createClient(input.installationId)
     : await createGithubInstallationClient(input.installationId);
-  const { records, discovered: liveInventoryAvailable } = await githubRunnerRecords(
+  const { records } = await githubRunnerRecords(
     github,
     input.repository,
   );
@@ -210,10 +210,12 @@ export async function discoverAvailableRunnerInventory(input: {
       });
     }
   }
-  if (!liveInventoryAvailable) {
-    for (const entry of configured) {
-      if (!discovered.has(entry.label)) discovered.set(entry.label, entry);
-    }
+  // Tenki provisions ephemeral JIT runners only after a matching job is
+  // queued. A healthy repository can therefore report zero idle runners from
+  // GitHub. The reviewed, repository-scoped catalog remains authoritative for
+  // which on-demand labels CloseSpan may select.
+  for (const entry of configured) {
+    if (!discovered.has(entry.label)) discovered.set(entry.label, entry);
   }
   return [...discovered.values()].sort((left, right) => left.label.localeCompare(right.label));
 }

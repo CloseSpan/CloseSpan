@@ -67,12 +67,12 @@ function iosProfile(workflowHash: string): ExecutionProfileVersion {
       buildCommands: ["xcodebuild build"],
       permittedPaths: ["ZupNative/**"],
       cpuCores: 4,
-      memoryMb: 14_336,
+      memoryMb: 8_192,
       executor: {
         kind: "tenki_github_actions",
         platform: "macos",
         architecture: "arm64",
-        runnerLabel: "tenki-macos-15-small",
+        runnerLabel: "tenki-macos-26-small",
         workflowPath: ".github/workflows/closespan-agent-runner.yml",
         workflowSha256: "a".repeat(64),
         xcode: {
@@ -182,7 +182,7 @@ describe("Tenki runner sizing probe persistence", () => {
     });
   });
 
-  it("maps a macOS capacity selector to an Xcode-compatible runner for sizing", async () => {
+  it("dispatches the reviewed Tenki macOS image for sizing", async () => {
     const sizingWorkflow = "name: CloseSpan runner sizing probe\n";
     const workflowHash = createHash("sha256").update(sizingWorkflow).digest("hex");
     const createWorkflowDispatch = vi.fn().mockResolvedValue({ data: {} });
@@ -217,10 +217,10 @@ describe("Tenki runner sizing probe persistence", () => {
     }, { createClient: async () => github as never });
 
     expect(result.status).toBe("Dispatched");
-    expect(result.runnerLabel).toBe("tenki-macos-15-small");
+    expect(result.runnerLabel).toBe("tenki-macos-26-small");
     expect(createWorkflowDispatch).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
-        closespan_runner_label: "macos-26",
+        closespan_runner_label: "tenki-macos-26-small",
       }),
     }));
   });

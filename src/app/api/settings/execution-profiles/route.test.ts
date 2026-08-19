@@ -162,7 +162,7 @@ describe("execution profile settings API", () => {
       workingDirectory: ".",
       permittedPaths: ["**/*"],
       cpuCores: 6,
-      memoryMb: 28_672,
+      memoryMb: 16_384,
       executor: {
         kind: "tenki_github_actions" as const,
         platform: "macos" as const,

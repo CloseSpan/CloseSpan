@@ -56,6 +56,10 @@ describe("Tenki runner sizing", () => {
       runnerLabel: "tenki-macos-15-small",
       telemetry: telemetry({ cpuSaturationRatio: 0.94 }),
     }).recommendedRunnerLabel).toBe("tenki-macos-15-medium");
+    expect(recommendTenkiRunnerSize({
+      runnerLabel: "tenki-macos-26-small",
+      telemetry: telemetry({ cpuSaturationRatio: 0.94 }),
+    }).recommendedRunnerLabel).toBe("tenki-macos-26-medium");
   });
 
   it("keeps a healthy runner and rejects undocumented labels", () => {

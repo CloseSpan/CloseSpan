@@ -307,7 +307,7 @@ describe("agent-run completion callback", () => {
     }));
   });
 
-  it("accepts the routed GitHub runner label for a macOS capacity profile", async () => {
+  it("accepts the reviewed Tenki runner label for a macOS profile", async () => {
     const baseContext = runnerContext();
     const macContext = {
       ...baseContext,
@@ -315,11 +315,13 @@ describe("agent-run completion callback", () => {
         ...baseContext.executionProfileSnapshot,
         config: {
           ...baseContext.executionProfileSnapshot.config,
+          cpuCores: 8,
+          memoryMb: 32_768,
           executor: {
             kind: "tenki_github_actions" as const,
             platform: "macos" as const,
             architecture: "arm64" as const,
-            runnerLabel: "tenki-macos-15-large",
+            runnerLabel: "tenki-macos-26-large",
             workflowPath: ".github/workflows/closespan-agent-runner.yml",
             workflowSha256: "e".repeat(64),
             xcode: {
@@ -343,7 +345,7 @@ describe("agent-run completion callback", () => {
       independentVerification: {
         provider: "Tenki GitHub Actions",
         workflowRunId: 123,
-        runnerLabel: "macos-26",
+        runnerLabel: "tenki-macos-26-large",
         platform: "macos",
         implementationJobId: "implementation:123:1",
         verificationJobId: "verification:123:1",

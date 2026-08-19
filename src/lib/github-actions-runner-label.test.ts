@@ -19,13 +19,14 @@ const macosExecutor: GithubActionsExecutor = {
 };
 
 describe("GitHub Actions runner label resolution", () => {
-  it("does not pass a macOS capacity selector directly to runs-on", () => {
-    expect(githubActionsRunnerLabel(macosExecutor)).toBe("macos-15");
+  it("preserves a documented Tenki macOS 15 label for runs-on", () => {
+    expect(githubActionsRunnerLabel(macosExecutor)).toBe("tenki-macos-15-small");
   });
 
-  it("routes an Xcode 26 profile to the compatible hosted macOS image", () => {
+  it("preserves a documented Tenki macOS 26 label for runs-on", () => {
     expect(githubActionsRunnerLabel({
       ...macosExecutor,
+      runnerLabel: "tenki-macos-26-small",
       xcode: {
         version: "26.1",
         containerKind: "project",
@@ -36,7 +37,7 @@ describe("GitHub Actions runner label resolution", () => {
         sdk: "iphonesimulator",
         signingPolicy: "simulator_only",
       },
-    })).toBe("macos-26");
+    })).toBe("tenki-macos-26-small");
   });
 
   it("preserves an explicitly onboarded macOS custom label", () => {

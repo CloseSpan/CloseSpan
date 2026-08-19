@@ -18,10 +18,14 @@ export const TENKI_RUNNER_SIZES = [
   { label: "tenki-standard-medium-4c-8g", platform: "linux", cpuCores: 4, memoryMb: 8_192, tier: 1 },
   { label: "tenki-standard-large-8c-16g", platform: "linux", cpuCores: 8, memoryMb: 16_384, tier: 2 },
   { label: "tenki-standard-large-plus-16c-32g", platform: "linux", cpuCores: 16, memoryMb: 32_768, tier: 3 },
-  { label: "tenki-macos-15-mini", platform: "macos", cpuCores: 3, memoryMb: 7_168, tier: 0 },
-  { label: "tenki-macos-15-small", platform: "macos", cpuCores: 4, memoryMb: 14_336, tier: 1 },
-  { label: "tenki-macos-15-medium", platform: "macos", cpuCores: 6, memoryMb: 28_672, tier: 2 },
-  { label: "tenki-macos-15-large", platform: "macos", cpuCores: 12, memoryMb: 57_344, tier: 3 },
+  { label: "tenki-macos-15-mini", platform: "macos", cpuCores: 2, memoryMb: 4_096, tier: 0 },
+  { label: "tenki-macos-15-small", platform: "macos", cpuCores: 4, memoryMb: 8_192, tier: 1 },
+  { label: "tenki-macos-15-medium", platform: "macos", cpuCores: 6, memoryMb: 16_384, tier: 2 },
+  { label: "tenki-macos-15-large", platform: "macos", cpuCores: 8, memoryMb: 32_768, tier: 3 },
+  { label: "tenki-macos-26-mini", platform: "macos", cpuCores: 2, memoryMb: 4_096, tier: 0 },
+  { label: "tenki-macos-26-small", platform: "macos", cpuCores: 4, memoryMb: 8_192, tier: 1 },
+  { label: "tenki-macos-26-medium", platform: "macos", cpuCores: 6, memoryMb: 16_384, tier: 2 },
+  { label: "tenki-macos-26-large", platform: "macos", cpuCores: 8, memoryMb: 32_768, tier: 3 },
 ] as const satisfies readonly TenkiRunnerSize[];
 
 export type TenkiRunnerLabel = (typeof TENKI_RUNNER_SIZES)[number]["label"];
@@ -87,8 +91,16 @@ export function tenkiRunnerSizesForPlatform(
 }
 
 function baselineForTier(platform: TenkiRunnerPlatform, tier: number): TenkiRunnerLabel {
-  const sizes = tenkiRunnerSizesForPlatform(platform);
+  // Workload assessment is capacity-only. macOS 15 is the neutral baseline;
+  // compatibility selection later chooses the required image/toolchain family.
+  const sizes = tenkiRunnerSizesForPlatform(platform)
+    .filter((size) => platform !== "macos" || size.label.startsWith("tenki-macos-15-"));
   return sizes[Math.min(Math.max(tier, 0), sizes.length - 1)].label as TenkiRunnerLabel;
+}
+
+function runnerFamily(size: TenkiRunnerSize): string {
+  const macos = /^(tenki-macos-[0-9]{2})-/.exec(size.label);
+  return macos?.[1] ?? (size.platform === "linux" ? "tenki-standard" : size.label);
 }
 
 export function assessTenkiRunnerWorkload(
@@ -168,7 +180,9 @@ export function recommendTenkiRunnerSize(input: {
   if (input.telemetry.cpuSaturationRatio >= 0.9) {
     reasons.push("CPU utilization stayed above 90% of runner capacity");
   }
-  const sizes = tenkiRunnerSizesForPlatform(current.platform);
+  const family = runnerFamily(current);
+  const sizes = tenkiRunnerSizesForPlatform(current.platform)
+    .filter((size) => runnerFamily(size) === family);
   const next = sizes.find((size) => size.tier === current.tier + 1) ?? current;
   const shouldEscalate = reasons.length > 0 && next.label !== current.label;
   return {

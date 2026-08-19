@@ -141,7 +141,11 @@ describe("Tenki GitHub Actions executor dispatch", () => {
     };
     const compatibleConfig = {
       ...config,
-      executor: { ...config.executor, xcode },
+      executor: {
+        ...config.executor,
+        runnerLabel: "tenki-macos-26-small",
+        xcode,
+      },
     };
     runContext.executionProfileSnapshot = {
       ...runContext.executionProfileSnapshot,
@@ -192,7 +196,7 @@ describe("Tenki GitHub Actions executor dispatch", () => {
 
     const job = buildTenkiGithubActionsJob(runContext);
 
-    expect(job.runner.label).toBe("macos-26");
+    expect(job.runner.label).toBe("tenki-macos-26-small");
     expect(job.requiredCommands).toEqual([
       CLOSESPAN_SWIFT_ACCEPTANCE_TEST_COMMAND,
     ]);
@@ -243,7 +247,7 @@ describe("Tenki GitHub Actions executor dispatch", () => {
         closespan_run_id: runId,
         closespan_profile_hash: hashExecutionProfileConfig(config),
         closespan_control_runner_label: "tenki-standard-small-2c-4g",
-        closespan_runner_label: "macos-15",
+        closespan_runner_label: "tenki-macos-15-small",
       }),
     }));
   });
@@ -336,7 +340,7 @@ describe("current-issue Tenki runtime dispatch", () => {
       inputs: expect.objectContaining({
         closespan_run_id: runId,
         closespan_workflow_hash: runtimeWorkflowHash,
-        closespan_runner_label: "macos-15",
+        closespan_runner_label: "tenki-macos-15-small",
       }),
     }));
     expect(buildIssueRuntimeVerificationJob(runtimeContext())).toMatchObject({
@@ -344,7 +348,7 @@ describe("current-issue Tenki runtime dispatch", () => {
       baseSha,
       workspaceRoot: "ZupNative",
       verificationPrompt: expect.stringContaining("Post Context"),
-      runner: { label: "macos-15", platform: "macos" },
+      runner: { label: "tenki-macos-15-small", platform: "macos" },
     });
   });
 

@@ -20,8 +20,8 @@ afterEach(() => {
 });
 
 describe("runtimeVerificationRunnerLabel", () => {
-  it("maps a macOS capacity selector to its hosted runner label", () => {
-    expect(runtimeVerificationRunnerLabel(executor)).toBe("macos-15");
+  it("passes the selected Tenki macOS label through to runs-on", () => {
+    expect(runtimeVerificationRunnerLabel(executor)).toBe("tenki-macos-15-small");
   });
 
   it("uses an explicit macOS fallback label when configured", () => {
@@ -29,7 +29,7 @@ describe("runtimeVerificationRunnerLabel", () => {
     expect(runtimeVerificationRunnerLabel(executor)).toBe("macos-15");
   });
 
-  it("selects a compatible GitHub macOS image for a newer Xcode requirement", () => {
+  it("does not silently replace the reviewed Tenki label with hosted infrastructure", () => {
     expect(runtimeVerificationRunnerLabel({
       ...executor,
       xcode: {
@@ -42,7 +42,7 @@ describe("runtimeVerificationRunnerLabel", () => {
         destination: "platform=iOS Simulator,name=iPhone 16",
         signingPolicy: "simulator_only",
       },
-    })).toBe("macos-26");
+    })).toBe("tenki-macos-15-small");
   });
 
   it("rejects an unsafe override", () => {

@@ -25,13 +25,13 @@ function runner(
   overrides: Partial<AvailableRunnerInventoryEntry> = {},
 ): AvailableRunnerInventoryEntry {
   return {
-    label: "tenki-macos-xcode-26",
+    label: "tenki-macos-26-small",
     provider: "tenki",
     source: "deployment_catalog",
     platform: "macos",
     architecture: "arm64",
     cpuCores: 4,
-    memoryMb: 14_336,
+    memoryMb: 8_192,
     xcodeMajors: [26],
     androidApiLevels: [],
     nestedKvm: false,
@@ -47,23 +47,23 @@ describe("Tenki runner inventory and compatibility selection", () => {
       xcodeVersion: "26.1",
       workload: iosWorkload,
       inventory: [
-        runner({ label: "tenki-macos-xcode-16", xcodeMajors: [16] }),
-        runner({ label: "tenki-macos-xcode-26-large", cpuCores: 8, memoryMb: 28_672 }),
+        runner({ label: "tenki-macos-15-small", xcodeMajors: [15] }),
+        runner({ label: "tenki-macos-26-large", cpuCores: 8, memoryMb: 32_768 }),
         runner(),
       ],
     });
 
     expect(selection).toMatchObject({
-      label: "tenki-macos-xcode-26",
+      label: "tenki-macos-26-small",
       provider: "tenki",
       source: "deployment_catalog",
       cpuCores: 4,
-      memoryMb: 14_336,
+      memoryMb: 8_192,
       fallbackReason: null,
       compatibleCandidateCount: 2,
       compatibleCandidates: [
-        { label: "tenki-macos-xcode-26", cpuCores: 4, memoryMb: 14_336 },
-        { label: "tenki-macos-xcode-26-large", cpuCores: 8, memoryMb: 28_672 },
+        { label: "tenki-macos-26-small", cpuCores: 4, memoryMb: 8_192 },
+        { label: "tenki-macos-26-large", cpuCores: 8, memoryMb: 32_768 },
       ],
     });
   });
@@ -73,7 +73,7 @@ describe("Tenki runner inventory and compatibility selection", () => {
       platform: "ios",
       xcodeVersion: "26.1",
       workload: iosWorkload,
-      inventory: [runner({ label: "tenki-macos-xcode-16", xcodeMajors: [16] })],
+      inventory: [runner({ label: "tenki-macos-15-small", xcodeMajors: [15] })],
     });
 
     expect(selection).toMatchObject({
@@ -146,12 +146,12 @@ describe("Tenki runner inventory and compatibility selection", () => {
   it("scopes the deployment catalog and enriches labels discovered from GitHub", async () => {
     const catalogJson = JSON.stringify([
       {
-        label: "tenki-macos-xcode-26",
+        label: "tenki-macos-26-small",
         repository: "samshanmukh/zup",
         platform: "macos",
         architecture: "arm64",
         cpuCores: 4,
-        memoryMb: 14336,
+        memoryMb: 8192,
         xcodeMajors: [26],
       },
       {
@@ -165,14 +165,14 @@ describe("Tenki runner inventory and compatibility selection", () => {
       orgId: "org-1",
       repository: "samshanmukh/zup",
       catalogJson,
-    }).map((entry) => entry.label)).toEqual(["tenki-macos-xcode-26"]);
+    }).map((entry) => entry.label)).toEqual(["tenki-macos-26-small"]);
 
     const request = vi.fn()
       .mockResolvedValueOnce({
         data: {
           runners: [{
             status: "online",
-            labels: [{ name: "self-hosted" }, { name: "tenki-macos-xcode-26" }],
+            labels: [{ name: "self-hosted" }, { name: "tenki-macos-26-small" }],
           }],
         },
       })
@@ -193,7 +193,7 @@ describe("Tenki runner inventory and compatibility selection", () => {
     expect(request).toHaveBeenCalledTimes(1);
     expect(inventory).toEqual([
       expect.objectContaining({
-        label: "tenki-macos-xcode-26",
+        label: "tenki-macos-26-small",
         source: "github_self_hosted",
         xcodeMajors: [26],
         online: true,
@@ -201,14 +201,14 @@ describe("Tenki runner inventory and compatibility selection", () => {
     ]);
   });
 
-  it("does not treat a catalog entry as enabled when live GitHub inventory proves it is absent", async () => {
+  it("keeps a reviewed JIT catalog label when GitHub reports no idle runner", async () => {
     const catalogJson = JSON.stringify([{
-      label: "tenki-macos-xcode-26",
+      label: "tenki-macos-26-small",
       repository: "samshanmukh/zup",
       platform: "macos",
       architecture: "arm64",
       cpuCores: 4,
-      memoryMb: 14336,
+      memoryMb: 8192,
       xcodeMajors: [26],
     }]);
     const request = vi.fn().mockResolvedValueOnce({ data: { runners: [] } });
@@ -220,18 +220,24 @@ describe("Tenki runner inventory and compatibility selection", () => {
     }, {
       catalogJson,
       createClient: async () => ({ request }) as never,
-    })).resolves.toEqual([]);
+    })).resolves.toEqual([
+      expect.objectContaining({
+        label: "tenki-macos-26-small",
+        source: "deployment_catalog",
+        xcodeMajors: [26],
+      }),
+    ]);
     expect(request).toHaveBeenCalledTimes(1);
   });
 
   it("uses the reviewed catalog when GitHub runner discovery permission is unavailable", async () => {
     const catalogJson = JSON.stringify([{
-      label: "tenki-macos-xcode-26",
+      label: "tenki-macos-26-small",
       repository: "samshanmukh/zup",
       platform: "macos",
       architecture: "arm64",
       cpuCores: 4,
-      memoryMb: 14336,
+      memoryMb: 8192,
       xcodeMajors: [26],
     }]);
     const request = vi.fn().mockRejectedValue(Object.assign(new Error("forbidden"), { status: 403 }));
@@ -245,7 +251,7 @@ describe("Tenki runner inventory and compatibility selection", () => {
       createClient: async () => ({ request }) as never,
     })).resolves.toEqual([
       expect.objectContaining({
-        label: "tenki-macos-xcode-26",
+        label: "tenki-macos-26-small",
         source: "deployment_catalog",
       }),
     ]);

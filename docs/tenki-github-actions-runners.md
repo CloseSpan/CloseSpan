@@ -13,6 +13,8 @@ Keep these product documents with the implementation and re-check them before
 changing runner labels, Xcode policy, Android images, or resource assumptions:
 
 - Linux x64 runners: <https://tenki.cloud/docs/runners/x64-runners>
+- Runner sizes and exact `runs-on` labels: <https://tenki.cloud/docs/runners/sizes>
+- macOS runners: <https://tenki.cloud/docs/runners/macos-runners>
 - macOS Xcode and custom images: <https://tenki.cloud/docs/runners/macos-xcode-and-images>
 - Android Emulator with nested KVM: <https://tenki.cloud/docs/runners/android-emulator>
 
@@ -129,8 +131,10 @@ CloseSpan first reads the repository-visible self-hosted runners, because
 organization runner groups can restrict a label to selected repositories. It
 consults organization inventory only when repository discovery is unavailable.
 That live discovery requires the optional GitHub App organization permission
-**Self-hosted runners: read**. If the permission is not granted, the reviewed
-deployment catalog remains authoritative. The legacy
+**Self-hosted runners: read**. Tenki JIT runners are ephemeral and may produce
+an empty GitHub runner inventory while idle, so the reviewed, repository-scoped
+deployment catalog remains authoritative even when live discovery succeeds.
+The legacy
 `TENKI_MACOS_RUNNER_LABEL` and `TENKI_ANDROID_RUNNER_LABEL` variables are only
 bootstrap overrides for older profiles.
 
