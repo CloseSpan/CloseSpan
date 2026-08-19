@@ -13740,25 +13740,10 @@ body:has(.shell-immersive)::-webkit-scrollbar-corner {
   color: var(--accent);
 }
 
-.app-shell .engineering-preparation-step > span:last-child {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.app-shell .engineering-preparation-step small {
+.app-shell .engineering-preparation-step strong {
   position: relative;
   z-index: 1;
-  width: fit-content;
-  margin-left: -4px;
-  padding-inline: 4px;
-  color: var(--muted);
-  background: var(--surface-pressed);
-  font-size: 0.7rem;
-  line-height: 1.2;
-}
-
-.app-shell .engineering-preparation-step strong {
+  min-width: 0;
   color: var(--text-strong);
   font-size: var(--text-xs);
   line-height: 1.35;

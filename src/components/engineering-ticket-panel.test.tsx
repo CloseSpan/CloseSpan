@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { EngineeringWorkflowView } from "@/lib/engineering-workflow-repository";
 import {
+  EngineeringPreparationSteps,
   EngineeringTicketPanel,
   engineeringPreparationSteps,
   estimatedPddProgress,
@@ -111,6 +112,24 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
       acceptanceReady: true,
       approvalReady: true,
     }).every((step) => step.state === "complete")).toBe(true);
+  });
+
+  it("communicates preparation state without repeating visible state labels", () => {
+    const markup = renderToStaticMarkup(
+      <EngineeringPreparationSteps
+        steps={engineeringPreparationSteps({
+          repositoryProfileReady: true,
+          promptReady: false,
+          promptAligned: false,
+          acceptanceReady: false,
+          approvalReady: false,
+        })}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Repository confirmed: complete"');
+    expect(markup).toContain('aria-label="Implementation prompt ready: current"');
+    expect(markup).not.toContain("<small>");
   });
 
   it("does not repeat the Prompt Testing preparation tracker inside the focused prompt panel", () => {

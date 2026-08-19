@@ -110,6 +110,7 @@ export function EngineeringPreparationSteps({
         <li
           className={`engineering-preparation-step is-${step.state}`}
           aria-current={step.state === "current" ? "step" : undefined}
+          aria-label={`${step.label}: ${step.state}`}
           key={step.id}
         >
           <span className="engineering-preparation-step-icon" aria-hidden="true">
@@ -123,16 +124,7 @@ export function EngineeringPreparationSteps({
               <Circle size={18} />
             )}
           </span>
-          <span>
-            <small>
-              {step.state === "complete"
-                ? "Complete"
-                : step.state === "current"
-                  ? "Current"
-                  : "Upcoming"}
-            </small>
-            <strong>{step.label}</strong>
-          </span>
+          <strong>{step.label}</strong>
         </li>
       ))}
     </ol>
