@@ -7917,6 +7917,26 @@ pre.code-block {
   font-size: var(--text-xs);
 }
 
+.organization-switcher-close {
+  border: 0;
+  background: var(--surface);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.organization-switcher-close:hover {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+.organization-switcher-close:active {
+  background: var(--surface-pressed);
+  box-shadow: var(--shadow-inset-sm);
+  transform: translateY(0);
+}
+
 /* Legacy component rules use app-shell specificity. Keep these active controls
  * on the shared surface system without widening the override to native widgets
  * or feature-specific content. */

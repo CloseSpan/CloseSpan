@@ -390,6 +390,8 @@ export function OrganizationSwitcher({
   variant?: OrganizationSwitcherVariant;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const organizationMenuRef = useRef<HTMLDetailsElement>(null);
+  const organizationMenuTriggerRef = useRef<HTMLElement>(null);
   const organizationNameRef = useRef<HTMLInputElement>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -410,7 +412,40 @@ export function OrganizationSwitcher({
   const renameAllowed =
     canRenameWorkspace && activeOrganization?.role === "Admin";
 
+  function closeOrganizationMenu(restoreFocus = false): void {
+    const menu = organizationMenuRef.current;
+    if (!menu?.open) return;
+
+    menu.removeAttribute("open");
+    if (restoreFocus) organizationMenuTriggerRef.current?.focus();
+  }
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent): void {
+      const menu = organizationMenuRef.current;
+      const target = event.target;
+      if (!menu?.open || !(target instanceof Node) || menu.contains(target)) return;
+
+      closeOrganizationMenu();
+    }
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key !== "Escape" || !organizationMenuRef.current?.open) return;
+
+      event.preventDefault();
+      closeOrganizationMenu(true);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   function openCreateDialog(): void {
+    closeOrganizationMenu();
     dialogRef.current?.showModal();
     window.requestAnimationFrame(() => organizationNameRef.current?.focus());
   }
@@ -590,8 +625,9 @@ export function OrganizationSwitcher({
       <div
         className={`organization-switcher-control${renameAllowed ? " rename-enabled" : ""}`}
       >
-        <details>
+        <details ref={organizationMenuRef}>
           <summary
+            ref={organizationMenuTriggerRef}
             className="organization-switcher-trigger"
             aria-label={`Switch organization. Current organization: ${activeOrganization?.name ?? "Unknown"}`}
           >
@@ -613,6 +649,14 @@ export function OrganizationSwitcher({
                 <strong>Organizations</strong>
                 <small>Feedback stays separate</small>
               </span>
+              <button
+                className="organization-switcher-close"
+                type="button"
+                aria-label="Close organization menu"
+                onClick={() => closeOrganizationMenu(true)}
+              >
+                <X size={15} aria-hidden="true" />
+              </button>
             </div>
             <OrganizationOptions
               organizations={organizations}
