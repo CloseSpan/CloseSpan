@@ -21,6 +21,7 @@ vi.mock("./github-installation-repository", () => ({
 }));
 
 import { processGithubWebhook } from "./github-webhook-repository";
+import { GITHUB_ACTIONS_JOB_NOT_STARTED_MESSAGE } from "./runtime-verifier-errors";
 
 const deliveryId = "11111111-1111-4111-8111-111111111111";
 
@@ -305,12 +306,20 @@ describe("GitHub webhook persistence", () => {
         return { rows: [{ investigation_id: "investigation-1", status: "Queued" }], rowCount: 1 };
       return { rows: [], rowCount: 1 };
     });
-    github.createInstallationClient.mockResolvedValue({});
-    const diagnostic =
-      "GitHub did not start the verification because the Actions spending limit was reached.";
-    const errors = await import("./runtime-verifier-errors");
-    const diagnosticSpy = vi.spyOn(errors, "githubRuntimeVerificationFailureMessage")
-      .mockResolvedValueOnce(diagnostic);
+    github.createInstallationClient.mockResolvedValue({
+      rest: {
+        actions: {
+          listJobsForWorkflowRun: vi.fn().mockResolvedValue({
+            data: {
+              jobs: [{ id: 42, conclusion: "failure", runner_id: 0, steps: [] }],
+            },
+          }),
+        },
+        checks: {
+          listAnnotations: vi.fn().mockRejectedValue(new Error("Checks permission unavailable")),
+        },
+      },
+    });
 
     const result = await processGithubWebhook({
       deliveryId,
@@ -336,8 +345,7 @@ describe("GitHub webhook persistence", () => {
       sql(query).includes("UPDATE issue_runtime_verification_runs")
       && sql(query).includes("status='Failed'")
     );
-    expect(runUpdate?.[1]?.[3]).toBe(diagnostic);
-    diagnosticSpy.mockRestore();
+    expect(runUpdate?.[1]?.[3]).toBe(GITHUB_ACTIONS_JOB_NOT_STARTED_MESSAGE);
   });
 
   it("stops an approval-bound run when GitHub finishes before its callback", async () => {

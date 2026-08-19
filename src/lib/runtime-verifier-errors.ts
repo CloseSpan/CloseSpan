@@ -6,6 +6,9 @@ export const RUNTIME_VERIFIER_WORKFLOW_NOT_INSTALLED_MESSAGE =
 export const GITHUB_ACTIONS_BILLING_BLOCKED_MESSAGE =
   "GitHub did not start the verification because recent account payments failed or the Actions spending limit was reached. Resolve the payment or Actions budget in GitHub Billing & plans, then retry runtime verification.";
 
+export const GITHUB_ACTIONS_JOB_NOT_STARTED_MESSAGE =
+  "GitHub rejected the verification before assigning a runner. Check the GitHub Actions payment and spending limit first, then confirm a compatible runner is available and retry runtime verification.";
+
 const GITHUB_CONTENTS_NOT_FOUND_PATTERN =
   /Not Found\s*-?\s*https:\/\/docs\.github\.com\/rest\/repos\/contents#get-repository-content/i;
 
@@ -67,6 +70,14 @@ export async function githubRuntimeVerificationFailureMessage(
         // A GitHub App can read Actions without Checks access. Keep looking and
         // fall back to the workflow conclusion when annotations are unavailable.
       }
+    }
+    if (
+      failedJobs.length > 0
+      && failedJobs.every((job) =>
+        !job.runner_id && (!job.steps || job.steps.length === 0)
+      )
+    ) {
+      return GITHUB_ACTIONS_JOB_NOT_STARTED_MESSAGE;
     }
   } catch {
     // Reconciliation must remain reliable even when GitHub's diagnostics API is unavailable.

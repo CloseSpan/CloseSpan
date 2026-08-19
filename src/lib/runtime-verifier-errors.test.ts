@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Octokit } from "@octokit/rest";
 import {
   GITHUB_ACTIONS_BILLING_BLOCKED_MESSAGE,
+  GITHUB_ACTIONS_JOB_NOT_STARTED_MESSAGE,
   githubRuntimeVerificationFailureMessage,
 } from "./runtime-verifier-errors";
 
@@ -64,5 +65,36 @@ describe("GitHub runtime verifier diagnostics", () => {
       "zup",
       123,
     )).resolves.toBeNull();
+  });
+
+  it("detects a job GitHub rejected before runner assignment without Checks access", async () => {
+    const github = {
+      rest: {
+        actions: {
+          listJobsForWorkflowRun: vi.fn().mockResolvedValue({
+            data: {
+              jobs: [{
+                id: 42,
+                conclusion: "failure",
+                runner_id: 0,
+                steps: [],
+              }],
+            },
+          }),
+        },
+        checks: {
+          listAnnotations: vi.fn().mockRejectedValue(
+            Object.assign(new Error("Resource not accessible by integration"), { status: 403 }),
+          ),
+        },
+      },
+    } as unknown as Octokit;
+
+    await expect(githubRuntimeVerificationFailureMessage(
+      github,
+      "samshanmukh",
+      "zup",
+      123,
+    )).resolves.toBe(GITHUB_ACTIONS_JOB_NOT_STARTED_MESSAGE);
   });
 });
