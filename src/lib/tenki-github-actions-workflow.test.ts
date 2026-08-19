@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
   TENKI_RUNNER_SETUP_BRANCH,
@@ -5,6 +6,7 @@ import {
   TENKI_RUNNER_WORKFLOW_PATH,
   TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
   approveAndMergeTenkiRunnerWorkflow,
+  ensureCurrentTenkiRuntimeVerifierWorkflow,
   installTenkiRunnerWorkflow,
 } from "./tenki-github-actions-workflow";
 
@@ -189,6 +191,82 @@ describe("Tenki runner workflow installer", () => {
     expect(mock.createOrUpdateFileContents).not.toHaveBeenCalled();
     expect(mock.createPull).not.toHaveBeenCalled();
     expect(mock.updateRef).not.toHaveBeenCalled();
+  });
+});
+
+describe("managed runtime verifier synchronization", () => {
+  const expectedWorkflowHash = createHash("sha256")
+    .update(runtimeTemplate)
+    .digest("hex");
+
+  it("accepts the reviewed verifier without changing the repository", async () => {
+    const mock = github({ defaultRuntimeWorkflow: runtimeTemplate });
+    await expect(ensureCurrentTenkiRuntimeVerifierWorkflow({
+      installationId: "42",
+      repository: "acme/app",
+      defaultBranch: "main",
+      expectedWorkflowHash,
+    }, {
+      createClient: async () => mock.client as never,
+      runtimeTemplate,
+    })).resolves.toMatchObject({
+      status: "current",
+      baseSha,
+      workflowHash: expectedWorkflowHash,
+    });
+    expect(mock.createOrUpdateFileContents).not.toHaveBeenCalled();
+  });
+
+  it("updates an older CloseSpan-managed verifier before pinning the run", async () => {
+    let installed = managedV1;
+    const mock = github({ defaultRuntimeWorkflow: managedV1 });
+    mock.client.rest.repos.createOrUpdateFileContents = vi.fn().mockImplementation(async () => {
+      installed = runtimeTemplate;
+      return { data: {} };
+    });
+    mock.client.rest.git.getRef = vi.fn().mockResolvedValue({
+      data: { object: { sha: baseSha } },
+    });
+    mock.client.rest.repos.getContent = vi.fn().mockImplementation(async () => ({
+      data: {
+        type: "file",
+        encoding: "base64",
+        content: Buffer.from(installed).toString("base64"),
+        sha: "f".repeat(40),
+      },
+    }));
+
+    await expect(ensureCurrentTenkiRuntimeVerifierWorkflow({
+      installationId: "42",
+      repository: "acme/app",
+      defaultBranch: "main",
+      expectedWorkflowHash,
+    }, {
+      createClient: async () => mock.client as never,
+      runtimeTemplate,
+    })).resolves.toMatchObject({ status: "updated" });
+    expect(mock.client.rest.repos.createOrUpdateFileContents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
+        branch: "main",
+        sha: "f".repeat(40),
+        content: Buffer.from(runtimeTemplate).toString("base64"),
+      }),
+    );
+  });
+
+  it("refuses to overwrite a repository-owned verifier", async () => {
+    const mock = github({ defaultRuntimeWorkflow: "name: Custom verifier\n" });
+    await expect(ensureCurrentTenkiRuntimeVerifierWorkflow({
+      installationId: "42",
+      repository: "acme/app",
+      defaultBranch: "main",
+      expectedWorkflowHash,
+    }, {
+      createClient: async () => mock.client as never,
+      runtimeTemplate,
+    })).rejects.toThrow("repository-owned workflow");
+    expect(mock.createOrUpdateFileContents).not.toHaveBeenCalled();
   });
 });
 

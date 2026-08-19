@@ -231,6 +231,101 @@ export interface TenkiRunnerWorkflowMergeResult {
   githubActionsChecksPassed: number;
 }
 
+export interface CurrentTenkiRuntimeVerifierWorkflow {
+  status: "current" | "updated";
+  baseSha: string;
+  workflowHash: string;
+}
+
+/**
+ * Keep CloseSpan's runtime verifier current before pinning a verification run.
+ *
+ * Runtime verification must not dispatch an older validation contract after
+ * CloseSpan deploys a reviewed verifier update. The update is intentionally
+ * limited to the marked CloseSpan-managed runtime workflow; repository-owned
+ * workflow content continues to fail closed for manual review.
+ */
+export async function ensureCurrentTenkiRuntimeVerifierWorkflow(
+  input: {
+    installationId: string;
+    repository: string;
+    defaultBranch: string;
+    expectedWorkflowHash: string;
+  },
+  dependencies: {
+    createClient?: (installationId: string) => Promise<Octokit> | Octokit;
+    runtimeTemplate?: string;
+  } = {},
+): Promise<CurrentTenkiRuntimeVerifierWorkflow> {
+  const repository = repositoryParts(input.repository);
+  const github = dependencies.createClient
+    ? await dependencies.createClient(input.installationId)
+    : await createGithubInstallationClient(input.installationId);
+  const runtimeTemplate = dependencies.runtimeTemplate
+    ?? await tenkiRuntimeVerifierWorkflowTemplate();
+  const workflowHash = createHash("sha256")
+    .update(runtimeTemplate, "utf8")
+    .digest("hex");
+  if (workflowHash !== input.expectedWorkflowHash) {
+    throw new HttpError(409, "CloseSpan's runtime verifier identity changed before repository synchronization");
+  }
+
+  const currentState = async () => {
+    const ref = await github.rest.git.getRef({
+      ...repository,
+      ref: `heads/${input.defaultBranch}`,
+    });
+    const workflow = await repositoryFileState(
+      github,
+      repository,
+      ref.data.object.sha,
+      TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
+    );
+    return { baseSha: ref.data.object.sha, workflow };
+  };
+
+  let current = await currentState();
+  if (!current.workflow) {
+    throw new HttpError(409, "The CloseSpan runtime verifier workflow is not installed");
+  }
+  if (current.workflow.content === runtimeTemplate) {
+    return { status: "current", baseSha: current.baseSha, workflowHash };
+  }
+  if (!isCloseSpanManagedWorkflow(
+    TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
+    current.workflow.content,
+  )) {
+    throw new HttpError(
+      409,
+      `A repository-owned workflow exists at ${TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH}; review it manually before running verification`,
+    );
+  }
+
+  try {
+    await github.rest.repos.createOrUpdateFileContents({
+      ...repository,
+      path: TENKI_RUNTIME_VERIFIER_WORKFLOW_PATH,
+      message: "chore(closespan): update current-issue runtime verifier",
+      content: Buffer.from(runtimeTemplate, "utf8").toString("base64"),
+      branch: input.defaultBranch,
+      sha: current.workflow.sha,
+    });
+  } catch (error) {
+    // A concurrent retry may have completed the same managed update. Accept
+    // that exact reviewed result, but preserve every other GitHub failure.
+    if (githubStatus(error) !== 409 && githubStatus(error) !== 422) throw error;
+    current = await currentState();
+    if (current.workflow?.content !== runtimeTemplate) throw error;
+    return { status: "current", baseSha: current.baseSha, workflowHash };
+  }
+
+  current = await currentState();
+  if (current.workflow?.content !== runtimeTemplate) {
+    throw new HttpError(409, "GitHub did not install CloseSpan's reviewed runtime verifier");
+  }
+  return { status: "updated", baseSha: current.baseSha, workflowHash };
+}
+
 /**
  * Install or update the reviewed workflow without overwriting repository-owned content.
  *

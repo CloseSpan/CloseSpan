@@ -23,6 +23,7 @@ import {
 import { HttpError } from "./request-security";
 import { runtimeVerificationFailureMessage } from "./runtime-verifier-errors";
 import { assertTenkiRunnerWorkflowSetupInstalled } from "./tenki-runner-workflow-setup-repository";
+import { ensureCurrentTenkiRuntimeVerifierWorkflow } from "./tenki-github-actions-workflow";
 import { workspacePersistenceMode } from "./workspace-persistence";
 import {
   ISSUE_RUNTIME_VERIFICATION_JOB_TTL_MS,
@@ -417,6 +418,14 @@ export async function startIssueRuntimeVerification(input: {
   );
   if (!authorization) throw new HttpError(409, "The confirmed repository is no longer authorized");
   const github = await createGithubInstallationClient(authorization.installationId);
+  await ensureCurrentTenkiRuntimeVerifierWorkflow({
+    installationId: authorization.installationId,
+    repository: match.repository,
+    defaultBranch: authorization.executionBranch,
+    expectedWorkflowHash: input.workflowHash,
+  }, {
+    createClient: async () => github,
+  });
   const [owner, repo] = match.repository.split("/");
   const ref = await github.rest.git.getRef({ owner, repo, ref: `heads/${authorization.executionBranch}` });
   const baseSha = ref.data.object.sha.toLowerCase();
