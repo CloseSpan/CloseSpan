@@ -261,13 +261,69 @@ jobs:
           const fs = require("node:fs");
           const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-runtime-job.json", "utf8"));
           const reportPath = ".closespan-run/runtime-verification.json";
-          let report;
-          try { report = JSON.parse(fs.readFileSync(reportPath, "utf8")); }
-          catch { report = { schemaVersion: 1, runId: job.runId, baseSha: job.baseSha, outcome: "Verification blocked", summary: "The Tenki verification agent did not produce a valid runtime report.", expectedBehavior: "The reported product path should complete with the expected behavior.", actualBehavior: `Verifier outcome: ${process.env.CODEX_OUTCOME || "unknown"}.`, reproductionSteps: ["Attempted the repository-scoped runtime verification plan."], commands: [], observations: ["No parseable runtime report was produced."], artifacts: [] }; }
+          let source;
+          try { source = JSON.parse(fs.readFileSync(reportPath, "utf8")); }
+          catch { source = {}; }
+          if (!source || typeof source !== "object" || Array.isArray(source)) source = {};
+
           const allowed = new Set(["Confirmed current", "Not reproduced", "Verification blocked"]);
-          const strings = [report.summary, report.expectedBehavior, report.actualBehavior];
-          if (report.schemaVersion !== 1 || report.runId !== job.runId || report.baseSha !== job.baseSha || !allowed.has(report.outcome) || strings.some(value => typeof value !== "string" || !value.trim())) throw new Error("Runtime verification report failed identity or outcome validation");
-          if (!Array.isArray(report.reproductionSteps) || !report.reproductionSteps.length || !Array.isArray(report.commands) || !Array.isArray(report.observations) || !Array.isArray(report.artifacts)) throw new Error("Runtime verification report is incomplete");
+          const commandStatuses = new Set(["passed", "failed", "blocked"]);
+          const artifactKinds = new Set(["screenshot", "log", "test-report"]);
+          const notes = [];
+          const validText = (value, maximum, minimum = 1) => typeof value === "string" && value.trim().length >= minimum && value.trim().length <= maximum;
+          const text = (value, fallback, maximum, minimum = 1) => {
+            const candidate = typeof value === "string" ? value.trim() : "";
+            return (candidate.length >= minimum ? candidate : fallback).slice(0, maximum);
+          };
+          const stringList = (value, maximumItems, maximumLength) => Array.isArray(value)
+            ? value.filter(item => typeof item === "string" && item.trim()).map(item => item.trim().slice(0, maximumLength)).slice(0, maximumItems)
+            : [];
+          const hadValidIdentity = source.schemaVersion === 1 && source.runId === job.runId && source.baseSha === job.baseSha;
+          if (!hadValidIdentity) notes.push("immutable report identity was restored from the trusted job");
+          if (!allowed.has(source.outcome)) notes.push("invalid or missing outcome was replaced");
+          if (!validText(source.summary, 4000, 20)) notes.push("summary was missing or invalid");
+          if (!validText(source.expectedBehavior, 4000)) notes.push("expected behavior was missing or invalid");
+          if (!validText(source.actualBehavior, 4000)) notes.push("actual behavior was missing or invalid");
+          if (!Array.isArray(source.commands)) notes.push("commands were missing");
+          if (!Array.isArray(source.observations)) notes.push("observations were missing");
+          if (!Array.isArray(source.artifacts)) notes.push("artifacts were missing");
+
+          const reproductionSteps = stringList(source.reproductionSteps, 30, 2000);
+          if (!reproductionSteps.length) notes.push("reproduction steps were missing");
+
+          const report = {
+            schemaVersion: 1,
+            runId: job.runId,
+            baseSha: job.baseSha,
+            outcome: allowed.has(source.outcome) ? source.outcome : "Verification blocked",
+            summary: text(source.summary, "The runtime verifier did not produce a complete, decisive product result.", 4000, 20),
+            expectedBehavior: text(source.expectedBehavior, "The reported product path should complete with the expected behavior.", 4000),
+            actualBehavior: text(source.actualBehavior, `Verifier outcome: ${process.env.CODEX_OUTCOME || "unknown"}.`, 4000),
+            reproductionSteps,
+            commands: Array.isArray(source.commands) ? source.commands.filter(item => item && typeof item === "object" && typeof item.command === "string" && item.command.trim()).map(item => ({
+              command: item.command.trim().slice(0, 2000),
+              status: commandStatuses.has(item.status) ? item.status : "blocked",
+              output: typeof item.output === "string" ? item.output.slice(0, 20000) : "",
+              durationMs: Number.isInteger(item.durationMs) ? Math.max(0, Math.min(3600000, item.durationMs)) : 0,
+            })).slice(0, 30) : [],
+            observations: stringList(source.observations, 50, 4000),
+            artifacts: Array.isArray(source.artifacts) ? source.artifacts.filter(item => item && typeof item === "object" && typeof item.name === "string" && item.name.trim() && typeof item.path === "string" && item.path.trim() && artifactKinds.has(item.kind)).map(item => ({
+              name: item.name.trim().slice(0, 200),
+              path: item.path.trim().slice(0, 500),
+              kind: item.kind,
+            })).slice(0, 30) : [],
+          };
+          if (!report.reproductionSteps.length) {
+            report.reproductionSteps = ["Attempted the repository-scoped runtime verification plan."];
+          }
+          if (process.env.CODEX_OUTCOME !== "success") {
+            notes.push(`verification agent outcome was ${process.env.CODEX_OUTCOME || "unknown"}`);
+          }
+          if (notes.length) {
+            report.outcome = "Verification blocked";
+            report.summary = "The runtime verifier returned an incomplete report. CloseSpan preserved the available evidence and marked verification blocked.";
+            report.observations.push(`Trusted runner normalization: ${notes.join("; ")}.`);
+          }
           const changed = cp.execFileSync("git", ["status", "--short"], { encoding: "utf8" }).split("\n").filter(line => line && !line.includes(".closespan-run/"));
           if (changed.length) report.observations.push(`Ephemeral verifier changes (not pushed): ${changed.slice(0, 30).join(", ")}`);
           const xcode = cp.spawnSync("xcodebuild", ["-version"], { encoding: "utf8" });

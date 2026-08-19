@@ -172,6 +172,48 @@ describe("investigation workspace repository", () => {
     );
   });
 
+  it("creates decision-focused evidence requirements for a feature request", async () => {
+    database.query.mockImplementation(async (query: string) => {
+      if (query.includes("FROM product_problems problem")) {
+        return {
+          rows: [{
+            id: "prob-feature",
+            title: "Add more actions to the three-dot menu",
+            statement: "The three-dot menu should offer actions beyond Edit.",
+            summary: "A customer requested a broader menu.",
+            confidence: 0.81,
+            product_area: "Post menu",
+            suspected_files: [],
+            evidence_count: 1,
+            feedback_types: ["Feature request"],
+            feedback_quotes: ["Can we have more options in the menu?"],
+          }],
+        };
+      }
+      if (query.includes("INSERT INTO investigations")) {
+        return { rows: [{ id: "inv-feature" }] };
+      }
+      return { rows: [] };
+    });
+
+    await createAutomatedInvestigationForProblem("org-1", "prob-feature");
+
+    const insertCall = database.query.mock.calls.find(
+      ([query]) => String(query).includes("INSERT INTO investigations"),
+    );
+    expect(insertCall).toBeDefined();
+    const parameters = insertCall?.[1] as unknown[];
+    expect(JSON.parse(String(parameters[6]))).toEqual([
+      "The three-dot menu should offer actions beyond Edit.",
+    ]);
+    expect(JSON.parse(String(parameters[7]))).toEqual([
+      "Confirm the desired outcome and boundaries for “Add more actions to the three-dot menu”.",
+      "Define the acceptance criteria for the requested workflow.",
+    ]);
+    expect(String(parameters[7])).not.toContain("console error");
+    expect(String(parameters[7])).not.toContain("second independent customer report");
+  });
+
   it("records a tenant-scoped current-issue verification with audit evidence", async () => {
     database.query.mockImplementation(async (query: string) => {
       if (query.includes("UPDATE investigations investigation")) {

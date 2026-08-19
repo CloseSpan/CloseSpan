@@ -20,6 +20,7 @@ import {
   ArrowRightLeft,
   ArrowUp,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -114,6 +115,7 @@ import {
 } from "@/lib/issue-runtime-verification-policy";
 import type { IssueRuntimeVerificationRunView } from "@/lib/issue-runtime-verification";
 import { investigationStatusCopy } from "@/lib/investigation-status-copy";
+import { isProductCodeReference } from "@/lib/repository-path-policy";
 import type { FinalExecutionApprovalView } from "@/lib/final-execution-repository";
 import type {
   FeedbackType,
@@ -3101,6 +3103,134 @@ function InvestigationList({
   );
 }
 
+function uniqueInvestigationItems(items: string[]): string[] {
+  return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
+}
+
+const BUG_ONLY_EVIDENCE = /exact reproduction|expected result|failing trace|console error|request identifier|second independent customer report|internal reproduction/i;
+const REPOSITORY_TRACE_CHECK = /^(?:run or extend the nearest existing test at|trace the reported behavior through)\b/i;
+const INTERNAL_ASSUMPTION = /linked customer evidence belongs to the same product behavior|repository metadata is current/i;
+
+export function investigationDecisionContent({
+  feedbackType,
+  problemTitle,
+  evidenceToCollect,
+  recommendedChecks,
+  relevantCodePaths,
+  assumptions,
+}: {
+  feedbackType: FeedbackType;
+  problemTitle: string;
+  evidenceToCollect: string[];
+  recommendedChecks: string[];
+  relevantCodePaths: string[];
+  assumptions: string[];
+}) {
+  const featureDetails = [
+    `Confirm the desired outcome and boundaries for “${problemTitle}”.`,
+    "Define the acceptance criteria for the requested workflow.",
+  ];
+  const decisionEvidence = feedbackType === "Feature request"
+    ? evidenceToCollect.filter((item) => !BUG_ONLY_EVIDENCE.test(item))
+    : evidenceToCollect;
+
+  return {
+    detailsToConfirm: uniqueInvestigationItems([
+      ...decisionEvidence,
+      ...(feedbackType === "Feature request" ? featureDetails : []),
+    ]),
+    validationPlan: uniqueInvestigationItems(
+      recommendedChecks.filter((item) => !REPOSITORY_TRACE_CHECK.test(item)),
+    ),
+    productCodePaths: uniqueInvestigationItems(
+      relevantCodePaths.filter(isProductCodeReference),
+    ),
+    currentUnderstanding: uniqueInvestigationItems(
+      assumptions.filter((item) => !INTERNAL_ASSUMPTION.test(item)),
+    ),
+  };
+}
+
+function InvestigationTechnicalContext({ items }: { items: string[] }) {
+  const matchLabel = items.length
+    ? `${items.length} product code ${items.length === 1 ? "match" : "matches"}`
+    : "No product code matches yet";
+  return (
+    <details className="investigation-technical-context">
+      <summary>
+        <span>Technical context</span>
+        <span className="subtle">{matchLabel}</span>
+        <ChevronDown size={16} aria-hidden="true" />
+      </summary>
+      <div className="investigation-technical-context-body">
+        {items.length ? (
+          <ul className="investigation-list">
+            {items.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        ) : (
+          <p className="subtle">
+            Repository search has not found an application source file yet. Generated prompts,
+            documentation, and CloseSpan configuration are excluded.
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
+const INVESTIGATION_VERIFICATION_STATUS_OPTIONS = [
+  "Confirmed current",
+  "Not reproduced",
+  "Already resolved",
+  "Verification blocked",
+] satisfies readonly InvestigationVerificationStatus[];
+
+const INVESTIGATION_VERIFICATION_METHOD_OPTIONS = [
+  "Production telemetry",
+  "Release evidence",
+] satisfies readonly InvestigationVerificationMethod[];
+
+export function InvestigationVerificationFields({
+  verificationStatus,
+  verificationMethod,
+  onVerificationStatusChange,
+  onVerificationMethodChange,
+}: {
+  verificationStatus: InvestigationVerificationStatus;
+  verificationMethod: InvestigationVerificationMethod;
+  onVerificationStatusChange: (status: InvestigationVerificationStatus) => void;
+  onVerificationMethodChange: (method: InvestigationVerificationMethod) => void;
+}) {
+  return (
+    <>
+      <div className="field">
+        <span>Outcome</span>
+        <CustomSelect
+          ariaLabel="Outcome"
+          className="investigation-verification-select"
+          value={verificationStatus}
+          options={INVESTIGATION_VERIFICATION_STATUS_OPTIONS}
+          onValueChange={(value) => {
+            onVerificationStatusChange(value as InvestigationVerificationStatus);
+          }}
+        />
+      </div>
+      <div className="field">
+        <span>Verification method</span>
+        <CustomSelect
+          ariaLabel="Verification method"
+          className="investigation-verification-select"
+          value={verificationMethod}
+          options={INVESTIGATION_VERIFICATION_METHOD_OPTIONS}
+          onValueChange={(value) => {
+            onVerificationMethodChange(value as InvestigationVerificationMethod);
+          }}
+        />
+      </div>
+    </>
+  );
+}
+
 interface RepositoryContextRefreshSnapshot {
   repository: string;
   commitSha: string | null;
@@ -3164,6 +3294,16 @@ export function ProductProblemInvestigationPanel({
   const relevantCodePaths = evidenceBundle?.relevantCodePaths.length
     ? evidenceBundle.relevantCodePaths
     : investigation?.suspectedFiles ?? [];
+  const decisionContent = investigation
+    ? investigationDecisionContent({
+        feedbackType: problem.type,
+        problemTitle: problem.title,
+        evidenceToCollect,
+        recommendedChecks,
+        relevantCodePaths,
+        assumptions: investigation.assumptions,
+      })
+    : null;
   const runtimeEvidence = evidenceBundle?.runtimeVerification ?? null;
   const statusCopy = investigation
     ? investigationStatusCopy({
@@ -3448,14 +3588,14 @@ export function ProductProblemInvestigationPanel({
               <small>Customer reports linked to this problem</small>
             </div>
             <div>
-              <span>Evidence still needed</span>
-              <strong>{investigation ? evidenceToCollect.length : "—"}</strong>
-              <small>Open evidence gaps</small>
+              <span>Details to confirm</span>
+              <strong>{decisionContent ? decisionContent.detailsToConfirm.length : "—"}</strong>
+              <small>Open product decisions</small>
             </div>
             <div>
-              <span>Recommended checks</span>
-              <strong>{investigation ? recommendedChecks.length : "—"}</strong>
-              <small>Proposed, not completed</small>
+              <span>Validation checks</span>
+              <strong>{decisionContent ? decisionContent.validationPlan.length : "—"}</strong>
+              <small>Planned checks</small>
             </div>
           </section>
         )}
@@ -3528,12 +3668,31 @@ export function ProductProblemInvestigationPanel({
               )}
             </section>
 
-            <div className="investigation-detail-grid">
-              <InvestigationList title="Evidence to collect" items={evidenceToCollect} emptyLabel="No additional evidence gaps remain from this investigation." />
-              <InvestigationList title="Recommended checks" items={recommendedChecks} emptyLabel="No checks are recommended." />
-              <InvestigationList title={evidenceBundle?.contextStatus === "Exact commit" ? "Repository context matches" : "Suspected code paths"} items={relevantCodePaths} emptyLabel="No code paths are supported by the current evidence yet." />
-              <InvestigationList title="Working assumptions" items={investigation.assumptions} emptyLabel="No assumptions are recorded." />
-            </div>
+            {decisionContent && (
+              <>
+                <div className="investigation-detail-grid investigation-decision-grid">
+                  <InvestigationList
+                    title="Details to confirm"
+                    items={decisionContent.detailsToConfirm}
+                    emptyLabel="No product decisions remain open."
+                  />
+                  <InvestigationList
+                    title="Validation plan"
+                    items={decisionContent.validationPlan}
+                    emptyLabel="No validation checks are recommended."
+                  />
+                </div>
+
+                {decisionContent.currentUnderstanding.length > 0 && (
+                  <section className="investigation-current-understanding">
+                    <h3>Current understanding</h3>
+                    <p>{decisionContent.currentUnderstanding[0]}</p>
+                  </section>
+                )}
+
+                <InvestigationTechnicalContext items={decisionContent.productCodePaths} />
+              </>
+            )}
 
             <section className={`investigation-verification is-${verificationTone(investigation.verification.status)}`} aria-labelledby="issue-verification-title">
               <div className="investigation-verification-head">
@@ -3631,28 +3790,12 @@ export function ProductProblemInvestigationPanel({
 
               {editingVerification ? (
                 <form className="investigation-verification-form" onSubmit={saveVerification}>
-                  <label className="field">
-                    <span>Outcome</span>
-                    <select
-                      value={verificationStatus}
-                      onChange={(event) => setVerificationStatus(event.target.value as InvestigationVerificationStatus)}
-                    >
-                      <option value="Confirmed current">Confirmed current</option>
-                      <option value="Not reproduced">Not reproduced</option>
-                      <option value="Already resolved">Already resolved</option>
-                      <option value="Verification blocked">Verification blocked</option>
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>Verification method</span>
-                    <select
-                      value={verificationMethod}
-                      onChange={(event) => setVerificationMethod(event.target.value as InvestigationVerificationMethod)}
-                    >
-                      <option value="Production telemetry">Production telemetry</option>
-                      <option value="Release evidence">Release evidence</option>
-                    </select>
-                  </label>
+                  <InvestigationVerificationFields
+                    verificationStatus={verificationStatus}
+                    verificationMethod={verificationMethod}
+                    onVerificationStatusChange={setVerificationStatus}
+                    onVerificationMethodChange={setVerificationMethod}
+                  />
                   <label className="field investigation-verification-evidence">
                     <span>Observed evidence</span>
                     <textarea

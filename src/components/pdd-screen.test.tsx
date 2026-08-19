@@ -4,6 +4,8 @@ import { calculateOverviewAnalytics } from "@/lib/overview-analytics";
 import { primaryProblem, recommendation } from "@/lib/seed";
 import {
   GenericProblemScreen,
+  InvestigationVerificationFields,
+  investigationDecisionContent,
   PddPrioritizationScreen,
   PddScreen,
   ProductProblemInvestigationPanel,
@@ -47,6 +49,25 @@ describe("PddScreen", () => {
     },
     updatedAt: "2026-08-08T00:00:00.000Z",
   } as const;
+
+  it("uses neumorphic listboxes for external verification choices", () => {
+    const markup = renderToStaticMarkup(
+      <InvestigationVerificationFields
+        verificationStatus="Confirmed current"
+        verificationMethod="Production telemetry"
+        onVerificationStatusChange={vi.fn()}
+        onVerificationMethodChange={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain('class="custom-select investigation-verification-select"');
+    expect(markup.match(/aria-haspopup="listbox"/g)).toHaveLength(2);
+    expect(markup).toContain('aria-label="Outcome: Confirmed current"');
+    expect(markup).toContain('aria-label="Verification method: Production telemetry"');
+    expect(markup).toContain("Verification blocked");
+    expect(markup).toContain("Release evidence");
+    expect(markup).not.toContain("<select");
+  });
 
   it("starts at prompt preparation without repeating investigation details", () => {
     const markup = renderToStaticMarkup(
@@ -115,12 +136,12 @@ describe("PddScreen", () => {
 
     expect(markup).toContain("Investigation");
     expect(markup).toContain("Behavior confirmed · root cause unconfirmed");
-    expect(markup).toContain("Evidence to collect");
+    expect(markup).toContain("Details to confirm");
+    expect(markup).toContain("Validation plan");
     expect(markup).toContain("Recommended action");
     expect(markup).not.toContain("Investigation confidence");
     expect(markup).toContain("Related signals");
-    expect(markup).toContain("Evidence still needed");
-    expect(markup).toContain("Recommended checks");
+    expect(markup).toContain("Validation checks");
     expect(markup).toContain("initial report confidence");
     expect(markup).toContain("Continue to prompt");
     expect(markup).toContain(`/pdd/${primaryProblem.id}#engineering-ticket`);
@@ -171,11 +192,50 @@ describe("PddScreen", () => {
     expect(markup).toContain("Repository context");
     expect(markup).toContain("samshanmukh/zup@bbbbbbbbbbbb");
     expect(markup).toContain("Runtime commit");
-    expect(markup).toContain("Repository context matches");
+    expect(markup).toContain("Technical context");
     expect(markup).toContain("Zup/PostContextView.swift:40-72");
     expect(markup).toContain("Behavior confirmed · root cause unconfirmed");
     expect(markup).toContain("Capture the affected production configuration");
     expect(markup).not.toContain("Exact reproduction steps and the expected result");
+  });
+
+  it("distills feature requests into product decisions and hides internal repository artifacts", () => {
+    expect(investigationDecisionContent({
+      feedbackType: "Feature request",
+      problemTitle: "Add more actions to the three-dot menu",
+      evidenceToCollect: [
+        "Resolve the current runtime verification blocker, then rerun the same scenario to compare expected and actual behavior.",
+        "Exact reproduction steps and the expected result",
+        "A failing trace, console error, or request identifier",
+        "A second independent customer report or internal reproduction",
+      ],
+      recommendedChecks: [
+        "Trace the reported behavior through .prompt/tickets/request.md:26-73 and confirm the runtime branch before changing it.",
+        "Add an acceptance test for the expected user outcome",
+        "Verify the existing workflow remains backward compatible",
+      ],
+      relevantCodePaths: [
+        ".prompt/tickets/request.md:26-73",
+        ".github/skills/impeccable/reference/init.md:2-49",
+        "Zup/PostContextView.swift:40-72",
+      ],
+      assumptions: [
+        "The three-dot menu currently duplicates the Edit action.",
+        "The linked customer evidence belongs to the same product behavior.",
+      ],
+    })).toEqual({
+      detailsToConfirm: [
+        "Resolve the current runtime verification blocker, then rerun the same scenario to compare expected and actual behavior.",
+        "Confirm the desired outcome and boundaries for “Add more actions to the three-dot menu”.",
+        "Define the acceptance criteria for the requested workflow.",
+      ],
+      validationPlan: [
+        "Add an acceptance test for the expected user outcome",
+        "Verify the existing workflow remains backward compatible",
+      ],
+      productCodePaths: ["Zup/PostContextView.swift:40-72"],
+      currentUnderstanding: ["The three-dot menu currently duplicates the Edit action."],
+    });
   });
 
   it("explains a changed repository as a context refresh instead of an outage", () => {

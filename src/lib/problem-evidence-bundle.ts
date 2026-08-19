@@ -15,6 +15,7 @@ import {
   searchRepositoryContext,
   type RepositoryContextSearchResult,
 } from "./repository-context-repository";
+import { isProductCodeReference } from "./repository-path-policy";
 import { workspacePersistenceMode } from "./workspace-persistence";
 
 export interface RepositoryEvidenceMatch {
@@ -78,11 +79,6 @@ function pathReference(match: RepositoryEvidenceMatch): string {
 
 function testPath(path: string): boolean {
   return /(^|\/)(?:tests?|specs?|__tests__|[^/]+tests|[^/]+specs)(\/|$)|(?:^|\/)[^/]+\.(?:test|spec)\.[^.]+$/i.test(path);
-}
-
-function productSourcePath(path: string): boolean {
-  return !/^\.github\/workflows\/closespan-/i.test(path)
-    && !/^\.closespan(?:-run)?\//i.test(path);
 }
 
 function runtimeEvidence(
@@ -292,7 +288,7 @@ export async function getProductProblemEvidenceBundle(
       maxOutputLength: 32_000,
       excludePathPrefixes: CLOSESPAN_SYSTEM_PATH_PREFIXES,
     });
-    const matches = context.matches.filter((item) => productSourcePath(item.path)).slice(0, 5);
+    const matches = context.matches.filter((item) => isProductCodeReference(item.path)).slice(0, 5);
     const nearestTests = matches.filter((item) => testPath(item.path)).slice(0, 2);
     const sourceMatches = matches.filter((item) => !testPath(item.path)).slice(0, 2);
     const contextualChecks = [
@@ -349,17 +345,18 @@ export async function enrichPromptEvidence(input: {
     maxOutputLength: 20_000,
     excludePathPrefixes: CLOSESPAN_SYSTEM_PATH_PREFIXES,
   });
+  const productMatches = context.matches.filter((item) => isProductCodeReference(item.path));
   const report = parseRuntimeReport(row);
   return {
     ...input.evidence,
     suspectedFiles: unique([
-      ...context.matches.slice(0, 8).map((item) => item.path),
+      ...productMatches.slice(0, 8).map((item) => item.path),
       ...input.evidence.suspectedFiles,
     ]),
     repositoryContext: contextPromptEvidence({
       repository: input.ticket.repository,
       query,
-      context,
+      context: { ...context, matches: productMatches },
       capturedAt: new Date().toISOString(),
     }),
     runtimeVerification: report?.baseSha === input.ticket.baseSha.toLowerCase()

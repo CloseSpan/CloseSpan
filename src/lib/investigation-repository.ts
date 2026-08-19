@@ -149,11 +149,16 @@ function investigationCopy(row: InvestigationCandidateRow) {
   const feedbackTypes = stringArray(row.feedback_types);
   const isFeature = feedbackTypes.filter((type) => type === "Feature request").length
     > feedbackTypes.filter((type) => type === "Bug" || type === "Incident").length;
-  const missingInformation = [
-    "Exact reproduction steps and the expected result",
-    "A failing trace, console error, or request identifier",
-  ];
-  if (quotes.length < 2) {
+  const missingInformation = isFeature
+    ? [
+        `Confirm the desired outcome and boundaries for “${title}”.`,
+        "Define the acceptance criteria for the requested workflow.",
+      ]
+    : [
+        "Exact reproduction steps and the expected result",
+        "A failing trace, console error, or request identifier",
+      ];
+  if (!isFeature && quotes.length < 2) {
     missingInformation.push("A second independent customer report or internal reproduction");
   }
   return {
@@ -161,10 +166,12 @@ function investigationCopy(row: InvestigationCandidateRow) {
     hypothesis: isFeature
       ? `${title} reflects an unmet product need. The implementation scope is not yet confirmed.`
       : `${title} is consistent with a product defect, but the root cause is not yet confirmed.`,
-    assumptions: [
-      statement || summary || `The reported behavior is accurately represented by “${title}”.`,
-      "The linked customer evidence belongs to the same product behavior.",
-    ],
+    assumptions: isFeature
+      ? [statement || summary || `The requested outcome is accurately represented by “${title}”.`]
+      : [
+          statement || summary || `The reported behavior is accurately represented by “${title}”.`,
+          "The linked customer evidence belongs to the same product behavior.",
+        ],
     missingInformation,
     proposedAction: isFeature
       ? `Trace the current ${row.product_area || "product"} workflow, confirm the expected outcome, and identify the smallest repository-scoped change that satisfies it.`

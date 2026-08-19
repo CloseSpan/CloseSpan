@@ -15,8 +15,10 @@ export type RepositoryContextStatus =
 
 export const CLOSESPAN_SYSTEM_PATH_PREFIXES = [
   ".github/workflows/closespan-",
+  ".github/skills/",
   ".closespan/",
   ".closespan-run/",
+  ".prompt/",
 ] as const;
 
 export interface RepositoryContextSnapshot {
