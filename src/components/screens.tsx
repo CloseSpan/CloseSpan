@@ -488,13 +488,6 @@ function sentimentTone(
   return sentiment ? ` is-${sentiment.toLowerCase()}` : " is-unavailable";
 }
 
-function sentimentIntensityLabel(intensity: number | null): string | null {
-  if (intensity === null) return null;
-  if (intensity >= 0.67) return "Strong intensity";
-  if (intensity >= 0.34) return "Moderate intensity";
-  return "Low intensity";
-}
-
 export function classificationConfidenceLabel(confidence: number): string {
   return `${Math.round(confidence * 100)}% classification confidence`;
 }
@@ -559,6 +552,7 @@ export function FeedbackScreen({
   initialAnalyses = [],
   problemOptions = [],
   connectedPullSources = [],
+  initialOpenFeedbackId = null,
 }: {
   feedbackItems: FeedbackItem[];
   orgId: string;
@@ -571,8 +565,8 @@ export function FeedbackScreen({
     accountCount: number;
     manualPullAvailable: boolean;
   }>;
+  initialOpenFeedbackId?: string | null;
 }) {
-  const reduceMotion = useReducedMotion();
   const [query, setQuery] = useState("");
   const [source, setSource] = useState("All");
   const [severity, setSeverity] = useState("All");
@@ -580,7 +574,9 @@ export function FeedbackScreen({
   const [reportedOrder, setReportedOrder] =
     useState<FeedbackReportedOrder>("recent");
   const [selected, setSelected] = useState<string[]>([]);
-  const [openFeedbackId, setOpenFeedbackId] = useState<string | null>(null);
+  const [openFeedbackId, setOpenFeedbackId] = useState<string | null>(
+    initialOpenFeedbackId,
+  );
   const [advanced, setAdvanced] = useState(false);
   const [notice, setNotice] = useState<{
     kind: "success" | "error";
@@ -598,9 +594,7 @@ export function FeedbackScreen({
   const [reviewedProblems, setReviewedProblems] = useState<
     Record<string, { id: string; title: string; stage: string }>
   >({});
-  const feedbackDrawerRef = useRef<HTMLElement | null>(null);
-  const feedbackDrawerCloseRef = useRef<HTMLButtonElement | null>(null);
-  const feedbackDrawerTriggerRef = useRef<HTMLElement | null>(null);
+  const feedbackDetailTriggerRef = useRef<HTMLElement | null>(null);
   const router = useRouter();
   const visible = useMemo(
     () => {
@@ -637,45 +631,30 @@ export function FeedbackScreen({
   const openLinkedProblem = openFeedback
     ? reviewedProblems[openFeedback.id]
     : undefined;
+  const openFeedbackReportedAt = openFeedback
+    ? formatFeedbackReportedAt(openFeedback.observedAt)
+    : null;
   const proposedAnalyses = analyses.filter(
     (analysis) => analysis.reviewStatus === "Proposed",
   );
-  const feedbackDrawerOpen = Boolean(openFeedback);
-  useEffect(() => {
-    if (!feedbackDrawerOpen) return;
-    const drawer = feedbackDrawerRef.current;
-    if (!drawer) return;
-    const previousOverflow = document.body.style.overflow;
-    const previouslyFocused = feedbackDrawerTriggerRef.current;
-    const focusFrame = window.requestAnimationFrame(() => {
-      (feedbackDrawerCloseRef.current ?? getModalFocusableElements(drawer)[0] ?? drawer).focus({
-        preventScroll: true,
-      });
-    });
-    const handleDrawerKeyDown = (event: KeyboardEvent) => {
-      containModalFocus(event, drawer, () => setOpenFeedbackId(null));
-    };
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", handleDrawerKeyDown);
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleDrawerKeyDown);
-      if (previouslyFocused?.isConnected) {
-        window.requestAnimationFrame(() => {
-          previouslyFocused.focus({ preventScroll: true });
-        });
-      }
-    };
-  }, [feedbackDrawerOpen]);
   function openFeedbackDetails(feedbackId: string) {
     if (!openFeedbackId) {
-      feedbackDrawerTriggerRef.current =
+      feedbackDetailTriggerRef.current =
         document.activeElement instanceof HTMLElement
           ? document.activeElement
           : null;
     }
     setOpenFeedbackId(feedbackId);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function closeFeedbackDetails() {
+    const previouslyFocused = feedbackDetailTriggerRef.current;
+    setOpenFeedbackId(null);
+    if (previouslyFocused?.isConnected) {
+      window.requestAnimationFrame(() => {
+        previouslyFocused.focus({ preventScroll: true });
+      });
+    }
   }
   function toggle(id: string) {
     setSelected((value) =>
@@ -931,6 +910,276 @@ export function FeedbackScreen({
       </>
     );
   }
+  if (openFeedback) {
+    const linkedProblemId = openLinkedProblem?.id ?? openFeedback.problemId;
+    const linkedProblemTitle = openLinkedProblem?.title
+      ?? (linkedProblemId ? problemById.get(linkedProblemId)?.title : undefined)
+      ?? "Linked product problem";
+    return (
+      <section
+        className="feedback-detail-page"
+        id={`feedback-detail-${openFeedback.id}`}
+        aria-labelledby="feedback-detail-title"
+      >
+        <header className="feedback-detail-page-header">
+          <button
+            type="button"
+            className="btn feedback-detail-back"
+            onClick={closeFeedbackDetails}
+          >
+            <ChevronLeft size={15} /> Feedback inbox
+          </button>
+          <nav className="feedback-detail-pagination" aria-label="Browse feedback">
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Previous feedback"
+              disabled={openFeedbackIndex <= 0}
+              onClick={() => setOpenFeedbackId(visible[openFeedbackIndex - 1]?.id ?? null)}
+            >
+              <ChevronLeft size={17} />
+            </button>
+            <span>
+              {openFeedbackIndex >= 0
+                ? `${openFeedbackIndex + 1} of ${visible.length}`
+                : "Filtered item"}
+            </span>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Next feedback"
+              disabled={openFeedbackIndex < 0 || openFeedbackIndex >= visible.length - 1}
+              onClick={() => setOpenFeedbackId(visible[openFeedbackIndex + 1]?.id ?? null)}
+            >
+              <ChevronRight size={17} />
+            </button>
+          </nav>
+        </header>
+
+        {notice && (
+          <p className={`toast ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
+            {notice.text}
+          </p>
+        )}
+
+        <div className="feedback-detail-page-title">
+          <IntegrationProviderIcon
+            integrationId={
+              openFeedback.source === "Zendesk"
+                ? "int_zendesk"
+                : openFeedback.source === "Intercom"
+                  ? "int_intercom"
+                  : openFeedback.source === "Slack"
+                    ? "int_slack"
+                    : "int_webhook"
+            }
+          />
+          <div>
+            <h1 id="feedback-detail-title">{openFeedback.customer}</h1>
+            <p>
+              {openFeedback.source}
+              {openFeedbackReportedAt?.date ? ` · Reported ${openFeedbackReportedAt.date}` : ""}
+            </p>
+          </div>
+          <span className="badge">
+            {openAnalysis?.classification ?? openFeedback.type}
+          </span>
+        </div>
+
+        <div className="feedback-detail-page-layout">
+          <main className="feedback-detail-page-main">
+            <section className="feedback-detail-primary" aria-labelledby="customer-feedback-title">
+              <h2 id="customer-feedback-title">Customer feedback</h2>
+              <blockquote>{openFeedback.quote}</blockquote>
+            </section>
+
+            {openAnalysis ? (
+              <section className="feedback-detail-recommendation" aria-labelledby="feedback-recommendation-title">
+                <header>
+                  <h2 id="feedback-recommendation-title">CloseSpan recommendation</h2>
+                  <span className={`badge ${openAnalysis.reviewStatus === "Approved" ? "success" : "brand"}`}>
+                    {openAnalysis.reviewStatus === "Proposed"
+                      ? classificationConfidenceLabel(openAnalysis.classificationConfidence)
+                      : openAnalysis.reviewStatus}
+                  </span>
+                </header>
+                <p className="feedback-detail-recommendation-summary">
+                  {openAnalysis.redactedSummary}
+                </p>
+                {openAnalysis.proposedProblemId && openAnalysis.reviewStatus === "Proposed" && (
+                  <p className="feedback-detail-suggested-problem">
+                    Suggested match · {problemById.get(openAnalysis.proposedProblemId)?.title ?? "Existing product problem"}
+                    <span>{Math.round(openAnalysis.clusterConfidence * 100)}% confidence</span>
+                  </p>
+                )}
+                <details className="feedback-detail-disclosure">
+                  <summary>Why CloseSpan made this recommendation</summary>
+                  <div>
+                    <p>{openAnalysis.rationale}</p>
+                    {openAnalysis.evidence.length > 0 && (
+                      <ul>
+                        {openAnalysis.evidence.map((evidence) => (
+                          <li key={evidence}>{evidence}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </details>
+              </section>
+            ) : (
+              <section className="feedback-detail-recommendation feedback-detail-recommendation-empty">
+                <h2>No recommendation yet</h2>
+                <p>Analyze this signal when you are ready to classify it and check for a related product problem.</p>
+              </section>
+            )}
+          </main>
+
+          <aside className="feedback-detail-page-aside" aria-labelledby="signal-overview-title">
+            <section className="feedback-detail-overview">
+              <h2 id="signal-overview-title">Signal overview</h2>
+              <dl>
+                <div>
+                  <dt>Severity</dt>
+                  <dd>{openAnalysis?.severity ?? openFeedback.severity}</dd>
+                </div>
+                <div>
+                  <dt>Sentiment</dt>
+                  <dd>
+                    {openAnalysis?.sentiment ? (
+                      <span className={`badge feedback-sentiment${sentimentTone(openAnalysis.sentiment)}`}>
+                        {openAnalysis.sentiment}
+                      </span>
+                    ) : (
+                      "Not analyzed"
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Privacy</dt>
+                  <dd>{openFeedback.redacted ? "PII redacted" : "PII scan clear"}</dd>
+                </div>
+                <div>
+                  <dt>Problem</dt>
+                  <dd>
+                    {linkedProblemId ? (
+                      <Link className="text-link" href={`/problems/${linkedProblemId}#evidence`}>
+                        {linkedProblemTitle}
+                      </Link>
+                    ) : (
+                      "Not linked"
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <details className="feedback-detail-disclosure feedback-detail-more-facts">
+                <summary>More signal details</summary>
+                <dl>
+                  <div>
+                    <dt>Received</dt>
+                    <dd>
+                      {openFeedbackReportedAt?.date ?? "Date unavailable"}
+                      {openFeedbackReportedAt?.time ? ` · ${openFeedbackReportedAt.time}` : ""}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Source</dt>
+                    <dd>{openFeedback.source}</dd>
+                  </div>
+                  <div>
+                    <dt>Account</dt>
+                    <dd>{openFeedback.accountTier}</dd>
+                  </div>
+                  <div>
+                    <dt>Source context</dt>
+                    <dd>{openFeedback.environment}</dd>
+                  </div>
+                </dl>
+              </details>
+            </section>
+          </aside>
+        </div>
+
+        <footer className="feedback-detail-page-actions">
+          {linkedProblemId ? (
+            <Link className="btn primary" href={`/problems/${linkedProblemId}#evidence`}>
+              Open {linkedProblemTitle} <ChevronRight size={14} />
+            </Link>
+          ) : openAnalysis?.reviewStatus === "Proposed" ? (
+            <div className="feedback-detail-review">
+              <div className="field">
+                <span>Review destination</span>
+                <CustomSelect
+                  ariaLabel="Review destination"
+                  value={reviewProblemByFeedback[openFeedback.id] ?? openAnalysis.proposedProblemId ?? "__new__"}
+                  onValueChange={(value) =>
+                    setReviewProblemByFeedback((current) => ({
+                      ...current,
+                      [openFeedback.id]: value,
+                    }))
+                  }
+                  options={[
+                    { value: "__new__", label: "Create a new product problem" },
+                    ...(openAnalysis.proposedProblemId && !problemOptions.some((problem) => problem.id === openAnalysis.proposedProblemId)
+                      ? [{
+                          value: openAnalysis.proposedProblemId,
+                          label: `Suggested problem · ${openAnalysis.proposedProblemId}`,
+                        }]
+                      : []),
+                    ...problemOptions
+                      .filter((problem) => problem.stage !== "Closed")
+                      .map((problem) => ({
+                        value: problem.id,
+                        label: `${problem.id === openAnalysis.proposedProblemId ? "Suggested · " : ""}${problem.title}`,
+                      })),
+                  ]}
+                />
+              </div>
+              <div className="feedback-detail-review-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={reviewBusyId === openFeedback.id}
+                  onClick={() => void reviewAnalysis(openFeedback.id, "reject")}
+                >
+                  Reject proposal
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={reviewBusyId === openFeedback.id}
+                  onClick={() => void reviewAnalysis(openFeedback.id, "approve")}
+                >
+                  {reviewBusyId === openFeedback.id
+                    ? "Saving review…"
+                    : (reviewProblemByFeedback[openFeedback.id] ?? openAnalysis.proposedProblemId ?? "__new__") === "__new__"
+                      ? "Approve & create problem"
+                      : "Approve & link problem"}
+                </button>
+              </div>
+            </div>
+          ) : openAnalysis?.reviewStatus === "Rejected" ? (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy}
+              onClick={() => void classify([openFeedback.id])}
+            >
+              <Sparkles size={14} /> {busy ? "Analyzing…" : "Analyze again"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy}
+              onClick={() => void classify([openFeedback.id])}
+            >
+              <Sparkles size={14} /> {busy ? "Analyzing…" : `Analyze with ${providerLabel}`}
+            </button>
+          )}
+        </footer>
+      </section>
+    );
+  }
   return (
     <>
       <PageTitle
@@ -1118,8 +1367,6 @@ export function FeedbackScreen({
                       <button
                         type="button"
                         className="feedback-expand-button"
-                        aria-expanded={openFeedbackId === item.id}
-                        aria-controls={`feedback-detail-${item.id}`}
                         onClick={() => openFeedbackDetails(item.id)}
                       >
                         View details <ChevronRight size={13} />
@@ -1219,291 +1466,6 @@ export function FeedbackScreen({
           </div>
         )}
       </section>
-      <AnimatePresence initial={false}>
-      {openFeedback && (
-        <motion.div
-          key={openFeedback.id}
-          className="feedback-drawer-layer"
-          role="presentation"
-          initial={reduceMotion ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) setOpenFeedbackId(null);
-          }}
-        >
-          <motion.aside
-            ref={feedbackDrawerRef}
-            className="feedback-drawer"
-            id={`feedback-detail-${openFeedback.id}`}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="feedback-detail-title"
-            tabIndex={-1}
-            initial={reduceMotion ? false : { x: 28, opacity: 0.72 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 28, opacity: 0.72 }}
-            transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
-          >
-            <header className="feedback-drawer-head">
-              <IntegrationProviderIcon
-                integrationId={
-                  openFeedback.source === "Zendesk"
-                    ? "int_zendesk"
-                    : openFeedback.source === "Intercom"
-                      ? "int_intercom"
-                      : openFeedback.source === "Slack"
-                        ? "int_slack"
-                        : "int_webhook"
-                }
-              />
-              <div>
-                <span>{openFeedback.source} feedback</span>
-                <h2 id="feedback-detail-title">{openFeedback.customer}</h2>
-              </div>
-              <button
-                ref={feedbackDrawerCloseRef}
-                type="button"
-                className="icon-button"
-                aria-label="Close feedback details"
-                onClick={() => setOpenFeedbackId(null)}
-              >
-                <X size={18} />
-              </button>
-            </header>
-
-            <div className="feedback-drawer-body">
-              <section className="feedback-detail-section">
-                <div className="feedback-detail-label">Full feedback</div>
-                <blockquote className="feedback-full-message">
-                  {openFeedback.quote}
-                </blockquote>
-              </section>
-
-              <dl className="feedback-detail-grid">
-                <div>
-                  <dt>Received</dt>
-                  <dd>{openFeedback.observedAt}</dd>
-                </div>
-                <div>
-                  <dt>Source</dt>
-                  <dd>{openFeedback.source}</dd>
-                </div>
-                <div>
-                  <dt>Type</dt>
-                  <dd>{openAnalysis?.classification ?? openFeedback.type}</dd>
-                </div>
-                <div>
-                  <dt>Severity</dt>
-                  <dd>{openAnalysis?.severity ?? openFeedback.severity}</dd>
-                </div>
-                <div>
-                  <dt>Account</dt>
-                  <dd>{openFeedback.accountTier}</dd>
-                </div>
-                <div>
-                  <dt>Privacy</dt>
-                  <dd>{openFeedback.redacted ? "PII redacted" : "PII scan clear"}</dd>
-                </div>
-                <div className="feedback-detail-wide feedback-detail-sentiment">
-                  <dt>Sentiment</dt>
-                  <dd>
-                    {openAnalysis?.sentiment ? (
-                      <>
-                        <span className={`badge feedback-sentiment${sentimentTone(openAnalysis.sentiment)}`}>
-                          {openAnalysis.sentiment}
-                        </span>
-                        <span className="feedback-sentiment-detail">
-                          {[
-                            sentimentIntensityLabel(openAnalysis.sentimentIntensity),
-                            openAnalysis.sentimentConfidence === null
-                              ? null
-                              : `${Math.round(openAnalysis.sentimentConfidence * 100)}% sentiment confidence`,
-                          ].filter(Boolean).join(" · ")}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="subtle">Not analyzed</span>
-                    )}
-                  </dd>
-                </div>
-                <div className="feedback-detail-wide">
-                  <dt>Source context</dt>
-                  <dd>{openFeedback.environment}</dd>
-                </div>
-              </dl>
-
-              {openAnalysis && (
-                <section className="feedback-detail-section feedback-analysis-card">
-                  <div className="split">
-                    <div>
-                      <div className="feedback-detail-label">AI recommendation</div>
-                      <h3>{openAnalysis.redactedSummary}</h3>
-                    </div>
-                    <span className={`badge ${openAnalysis.reviewStatus === "Approved" ? "success" : "brand"}`}>
-                      {openAnalysis.reviewStatus === "Proposed"
-                        ? classificationConfidenceLabel(openAnalysis.classificationConfidence)
-                        : openAnalysis.reviewStatus}
-                    </span>
-                  </div>
-                  <p>{openAnalysis.rationale}</p>
-                  {openAnalysis.evidence.length > 0 && (
-                    <ul>
-                      {openAnalysis.evidence.map((evidence) => (
-                        <li key={evidence}>{evidence}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {openAnalysis.proposedProblemId && openAnalysis.reviewStatus === "Proposed" && (
-                    <div className="feedback-proposed-match">
-                      <span>Suggested existing problem</span>
-                      <strong>{openAnalysis.proposedProblemId}</strong>
-                      <small>{Math.round(openAnalysis.clusterConfidence * 100)}% proposed match · human review required</small>
-                    </div>
-                  )}
-                </section>
-              )}
-
-              <section className="feedback-journey" aria-labelledby="feedback-journey-title">
-                <div>
-                  <div className="feedback-detail-label">Workflow</div>
-                  <h3 id="feedback-journey-title">Where this feedback goes</h3>
-                </div>
-                <ol>
-                  <li className="done">
-                    <span><Check size={12} /></span>
-                    <div><strong>Feedback collected</strong><small>Stored in the shared inbox from {openFeedback.source}.</small></div>
-                  </li>
-                  <li className={openAnalysis || openFeedback.problemId ? "done" : "current"}>
-                    <span>{openAnalysis || openFeedback.problemId ? <Check size={12} /> : "2"}</span>
-                    <div><strong>Analyze the signal</strong><small>Classify it and look for a matching product problem.</small></div>
-                  </li>
-                  <li className={openFeedback.problemId || openLinkedProblem || (openAnalysis && openAnalysis.reviewStatus !== "Proposed") ? "done" : openAnalysis ? "current" : "future"}>
-                    <span>{openFeedback.problemId || openLinkedProblem || (openAnalysis && openAnalysis.reviewStatus !== "Proposed") ? <Check size={12} /> : "3"}</span>
-                    <div>
-                      <strong>Review the product problem</strong>
-                      <small>
-                        {openAnalysis?.reviewStatus === "Rejected"
-                          ? "The proposal was rejected; this signal remains unclustered."
-                          : openFeedback.problemId || openLinkedProblem
-                            ? "A person approved this feedback-to-problem link."
-                            : "A person confirms the evidence before any action is taken."}
-                      </small>
-                    </div>
-                  </li>
-                  <li className="future">
-                    <span>4</span>
-                    <div><strong>Approve an engineering action</strong><small>Approved work can then route to GitHub and follow-up.</small></div>
-                  </li>
-                </ol>
-              </section>
-            </div>
-
-            <footer className="feedback-drawer-footer">
-              <div className="feedback-drawer-navigation" aria-label="Browse feedback">
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={openFeedbackIndex <= 0}
-                  onClick={() => setOpenFeedbackId(visible[openFeedbackIndex - 1]?.id ?? null)}
-                >
-                  <ChevronLeft size={14} /> Previous
-                </button>
-                <span>{openFeedbackIndex >= 0 ? `${openFeedbackIndex + 1} of ${visible.length}` : "Filtered item"}</span>
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={openFeedbackIndex < 0 || openFeedbackIndex >= visible.length - 1}
-                  onClick={() => setOpenFeedbackId(visible[openFeedbackIndex + 1]?.id ?? null)}
-                >
-                  Next <ChevronRight size={14} />
-                </button>
-              </div>
-              {openLinkedProblem || openFeedback.problemId ? (
-                <Link className="btn primary full-width" href={`/problems/${openLinkedProblem?.id ?? openFeedback.problemId}#evidence`}>
-                  Open linked product problem <ChevronRight size={14} />
-                </Link>
-              ) : openAnalysis?.reviewStatus === "Proposed" ? (
-                <div className="feedback-review-actions">
-                  <div className="field">
-                    <span>Review destination</span>
-                    <CustomSelect
-                      ariaLabel="Review destination"
-                      value={reviewProblemByFeedback[openFeedback.id] ?? openAnalysis.proposedProblemId ?? "__new__"}
-                      onValueChange={(value) =>
-                        setReviewProblemByFeedback((current) => ({
-                          ...current,
-                          [openFeedback.id]: value,
-                        }))
-                      }
-                      options={[
-                        { value: "__new__", label: "Create a new product problem" },
-                        ...(openAnalysis.proposedProblemId && !problemOptions.some((problem) => problem.id === openAnalysis.proposedProblemId)
-                          ? [{
-                              value: openAnalysis.proposedProblemId,
-                              label: `Suggested problem · ${openAnalysis.proposedProblemId}`,
-                            }]
-                          : []),
-                        ...problemOptions
-                          .filter((problem) => problem.stage !== "Closed")
-                          .map((problem) => ({
-                            value: problem.id,
-                            label: `${problem.id === openAnalysis.proposedProblemId ? "Suggested · " : ""}${problem.title}`,
-                          })),
-                      ]}
-                    />
-                  </div>
-                  <p>
-                    Approval creates a reviewed evidence link. Choose “Create” when this is a new problem, or select an existing problem to add the signal there.
-                  </p>
-                  <div>
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={reviewBusyId === openFeedback.id}
-                      onClick={() => void reviewAnalysis(openFeedback.id, "reject")}
-                    >
-                      Reject proposal
-                    </button>
-                    <button
-                      type="button"
-                      className="btn primary"
-                      disabled={reviewBusyId === openFeedback.id}
-                      onClick={() => void reviewAnalysis(openFeedback.id, "approve")}
-                    >
-                      {reviewBusyId === openFeedback.id
-                        ? "Saving review…"
-                        : (reviewProblemByFeedback[openFeedback.id] ?? openAnalysis.proposedProblemId ?? "__new__") === "__new__"
-                          ? "Approve & create problem"
-                          : "Approve & link problem"}
-                    </button>
-                  </div>
-                </div>
-              ) : openAnalysis?.reviewStatus === "Rejected" ? (
-                <button
-                  type="button"
-                  className="btn primary full-width"
-                  disabled={busy}
-                  onClick={() => void classify([openFeedback.id])}
-                >
-                  <Sparkles size={14} /> {busy ? "Analyzing..." : "Analyze again"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn primary full-width"
-                  disabled={busy}
-                  onClick={() => void classify([openFeedback.id])}
-                >
-                  <Sparkles size={14} /> {busy ? "Analyzing..." : `Analyze this signal with ${providerLabel}`}
-                </button>
-              )}
-            </footer>
-          </motion.aside>
-        </motion.div>
-      )}
-      </AnimatePresence>
     </>
   );
 }
@@ -3318,6 +3280,8 @@ export function ProductProblemInvestigationPanel({
   const runtimeVerificationActive = runtimeVerification?.status === "Queued"
     || runtimeVerification?.status === "Running";
   const runtimeVerificationQueued = runtimeVerification?.status === "Queued";
+  const runtimeRunnerUnavailable = runtimeVerification?.status === "Failed"
+    && runtimeVerification.failureMessage?.startsWith("Runner unavailable.");
   const runtimeTiming = runtimeVerification
     ? runtimeVerificationElapsedLabel(runtimeVerification, runtimeClock)
     : null;
@@ -3703,7 +3667,7 @@ export function ProductProblemInvestigationPanel({
                 <span className={`badge ${runtimeVerificationActive ? "medium" : verificationTone(investigation.verification.status)}`}>
                   {runtimeVerificationActive
                     ? runtimeVerification?.status === "Queued" ? "Queued for Tenki" : "Running on Tenki"
-                    : investigation.verification.status}
+                    : runtimeRunnerUnavailable ? "Runner unavailable" : investigation.verification.status}
                 </span>
               </div>
 
@@ -3717,6 +3681,8 @@ export function ProductProblemInvestigationPanel({
                     ? runtimeVerificationQueued
                       ? "Waiting for a Tenki runner"
                       : "Testing the current product runtime"
+                    : runtimeRunnerUnavailable
+                      ? "Runner unavailable"
                     : runtimeVerification
                       ? runtimeVerification.outcome ?? "Runtime verification finished"
                       : "Verify in the product runtime"}</strong>

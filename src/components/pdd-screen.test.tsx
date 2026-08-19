@@ -366,7 +366,7 @@ describe("PddScreen", () => {
       requestedAt: "2026-08-12T10:00:00.000Z",
       startedAt: null,
     }, Date.parse("2026-08-12T10:02:30.000Z"))).toBe(
-      "Queued for 2m 30s · timeout in 12m 30s",
+      "Queued for 2m 30s · timeout in 2m 30s",
     );
     expect(runtimeVerificationElapsedLabel({
       status: "Running",
@@ -379,14 +379,15 @@ describe("PddScreen", () => {
 
   it("offers a retry after automated runtime verification times out", () => {
     const problem = analytics.problems.find((item) => item.id === primaryProblem.id)!;
+    const timeoutMessage = "Runner unavailable. Tenki did not assign the configured verification runner within 5 minutes, so CloseSpan stopped the verification and requested cancellation of its GitHub workflow. Confirm the runner is available, then retry.";
     const timedOut = {
       ...investigation,
       verification: {
         status: "Verification blocked" as const,
         method: "Automated check" as const,
-        summary: "Tenki did not start this verification within 15 minutes. Confirm the runner is online, then retry.",
-        actorName: "CloseSpan timeout reconciler",
-        verifiedAt: "2026-08-12T10:15:00.000Z",
+        summary: timeoutMessage,
+        actorName: "Tenki runtime verifier",
+        verifiedAt: "2026-08-12T10:05:00.000Z",
       },
       runtimeVerification: {
         id: "22222222-2222-4222-8222-222222222222",
@@ -394,12 +395,12 @@ describe("PddScreen", () => {
         outcome: "Verification blocked" as const,
         repository: "samshanmukh/zup",
         baseSha: "b".repeat(40),
-        summary: "Tenki did not start this verification within 15 minutes. Confirm the runner is online, then retry.",
-        failureMessage: "Tenki did not start this verification within 15 minutes. Confirm the runner is online, then retry.",
+        summary: timeoutMessage,
+        failureMessage: timeoutMessage,
         requestedByName: "Shanmukh Sain",
         requestedAt: "2026-08-12T10:00:00.000Z",
         startedAt: null,
-        completedAt: "2026-08-12T10:15:00.000Z",
+        completedAt: "2026-08-12T10:05:00.000Z",
         workflowRunId: null,
       },
     };
@@ -409,7 +410,8 @@ describe("PddScreen", () => {
     );
 
     expect(markup).toContain("Retry runtime verification");
-    expect(markup).toContain("Confirm the runner is online, then retry.");
+    expect(markup).toContain("Runner unavailable");
+    expect(markup).toContain("requested cancellation of its GitHub workflow");
     expect(markup).not.toContain("Verification in progress");
   });
 

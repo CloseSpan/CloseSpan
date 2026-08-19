@@ -136,4 +136,43 @@ describe("FeedbackScreen sentiment", () => {
       time: null,
     });
   });
+
+  it("renders feedback details as a focused page instead of a modal drawer", () => {
+    const item = feedback[0];
+    const markup = renderToStaticMarkup(
+      <FeedbackScreen
+        feedbackItems={[item]}
+        orgId={item.orgId}
+        providerLabel="OpenAI"
+        initialOpenFeedbackId={item.id}
+        initialAnalyses={[{
+          feedbackId: item.id,
+          classification: "Feature request",
+          severity: "Low",
+          sentiment: "Neutral",
+          sentimentIntensity: 0.2,
+          sentimentConfidence: 0.89,
+          sentimentEvidence: [],
+          sentimentRationale: "The request is neutral in tone.",
+          redactedSummary: "Add more useful actions to the three-dot menu.",
+          proposedProblemId: null,
+          classificationConfidence: 0.96,
+          clusterConfidence: 0,
+          rationale: "The customer asks for expanded menu functionality.",
+          evidence: ["The current menu duplicates the existing edit action."],
+          reviewStatus: "Approved",
+        }]}
+      />,
+    );
+
+    expect(markup).toContain('class="feedback-detail-page"');
+    expect(markup).toContain("Feedback inbox");
+    expect(markup).toContain("Customer feedback");
+    expect(markup).toContain("Signal overview");
+    expect(markup).toContain("More signal details");
+    expect(markup).toContain("Why CloseSpan made this recommendation");
+    expect(markup).not.toContain("feedback-drawer-layer");
+    expect(markup).not.toContain('role="dialog"');
+    expect(markup).not.toContain("Where this feedback goes");
+  });
 });

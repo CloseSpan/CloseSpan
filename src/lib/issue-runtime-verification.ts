@@ -124,9 +124,39 @@ interface StaleRuntimeRunRow {
   id: string;
   org_id: string;
   investigation_id: string;
+  repository: string;
+  installation_id: string;
+  workflow_run_id: string | number | null;
+  status: "Queued" | "Running";
   summary: string;
+  requested_at: Date | string;
   started_at: Date | string | null;
 }
+
+interface RuntimeVerificationReconciliationDependencies {
+  createGithubClient: typeof createGithubInstallationClient;
+}
+
+const runtimeVerificationReconciliationDependencies: RuntimeVerificationReconciliationDependencies = {
+  createGithubClient: createGithubInstallationClient,
+};
+
+interface ActiveRuntimeRunReference {
+  id: string;
+  orgId: string;
+  repository: string;
+  installationId: string;
+  status: "Queued" | "Running";
+  workflowRunId: number | null;
+  requestedAt: string;
+  startedAt: string | null;
+}
+
+type RuntimeReconciliationResult =
+  | "none"
+  | "runner-assigned"
+  | "queued-timeout"
+  | "running-timeout";
 
 export const issueRuntimeVerificationReportSchema = z.object({
   schemaVersion: z.literal(1),
@@ -243,9 +273,198 @@ function runView(row: RuntimeRunRow): IssueRuntimeVerificationRunView {
   };
 }
 
+async function findRuntimeVerificationWorkflowRun(
+  run: ActiveRuntimeRunReference,
+  dependencies: RuntimeVerificationReconciliationDependencies,
+) {
+  const [owner, repo] = run.repository.split("/");
+  if (!owner || !repo) return null;
+  const github = await dependencies.createGithubClient(run.installationId);
+  if (run.workflowRunId) {
+    const response = await github.rest.actions.getWorkflowRun({
+      owner,
+      repo,
+      run_id: run.workflowRunId,
+    });
+    return { github, owner, repo, workflowRun: response.data };
+  }
+  const response = await github.rest.actions.listWorkflowRuns({
+    owner,
+    repo,
+    workflow_id: ".github/workflows/closespan-runtime-verifier.yml",
+    event: "workflow_dispatch",
+    per_page: 30,
+  });
+  const workflowRun = response.data.workflow_runs.find(
+    (candidate) => candidate.display_title === `CloseSpan verification ${run.id}`,
+  );
+  return workflowRun ? { github, owner, repo, workflowRun } : null;
+}
+
+async function requestGithubWorkflowCancellation(input: {
+  github: Awaited<ReturnType<typeof createGithubInstallationClient>>;
+  owner: string;
+  repo: string;
+  workflowRunId: number;
+  runId: string;
+}): Promise<void> {
+  try {
+    await input.github.rest.actions.cancelWorkflowRun({
+      owner: input.owner,
+      repo: input.repo,
+      run_id: input.workflowRunId,
+    });
+  } catch (error) {
+    console.error("Runtime verification GitHub cancellation failed", {
+      runId: input.runId,
+      workflowRunId: input.workflowRunId,
+      message: error instanceof Error ? error.message : "Unknown cancellation failure",
+    });
+  }
+}
+
+function githubJobHasAssignedRunner(job: {
+  runner_id?: number | null;
+  runner_name?: string | null;
+  status?: string | null;
+  steps?: unknown[] | null;
+}): boolean {
+  return Boolean(
+    job.runner_id
+    || job.runner_name?.trim()
+    || job.status === "in_progress"
+    || (job.steps?.length ?? 0) > 0,
+  );
+}
+
+async function reconcileActiveRuntimeVerification(
+  run: ActiveRuntimeRunReference,
+  now: Date,
+  dependencies: RuntimeVerificationReconciliationDependencies,
+): Promise<RuntimeReconciliationResult> {
+  const resolved = await findRuntimeVerificationWorkflowRun(run, dependencies);
+  const runningSince = new Date(run.startedAt ?? run.requestedAt).getTime();
+  const runningTimedOut = run.status === "Running"
+    && now.getTime() - runningSince >= ISSUE_RUNTIME_VERIFICATION_RUNNING_TIMEOUT_MS;
+
+  if (runningTimedOut) {
+    const workflowRunId = resolved?.workflowRun.id ?? run.workflowRunId ?? undefined;
+    const failed = await failIssueRuntimeVerification(
+      run.orgId,
+      run.id,
+      ISSUE_RUNTIME_VERIFICATION_RUNNING_TIMEOUT_MESSAGE,
+      workflowRunId,
+    );
+    if (failed && resolved && resolved.workflowRun.status !== "completed") {
+      await requestGithubWorkflowCancellation({
+        github: resolved.github,
+        owner: resolved.owner,
+        repo: resolved.repo,
+        workflowRunId: resolved.workflowRun.id,
+        runId: run.id,
+      });
+    }
+    return failed ? "running-timeout" : "none";
+  }
+
+  if (!resolved) {
+    if (
+      run.status === "Queued"
+      && now.getTime() - new Date(run.requestedAt).getTime()
+        >= ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MS
+    ) {
+      const failed = await failIssueRuntimeVerification(
+        run.orgId,
+        run.id,
+        ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MESSAGE,
+      );
+      return failed ? "queued-timeout" : "none";
+    }
+    return "none";
+  }
+
+  const { github, owner, repo, workflowRun } = resolved;
+  if (workflowRun.status === "completed") {
+    const conclusion = workflowRun.conclusion?.replaceAll("_", " ") ?? "without a result";
+    const diagnostic = workflowRun.conclusion === "success"
+      ? null
+      : await githubRuntimeVerificationFailureMessage(github, owner, repo, workflowRun.id);
+    await failIssueRuntimeVerification(
+      run.orgId,
+      run.id,
+      diagnostic ?? (workflowRun.conclusion === "success"
+        ? "GitHub Actions completed, but CloseSpan did not receive the runtime verification result. Review the GitHub run, then retry."
+        : `GitHub Actions ${conclusion} before CloseSpan received a runtime verification result. Review the GitHub run, correct the failure, then retry.`),
+      workflowRun.id,
+    );
+    return "none";
+  }
+
+  const jobsResponse = await github.rest.actions.listJobsForWorkflowRun({
+    owner,
+    repo,
+    run_id: workflowRun.id,
+    per_page: 100,
+  });
+  const verificationJob = jobsResponse.data.jobs.find(
+    (job) => job.name === "Reproduce reported issue",
+  );
+  const verificationRunnerAssigned = verificationJob
+    ? githubJobHasAssignedRunner(verificationJob)
+    : false;
+
+  if (verificationRunnerAssigned) {
+    await databasePool().query(
+      `UPDATE issue_runtime_verification_runs
+          SET workflow_run_id=coalesce(workflow_run_id,$3),status='Running',
+              started_at=coalesce(started_at,now()),updated_at=now()
+        WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running')`,
+      [run.orgId, run.id, workflowRun.id],
+    );
+    return "runner-assigned";
+  }
+
+  await databasePool().query(
+    `UPDATE issue_runtime_verification_runs
+        SET workflow_run_id=coalesce(workflow_run_id,$3),updated_at=now()
+      WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running')`,
+    [run.orgId, run.id, workflowRun.id],
+  );
+
+  const queueTimedOut = run.status === "Queued"
+    && now.getTime() - new Date(run.requestedAt).getTime()
+      >= ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MS;
+  if (!queueTimedOut) return "none";
+
+  const bootstrapJob = jobsResponse.data.jobs.find(
+    (job) => job.name === "Fetch immutable verification job",
+  );
+  const bootstrapStillRunning = bootstrapJob?.status === "in_progress"
+    && githubJobHasAssignedRunner(bootstrapJob);
+  if (!verificationJob && bootstrapStillRunning) return "none";
+
+  const failed = await failIssueRuntimeVerification(
+    run.orgId,
+    run.id,
+    ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MESSAGE,
+    workflowRun.id,
+  );
+  if (failed) {
+    await requestGithubWorkflowCancellation({
+      github,
+      owner,
+      repo,
+      workflowRunId: workflowRun.id,
+      runId: run.id,
+    });
+  }
+  return failed ? "queued-timeout" : "none";
+}
+
 export async function reconcileStaleIssueRuntimeVerifications(
   orgId?: string,
   now = new Date(),
+  dependencies: RuntimeVerificationReconciliationDependencies = runtimeVerificationReconciliationDependencies,
 ): Promise<{ queuedTimedOut: number; runningTimedOut: number }> {
   const queuedBefore = new Date(
     now.getTime() - ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MS,
@@ -253,73 +472,47 @@ export async function reconcileStaleIssueRuntimeVerifications(
   const runningBefore = new Date(
     now.getTime() - ISSUE_RUNTIME_VERIFICATION_RUNNING_TIMEOUT_MS,
   );
+  const candidates = await databasePool().query<StaleRuntimeRunRow>(
+    `SELECT id,org_id,investigation_id,repository,installation_id::text,
+            workflow_run_id,status,coalesce(summary,'') AS summary,
+            requested_at,started_at
+       FROM issue_runtime_verification_runs
+      WHERE ($1::text IS NULL OR org_id=$1)
+        AND (
+          (status='Queued' AND requested_at < $2::timestamptz)
+          OR
+          (status='Running' AND COALESCE(started_at,requested_at) < $3::timestamptz)
+        )
+      ORDER BY requested_at
+      LIMIT 100`,
+    [orgId ?? null, queuedBefore.toISOString(), runningBefore.toISOString()],
+  );
 
-  return transaction(async (client) => {
-    const result = await client.query<StaleRuntimeRunRow>(
-      `UPDATE issue_runtime_verification_runs
-          SET status='Failed',outcome='Verification blocked',
-              summary=CASE WHEN status='Queued' THEN $4 ELSE $5 END,
-              failure_message=CASE WHEN status='Queued' THEN $4 ELSE $5 END,
-              completed_at=now(),updated_at=now()
-        WHERE ($1::text IS NULL OR org_id=$1)
-          AND (
-            (status='Queued' AND requested_at < $2::timestamptz)
-            OR
-            (status='Running' AND COALESCE(started_at,requested_at) < $3::timestamptz)
-          )
-        RETURNING id,org_id,investigation_id,summary,started_at`,
-      [
-        orgId ?? null,
-        queuedBefore.toISOString(),
-        runningBefore.toISOString(),
-        ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MESSAGE,
-        ISSUE_RUNTIME_VERIFICATION_RUNNING_TIMEOUT_MESSAGE,
-      ],
-    );
-
-    for (const run of result.rows) {
-      await client.query(
-        `UPDATE investigations
-            SET verification_status='Verification blocked',
-                verification_method='Automated check',verification_summary=$3,
-                verification_actor_id='system:tenki-runtime-verifier',
-                verification_actor_name='CloseSpan timeout reconciler',
-                verified_at=now(),updated_at=now()
-          WHERE org_id=$1 AND id=$2`,
-        [run.org_id, run.investigation_id, run.summary],
-      );
-      await client.query(
-        `INSERT INTO audit_events(
-           id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
-         ) VALUES(
-           $1,$2,'system:tenki-runtime-verifier','CloseSpan timeout reconciler',
-           $3,'Investigation',$4,$5
-         )`,
-        [
-          randomUUID(),
-          run.org_id,
-          `Timed out runtime verification. ${run.summary}`,
-          run.investigation_id,
-          run.id,
-        ],
-      );
+  let queuedTimedOut = 0;
+  let runningTimedOut = 0;
+  for (const run of candidates.rows) {
+    try {
+      const result = await reconcileActiveRuntimeVerification({
+        id: run.id,
+        orgId: run.org_id,
+        repository: run.repository,
+        installationId: run.installation_id,
+        status: run.status,
+        workflowRunId: run.workflow_run_id === null ? null : Number(run.workflow_run_id),
+        requestedAt: iso(run.requested_at)!,
+        startedAt: iso(run.started_at),
+      }, now, dependencies);
+      if (result === "queued-timeout") queuedTimedOut += 1;
+      if (result === "running-timeout") runningTimedOut += 1;
+    } catch (error) {
+      console.error("Runtime verification timeout reconciliation failed", {
+        runId: run.id,
+        message: error instanceof Error ? error.message : "Unknown reconciliation failure",
+      });
     }
+  }
 
-    const affectedOrganizations = [...new Set(result.rows.map((run) => run.org_id))];
-    if (affectedOrganizations.length) {
-      await client.query(
-        `UPDATE workspaces
-            SET version=version+1,updated_at=now()
-          WHERE org_id=ANY($1::text[])`,
-        [affectedOrganizations],
-      );
-    }
-
-    return {
-      queuedTimedOut: result.rows.filter((run) => run.started_at === null).length,
-      runningTimedOut: result.rows.filter((run) => run.started_at !== null).length,
-    };
-  });
+  return { queuedTimedOut, runningTimedOut };
 }
 
 function verificationPrompt(input: {
@@ -585,10 +778,10 @@ export async function failIssueRuntimeVerification(
   runId: string,
   message: string,
   workflowRunId?: number,
-): Promise<void> {
+): Promise<boolean> {
   const summary = runtimeVerificationFailureMessage(message)?.slice(0, 2_000)
     || "The Tenki runtime verifier failed before it produced decisive evidence.";
-  await transaction(async (client) => {
+  return transaction(async (client) => {
     const result = await client.query<{ investigation_id: string }>(
       `UPDATE issue_runtime_verification_runs
           SET status='Failed',outcome='Verification blocked',summary=$3,failure_message=$3,
@@ -598,7 +791,7 @@ export async function failIssueRuntimeVerification(
       [orgId, runId, summary, workflowRunId ?? null],
     );
     const investigationId = result.rows[0]?.investigation_id;
-    if (!investigationId) return;
+    if (!investigationId) return false;
     await client.query(
       `UPDATE investigations SET verification_status='Verification blocked',
               verification_method='Automated check',verification_summary=$3,
@@ -607,66 +800,36 @@ export async function failIssueRuntimeVerification(
         WHERE org_id=$1 AND id=$2`,
       [orgId, investigationId, summary],
     );
+    await client.query(
+      `INSERT INTO audit_events(id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id)
+       VALUES($1,$2,'system:tenki-runtime-verifier','Tenki runtime verifier',$3,'Investigation',$4,$5)`,
+      [randomUUID(), orgId, summary, investigationId, runId],
+    );
+    await client.query(
+      "UPDATE workspaces SET version=version+1,updated_at=now() WHERE org_id=$1",
+      [orgId],
+    );
+    return true;
   });
 }
 
 export async function reconcileIssueRuntimeVerificationFromGithub(
   context: IssueRuntimeVerificationContext,
   current: IssueRuntimeVerificationRunView,
+  now = new Date(),
+  dependencies: RuntimeVerificationReconciliationDependencies = runtimeVerificationReconciliationDependencies,
 ): Promise<void> {
   if (current.status !== "Queued" && current.status !== "Running") return;
-  const github = await createGithubInstallationClient(context.installationId);
-  const [owner, repo] = context.repository.split("/");
-  if (!owner || !repo) return;
-  let workflowRun: {
-    id: number;
-    status: string | null;
-    conclusion: string | null;
-  } | undefined;
-  if (current.workflowRunId) {
-    const response = await github.rest.actions.getWorkflowRun({
-      owner,
-      repo,
-      run_id: current.workflowRunId,
-    });
-    workflowRun = response.data;
-  } else {
-    const response = await github.rest.actions.listWorkflowRuns({
-      owner,
-      repo,
-      workflow_id: ".github/workflows/closespan-runtime-verifier.yml",
-      event: "workflow_dispatch",
-      per_page: 30,
-    });
-    workflowRun = response.data.workflow_runs.find(
-      (run) => run.display_title === `CloseSpan verification ${context.runId}`,
-    );
-  }
-  if (!workflowRun) return;
-  if (workflowRun.status === "completed") {
-    const conclusion = workflowRun.conclusion?.replaceAll("_", " ") ?? "without a result";
-    const diagnostic = workflowRun.conclusion === "success"
-      ? null
-      : await githubRuntimeVerificationFailureMessage(github, owner, repo, workflowRun.id);
-    await failIssueRuntimeVerification(
-      context.orgId,
-      context.runId,
-      diagnostic ?? (workflowRun.conclusion === "success"
-        ? "GitHub Actions completed, but CloseSpan did not receive the runtime verification result. Review the GitHub run, then retry."
-        : `GitHub Actions ${conclusion} before CloseSpan received a runtime verification result. Review the GitHub run, correct the failure, then retry.`),
-      workflowRun.id,
-    );
-    return;
-  }
-  await databasePool().query(
-    `UPDATE issue_runtime_verification_runs
-        SET workflow_run_id=coalesce(workflow_run_id,$3),
-            status=CASE WHEN $4='in_progress' AND status='Queued' THEN 'Running' ELSE status END,
-            started_at=CASE WHEN $4='in_progress' THEN coalesce(started_at,now()) ELSE started_at END,
-            updated_at=now()
-      WHERE org_id=$1 AND id=$2 AND status IN ('Queued','Running')`,
-    [context.orgId, context.runId, workflowRun.id, workflowRun.status],
-  );
+  await reconcileActiveRuntimeVerification({
+    id: context.runId,
+    orgId: context.orgId,
+    repository: context.repository,
+    installationId: context.installationId,
+    status: current.status,
+    workflowRunId: current.workflowRunId,
+    requestedAt: current.requestedAt,
+    startedAt: current.startedAt,
+  }, now, dependencies);
 }
 
 export async function completeIssueRuntimeVerification(
