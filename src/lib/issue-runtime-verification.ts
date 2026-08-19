@@ -21,7 +21,10 @@ import {
   searchRepositoryContext,
 } from "./repository-context-repository";
 import { HttpError } from "./request-security";
-import { runtimeVerificationFailureMessage } from "./runtime-verifier-errors";
+import {
+  githubRuntimeVerificationFailureMessage,
+  runtimeVerificationFailureMessage,
+} from "./runtime-verifier-errors";
 import { assertTenkiRunnerWorkflowSetupInstalled } from "./tenki-runner-workflow-setup-repository";
 import { ensureCurrentTenkiRuntimeVerifierWorkflow } from "./tenki-github-actions-workflow";
 import { workspacePersistenceMode } from "./workspace-persistence";
@@ -642,12 +645,15 @@ export async function reconcileIssueRuntimeVerificationFromGithub(
   if (!workflowRun) return;
   if (workflowRun.status === "completed") {
     const conclusion = workflowRun.conclusion?.replaceAll("_", " ") ?? "without a result";
+    const diagnostic = workflowRun.conclusion === "success"
+      ? null
+      : await githubRuntimeVerificationFailureMessage(github, owner, repo, workflowRun.id);
     await failIssueRuntimeVerification(
       context.orgId,
       context.runId,
-      workflowRun.conclusion === "success"
+      diagnostic ?? (workflowRun.conclusion === "success"
         ? "GitHub Actions completed, but CloseSpan did not receive the runtime verification result. Review the GitHub run, then retry."
-        : `GitHub Actions ${conclusion} before CloseSpan received a runtime verification result. Review the GitHub run, correct the failure, then retry.`,
+        : `GitHub Actions ${conclusion} before CloseSpan received a runtime verification result. Review the GitHub run, correct the failure, then retry.`),
       workflowRun.id,
     );
     return;

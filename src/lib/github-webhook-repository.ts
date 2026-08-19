@@ -1,8 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { databasePool, transaction } from "./db";
-import { verifyGithubInstallation, type VerifiedGithubInstallation } from "./github-app-auth";
+import {
+  createGithubInstallationClient,
+  verifyGithubInstallation,
+  type VerifiedGithubInstallation,
+} from "./github-app-auth";
 import { syncGithubInstallationRecords } from "./github-installation-repository";
+import { githubRuntimeVerificationFailureMessage } from "./runtime-verifier-errors";
 import {
   recordGithubDeploymentStatus,
   type GithubDeploymentPayload,
@@ -401,6 +406,7 @@ async function reconcileRuntimeVerificationWorkflow(
   action: string | null,
   payload: GithubWebhookPayload,
   deliveryId: string,
+  resolvedFailureMessage: string | null,
 ): Promise<string> {
   const workflow = payload.workflow_run;
   if (action !== "completed" || workflow?.name !== "CloseSpan current-issue verifier") {
@@ -446,9 +452,9 @@ async function reconcileRuntimeVerificationWorkflow(
   const conclusion = typeof workflow.conclusion === "string"
     ? workflow.conclusion.replaceAll("_", " ")
     : "without a result";
-  const message = workflow.conclusion === "success"
+  const message = resolvedFailureMessage ?? (workflow.conclusion === "success"
     ? "GitHub Actions completed, but CloseSpan did not receive the runtime verification result. Review the GitHub run, then retry."
-    : `GitHub Actions ${conclusion} before CloseSpan received a runtime verification result. Review the GitHub run, correct the failure, then retry.`;
+    : `GitHub Actions ${conclusion} before CloseSpan received a runtime verification result. Review the GitHub run, correct the failure, then retry.`);
   await client.query(
     `UPDATE issue_runtime_verification_runs
         SET status='Failed',outcome='Verification blocked',summary=$4,failure_message=$4,
@@ -503,6 +509,7 @@ async function processWorkspaceEvent(
   action: string | null,
   input: GithubWebhookInput,
   verified: VerifiedGithubInstallation | null,
+  runtimeFailureMessage: string | null,
 ): Promise<string> {
   if (input.event === "installation" && (action === "deleted" || action === "suspend"))
     return deactivateInstallation(client, orgId, id, action, input.deliveryId);
@@ -528,6 +535,7 @@ async function processWorkspaceEvent(
       action,
       input.payload,
       input.deliveryId,
+      runtimeFailureMessage,
     );
   }
   if (input.event === "deployment_status")
@@ -558,6 +566,36 @@ export async function processGithubWebhook(
     ),
   );
   if (shouldSynchronize && id) verified = await verifyGithubInstallation(id);
+
+  let runtimeFailureMessage: string | null = null;
+  const workflow = input.payload.workflow_run;
+  const repository = input.payload.repository?.full_name;
+  if (
+    id
+    && orgIds.length > 0
+    && input.event === "workflow_run"
+    && action === "completed"
+    && workflow?.name === "CloseSpan current-issue verifier"
+    && workflow.conclusion !== "success"
+    && typeof workflow.id === "number"
+    && Number.isSafeInteger(workflow.id)
+    && typeof repository === "string"
+  ) {
+    const [owner, repo] = repository.split("/");
+    if (owner && repo) {
+      try {
+        const github = await createGithubInstallationClient(id);
+        runtimeFailureMessage = await githubRuntimeVerificationFailureMessage(
+          github,
+          owner,
+          repo,
+          workflow.id,
+        );
+      } catch {
+        // The webhook still records a terminal result when GitHub diagnostics are unavailable.
+      }
+    }
+  }
 
   return transaction(async (client) => {
     const inserted = await client.query(
@@ -592,6 +630,7 @@ export async function processGithubWebhook(
           action,
           input,
           verified,
+          runtimeFailureMessage,
         );
         await recordWorkspaceOutcome(client, input.deliveryId, orgId, workspaceOutcome);
         workspaceOutcomes.push(workspaceOutcome);

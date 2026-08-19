@@ -5,14 +5,17 @@ const database = vi.hoisted(() => ({
   pool: { query: vi.fn() },
   transaction: vi.fn(),
 }));
-const github = vi.hoisted(() => ({ verify: vi.fn() }));
+const github = vi.hoisted(() => ({ verify: vi.fn(), createInstallationClient: vi.fn() }));
 const installation = vi.hoisted(() => ({ sync: vi.fn() }));
 
 vi.mock("./db", () => ({
   databasePool: () => database.pool,
   transaction: database.transaction,
 }));
-vi.mock("./github-app-auth", () => ({ verifyGithubInstallation: github.verify }));
+vi.mock("./github-app-auth", () => ({
+  createGithubInstallationClient: github.createInstallationClient,
+  verifyGithubInstallation: github.verify,
+}));
 vi.mock("./github-installation-repository", () => ({
   syncGithubInstallationRecords: installation.sync,
 }));
@@ -37,6 +40,7 @@ describe("GitHub webhook persistence", () => {
       async (work: (client: typeof database.client) => Promise<unknown>) => work(database.client),
     );
     github.verify.mockReset();
+    github.createInstallationClient.mockReset().mockRejectedValue(new Error("diagnostics unavailable"));
     installation.sync.mockReset().mockResolvedValue(undefined);
   });
 
@@ -283,6 +287,57 @@ describe("GitHub webhook persistence", () => {
     expect(database.client.query.mock.calls.some(([query]) =>
       sql(query).includes("UPDATE investigations") && sql(query).includes("Verification blocked"),
     )).toBe(true);
+  });
+
+  it("records the GitHub diagnostic when a runtime verification never starts", async () => {
+    const runId = "13f4610c-942a-45fa-b475-11e6fe560625";
+    database.pool.query.mockImplementation(async (query: unknown) =>
+      sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
+        ? { rows: [], rowCount: 0 }
+        : sql(query).includes("FROM github_app_installations")
+          ? { rows: [{ org_id: "org-1" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 },
+    );
+    database.client.query.mockImplementation(async (query: unknown) => {
+      if (sql(query).includes("INSERT INTO github_webhook_deliveries"))
+        return { rows: [{ delivery_id: deliveryId }], rowCount: 1 };
+      if (sql(query).includes("FROM issue_runtime_verification_runs run"))
+        return { rows: [{ investigation_id: "investigation-1", status: "Queued" }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+    github.createInstallationClient.mockResolvedValue({});
+    const diagnostic =
+      "GitHub did not start the verification because the Actions spending limit was reached.";
+    const errors = await import("./runtime-verifier-errors");
+    const diagnosticSpy = vi.spyOn(errors, "githubRuntimeVerificationFailureMessage")
+      .mockResolvedValueOnce(diagnostic);
+
+    const result = await processGithubWebhook({
+      deliveryId,
+      event: "workflow_run",
+      rawBody: '{"action":"completed"}',
+      payload: {
+        action: "completed",
+        installation: { id: 150109806 },
+        repository: { full_name: "samshanmukh/zup" },
+        workflow_run: {
+          id: 31746217439,
+          name: "CloseSpan current-issue verifier",
+          display_title: `CloseSpan verification ${runId}`,
+          status: "completed",
+          conclusion: "failure",
+          head_sha: "a".repeat(40),
+        },
+      },
+    });
+
+    expect(result.outcome).toBe("runtime_verification_failed_from_github_workflow");
+    const runUpdate = database.client.query.mock.calls.find(([query]) =>
+      sql(query).includes("UPDATE issue_runtime_verification_runs")
+      && sql(query).includes("status='Failed'")
+    );
+    expect(runUpdate?.[1]?.[3]).toBe(diagnostic);
+    diagnosticSpy.mockRestore();
   });
 
   it("stops an approval-bound run when GitHub finishes before its callback", async () => {
