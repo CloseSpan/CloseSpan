@@ -278,7 +278,8 @@ export async function refreshProblemRepositoryMatch(
           assignment.active_profile_id,
           assignment.detected_profile_id
         )
-      WHERE allowlist.org_id=$1 AND allowlist.active=true
+      WHERE allowlist.org_id=$1
+        AND allowlist.active=true AND allowlist.workspace_selected=true
       ORDER BY allowlist.repository,assignment.workspace_root`,
     [orgId],
   );
@@ -341,6 +342,7 @@ export async function getActiveConfirmedProblemRepositoryMatch(
          ON allowlist.org_id=match.org_id
         AND allowlist.repository=match.repository
         AND allowlist.active=true
+        AND allowlist.workspace_selected=true
        JOIN execution_profile_assignments assignment
          ON assignment.org_id=match.org_id
         AND assignment.repository=match.repository
@@ -430,6 +432,7 @@ export async function confirmProblemRepositoryMatch(input: {
           AND assignment.workspace_root=$3
         WHERE allowlist.org_id=$1 AND allowlist.repository=$2
           AND allowlist.active=true
+          AND allowlist.workspace_selected=true
         FOR UPDATE OF assignment`,
       [input.orgId, profile.repository, profile.workspaceRoot],
     );

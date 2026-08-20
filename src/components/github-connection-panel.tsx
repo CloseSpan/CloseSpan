@@ -40,8 +40,13 @@ export function GithubConnectionPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
+  const [selectorOpen, setSelectorOpen] = useState(
+    initialRepositories.every((repository) => !repository.workspaceSelected),
+  );
   const activeInstallations = installations.filter((installation) => installation.active);
-  const activeRepositories = repositories.filter((repository) => repository.active);
+  const selectedActiveRepositories = repositories.filter(
+    (repository) => repository.active && repository.workspaceSelected,
+  );
 
   async function connectRepository() {
     if (busy || !canManage) return;
@@ -117,6 +122,7 @@ export function GithubConnectionPanel({
       setRepositories(payload.repositories);
       setSelectedRepositories(new Set(payload.repositories.filter((repository) => repository.workspaceSelected).map((repository) => repository.repository)));
       setSelectionNotice(`${payload.repositoryCount ?? selection.length} repositories are authorized for this workspace.`);
+      if ((payload.repositoryCount ?? selection.length) > 0) setSelectorOpen(false);
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Repository access could not be saved");
@@ -156,7 +162,9 @@ export function GithubConnectionPanel({
       {callbackStatus === "connected" && (
         <div className="github-connection-message success" role="status">
           <CheckCircle2 aria-hidden="true" size={17} />
-          Installation verified. {activeRepositories.length} repositor{activeRepositories.length === 1 ? "y is" : "ies are"} ready for approval-bound runs.
+          {selectedActiveRepositories.length > 0
+            ? `Installation verified. ${selectedActiveRepositories.length} ${selectedActiveRepositories.length === 1 ? "repository is" : "repositories are"} selected for this workspace.`
+            : "Installation verified. Choose which repositories belong to this workspace before CloseSpan starts learning them."}
         </div>
       )}
       {callbackStatus === "error" && (
@@ -182,21 +190,32 @@ export function GithubConnectionPanel({
             ))}
           </div>
           <div className="github-repository-list" aria-label="Authorized GitHub repositories">
-            {activeRepositories.map((repository) => (
-              <div key={repository.id} className="github-repository-row">
-                <span><CheckCircle2 aria-hidden="true" size={15} />{repository.repository}</span>
-                <code>{repository.defaultBranch}</code>
-              </div>
-            ))}
+            {selectedActiveRepositories.length > 0 ? (
+              selectedActiveRepositories.map((repository) => (
+                <div key={repository.id} className="github-repository-row">
+                  <span><CheckCircle2 aria-hidden="true" size={15} />{repository.repository}</span>
+                  <code>{repository.defaultBranch}</code>
+                </div>
+              ))
+            ) : (
+              <p className="subtle">No repositories are selected for this workspace yet.</p>
+            )}
           </div>
           {canManage && (
             <>
-              <details className="github-repository-selector">
+              <details
+                className="github-repository-selector"
+                open={selectorOpen}
+                onToggle={(event) => setSelectorOpen(event.currentTarget.open)}
+              >
                 <summary>Choose repositories for this workspace</summary>
                 <div className="github-repository-selector-body">
                   <p className="subtle">A GitHub installation can serve multiple CloseSpan workspaces. Only repositories selected here can be profiled or used by this workspace.</p>
                   {activeInstallations.map((installation) => {
-                    const installationRepositories = repositories.filter((repository) => repository.installationId === installation.installationId);
+                    const installationRepositories = repositories.filter(
+                      (repository) => repository.installationId === installation.installationId
+                        && (repository.active || repository.workspaceSelected),
+                    );
                     return (
                       <div className="github-repository-selection-group" key={installation.id}>
                         <strong>{installation.accountLogin}</strong>
@@ -225,6 +244,9 @@ export function GithubConnectionPanel({
                             </label>
                           );
                         })}
+                        {installationRepositories.length === 0 && (
+                          <p className="subtle">No repositories are available from this installation.</p>
+                        )}
                         <button className="btn primary" type="button" disabled={busy} onClick={() => saveRepositorySelection(installation.installationId)}>
                           {busy ? "Saving…" : "Save workspace access"}
                         </button>

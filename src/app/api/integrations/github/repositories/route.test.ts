@@ -3,7 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const security = vi.hoisted(() => ({ read: vi.fn(), admin: vi.fn() }));
 const repositories = vi.hoisted(() => ({ list: vi.fn() }));
 const detector = vi.hoisted(() => ({ detect: vi.fn() }));
-const repositoryContext = vi.hoisted(() => ({ queue: vi.fn(), build: vi.fn() }));
+const repositoryContext = vi.hoisted(() => ({
+  queue: vi.fn(),
+  build: vi.fn(),
+  removeUnselected: vi.fn(),
+}));
 const activation = vi.hoisted(() => ({ prepare: vi.fn(), activate: vi.fn(), probes: vi.fn() }));
 
 vi.mock("next/server", async (importOriginal) => {
@@ -32,6 +36,7 @@ vi.mock("@/lib/github-installation-repository", () => ({
 vi.mock("@/lib/repository-context-repository", () => ({
   queueRepositoryContexts: repositoryContext.queue,
   buildQueuedRepositoryContexts: repositoryContext.build,
+  removeUnselectedRepositoryContexts: repositoryContext.removeUnselected,
 }));
 vi.mock("@/lib/tenki-runner-onboarding", () => ({
   prepareDetectedTenkiRunner: activation.prepare,
@@ -59,6 +64,7 @@ describe("GitHub repository authorization API", () => {
     detector.detect.mockReset().mockResolvedValue({ profiles: [] });
     repositoryContext.queue.mockReset().mockResolvedValue(undefined);
     repositoryContext.build.mockReset().mockResolvedValue(undefined);
+    repositoryContext.removeUnselected.mockReset().mockResolvedValue(undefined);
     activation.prepare.mockReset().mockResolvedValue(null);
     activation.activate.mockReset().mockResolvedValue(1);
     activation.probes.mockReset().mockResolvedValue([]);
@@ -112,6 +118,11 @@ describe("GitHub repository authorization API", () => {
       orgId: "org-1",
       installationId: "150109806",
       repositories: [{ repository: "acme/api", defaultBranch: "main" }],
+    });
+    expect(repositoryContext.removeUnselected).toHaveBeenCalledWith({
+      orgId: "org-1",
+      installationId: "150109806",
+      selectedRepositories: ["acme/api"],
     });
     expect(repositoryContext.build).toHaveBeenCalledWith("org-1", ["acme/api"]);
     expect(activation.prepare).toHaveBeenCalledWith(expect.objectContaining({

@@ -2192,7 +2192,8 @@ export async function getPddVerificationExecutionContext(
         JOIN implementation_prompts prompt ON prompt.org_id=verification.org_id
           AND prompt.id=verification.prompt_revision_id
         JOIN github_repository_allowlists allowlist ON allowlist.org_id=verification.org_id
-          AND allowlist.repository=prompt.repository AND allowlist.active=true
+          AND allowlist.repository=prompt.repository
+          AND allowlist.active=true AND allowlist.workspace_selected=true
        WHERE verification.org_id=$1 AND verification.id=$2`, [orgId, verificationId]);
   const row = result.rows[0];
   if (!row) throw new EngineeringWorkflowError("Prompt Testing verification or repository authorization was not found", 404);
@@ -2564,7 +2565,9 @@ export async function approveImplementationRun(
       throw new EngineeringWorkflowError("The approved prompt no longer matches the immutable review payload", 409);
     }
     const repository = await client.query(
-      "SELECT 1 FROM github_repository_allowlists WHERE org_id=$1 AND repository=$2 AND active=true",
+      `SELECT 1 FROM github_repository_allowlists
+        WHERE org_id=$1 AND repository=$2
+          AND active=true AND workspace_selected=true`,
       [orgId, row.repository],
     );
     if (!repository.rowCount) throw new EngineeringWorkflowError("The target repository is not allowlisted for agent execution", 409);
@@ -2695,7 +2698,8 @@ export async function getAgentRunExecutionContext(
         JOIN pdd_prompt_verifications verification ON verification.org_id=run.org_id
           AND verification.id=run.pdd_verification_id
         JOIN github_repository_allowlists allowlist ON allowlist.org_id=run.org_id
-          AND allowlist.repository=run.repository AND allowlist.active=true
+          AND allowlist.repository=run.repository
+          AND allowlist.active=true AND allowlist.workspace_selected=true
        WHERE run.org_id=$1 AND run.id=$2`, [orgId, runId]);
   const row = result.rows[0];
   if (!row) throw new EngineeringWorkflowError("Agent run or repository authorization was not found", 404);

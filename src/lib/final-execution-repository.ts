@@ -439,7 +439,8 @@ async function loadCandidate(orgId: string, approvalId: string): Promise<Approva
          ON run.org_id=approval.org_id AND run.id=approval.agent_run_id
        JOIN github_repository_allowlists allowlist
          ON allowlist.org_id=approval.org_id
-        AND allowlist.repository=approval.repository AND allowlist.active=true
+        AND allowlist.repository=approval.repository
+        AND allowlist.active=true AND allowlist.workspace_selected=true
        LEFT JOIN final_execution_attempts attempt
          ON attempt.org_id=approval.org_id AND attempt.approval_id=approval.id
       WHERE approval.org_id=$1 AND approval.id=$2
@@ -587,6 +588,7 @@ export async function processQueuedFinalExecutions(
             AND allowlist.org_id=attempt.org_id
             AND allowlist.repository=attempt.repository
             AND allowlist.active=true
+            AND allowlist.workspace_selected=true
           RETURNING attempt.id,attempt.org_id,attempt.approval_id,attempt.agent_run_id,
                     attempt.repository,approval.base_branch,attempt.pull_request_number,
                     attempt.expected_head_sha,allowlist.installation_id::text`,

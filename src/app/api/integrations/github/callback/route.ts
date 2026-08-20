@@ -132,34 +132,37 @@ export async function GET(request: NextRequest) {
       context,
       installation,
     );
-    await queueRepositoryContexts({
-      orgId: context.orgId,
-      installationId: installation.installationId,
-      repositories: installation.repositories,
-    });
-    after(async () => {
-      const outcomes = await Promise.allSettled([
-        detectInstallationRepositories({
-          orgId: context.orgId,
-          traceId: context.traceId,
-          installationId: installation.installationId,
-          callbackBaseUrl: request.nextUrl.origin,
-          repositories: installation.repositories,
-        }),
-        buildQueuedRepositoryContexts(
-          context.orgId,
-          installation.repositories.map((repository) => repository.repository),
-        ),
-      ]);
-      for (const outcome of outcomes) {
-        if (outcome.status === "rejected") {
-          console.error("GitHub post-connection setup needs retry", outcome.reason);
+    if (result.repositories.length > 0) {
+      await queueRepositoryContexts({
+        orgId: context.orgId,
+        installationId: installation.installationId,
+        repositories: result.repositories,
+      });
+      after(async () => {
+        const outcomes = await Promise.allSettled([
+          detectInstallationRepositories({
+            orgId: context.orgId,
+            traceId: context.traceId,
+            installationId: installation.installationId,
+            callbackBaseUrl: request.nextUrl.origin,
+            repositories: result.repositories,
+          }),
+          buildQueuedRepositoryContexts(
+            context.orgId,
+            result.repositories.map((repository) => repository.repository),
+          ),
+        ]);
+        for (const outcome of outcomes) {
+          if (outcome.status === "rejected") {
+            console.error("GitHub post-connection setup needs retry", outcome.reason);
+          }
         }
-      }
-    });
+      });
+    }
     return workspaceRedirect(request, returnTo, {
       github: "connected",
       repositories: String(result.repositoryCount),
+      availableRepositories: String(result.availableRepositoryCount),
     });
   } catch (error) {
     const reason = callbackErrorCode(error);

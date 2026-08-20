@@ -12,6 +12,7 @@ import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-
 import {
   buildQueuedRepositoryContexts,
   queueRepositoryContexts,
+  removeUnselectedRepositoryContexts,
 } from "@/lib/repository-context-repository";
 import {
   activateReadyDetectedExecutionProfiles,
@@ -54,6 +55,11 @@ export async function PUT(request: NextRequest) {
         repository.workspaceSelected &&
         repository.active,
     );
+    await removeUnselectedRepositoryContexts({
+      orgId: context.orgId,
+      installationId: body.installationId,
+      selectedRepositories: selected.map((repository) => repository.repository),
+    });
     await queueRepositoryContexts({
       orgId: context.orgId,
       installationId: body.installationId,

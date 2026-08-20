@@ -316,17 +316,24 @@ export function WorkspaceSetupHub({
           ) : (
             <div className="setup-card-body">
               <p className="subtle">
-                Install the CloseSpan GitHub App on the repositories you want
-                agents to inspect and act on after approval.
+                {status.github?.installationCount
+                  ? "GitHub is connected. Choose only the repositories that belong to this workspace before CloseSpan indexes them."
+                  : "Install the CloseSpan GitHub App, then choose the repositories this workspace may inspect and act on after approval."}
               </p>
-              <button
-                className="btn primary"
-                type="button"
-                disabled={busy === "github"}
-                onClick={connectGithub}
-              >
-                {busy === "github" ? "Opening GitHub..." : "Connect GitHub"}
-              </button>
+              {status.github?.installationCount ? (
+                <Link className="btn primary" href="/integrations?view=connections&focus=int_github&select=repositories">
+                  Choose repositories
+                </Link>
+              ) : (
+                <button
+                  className="btn primary"
+                  type="button"
+                  disabled={busy === "github"}
+                  onClick={connectGithub}
+                >
+                  {busy === "github" ? "Opening GitHub..." : "Connect GitHub"}
+                </button>
+              )}
             </div>
           )}
         </article>

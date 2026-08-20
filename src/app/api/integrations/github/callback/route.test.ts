@@ -96,7 +96,11 @@ describe("GitHub installation callback", () => {
     security.adminRead.mockReset().mockResolvedValue(context);
     github.verify.mockReset().mockResolvedValue(verified);
     repository.requireAttempt.mockReset().mockResolvedValue(undefined);
-    repository.connect.mockReset().mockResolvedValue({ repositoryCount: 1 });
+    repository.connect.mockReset().mockResolvedValue({
+      repositoryCount: 0,
+      availableRepositoryCount: 1,
+      repositories: [],
+    });
     detector.detect.mockReset().mockResolvedValue({ profiles: [] });
     repositoryContext.queue.mockReset().mockResolvedValue(undefined);
     repositoryContext.build.mockReset().mockResolvedValue(undefined);
@@ -107,38 +111,22 @@ describe("GitHub installation callback", () => {
     background.tasks.length = 0;
   });
 
-  it("verifies and persists the installation before redirecting to the workspace", async () => {
+  it("verifies the installation but waits for workspace repository selection", async () => {
     const response = await GET(request());
     expect(response.status).toBe(303);
     const location = new URL(response.headers.get("location") ?? "");
     expect(location.pathname).toBe("/integrations");
     expect(location.searchParams.get("github")).toBe("connected");
-    expect(location.searchParams.get("repositories")).toBe("1");
+    expect(location.searchParams.get("repositories")).toBe("0");
+    expect(location.searchParams.get("availableRepositories")).toBe("1");
     expect(repository.requireAttempt).toHaveBeenCalledWith(attemptId, "org-1", "admin-1");
     expect(repository.connect).toHaveBeenCalledWith(attemptId, "org-1", context, verified);
-    expect(repositoryContext.queue).toHaveBeenCalledWith({
-      orgId: "org-1",
-      installationId: "150109806",
-      repositories: verified.repositories,
-    });
-    expect(detector.detect).toHaveBeenCalledWith(expect.objectContaining({
-      orgId: "org-1",
-      installationId: "150109806",
-      repository: "acme/api",
-      defaultBranch: "main",
-    }));
+    expect(repositoryContext.queue).not.toHaveBeenCalled();
+    expect(detector.detect).not.toHaveBeenCalled();
     await Promise.all(background.tasks);
-    expect(activation.prepare).toHaveBeenCalledWith(expect.objectContaining({
-      orgId: "org-1",
-      repository: "acme/api",
-    }));
-    expect(activation.activate).toHaveBeenCalledWith(expect.objectContaining({
-      orgId: "org-1",
-      repository: "acme/api",
-    }));
-    expect(activation.probes).toHaveBeenCalledWith(expect.objectContaining({
-      callbackBaseUrl: "https://closespan.com",
-    }));
+    expect(activation.prepare).not.toHaveBeenCalled();
+    expect(activation.activate).not.toHaveBeenCalled();
+    expect(activation.probes).not.toHaveBeenCalled();
   });
 
   it("fails closed when the signed installation cookie is absent", async () => {
@@ -175,7 +163,16 @@ describe("GitHub installation callback", () => {
         { repository: "acme/worker", defaultBranch: "main", private: true },
       ],
     });
-    repository.connect.mockResolvedValue({ repositoryCount: 3 });
+    const selectedRepositories = [
+      { repository: "acme/api", defaultBranch: "main" },
+      { repository: "acme/web", defaultBranch: "main" },
+      { repository: "acme/worker", defaultBranch: "main" },
+    ];
+    repository.connect.mockResolvedValue({
+      repositoryCount: 3,
+      availableRepositoryCount: 3,
+      repositories: selectedRepositories,
+    });
     let active = 0;
     let maximum = 0;
     detector.detect.mockImplementation(async () => {

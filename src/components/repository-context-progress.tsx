@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BrainCircuit,
   Check,
@@ -54,7 +54,6 @@ export function RepositoryContextProgress({ orgId }: { orgId: string }) {
   const [response, setResponse] = useState<RepositoryContextResponse | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
-  const initialized = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -75,31 +74,6 @@ export function RepositoryContextProgress({ orgId }: { orgId: string }) {
         if (cancelled) return;
         setResponse(next);
         setLoadError(false);
-        if (!initialized.current) {
-          const queuedRepositories = next.contexts
-            .filter((context) => context.status === "Queued")
-            .map((context) => context.repository);
-          if (!next.contexts.length || queuedRepositories.length) {
-            initialized.current = true;
-            const repositories = queuedRepositories.length
-              ? queuedRepositories.map((repository) => ({ repository }))
-              : [{}];
-            await Promise.all(
-              repositories.map((body) =>
-                fetch("/api/repository-contexts", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "x-org-id": orgId,
-                    "idempotency-key": crypto.randomUUID(),
-                    "x-request-id": crypto.randomUUID(),
-                  },
-                  body: JSON.stringify(body),
-                }),
-              ),
-            );
-          }
-        }
         if (!next.contexts.length || next.contexts.some((context) => ACTIVE_STATUSES.has(context.status))) {
           timer = window.setTimeout(poll, 1_500);
         }

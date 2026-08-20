@@ -419,6 +419,7 @@ export function OnboardingAgentPanel({
   );
   const hasSavedCompanyUrl = Boolean(state?.productProfile.productUrl?.trim());
   const githubConnected = setupStatus.githubConnected;
+  const githubInstalled = (setupStatus.github?.installationCount ?? 0) > 0;
   const githubRepositoryCount = setupStatus.github?.repositoryCount ?? 0;
   const githubFailureIsResolved = resolvedConnectorFailure({
     provider: "GitHub",
@@ -1406,13 +1407,17 @@ export function OnboardingAgentPanel({
               <h2 id="github-next-step-title">
                 {githubCallbackStatus === "error"
                   ? "GitHub needs to be linked"
-                  : "Connect GitHub"}
+                  : githubInstalled
+                    ? "Choose repositories"
+                    : "Connect GitHub"}
               </h2>
               <p>
                 {githubCallbackStatus === "error"
                   ? GITHUB_CALLBACK_ERRORS[githubCallbackReason ?? ""] ??
                     GITHUB_CALLBACK_ERRORS.connection_failed
-                  : "Choose repositories for testing and approved PRs. Already installed? Check the connection again or continue for now."}
+                  : githubInstalled
+                    ? "GitHub is connected. Select only the repositories that belong to this workspace; CloseSpan will not index the others."
+                    : "Connect GitHub, then choose the repositories this workspace may inspect and use for approved PRs."}
               </p>
               {githubRecoveryNotice && (
                 <p className="delphi-next-step-notice" role="status">
@@ -1421,19 +1426,25 @@ export function OnboardingAgentPanel({
               )}
             </div>
             <div className="delphi-next-step-actions">
-              <button
-                className="btn primary"
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={() =>
-                  void runAction({
-                    type: "connect_github",
-                    label: "Connect GitHub",
-                  })
-                }
-              >
-                {busy === "connect_github" ? "Opening..." : "Connect GitHub"}
-              </button>
+              {githubInstalled ? (
+                <Link className="btn primary" href="/integrations?view=connections&focus=int_github&select=repositories">
+                  Choose repositories
+                </Link>
+              ) : (
+                <button
+                  className="btn primary"
+                  type="button"
+                  disabled={Boolean(busy)}
+                  onClick={() =>
+                    void runAction({
+                      type: "connect_github",
+                      label: "Connect GitHub",
+                    })
+                  }
+                >
+                  {busy === "connect_github" ? "Opening..." : "Connect GitHub"}
+                </button>
+              )}
               <button
                 className="btn"
                 type="button"

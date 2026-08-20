@@ -54,6 +54,8 @@ interface RepositoryContextRow {
   indexed_files: number;
   skipped_files: number;
   context_state: RepositoryContextState | null;
+  indexing_attempt_id: string | null;
+  indexing_lease_acquired_at: Date | null;
   started_at: Date | null;
   completed_at: Date | null;
   updated_at: Date;
@@ -110,6 +112,19 @@ const FETCH_CONCURRENCY = 8;
 const MAX_CHUNK_LINES = 120;
 const MAX_CHUNK_CHARACTERS = 14_000;
 const CHUNK_OVERLAP_LINES = 12;
+
+const ACTIVE_REPOSITORY_CONTEXT_STATUSES = [
+  "Discovering",
+  "Uploading",
+  "Indexing",
+] as const;
+
+class RepositoryContextLeaseLostError extends Error {
+  constructor() {
+    super("Repository context indexing lease was lost");
+    this.name = "RepositoryContextLeaseLostError";
+  }
+}
 
 const TEXT_EXTENSIONS = new Set([
   "c", "cc", "conf", "config", "cpp", "cs", "css", "csv", "dart", "env",
@@ -330,7 +345,8 @@ export async function listRepositoryContexts(orgId: string): Promise<RepositoryC
   const result = await databasePool().query<RepositoryContextRow>(
     `SELECT id,org_id,installation_id::text,repository,default_branch,commit_sha,
             'closespan'::text AS provider,status,stage,progress,total_files,indexed_files,skipped_files,
-            context_state,started_at,completed_at,updated_at,error_message
+            context_state,indexing_attempt_id,indexing_lease_acquired_at,
+            started_at,completed_at,updated_at,error_message
        FROM repository_context_snapshots
       WHERE org_id=$1 ORDER BY repository`,
     [orgId],
@@ -351,8 +367,43 @@ export async function queueRepositoryContexts(input: {
        ) VALUES($1,$2,$3,$4,$5,'closespan','Queued','Waiting to inspect repository',2)
        ON CONFLICT(org_id,repository) DO UPDATE SET
          installation_id=excluded.installation_id,default_branch=excluded.default_branch,
-         provider='closespan',status='Queued',stage='Waiting to inspect repository',progress=2,
-         error_code=NULL,error_message=NULL,completed_at=NULL,updated_at=now()`,
+         provider='closespan',
+         status=CASE
+           WHEN repository_context_snapshots.status='Failed' THEN 'Queued'
+           ELSE repository_context_snapshots.status
+         END,
+         stage=CASE
+           WHEN repository_context_snapshots.status='Failed' THEN 'Waiting to inspect repository'
+           ELSE repository_context_snapshots.stage
+         END,
+         progress=CASE
+           WHEN repository_context_snapshots.status='Failed' THEN 2
+           ELSE repository_context_snapshots.progress
+         END,
+         error_code=CASE
+           WHEN repository_context_snapshots.status='Failed' THEN NULL
+           ELSE repository_context_snapshots.error_code
+         END,
+         error_message=CASE
+           WHEN repository_context_snapshots.status='Failed' THEN NULL
+           ELSE repository_context_snapshots.error_message
+         END,
+         completed_at=CASE
+           WHEN repository_context_snapshots.status='Failed' THEN NULL
+           ELSE repository_context_snapshots.completed_at
+         END,
+         indexing_attempt_id=CASE
+           WHEN repository_context_snapshots.status='Failed' THEN NULL
+           ELSE repository_context_snapshots.indexing_attempt_id
+         END,
+         indexing_lease_acquired_at=CASE
+           WHEN repository_context_snapshots.status='Failed' THEN NULL
+           ELSE repository_context_snapshots.indexing_lease_acquired_at
+         END,
+         updated_at=CASE
+           WHEN repository_context_snapshots.status='Failed' THEN now()
+           ELSE repository_context_snapshots.updated_at
+         END`,
       [randomUUID(), input.orgId, input.installationId, repository.repository, repository.defaultBranch],
     );
   }
@@ -383,21 +434,43 @@ export async function queueMissingAuthorizedRepositoryContexts(orgId: string): P
   return result.rows.map((row) => row.repository);
 }
 
-export async function queueRepositoryContextRetry(orgId: string, repository: string): Promise<void> {
+export async function queueRepositoryContextRetry(orgId: string, repository: string): Promise<boolean> {
   requirePostgresWorkspace(orgId, "Repository context");
   const result = await databasePool().query(
     `UPDATE repository_context_snapshots
         SET provider='closespan',status='Queued',stage='Waiting to inspect repository',progress=2,
-            error_code=NULL,error_message=NULL,completed_at=NULL,updated_at=now()
-      WHERE org_id=$1 AND repository=$2 RETURNING id`,
+            error_code=NULL,error_message=NULL,completed_at=NULL,updated_at=now(),
+            indexing_attempt_id=NULL,indexing_lease_acquired_at=NULL
+      WHERE org_id=$1 AND repository=$2 AND status='Failed' RETURNING id`,
     [orgId, repository],
   );
-  if (result.rowCount !== 1) throw new HttpError(404, "Repository context was not found");
+  if (result.rowCount === 1) return true;
+  const existing = await databasePool().query(
+    `SELECT 1 FROM repository_context_snapshots WHERE org_id=$1 AND repository=$2`,
+    [orgId, repository],
+  );
+  if (existing.rowCount !== 1) throw new HttpError(404, "Repository context was not found");
+  return false;
+}
+
+export async function removeUnselectedRepositoryContexts(input: {
+  orgId: string;
+  installationId: string;
+  selectedRepositories: readonly string[];
+}): Promise<void> {
+  requirePostgresWorkspace(input.orgId, "Repository context");
+  await databasePool().query(
+    `DELETE FROM repository_context_snapshots
+      WHERE org_id=$1 AND installation_id=$2
+        AND NOT (repository=ANY($3::text[]))`,
+    [input.orgId, input.installationId, [...input.selectedRepositories]],
+  );
 }
 
 async function updateContextProgress(
   orgId: string,
   repository: string,
+  attemptId: string,
   update: {
     status: RepositoryContextStatus;
     stage: string;
@@ -407,16 +480,19 @@ async function updateContextProgress(
     skippedFiles?: number;
   },
 ): Promise<void> {
-  await databasePool().query(
+  const result = await databasePool().query(
     `UPDATE repository_context_snapshots
         SET status=$3,stage=$4,progress=$5,total_files=COALESCE($6,total_files),
             indexed_files=COALESCE($7,indexed_files),skipped_files=COALESCE($8,skipped_files),
             updated_at=now()
-      WHERE org_id=$1 AND repository=$2 AND status<>'Ready'`,
+      WHERE org_id=$1 AND repository=$2 AND indexing_attempt_id=$9
+        AND status=ANY($10::text[])`,
     [orgId, repository, update.status, update.stage,
       Math.max(0, Math.min(100, Math.round(update.progress))), update.totalFiles ?? null,
-      update.indexedFiles ?? null, update.skippedFiles ?? null],
+      update.indexedFiles ?? null, update.skippedFiles ?? null, attemptId,
+      [...ACTIVE_REPOSITORY_CONTEXT_STATUSES]],
   );
+  if (result.rowCount !== 1) throw new RepositoryContextLeaseLostError();
 }
 
 async function fetchRepositoryFiles(input: {
@@ -570,23 +646,109 @@ async function persistRepositoryIndex(input: {
 }
 
 async function claimQueuedContext(orgId: string, repository: string): Promise<RepositoryContextRow | null> {
+  const attemptId = randomUUID();
   const result = await databasePool().query<RepositoryContextRow>(
     `UPDATE repository_context_snapshots
         SET provider='closespan',status='Discovering',stage='Reading repository structure',progress=6,
-            started_at=now(),updated_at=now(),error_code=NULL,error_message=NULL
+            started_at=now(),updated_at=now(),error_code=NULL,error_message=NULL,
+            indexing_attempt_id=$3,indexing_lease_acquired_at=now()
       WHERE org_id=$1 AND repository=$2 AND status='Queued'
       RETURNING id,org_id,installation_id::text,repository,default_branch,commit_sha,
                 'closespan'::text AS provider,status,stage,progress,total_files,indexed_files,
-                skipped_files,context_state,started_at,completed_at,updated_at,error_message`,
-    [orgId, repository],
+                skipped_files,context_state,indexing_attempt_id,indexing_lease_acquired_at,
+                started_at,completed_at,updated_at,error_message`,
+    [orgId, repository, attemptId],
   );
   return result.rows[0] ?? null;
+}
+
+function repositoryContextFailure(error: unknown): { code: string; message: string } {
+  if (error && typeof error === "object" && "status" in error && typeof error.status === "number") {
+    if (error.status === 403) {
+      return {
+        code: "github_access_denied",
+        message: "GitHub denied access while CloseSpan was reading this repository. Review the installation permissions, then retry.",
+      };
+    }
+    if (error.status === 404) {
+      return {
+        code: "github_repository_not_found",
+        message: "GitHub could not find the selected repository or branch. Review workspace repository access, then retry.",
+      };
+    }
+    if (error.status === 429) {
+      return {
+        code: "github_rate_limited",
+        message: "GitHub temporarily rate-limited repository indexing. Wait briefly, then retry.",
+      };
+    }
+  }
+  const raw = error instanceof Error ? error.message : "Unknown repository indexing error";
+  if (raw === "Repository tree is too large for bounded indexing") {
+    return {
+      code: "repository_tree_too_large",
+      message: "This repository tree is too large for bounded indexing. Narrow the repository scope or contact CloseSpan support.",
+    };
+  }
+  if (/(secret|token|authorization|password|cookie)/i.test(raw)) {
+    return {
+      code: "indexing_failed",
+      message: "Repository indexing stopped before completion. Retry the repository or contact CloseSpan support.",
+    };
+  }
+  const safeDetail = raw.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim().slice(0, 220);
+  return {
+    code: "indexing_failed",
+    message: safeDetail
+      ? `Repository indexing stopped: ${safeDetail}`
+      : "Repository indexing stopped before completion. Retry the repository or contact CloseSpan support.",
+  };
+}
+
+async function repositoryContextIsComplete(
+  orgId: string,
+  repository: string,
+  contextId: string,
+  attemptId: string,
+): Promise<boolean> {
+  const result = await databasePool().query<{
+    status: RepositoryContextStatus;
+    complete: boolean;
+  }>(
+    `SELECT snapshot.status,
+            (
+              snapshot.commit_sha IS NOT NULL
+              AND snapshot.context_state IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM repository_context_files file
+                 WHERE file.org_id=snapshot.org_id AND file.context_id=snapshot.id
+              )
+            ) AS complete
+       FROM repository_context_snapshots snapshot
+      WHERE snapshot.org_id=$1 AND snapshot.repository=$2 AND snapshot.id=$3`,
+    [orgId, repository, contextId],
+  );
+  const row = result.rows[0];
+  if (!row) return false;
+  if (row.status === "Ready") return true;
+  if (!row.complete) return false;
+  const reconciled = await databasePool().query(
+    `UPDATE repository_context_snapshots
+        SET status='Ready',stage='Repository context ready',progress=100,
+            error_code=NULL,error_message=NULL,completed_at=COALESCE(completed_at,now()),updated_at=now()
+      WHERE org_id=$1 AND repository=$2 AND id=$3 AND indexing_attempt_id=$4
+        AND status=ANY($5::text[])`,
+    [orgId, repository, contextId, attemptId, [...ACTIVE_REPOSITORY_CONTEXT_STATUSES]],
+  );
+  return reconciled.rowCount === 1;
 }
 
 export async function buildRepositoryContext(orgId: string, repository: string): Promise<void> {
   requirePostgresWorkspace(orgId, "Repository context");
   const claimed = await claimQueuedContext(orgId, repository);
   if (!claimed) return;
+  const attemptId = claimed.indexing_attempt_id;
+  if (!attemptId) throw new Error("Claimed repository context is missing its indexing attempt");
   try {
     const fetched = await fetchRepositoryFiles({
       installationId: claimed.installation_id,
@@ -594,7 +756,7 @@ export async function buildRepositoryContext(orgId: string, repository: string):
       defaultBranch: claimed.default_branch,
       onProgress: async (completed, total) => {
         const ratio = total ? completed / total : 1;
-        await updateContextProgress(orgId, repository, {
+        await updateContextProgress(orgId, repository, attemptId, {
           status: "Discovering",
           stage: total ? `Reading source files · ${completed} of ${total}` : "Preparing repository context",
           progress: 10 + ratio * 50,
@@ -602,7 +764,7 @@ export async function buildRepositoryContext(orgId: string, repository: string):
         });
       },
     });
-    await updateContextProgress(orgId, repository, {
+    await updateContextProgress(orgId, repository, attemptId, {
       status: "Indexing",
       stage: "Building searchable code relationships",
       progress: 68,
@@ -614,28 +776,35 @@ export async function buildRepositoryContext(orgId: string, repository: string):
       const chunkCount = await persistRepositoryIndex({
         client, contextId: claimed.id, orgId, files: fetched.files,
       });
-      await client.query(
+      const completed = await client.query(
         `UPDATE repository_context_snapshots
             SET provider='closespan',commit_sha=$3,status='Ready',stage='Repository context ready',
                 progress=100,total_files=$4,indexed_files=$5,skipped_files=$6,
                 context_state=$7::jsonb,error_code=NULL,error_message=NULL,
                 completed_at=now(),updated_at=now()
-          WHERE org_id=$1 AND repository=$2`,
+          WHERE org_id=$1 AND repository=$2 AND indexing_attempt_id=$8
+            AND status=ANY($9::text[])`,
         [orgId, repository, fetched.commitSha, fetched.discoveredFiles,
           fetched.files.length, fetched.skippedFiles,
-          JSON.stringify({ ...state, chunkCount })],
+          JSON.stringify({ ...state, chunkCount }), attemptId,
+          [...ACTIVE_REPOSITORY_CONTEXT_STATUSES]],
       );
+      if (completed.rowCount !== 1) throw new RepositoryContextLeaseLostError();
     });
   } catch (error) {
     console.error(`Repository context indexing failed for ${repository}`, error);
+    if (await repositoryContextIsComplete(orgId, repository, claimed.id, attemptId)) return;
+    if (error instanceof RepositoryContextLeaseLostError) return;
+    const failure = repositoryContextFailure(error);
     await databasePool().query(
       `UPDATE repository_context_snapshots
           SET status='Failed',stage='Repository context needs attention',progress=0,
-              error_code='indexing_failed',
-              error_message='CloseSpan could not finish repository context. Retry the indexing job.',
-              completed_at=NULL,updated_at=now()
-        WHERE org_id=$1 AND repository=$2`,
-      [orgId, repository],
+              error_code=$5,error_message=$6,
+              completed_at=NULL,indexing_lease_acquired_at=NULL,updated_at=now()
+        WHERE org_id=$1 AND repository=$2 AND id=$3 AND indexing_attempt_id=$4
+          AND status=ANY($7::text[])`,
+      [orgId, repository, claimed.id, attemptId, failure.code, failure.message,
+        [...ACTIVE_REPOSITORY_CONTEXT_STATUSES]],
     );
   }
 }

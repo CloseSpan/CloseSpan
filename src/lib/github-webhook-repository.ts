@@ -232,6 +232,7 @@ async function auditPullRequest(
         AND allowlist.repository=run.repository
         AND allowlist.installation_id=$2
         AND allowlist.active=true
+        AND allowlist.workspace_selected=true
       WHERE run.org_id=$1 AND run.repository=$3
         AND run.pull_request_number=$4
       ORDER BY run.queued_at DESC LIMIT 1`,
@@ -354,6 +355,7 @@ async function reconcileAgentWorkflow(
         AND allowlist.repository=run.repository
         AND allowlist.installation_id=$3
         AND allowlist.active=true
+        AND allowlist.workspace_selected=true
       WHERE run.org_id=$1 AND run.id=$2 AND run.repository=$4
       FOR UPDATE`,
     [orgId, runId, installationId, repository],
@@ -432,6 +434,7 @@ async function reconcileRuntimeVerificationWorkflow(
         AND allowlist.repository=run.repository
         AND allowlist.installation_id=$3
         AND allowlist.active=true
+        AND allowlist.workspace_selected=true
       WHERE run.org_id=$1 AND run.id=$2 AND run.repository=$4
         AND lower(run.base_sha)=lower($5)
       FOR UPDATE`,

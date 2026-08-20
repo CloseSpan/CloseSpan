@@ -161,7 +161,8 @@ async function requireAuthorizedRepository(
   if (!repository) return;
   const result = await client.query(
     `SELECT 1 FROM github_repository_allowlists
-      WHERE org_id=$1 AND repository=$2 AND active=true`,
+      WHERE org_id=$1 AND repository=$2
+        AND active=true AND workspace_selected=true`,
     [orgId, repository],
   );
   if (result.rowCount !== 1) {

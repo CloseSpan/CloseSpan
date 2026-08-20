@@ -296,7 +296,8 @@ async function nextPostgresCandidate(
                 )
               LIMIT 1
            ) bound_profile ON true
-          WHERE allowed.org_id=problem.org_id AND allowed.active=true
+          WHERE allowed.org_id=problem.org_id
+            AND allowed.active=true AND allowed.workspace_selected=true
             AND (
               match.status='Confirmed'
               OR (
@@ -318,6 +319,7 @@ async function nextPostgresCandidate(
                       SELECT count(*) FROM github_repository_allowlists only_allowed
                        WHERE only_allowed.org_id=problem.org_id
                          AND only_allowed.active=true
+                         AND only_allowed.workspace_selected=true
                     )
                   )
                 )
@@ -435,6 +437,7 @@ export async function readPromptDraftReadiness(
                  AND match.repository=allowed.repository
                WHERE allowed.org_id=problem.org_id
                  AND allowed.active=true
+                 AND allowed.workspace_selected=true
                  AND coalesce(match.status,'') <> 'Rejected'
                  AND (
                    match.status='Confirmed'
@@ -444,8 +447,10 @@ export async function readPromptDraftReadiness(
                      lower(trim(problem.suspected_repository)) = ANY(
                        ARRAY['','not yet identified','not identified','unknown','tbd','n/a','none']::text[]
                      )
-                     AND 1=(SELECT count(*) FROM github_repository_allowlists only_allowed
-                              WHERE only_allowed.org_id=problem.org_id AND only_allowed.active=true)
+                    AND 1=(SELECT count(*) FROM github_repository_allowlists only_allowed
+                              WHERE only_allowed.org_id=problem.org_id
+                                AND only_allowed.active=true
+                                AND only_allowed.workspace_selected=true)
                    )
                  )
             ) AS repository_ready

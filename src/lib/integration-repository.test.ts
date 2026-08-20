@@ -163,6 +163,32 @@ describe("workspace setup integration compatibility", () => {
     expect(status.github).toBeUndefined();
   });
 
+  it("reports a connected installation that still needs workspace repository selection", async () => {
+    database.pool.query.mockImplementation((sql: string) => {
+      if (isGithubSetupReconciliation(sql)) return Promise.resolve({ rows: [], rowCount: 0 });
+      if (sql.includes("INSERT INTO integrations")) return Promise.resolve({ rows: [], rowCount: 1 });
+      if (sql.includes("FROM feedback_items")) {
+        return Promise.resolve({ rows: [{ count: 0 }], rowCount: 1 });
+      }
+      if (sql.includes("FROM github_app_installations")) {
+        return Promise.resolve({
+          rows: [{ installation_count: 1, repository_count: 0 }],
+          rowCount: 1,
+        });
+      }
+      if (sql.includes("secret.public_id AS webhook_public_id")) {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+
+    const status = await getWorkspaceSetupStatus("org_demo");
+
+    expect(status.githubConnected).toBe(false);
+    expect(status.github).toEqual({ installationCount: 1, repositoryCount: 0 });
+    expect(status.connectedIntegrationIds).not.toContain("int_github");
+  });
+
   it("marks GitHub ready only after an app installation has an active repository", async () => {
     database.pool.query.mockImplementation((sql: string) => {
       if (isGithubSetupReconciliation(sql)) {

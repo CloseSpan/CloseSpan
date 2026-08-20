@@ -251,7 +251,7 @@ export async function getWorkspaceSetupStatus(
            (SELECT count(*)::int FROM github_app_installations
              WHERE org_id=$1 AND active=true) AS installation_count,
            (SELECT count(*)::int FROM github_repository_allowlists
-             WHERE org_id=$1 AND active=true) AS repository_count`,
+             WHERE org_id=$1 AND active=true AND workspace_selected=true) AS repository_count`,
         [orgId],
       ),
     ]);
@@ -301,7 +301,7 @@ export async function getWorkspaceSetupStatus(
           connectedAt: webhookRow.last_sync_at?.toISOString?.() ?? null,
         }
       : undefined,
-    github: githubConnected
+    github: githubInstallationCount > 0
       ? {
           installationCount: githubInstallationCount,
           repositoryCount: githubRepositoryCount,

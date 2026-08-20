@@ -50,11 +50,11 @@ export async function POST(request: NextRequest) {
       throw new HttpError(400, "A repository is required");
     }
     const repository = body.repository.trim();
-    await queueRepositoryContextRetry(context.orgId, repository);
-    after(() => buildQueuedRepositoryContexts(context.orgId, [repository]));
+    const queued = await queueRepositoryContextRetry(context.orgId, repository);
+    if (queued) after(() => buildQueuedRepositoryContexts(context.orgId, [repository]));
     return NextResponse.json(
-      { queued: true, repository },
-      { status: 202, headers: noStoreHeaders },
+      { queued, repository },
+      { status: queued ? 202 : 200, headers: noStoreHeaders },
     );
   } catch (error) {
     return errorResponse(error);
