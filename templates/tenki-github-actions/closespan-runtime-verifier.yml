@@ -105,11 +105,17 @@ jobs:
           const config = job.executionProfileSnapshot.config;
           const safe = value => typeof value === "string" && value.length > 0 && !path.isAbsolute(value) && !value.split(/[\\/]/).includes("..");
           if (config.workingDirectory !== "." && !safe(config.workingDirectory)) throw new Error("Unsafe runtime working directory");
+          const reportPath = path.join(process.env.GITHUB_WORKSPACE, ".closespan-run/runtime-verification.json");
+          const artifactDirectory = path.join(process.env.GITHUB_WORKSPACE, ".closespan-run/artifacts");
+          fs.mkdirSync(artifactDirectory, { recursive: true });
+          fs.appendFileSync(process.env.GITHUB_ENV, `CLOSESPAN_RUNTIME_REPORT_PATH=${reportPath}\nCLOSESPAN_RUNTIME_ARTIFACT_DIR=${artifactDirectory}\n`);
           fs.writeFileSync(".closespan-run/runtime-verification.prompt.md", job.verificationPrompt);
-          fs.writeFileSync(".closespan-run/runtime-verification.json", JSON.stringify({
+          fs.writeFileSync(reportPath, JSON.stringify({
             schemaVersion: 1,
             runId: job.runId,
             baseSha: job.baseSha,
+            verificationMethod: "Runtime execution",
+            runtimeRequiredReason: "The evidence strategy has not completed yet.",
             outcome: "Verification blocked",
             summary: "The runtime verifier started but did not complete a decisive product check.",
             expectedBehavior: "The reported product path should complete with the expected behavior.",
@@ -260,13 +266,14 @@ jobs:
           const cp = require("node:child_process");
           const fs = require("node:fs");
           const job = JSON.parse(fs.readFileSync(".closespan-run/closespan-runtime-job.json", "utf8"));
-          const reportPath = ".closespan-run/runtime-verification.json";
+          const reportPath = process.env.CLOSESPAN_RUNTIME_REPORT_PATH || ".closespan-run/runtime-verification.json";
           let source;
           try { source = JSON.parse(fs.readFileSync(reportPath, "utf8")); }
           catch { source = {}; }
           if (!source || typeof source !== "object" || Array.isArray(source)) source = {};
 
           const allowed = new Set(["Confirmed current", "Not reproduced", "Verification blocked"]);
+          const allowedMethods = new Set(["Repository analysis", "Runtime execution"]);
           const commandStatuses = new Set(["passed", "failed", "blocked"]);
           const artifactKinds = new Set(["screenshot", "log", "test-report"]);
           const notes = [];
@@ -281,6 +288,8 @@ jobs:
           const hadValidIdentity = source.schemaVersion === 1 && source.runId === job.runId && source.baseSha === job.baseSha;
           if (!hadValidIdentity) notes.push("immutable report identity was restored from the trusted job");
           if (!allowed.has(source.outcome)) notes.push("invalid or missing outcome was replaced");
+          if (!allowedMethods.has(source.verificationMethod)) notes.push("invalid or missing verification method was replaced");
+          if (source.verificationMethod === "Runtime execution" && !validText(source.runtimeRequiredReason, 2000)) notes.push("runtime execution reason was missing");
           if (!validText(source.summary, 4000, 20)) notes.push("summary was missing or invalid");
           if (!validText(source.expectedBehavior, 4000)) notes.push("expected behavior was missing or invalid");
           if (!validText(source.actualBehavior, 4000)) notes.push("actual behavior was missing or invalid");
@@ -295,6 +304,10 @@ jobs:
             schemaVersion: 1,
             runId: job.runId,
             baseSha: job.baseSha,
+            verificationMethod: allowedMethods.has(source.verificationMethod) ? source.verificationMethod : "Runtime execution",
+            runtimeRequiredReason: source.verificationMethod === "Repository analysis"
+              ? null
+              : text(source.runtimeRequiredReason, "The verifier did not record why runtime execution was required.", 2000),
             outcome: allowed.has(source.outcome) ? source.outcome : "Verification blocked",
             summary: text(source.summary, "The runtime verifier did not produce a complete, decisive product result.", 4000, 20),
             expectedBehavior: text(source.expectedBehavior, "The reported product path should complete with the expected behavior.", 4000),

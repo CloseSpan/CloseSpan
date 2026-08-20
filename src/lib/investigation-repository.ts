@@ -46,6 +46,7 @@ export type InvestigationVerificationStatus =
 export type InvestigationVerificationMethod =
   | "Product reproduction"
   | "Automated check"
+  | "Repository analysis"
   | "Production telemetry"
   | "Release evidence";
 

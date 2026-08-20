@@ -3662,7 +3662,7 @@ export function ProductProblemInvestigationPanel({
               <div className="investigation-verification-head">
                 <div>
                   <h3 id="issue-verification-title">Current issue verification</h3>
-                  <p>Run the reported path at the pinned GitHub commit before preparing implementation work.</p>
+                  <p>Inspect the pinned commit first, then run targeted product tests only when the evidence requires them.</p>
                 </div>
                 <span className={`badge ${runtimeVerificationActive ? "medium" : verificationTone(investigation.verification.status)}`}>
                   {runtimeVerificationActive
@@ -3680,18 +3680,18 @@ export function ProductProblemInvestigationPanel({
                   <strong>{runtimeVerificationActive
                     ? runtimeVerificationQueued
                       ? "Waiting for a Tenki runner"
-                      : "Testing the current product runtime"
+                      : "Analyzing code and selecting verification evidence"
                     : runtimeRunnerUnavailable
                       ? "Runner unavailable"
                     : runtimeVerification
-                      ? runtimeVerification.outcome ?? "Runtime verification finished"
-                      : "Verify in the product runtime"}</strong>
+                      ? runtimeVerification.outcome ?? "Issue verification finished"
+                      : "Verify current behavior"}</strong>
                   <p>{runtimeVerification?.summary
                     ?? (runtimeVerificationActive
                       ? runtimeVerificationQueued
                         ? `CloseSpan dispatched ${runtimeVerification.repository} at ${runtimeVerification.baseSha.slice(0, 12)} and is waiting for the configured runner. Verification has not started.`
                         : `CloseSpan is checking ${runtimeVerification.repository} at ${runtimeVerification.baseSha.slice(0, 12)} on the configured Tenki runner.`
-                      : "CloseSpan will pin the authorized repository commit, exercise the user-visible path on Tenki, and return attested evidence here.")}</p>
+                      : "CloseSpan will inspect the authorized commit, accept decisive code evidence, and escalate to runtime or UI testing only when necessary.")}</p>
                   {runtimeTiming && (
                     <span className="runtime-verification-timing" suppressHydrationWarning>
                       <Clock3 size={13} aria-hidden="true" />
@@ -3727,8 +3727,8 @@ export function ProductProblemInvestigationPanel({
                         ? "Verification in progress"
                         : runtimeVerification?.status === "Failed"
                           || runtimeVerification?.outcome === "Verification blocked"
-                          ? "Retry runtime verification"
-                          : runtimeVerification ? "Run again on Tenki" : "Run runtime verification"}
+                          ? "Retry issue verification"
+                          : runtimeVerification ? "Run verification again" : "Run issue verification"}
                 </button>
               </div>
 

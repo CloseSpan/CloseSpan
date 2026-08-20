@@ -46,6 +46,7 @@ export {
 
 export type IssueRuntimeVerificationRunStatus = "Queued" | "Running" | "Completed" | "Failed";
 export type IssueRuntimeVerificationOutcome = "Confirmed current" | "Not reproduced" | "Verification blocked";
+export type IssueVerificationEvidenceMethod = "Repository analysis" | "Runtime execution";
 
 export interface IssueRuntimeVerificationRunView {
   id: string;
@@ -162,6 +163,9 @@ export const issueRuntimeVerificationReportSchema = z.object({
   schemaVersion: z.literal(1),
   runId: z.string().uuid(),
   baseSha: z.string().regex(/^[a-f0-9]{40}$/),
+  verificationMethod: z.enum(["Repository analysis", "Runtime execution"])
+    .default("Runtime execution"),
+  runtimeRequiredReason: z.string().trim().min(1).max(2_000).nullable().default(null),
   outcome: z.enum(["Confirmed current", "Not reproduced", "Verification blocked"]),
   summary: z.string().trim().min(20).max(4_000),
   expectedBehavior: z.string().trim().min(1).max(4_000),
@@ -515,7 +519,7 @@ export async function reconcileStaleIssueRuntimeVerifications(
   return { queuedTimedOut, runningTimedOut };
 }
 
-function verificationPrompt(input: {
+export function buildIssueVerificationPrompt(input: {
   runId: string;
   baseSha: string;
   repository: string;
@@ -524,7 +528,7 @@ function verificationPrompt(input: {
   repositoryEvidence: string;
 }): string {
   return [
-    "# CloseSpan current-issue runtime verification",
+    "# CloseSpan current-issue verification",
     "",
     `Run ID: ${input.runId}`,
     `Repository: ${input.repository}`,
@@ -532,7 +536,7 @@ function verificationPrompt(input: {
     `Working directory: ${input.workspaceRoot}`,
     "",
     "## Objective",
-    `Determine whether this reported issue still exists in the executable product: ${input.problem.title}`,
+    `Determine whether the reported current behavior or product gap is supported by decisive evidence: ${input.problem.title}`,
     input.problem.statement,
     input.problem.summary,
     "",
@@ -543,28 +547,38 @@ function verificationPrompt(input: {
     ...stringArray(input.problem.recommended_tests).map((item) => `- Recommended check: ${item}`),
     ...stringArray(input.problem.suspected_files).map((item) => `- Suspected path: ${item}`),
     "",
-    "## Rules",
-    "- Inspect and execute the pinned checkout. A source-code reading or successful build alone is not verification.",
-    "- Reproduce the user-visible path with the approved platform runtime, simulator/emulator, test framework, or local service.",
+    "## Evidence strategy",
+    "- Start with targeted repository analysis at the exact pinned commit. Choose the least expensive evidence path that can still produce a decisive conclusion.",
+    "- Repository analysis is sufficient when deterministic application source directly establishes the relevant route, action wiring, condition, default, state transition, or absence of the requested capability, and no runtime-only factor could reasonably change that conclusion.",
+    "- For a feature request, verify the current product baseline or capability gap. Do not try to reproduce a feature that has not been implemented yet.",
+    "- When repository evidence is decisive, set verificationMethod to Repository analysis, runtimeRequiredReason to null, record the inspected paths and bounded commands, and finish without launching a product runtime.",
+    "- Escalate to Runtime execution only when the conclusion depends on rendering, layout, gesture handling, timing, animation, permissions, device or OS behavior, network responses, backend state, customer data, or when the relevant source paths remain ambiguous.",
+    "- When runtime execution is required, set verificationMethod to Runtime execution and explain the specific reason in runtimeRequiredReason before starting the runtime check.",
+    "- A UI report does not automatically require a UI test. Use a UI test only when static repository evidence cannot decisively establish the reported behavior or current feature gap.",
+    "- After product code is changed, implementation verification is a separate phase and must run the strongest relevant automated tests, including UI tests when the changed behavior is user-interface dependent.",
+    "",
+    "## Runtime escalation rules",
+    "- If runtime execution is required, reproduce the user-visible path with the approved platform runtime, simulator/emulator, test framework, or local service.",
     "- On macOS, the runner has already booted an approved iOS Simulator. Use CLOSESPAN_IOS_SIMULATOR_UDID and the CLOSESPAN_IOS_SIMULATOR_HARNESS helper to inspect, install, launch, terminate, open URLs, and capture screenshots.",
     "- Capture simulator screenshots only through CLOSESPAN_IOS_SIMULATOR_HARNESS; it produces model-safe evidence. Do not inline image bytes, base64 data, full process listings, or other bulky artifacts into model messages. Record artifact paths in the report instead.",
-    "- Keep every inspection bounded: use targeted rg/find queries, read at most 200 relevant lines from a file at a time, and redirect verbose build/test output to .closespan-run/artifacts before summarizing only the decisive tail.",
+    "- Keep every inspection bounded: use targeted rg/find queries, read at most 200 relevant lines from a file at a time, and redirect verbose build/test output to CLOSESPAN_RUNTIME_ARTIFACT_DIR before summarizing only the decisive tail.",
     "- Never print entire source files, project trees, simulator inventories, build logs, or generated files into the model conversation.",
-    "- Create the required runtime-verification.json immediately after the initial evidence pass, then update it as checks complete. Do not postpone the report until after broad repository exploration.",
+    "- Create the required verification report immediately after the initial evidence pass, then update it as checks complete. Do not postpone the report until after broad repository exploration.",
     "- Never clear required report arrays while updating the report. Keep reproductionSteps nonempty and preserve previously recorded commands, observations, and artifacts.",
     "- If runtime verification cannot finish, finalize the report as Verification blocked with the attempted reproduction steps and the specific blocker. Do not leave pending or in-progress report text.",
-    "- Stop investigating once the available runtime evidence supports one allowed outcome; additional source reading is not a substitute for executing the reported path.",
+    "- Stop investigating once the available repository or runtime evidence supports one allowed outcome.",
     "- Prefer an existing XCTest or UI-test target. If the repository has no test target, build and launch the app on the prepared simulator and create only an ephemeral repository-specific harness under .closespan-run/; never add a test target to the product project during verification.",
     "- A missing repository test target alone is not a blocker when the user-visible path can be exercised through the prepared simulator harness.",
     "- Do not fix the issue. Do not push, commit, publish, or modify product source files.",
-    "- Temporary tests and artifacts must stay under .closespan-run/.",
-    "- Use ‘Confirmed current’ only when the reported failure is observed.",
-    "- Use ‘Not reproduced’ only after the expected path runs successfully under the reported conditions.",
-    "- Use ‘Verification blocked’ when credentials, permissions, fixtures, hardware, services, or runtime capabilities prevent a decisive test.",
+    "- Temporary tests and artifacts must stay under CLOSESPAN_RUNTIME_ARTIFACT_DIR.",
+    "- Use ‘Confirmed current’ when decisive repository or runtime evidence supports the reported current behavior or feature gap.",
+    "- Use ‘Not reproduced’ only after an appropriate runtime check runs successfully under the reported conditions; source reading alone cannot prove a negative runtime result.",
+    "- Use ‘Verification blocked’ when neither repository evidence nor an available required runtime check can support a decisive conclusion.",
     "- Never treat a missing capability or a test harness failure as evidence that the issue is resolved.",
     "",
     "## Required artifact",
-    `Write .closespan-run/runtime-verification.json using schemaVersion 1, runId ${input.runId}, baseSha ${input.baseSha}, and these fields: outcome, summary, expectedBehavior, actualBehavior, reproductionSteps, commands, observations, artifacts.`,
+    `Write the report to the exact path in CLOSESPAN_RUNTIME_REPORT_PATH using schemaVersion 1, runId ${input.runId}, baseSha ${input.baseSha}, and these fields: verificationMethod, runtimeRequiredReason, outcome, summary, expectedBehavior, actualBehavior, reproductionSteps, commands, observations, artifacts.`,
+    "Store screenshots, logs, and test reports under CLOSESPAN_RUNTIME_ARTIFACT_DIR. Do not create a second relative .closespan-run directory inside the product workspace.",
     "Each command entry must contain command, status (passed|failed|blocked), output, and durationMs. Each artifact entry must contain name, path, and kind (screenshot|log|test-report).",
     "Do not include environment; the trusted runner appends its own attested environment.",
     "",
@@ -656,7 +670,7 @@ export async function startIssueRuntimeVerification(input: {
     // The runner has an exact GitHub checkout and must inspect it directly when the cached index is stale.
   }
   const runId = randomUUID();
-  const prompt = verificationPrompt({
+  const prompt = buildIssueVerificationPrompt({
     runId,
     baseSha,
     repository: match.repository,
@@ -852,11 +866,13 @@ export async function completeIssueRuntimeVerification(
     const investigationId = result.rows[0]?.investigation_id;
     if (!investigationId) throw new HttpError(409, "Runtime verification run is no longer active");
     await client.query(
-      `UPDATE investigations SET verification_status=$3,verification_method='Automated check',
-              verification_summary=$4,verification_actor_id='system:tenki-runtime-verifier',
+      `UPDATE investigations SET verification_status=$3,verification_method=$4,
+              verification_summary=$5,verification_actor_id='system:tenki-runtime-verifier',
               verification_actor_name='Tenki runtime verifier',verified_at=now(),updated_at=now()
         WHERE org_id=$1 AND id=$2`,
-      [context.orgId, investigationId, report.outcome, report.summary],
+      [context.orgId, investigationId, report.outcome,
+        report.verificationMethod === "Repository analysis" ? "Repository analysis" : "Automated check",
+        report.summary],
     );
     if (report.outcome === "Confirmed current") {
       await client.query(
@@ -870,7 +886,7 @@ export async function completeIssueRuntimeVerification(
       `INSERT INTO audit_events(id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id)
        VALUES($1,$2,'system:tenki-runtime-verifier','Tenki runtime verifier',$3,'Investigation',$4,$5)`,
       [randomUUID(), context.orgId,
-        `Completed runtime verification: ${report.outcome} at ${context.baseSha.slice(0, 12)}.`,
+        `Completed issue verification using ${report.verificationMethod}: ${report.outcome} at ${context.baseSha.slice(0, 12)}.`,
         investigationId, context.runId],
     );
     await client.query("UPDATE workspaces SET version=version+1,updated_at=now() WHERE org_id=$1", [context.orgId]);

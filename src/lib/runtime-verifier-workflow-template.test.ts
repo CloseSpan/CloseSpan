@@ -38,13 +38,16 @@ describe("current-issue runtime verifier workflow template", () => {
 
   it("creates a valid provisional report before the model begins runtime work", () => {
     const provisionalReport = workflow.indexOf(
-      'fs.writeFileSync(".closespan-run/runtime-verification.json"',
+      "fs.writeFileSync(reportPath, JSON.stringify({",
     );
     const modelStep = workflow.indexOf("name: Run current-issue verifier");
 
     expect(provisionalReport).toBeGreaterThan(-1);
     expect(modelStep).toBeGreaterThan(provisionalReport);
     expect(workflow).toContain("A provisional report was created before runtime execution");
+    expect(workflow).toContain("CLOSESPAN_RUNTIME_REPORT_PATH=");
+    expect(workflow).toContain("CLOSESPAN_RUNTIME_ARTIFACT_DIR=");
+    expect(workflow).toContain('process.env.CLOSESPAN_RUNTIME_REPORT_PATH || ".closespan-run/runtime-verification.json"');
   });
 
   it("normalizes an incomplete model report into an attested blocked result", () => {
@@ -67,6 +70,8 @@ describe("current-issue runtime verifier workflow template", () => {
         schemaVersion: 1,
         runId,
         baseSha,
+        verificationMethod: "Runtime execution",
+        runtimeRequiredReason: "The reported behavior depends on simulator interaction.",
         outcome: "Verification blocked",
         summary: "Runtime verification is still in progress and has no final result.",
         expectedBehavior: "The menu presents the requested actions.",
@@ -96,6 +101,8 @@ describe("current-issue runtime verifier workflow template", () => {
       schemaVersion: 1,
       runId,
       baseSha,
+      verificationMethod: "Runtime execution",
+      runtimeRequiredReason: "The reported behavior depends on simulator interaction.",
       outcome: "Verification blocked",
       summary: expect.stringContaining("incomplete report"),
       reproductionSteps: ["Attempted the repository-scoped runtime verification plan."],
@@ -106,6 +113,60 @@ describe("current-issue runtime verifier workflow template", () => {
     });
     expect(report.commands).toHaveLength(1);
     expect(report.observations).toContainEqual(expect.stringContaining("reproduction steps were missing"));
+    expect(issueRuntimeVerificationReportSchema.safeParse(report).success).toBe(true);
+  });
+
+  it("preserves a decisive repository-analysis result at the runner-owned report path", () => {
+    const step = workflow.slice(workflow.indexOf("- name: Validate and attest verification report"));
+    const scriptStart = step.indexOf("node <<'NODE'\n") + "node <<'NODE'\n".length;
+    const scriptEnd = step.indexOf("\n          NODE", scriptStart);
+    const script = step.slice(scriptStart, scriptEnd).replace(/^ {10}/gm, "");
+    const workingDirectory = mkdtempSync(resolve(tmpdir(), "closespan-code-evidence-"));
+    const reportDirectory = resolve(workingDirectory, ".closespan-run");
+    mkdirSync(reportDirectory);
+    execFileSync("git", ["init", "--quiet"], { cwd: workingDirectory });
+    const runId = "22222222-2222-4222-8222-222222222222";
+    const baseSha = "b".repeat(40);
+    const reportPath = resolve(reportDirectory, "runtime-verification.json");
+    writeFileSync(
+      resolve(reportDirectory, "closespan-runtime-job.json"),
+      JSON.stringify({ runId, baseSha }),
+    );
+    writeFileSync(reportPath, JSON.stringify({
+      schemaVersion: 1,
+      runId,
+      baseSha,
+      verificationMethod: "Repository analysis",
+      runtimeRequiredReason: null,
+      outcome: "Confirmed current",
+      summary: "Both visible controls deterministically call the same editor action.",
+      expectedBehavior: "The overflow menu should expose actions beyond the existing Edit control.",
+      actualBehavior: "The overflow control and Edit button both invoke openEditor().",
+      reproductionSteps: ["Inspect the overflow menu and Edit button action wiring at the pinned commit."],
+      commands: [{ command: "rg openEditor AppNative", status: "passed", output: "Both controls call openEditor().", durationMs: 40 }],
+      observations: ["The relevant action wiring is deterministic and has no runtime-dependent branch."],
+      artifacts: [],
+    }));
+
+    execFileSync(process.execPath, ["-e", script], {
+      cwd: workingDirectory,
+      env: {
+        ...process.env,
+        CLOSESPAN_RUNTIME_REPORT_PATH: reportPath,
+        CODEX_OUTCOME: "success",
+        RUNNER_LABEL: "tenki-macos-26-mini",
+        GITHUB_RUN_ID: "23456",
+      },
+    });
+
+    const report = JSON.parse(readFileSync(reportPath, "utf8"));
+    expect(report).toMatchObject({
+      outcome: "Confirmed current",
+      verificationMethod: "Repository analysis",
+      runtimeRequiredReason: null,
+      summary: "Both visible controls deterministically call the same editor action.",
+      environment: { workflowRunId: 23456 },
+    });
     expect(issueRuntimeVerificationReportSchema.safeParse(report).success).toBe(true);
   });
 });

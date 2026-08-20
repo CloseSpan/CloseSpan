@@ -88,6 +88,8 @@ describe("current-issue runtime verifier callbacks", () => {
       schemaVersion: 1,
       runId,
       baseSha,
+      verificationMethod: "Runtime execution",
+      runtimeRequiredReason: "The reported generated output depends on live simulator behavior.",
       outcome: "Confirmed current",
       summary: "The reported Post Context failure was reproduced in the iOS simulator.",
       expectedBehavior: "The generated result incorporates the supplied Post Context.",

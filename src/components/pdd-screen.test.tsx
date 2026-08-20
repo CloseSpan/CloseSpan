@@ -302,8 +302,9 @@ describe("PddScreen", () => {
 
     expect(problemMarkup).toContain("Current issue verification");
     expect(problemMarkup).toContain("Issue not yet reproduced");
-    expect(problemMarkup).toContain("Run runtime verification");
-    expect(problemMarkup).toContain("exercise the user-visible path on Tenki");
+    expect(problemMarkup).toContain("Run issue verification");
+    expect(problemMarkup).toContain("accept decisive code evidence");
+    expect(problemMarkup).toContain("runtime or UI testing only when necessary");
     expect(problemMarkup).toContain("Record external evidence");
     expect(problemMarkup).not.toContain("Continue to prompt");
     expect(pddMarkup).toContain("Current issue verification required");
@@ -409,7 +410,7 @@ describe("PddScreen", () => {
       <ProductProblemInvestigationPanel problem={problem} investigation={timedOut} />,
     );
 
-    expect(markup).toContain("Retry runtime verification");
+    expect(markup).toContain("Retry issue verification");
     expect(markup).toContain("Runner unavailable");
     expect(markup).toContain("requested cancellation of its GitHub workflow");
     expect(markup).not.toContain("Verification in progress");
