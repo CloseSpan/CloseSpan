@@ -447,17 +447,12 @@ export function EngineeringTicketPanel({
   const [userStory, setUserStory] = useState(
     initialWorkflow.specification?.userStory ?? "",
   );
-  const [promptQuestion, setPromptQuestion] = useState("");
+  const [promptQuestion, setPromptQuestion] = useState(
+    initialWorkflow.specification?.userStory ?? "",
+  );
   const [chatMessages, setChatMessages] = useState<PromptTestingChatMessage[]>(
     () => {
       const messages: PromptTestingChatMessage[] = [];
-      if (initialWorkflow.specification?.userStory) {
-        messages.push({
-          id: "initial-product-request",
-          role: "user",
-          content: initialWorkflow.specification.userStory,
-        });
-      }
       if (initialPromptReview && initialPromptEvaluationKey) {
         const changes = structurePddChanges(initialPromptReview.changes);
         messages.push({

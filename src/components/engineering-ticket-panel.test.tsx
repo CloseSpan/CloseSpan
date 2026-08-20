@@ -530,6 +530,11 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("Message CloseSpan about this prompt");
     expect(markup).toContain("Send message to CloseSpan");
     expect(markup).toContain("sending a message never starts Prompt Testing");
+    expect(markup).toContain(
+      ">As a user, I want the input to work, so that I can finish.</textarea>",
+    );
+    expect(markup).toContain("What would you like me to check?");
+    expect(markup).not.toContain("prompt-testing-message is-user");
     expect(markup).not.toContain("Use the format: As a");
   });
 
