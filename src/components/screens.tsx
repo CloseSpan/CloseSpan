@@ -2571,18 +2571,18 @@ export function ProblemLifecycleBoard({
                 <div className="stage-transition-route" aria-label={`${transitionRequest.problem.stage} to ${transitionRequest.toStage}`}>
                   <strong>{transitionRequest.problem.stage}</strong>
                   <ChevronRight aria-hidden="true" size={17} />
-                  <label>
+                  <div className="stage-transition-destination">
                     <span>Destination stage</span>
-                    <select
+                    <CustomSelect
+                      ariaLabel="Destination stage"
+                      className="stage-transition-select"
+                      inlineMenu
                       value={transitionRequest.toStage}
                       disabled={isSubmitting}
-                      onChange={(event) => setTransitionRequest((current) => current ? { ...current, toStage: event.target.value as Stage } : current)}
-                    >
-                      {prioritizationStages.filter((candidate) => candidate !== transitionRequest.problem.stage).map((candidate) => (
-                        <option value={candidate} key={candidate}>{candidate}</option>
-                      ))}
-                    </select>
-                  </label>
+                      options={prioritizationStages.filter((candidate) => candidate !== transitionRequest.problem.stage)}
+                      onValueChange={(value) => setTransitionRequest((current) => current ? { ...current, toStage: value as Stage } : current)}
+                    />
+                  </div>
                 </div>
                 <p id="stage-transition-description">{preview.summary}</p>
                 <div className="stage-transition-effects">
