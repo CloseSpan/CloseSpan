@@ -103,7 +103,7 @@ export function advanceMemoryLifecycle(orgId: string, context: ActionContext): D
   setMemoryProblemStage(orgId, primaryProblem.id, target);
   state.version += 1;
   state.processedActions[context.idempotencyKey] = "advance";
-  if (target === "Verified") state.notifications = "Drafted";
+  if (target === "Release Ready") state.notifications = "Drafted";
   state.audit.unshift(event(orgId, context.actorId, context.actorName, `Moved problem to ${target}`, "ProductProblem", primaryProblem.id, context.traceId));
   return state;
 }

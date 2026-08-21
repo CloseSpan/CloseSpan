@@ -8,10 +8,17 @@ import {
 } from "./github-app-auth";
 import { syncGithubInstallationRecords } from "./github-installation-repository";
 import { githubRuntimeVerificationFailureMessage } from "./runtime-verifier-errors";
+import { prepareAgentMergeFollowUps } from "./final-execution-repository";
 import {
   recordGithubDeploymentStatus,
   type GithubDeploymentPayload,
 } from "./release-lifecycle-repository";
+import {
+  isTrustedTenkiReviewer,
+  processTenkiPullRequestReview,
+  type QueuedTenkiRemediation,
+  type TenkiPullRequestReview,
+} from "./tenki-pr-review-automation";
 
 interface GithubWebhookPayload extends GithubDeploymentPayload {
   action?: unknown;
@@ -34,8 +41,16 @@ interface GithubWebhookPayload extends GithubDeploymentPayload {
     merged?: unknown;
     draft?: unknown;
     merge_commit_sha?: unknown;
-    head?: { sha?: unknown };
+    head?: { sha?: unknown; ref?: unknown };
     base?: { ref?: unknown };
+  };
+  review?: {
+    id?: unknown;
+    body?: unknown;
+    state?: unknown;
+    commit_id?: unknown;
+    html_url?: unknown;
+    user?: { login?: unknown };
   };
 }
 
@@ -50,6 +65,7 @@ export interface GithubWebhookResult {
   accepted: true;
   duplicate: boolean;
   outcome: string;
+  queuedAgentRuns?: QueuedTenkiRemediation[];
 }
 
 const synchronizationActions = new Set([
@@ -119,6 +135,79 @@ function installationId(payload: GithubWebhookPayload): string | null {
   const value = payload.installation?.id;
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) return null;
   return String(value);
+}
+
+function pullRequestReview(payload: GithubWebhookPayload): TenkiPullRequestReview | null {
+  const repository = payload.repository?.full_name;
+  const pullRequestNumber = payload.pull_request?.number;
+  const pullRequestUrl = payload.pull_request?.html_url;
+  const pullRequestBaseBranch = payload.pull_request?.base?.ref;
+  const headRef = payload.pull_request?.head?.ref;
+  const currentHeadSha = payload.pull_request?.head?.sha;
+  const reviewId = payload.review?.id;
+  const reviewerLogin = payload.review?.user?.login;
+  const state = typeof payload.review?.state === "string"
+    ? payload.review.state.toLowerCase()
+    : "";
+  const reviewedHeadSha = typeof payload.review?.commit_id === "string"
+    ? payload.review.commit_id
+    : currentHeadSha;
+  if (
+    typeof repository !== "string"
+    || typeof pullRequestNumber !== "number"
+    || !Number.isSafeInteger(pullRequestNumber)
+    || typeof pullRequestUrl !== "string"
+    || typeof pullRequestBaseBranch !== "string"
+    || typeof headRef !== "string"
+    || typeof reviewedHeadSha !== "string"
+    || typeof currentHeadSha !== "string"
+    || typeof reviewId !== "number"
+    || !Number.isSafeInteger(reviewId)
+    || typeof reviewerLogin !== "string"
+    || (state !== "approved" && state !== "changes_requested")
+  ) return null;
+  return {
+    repository,
+    pullRequestNumber,
+    pullRequestUrl,
+    pullRequestBaseBranch,
+    headRef,
+    headSha: reviewedHeadSha,
+    reviewId,
+    reviewerLogin,
+    state,
+    body: typeof payload.review?.body === "string" ? payload.review.body : "",
+    comments: [],
+  };
+}
+
+async function hydrateTenkiReviewComments(
+  installationId: string,
+  review: TenkiPullRequestReview,
+): Promise<TenkiPullRequestReview> {
+  if (!isTrustedTenkiReviewer(review.reviewerLogin) || review.state !== "changes_requested") {
+    return review;
+  }
+  const [owner, repo, extra] = review.repository.split("/");
+  if (!owner || !repo || extra) return review;
+  const github = await createGithubInstallationClient(installationId);
+  const comments = await github.paginate(github.rest.pulls.listCommentsForReview, {
+    owner,
+    repo,
+    pull_number: review.pullRequestNumber,
+    review_id: review.reviewId,
+    per_page: 100,
+  });
+  return {
+    ...review,
+    comments: comments.map((comment) => ({
+      id: comment.id,
+      body: comment.body ?? "",
+      path: comment.path,
+      ...(typeof comment.line === "number" ? { line: comment.line } : {}),
+      ...(comment.side === "LEFT" || comment.side === "RIGHT" ? { side: comment.side } : {}),
+    })),
+  };
 }
 
 async function installationOrganizations(id: string | null): Promise<string[]> {
@@ -275,6 +364,13 @@ async function auditPullRequest(
           AND implementation_state NOT IN ('Released','Verified')`,
       [orgId, trackedRun.problem_id],
     );
+    await prepareAgentMergeFollowUps(client, {
+      orgId,
+      problemId: trackedRun.problem_id,
+      repository,
+      pullRequestNumber: number,
+      mergeSha: typeof mergeSha === "string" ? mergeSha : null,
+    });
     if (transitioned.rowCount) {
       await client.query(
         `UPDATE workspaces SET version=version+1,updated_at=now() WHERE org_id=$1`,
@@ -347,8 +443,9 @@ async function reconcileAgentWorkflow(
     problem_id: string;
     prompt_revision_id: string;
     status: string;
+    run_kind: string;
   }>(
-    `SELECT run.problem_id,run.prompt_revision_id,run.status
+    `SELECT run.problem_id,run.prompt_revision_id,run.status,run.run_kind
        FROM agent_runs run
        JOIN github_repository_allowlists allowlist
          ON allowlist.org_id=run.org_id
@@ -385,13 +482,29 @@ async function reconcileAgentWorkflow(
   );
   if (!updated.rowCount) return "agent_workflow_already_terminal";
   await client.query(
-    "UPDATE engineering_ticket_specifications SET implementation_state='Prompt ready',updated_at=now() WHERE org_id=$1 AND problem_id=$2",
-    [orgId, record.problem_id],
+    `UPDATE engineering_ticket_specifications
+        SET implementation_state=$3,updated_at=now()
+      WHERE org_id=$1 AND problem_id=$2`,
+    [
+      orgId,
+      record.problem_id,
+      record.run_kind === "tenki_review_remediation" ? "Draft PR opened" : "Prompt ready",
+    ],
   );
-  await client.query(
-    "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
-    [orgId, record.prompt_revision_id],
-  );
+  if (record.run_kind === "tenki_review_remediation") {
+    await client.query(
+      `UPDATE tenki_pr_review_cycles
+          SET state='Failed',failure_message=$3,completed_at=now(),updated_at=now()
+        WHERE org_id=$1 AND remediation_run_id=$2
+          AND state IN ('Correction queued','Correction running','Correction published')`,
+      [orgId, runId, failureMessage.slice(0, 2_000)],
+    );
+  } else {
+    await client.query(
+      "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
+      [orgId, record.prompt_revision_id],
+    );
+  }
   await client.query(
     `INSERT INTO audit_events(
        id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
@@ -513,6 +626,8 @@ async function processWorkspaceEvent(
   input: GithubWebhookInput,
   verified: VerifiedGithubInstallation | null,
   runtimeFailureMessage: string | null,
+  tenkiReview: TenkiPullRequestReview | null,
+  queuedAgentRuns: QueuedTenkiRemediation[],
 ): Promise<string> {
   if (input.event === "installation" && (action === "deleted" || action === "suspend"))
     return deactivateInstallation(client, orgId, id, action, input.deliveryId);
@@ -520,6 +635,13 @@ async function processWorkspaceEvent(
     return synchronizeInstallation(client, orgId, verified, input.deliveryId);
   if (input.event === "pull_request")
     return auditPullRequest(client, orgId, id, action, input.payload, input.deliveryId);
+  if (input.event === "pull_request_review") {
+    if (action !== "submitted") return "ignored_pull_request_review_action";
+    if (!tenkiReview) return "ignored_malformed_pull_request_review";
+    const processed = await processTenkiPullRequestReview(client, orgId, tenkiReview);
+    if (processed.queuedRun) queuedAgentRuns.push(processed.queuedRun);
+    return processed.outcome;
+  }
   if (input.event === "workflow_run") {
     if (input.payload.workflow_run?.name === "CloseSpan approval-bound agent") {
       return reconcileAgentWorkflow(
@@ -600,6 +722,16 @@ export async function processGithubWebhook(
     }
   }
 
+  let tenkiReview: TenkiPullRequestReview | null = null;
+  if (id && input.event === "pull_request_review" && action === "submitted") {
+    const parsedReview = pullRequestReview(input.payload);
+    if (parsedReview && isTrustedTenkiReviewer(parsedReview.reviewerLogin)) {
+      tenkiReview = await hydrateTenkiReviewComments(id, parsedReview);
+    } else {
+      tenkiReview = parsedReview;
+    }
+  }
+
   return transaction(async (client) => {
     const inserted = await client.query(
       `INSERT INTO github_webhook_deliveries(
@@ -620,6 +752,7 @@ export async function processGithubWebhook(
       return { accepted: true, duplicate: true, outcome: "duplicate" };
 
     let outcome = "ignored_unhandled_event";
+    const queuedAgentRuns: QueuedTenkiRemediation[] = [];
     if (input.event === "ping") outcome = "ping_acknowledged";
     else if (!id) outcome = "ignored_missing_installation";
     else if (!orgIds.length) outcome = "ignored_unbound_installation";
@@ -634,6 +767,8 @@ export async function processGithubWebhook(
           input,
           verified,
           runtimeFailureMessage,
+          tenkiReview,
+          queuedAgentRuns,
         );
         await recordWorkspaceOutcome(client, input.deliveryId, orgId, workspaceOutcome);
         workspaceOutcomes.push(workspaceOutcome);
@@ -647,6 +782,11 @@ export async function processGithubWebhook(
         WHERE delivery_id=$1`,
       [input.deliveryId, outcome],
     );
-    return { accepted: true, duplicate: false, outcome };
+    return {
+      accepted: true,
+      duplicate: false,
+      outcome,
+      ...(queuedAgentRuns.length ? { queuedAgentRuns } : {}),
+    };
   });
 }

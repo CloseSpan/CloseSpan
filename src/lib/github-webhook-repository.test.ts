@@ -7,6 +7,7 @@ const database = vi.hoisted(() => ({
 }));
 const github = vi.hoisted(() => ({ verify: vi.fn(), createInstallationClient: vi.fn() }));
 const installation = vi.hoisted(() => ({ sync: vi.fn() }));
+const tenkiReview = vi.hoisted(() => ({ process: vi.fn() }));
 
 vi.mock("./db", () => ({
   databasePool: () => database.pool,
@@ -19,6 +20,13 @@ vi.mock("./github-app-auth", () => ({
 vi.mock("./github-installation-repository", () => ({
   syncGithubInstallationRecords: installation.sync,
 }));
+vi.mock("./tenki-pr-review-automation", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./tenki-pr-review-automation")>();
+  return {
+    ...original,
+    processTenkiPullRequestReview: tenkiReview.process,
+  };
+});
 
 import { processGithubWebhook } from "./github-webhook-repository";
 import { GITHUB_ACTIONS_JOB_NOT_STARTED_MESSAGE } from "./runtime-verifier-errors";
@@ -43,6 +51,7 @@ describe("GitHub webhook persistence", () => {
     github.verify.mockReset();
     github.createInstallationClient.mockReset().mockRejectedValue(new Error("diagnostics unavailable"));
     installation.sync.mockReset().mockResolvedValue(undefined);
+    tenkiReview.process.mockReset().mockResolvedValue({ outcome: "tenki_pr_review_approved" });
   });
 
   it("acknowledges ping without tenant side effects", async () => {
@@ -179,6 +188,10 @@ describe("GitHub webhook persistence", () => {
         return { rows: [{ delivery_id: deliveryId }], rowCount: 1 };
       if (sql(query).includes("FROM agent_runs run"))
         return { rows: [{ id: "run-1", problem_id: "problem-1" }], rowCount: 1 };
+      if (sql(query).includes("SELECT DISTINCT feedback.customer_name"))
+        return { rows: [{ customer_name: "Acme" }], rowCount: 1 };
+      if (sql(query).includes("INSERT INTO customer_notifications"))
+        return { rows: [{ id: "notification-1" }], rowCount: 1 };
       return { rows: [], rowCount: 1 };
     });
     const result = await processGithubWebhook({
@@ -204,6 +217,15 @@ describe("GitHub webhook persistence", () => {
     )).toBe(true);
     expect(database.client.query.mock.calls.some(([query]) =>
       sql(query).includes("implementation_state='Release Ready'"),
+    )).toBe(true);
+    expect(database.client.query.mock.calls.some(([query]) =>
+      sql(query).includes("INSERT INTO customer_notifications"),
+    )).toBe(true);
+    expect(database.client.query.mock.calls.some(([query, params]) =>
+      sql(query).includes("INSERT INTO audit_events")
+      && Array.isArray(params)
+      && params.some((value) =>
+        typeof value === "string" && value.includes("Prepared 1 customer follow-up draft")),
     )).toBe(true);
   });
 
@@ -240,6 +262,70 @@ describe("GitHub webhook persistence", () => {
       sql(query).includes("status='Superseded'")
     );
     expect(invalidation?.[1]).toEqual(["org-1", "run-1", "c".repeat(40)]);
+  });
+
+  it("hydrates a trusted Tenki changes-requested review and returns its queued correction", async () => {
+    database.pool.query.mockImplementation(async (query: unknown) =>
+      sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
+        ? { rows: [], rowCount: 0 }
+        : sql(query).includes("FROM github_app_installations")
+          ? { rows: [{ org_id: "org-1" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 },
+    );
+    const listCommentsForReview = vi.fn();
+    github.createInstallationClient.mockResolvedValue({
+      paginate: vi.fn().mockResolvedValue([{
+        id: 77,
+        body: "Handle the empty state before approval.",
+        path: "src/feature.ts",
+        line: 42,
+        side: "RIGHT",
+      }]),
+      rest: { pulls: { listCommentsForReview } },
+    });
+    tenkiReview.process.mockResolvedValue({
+      outcome: "tenki_pr_review_correction_queued",
+      queuedRun: { orgId: "org-1", runId: "correction-run-1" },
+    });
+
+    const result = await processGithubWebhook({
+      deliveryId,
+      event: "pull_request_review",
+      rawBody: '{"action":"submitted"}',
+      payload: {
+        action: "submitted",
+        installation: { id: 150109806 },
+        repository: { full_name: "owner/repo" },
+        pull_request: {
+          number: 17,
+          html_url: "https://github.com/owner/repo/pull/17",
+          head: { ref: "closespan/problem-1", sha: "a".repeat(40) },
+          base: { ref: "main" },
+        },
+        review: {
+          id: 901,
+          body: "Changes requested.",
+          state: "changes_requested",
+          commit_id: "a".repeat(40),
+          user: { login: "tenki-reviewer" },
+        },
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      outcome: "tenki_pr_review_correction_queued",
+      queuedAgentRuns: [{ orgId: "org-1", runId: "correction-run-1" }],
+    }));
+    expect(tenkiReview.process).toHaveBeenCalledWith(database.client, "org-1", expect.objectContaining({
+      reviewId: 901,
+      comments: [{
+        id: 77,
+        body: "Handle the empty state before approval.",
+        path: "src/feature.ts",
+        line: 42,
+        side: "RIGHT",
+      }],
+    }));
   });
 
   it("stops and links an active verification when GitHub finishes without a callback", async () => {
@@ -362,7 +448,12 @@ describe("GitHub webhook persistence", () => {
         return { rows: [{ delivery_id: deliveryId }], rowCount: 1 };
       if (sql(query).includes("FROM agent_runs run")) {
         return {
-          rows: [{ problem_id: "problem-1", prompt_revision_id: "prompt-1", status: "Queued" }],
+          rows: [{
+            problem_id: "problem-1",
+            prompt_revision_id: "prompt-1",
+            status: "Queued",
+            run_kind: "implementation",
+          }],
           rowCount: 1,
         };
       }
@@ -401,8 +492,10 @@ describe("GitHub webhook persistence", () => {
       "github_workflow_failure",
       expect.stringContaining("resolve the account, runner, or workflow failure"),
     ]);
-    expect(database.client.query.mock.calls.some(([query]) =>
-      sql(query).includes("implementation_state='Prompt ready'"),
+    expect(database.client.query.mock.calls.some(([query, parameters]) =>
+      sql(query).includes("UPDATE engineering_ticket_specifications")
+      && Array.isArray(parameters)
+      && parameters[2] === "Prompt ready",
     )).toBe(true);
     expect(database.client.query.mock.calls.some(([query]) =>
       sql(query).includes("UPDATE implementation_prompts SET status='Ready'"),

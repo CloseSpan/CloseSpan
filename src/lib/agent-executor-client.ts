@@ -71,6 +71,8 @@ export async function dispatchAgentRun(context: AgentRunExecutionContext): Promi
     baseSha: context.baseSha.toLowerCase(),
     promptHash: context.promptHash,
     promptContent: context.promptContent,
+    runKind: context.runKind ?? "implementation",
+    reviewInstructions: context.reviewInstructions,
     promptArtifactPath: context.promptArtifactPath,
     executionProfileId: context.executionProfileId,
     executionProfileHash: context.executionProfileHash,

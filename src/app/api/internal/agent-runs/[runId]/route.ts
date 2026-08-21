@@ -7,7 +7,10 @@ import {
   getAgentRunExecutionContext,
   markAgentRunRunning,
 } from "@/lib/engineering-workflow-repository";
-import { publishAgentRun } from "@/lib/github-agent-publisher";
+import {
+  publishAgentRun,
+  publishTenkiReviewRemediation,
+} from "@/lib/github-agent-publisher";
 import { noStoreHeaders } from "@/lib/request-security";
 import {
   TenkiIndependentVerificationError,
@@ -31,6 +34,15 @@ import { githubActionsRunnerLabel } from "@/lib/github-actions-runner-label";
 
 export const maxDuration = 300;
 const MAX_CALLBACK_BYTES = 6_000_000;
+
+async function publishCompletedRun(
+  context: Awaited<ReturnType<typeof getAgentRunExecutionContext>>,
+  report: Parameters<typeof publishAgentRun>[1],
+) {
+  return context.runKind === "tenki_review_remediation"
+    ? publishTenkiReviewRemediation(context, report)
+    : publishAgentRun(context, report);
+}
 
 function validSignature(body: string, provided: string, secret: string): boolean {
   const expected = createHmac("sha256", secret).update(body).digest();
@@ -191,7 +203,7 @@ export async function POST(
             throw new Error("Tenki runner report is missing a matching independent fresh-job verification attestation");
           }
           verificationPassed = true;
-          const publication = await publishAgentRun(context, report);
+          const publication = await publishCompletedRun(context, report);
           await completeAgentRun(
             context,
             { ...report, status: "Draft PR opened" },
@@ -253,7 +265,7 @@ export async function POST(
           return;
         }
         verificationPassed = true;
-        const publication = await publishAgentRun(context, verified);
+        const publication = await publishCompletedRun(context, verified);
         await completeAgentRun(
           context,
           { ...verified, status: "Draft PR opened" },

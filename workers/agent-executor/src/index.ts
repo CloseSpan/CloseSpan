@@ -112,6 +112,8 @@ const commonJobFields = {
   baseSha: z.string().regex(/^[a-f0-9]{40}$/),
   promptHash: z.string().regex(/^[a-f0-9]{64}$/),
   promptContent: z.string().min(1).max(750_000),
+  runKind: z.enum(["implementation", "tenki_review_remediation"]).optional(),
+  reviewInstructions: z.string().min(1).max(50_000).optional(),
   promptArtifactPath: z.string().regex(/^\.prompt\/tickets\/[A-Za-z0-9._-]+\.prompt\.md$/),
   repositoryArchiveUrl: z.string().url().max(4_000),
   requiredCommands: z.array(z.string().min(1).max(500)).min(1).max(30),

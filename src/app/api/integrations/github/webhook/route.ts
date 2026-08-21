@@ -1,4 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
+import { dispatchAgentRun, agentRunDispatchFailureCode } from "@/lib/agent-executor-client";
+import {
+  failAgentRun,
+  getAgentRunExecutionContext,
+} from "@/lib/engineering-workflow-repository";
 import { processGithubWebhook } from "@/lib/github-webhook-repository";
 import {
   GITHUB_WEBHOOK_MAX_BYTES,
@@ -41,6 +46,23 @@ export async function POST(request: NextRequest) {
       rawBody,
       payload: parsed,
     });
+    if (result.queuedAgentRuns?.length) {
+      after(async () => {
+        await Promise.all(result.queuedAgentRuns!.map(async ({ orgId, runId }) => {
+          const context = await getAgentRunExecutionContext(orgId, runId);
+          try {
+            await dispatchAgentRun(context);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Tenki review correction dispatch failed";
+            await failAgentRun(
+              context,
+              agentRunDispatchFailureCode(message, "autonomy_dispatch_failed"),
+              message,
+            );
+          }
+        }));
+      });
+    }
     return NextResponse.json(result, { status: 202, headers: responseHeaders });
   } catch (error) {
     if (error instanceof SyntaxError)

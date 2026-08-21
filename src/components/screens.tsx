@@ -5803,9 +5803,8 @@ export function FollowUpScreen({
     );
   }
   const activeProblem = problem;
-  const available =
-    ["Verified", "Closed"].includes(state.problemStage) &&
-    state.notifications !== "Not drafted";
+  const prepared = state.notifications !== "Not drafted";
+  const verified = ["Verified", "Closed"].includes(state.problemStage);
   const affected = Array.from(
     feedbackItems
       .filter((item) => item.problemId === problem.id)
@@ -5841,18 +5840,23 @@ export function FollowUpScreen({
         title="Customer follow-up"
         description="Close the loop after a verified deployment, always with human approval."
         action={
-          <span className={`badge ${available ? "success" : ""}`}>
-            {available ? "Verified resolution" : "Waiting for verification"}
+          <span className={`badge ${verified ? "success" : prepared ? "brand" : ""}`}>
+            {verified
+              ? "Verified resolution"
+              : prepared
+                ? "Follow-up prepared"
+                : "Waiting for agent merge"}
           </span>
         }
       />
-      {!available ? (
+      {!prepared ? (
         <section className="card empty-state">
           <ShieldCheck size={28} />
           <h2>No drafts ready yet</h2>
           <p className="subtle">
-            Move {problem.id} through Released and Verified before customer
-            follow-up can be drafted.
+            CloseSpan prepares affected-customer drafts after its approved pull
+            request is merged. Approval and sending remain locked until release
+            verification succeeds.
           </p>
           <Link className="btn primary" href={`/problems/${problem.id}`}>
             Open product problem
@@ -5864,7 +5868,9 @@ export function FollowUpScreen({
             <div>
               <h2>{problem.title}</h2>
               <p className="subtle">
-                Verified release · deployment evidence recorded
+                {verified
+                  ? "Verified release · deployment evidence recorded"
+                  : "Agent PR merged · awaiting release verification"}
               </p>
             </div>
             <span className="badge brand">{affected.length} drafts</span>
@@ -5896,9 +5902,9 @@ export function FollowUpScreen({
                     </span>
                   </div>
                   <p>
-                    Hi {customer.customer}, we’ve resolved{" "}
-                    {problem.title.toLowerCase()}. The verified fix is now
-                    available.
+                    {verified
+                      ? `Hi ${customer.customer}, we’ve resolved ${problem.title.toLowerCase()}. The verified fix is now available.`
+                      : `Hi ${customer.customer}, we’re preparing an update about ${problem.title.toLowerCase()}. This draft will be finalized after release verification.`}
                   </p>
                   <small>
                     No sensitive data included · simulated delivery only
@@ -5909,10 +5915,17 @@ export function FollowUpScreen({
             <button
               type="button"
               className="btn primary"
-              disabled={busy || affected.length === 0 || state.notifications === "Approved"}
+              disabled={
+                busy ||
+                !verified ||
+                affected.length === 0 ||
+                state.notifications === "Approved"
+              }
               onClick={approveDrafts}
             >
-              {state.notifications === "Approved"
+              {!verified
+                ? "Awaiting release verification"
+                : state.notifications === "Approved"
                 ? "Drafts approved"
                 : "Approve all drafts"}
             </button>

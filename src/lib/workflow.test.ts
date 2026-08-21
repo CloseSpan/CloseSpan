@@ -28,12 +28,15 @@ describe("feedback-to-resolution workflow", () => {
     expect(rejected.workItem).toBeUndefined();
   });
 
-  it("drafts and approves follow-up only after verification", async () => {
+  it("drafts after agent merge and approves only after verification", async () => {
     await approveAction(ORG_ID, context("approve_001"));
     await advanceLifecycle(ORG_ID, context("advance_001"));
     await advanceLifecycle(ORG_ID, context("advance_002"));
     await advanceLifecycle(ORG_ID, context("advance_003"));
-    expect((await getState(ORG_ID)).notifications).toBe("Not drafted");
+    expect((await getState(ORG_ID)).problemStage).toBe("Release Ready");
+    expect((await getState(ORG_ID)).notifications).toBe("Drafted");
+    await expect(approveNotifications(ORG_ID, context("notify_early")))
+      .rejects.toThrow("requires a verified resolution");
     await advanceLifecycle(ORG_ID, context("advance_004"));
     expect((await getState(ORG_ID)).problemStage).toBe("Released");
     await advanceLifecycle(ORG_ID, context("advance_005"));

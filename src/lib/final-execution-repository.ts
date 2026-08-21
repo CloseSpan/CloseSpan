@@ -75,6 +75,64 @@ export class FinalExecutionError extends Error {
   }
 }
 
+export interface AgentMergeFollowUpInput {
+  orgId: string;
+  problemId: string;
+  repository: string;
+  pullRequestNumber: number;
+  mergeSha: string | null;
+}
+
+/** Prepare affected-customer drafts after an approved agent PR merges. */
+export async function prepareAgentMergeFollowUps(
+  client: PoolClient,
+  input: AgentMergeFollowUpInput,
+): Promise<number> {
+  const customers = await client.query<{ customer_name: string }>(
+    `SELECT DISTINCT feedback.customer_name
+       FROM feedback_cluster_memberships membership
+       JOIN feedback_items feedback
+         ON feedback.org_id=membership.org_id AND feedback.id=membership.feedback_id
+      WHERE membership.org_id=$1 AND membership.problem_id=$2
+        AND nullif(btrim(feedback.customer_name),'') IS NOT NULL
+      ORDER BY feedback.customer_name`,
+    [input.orgId, input.problemId],
+  );
+  let prepared = 0;
+  for (const customer of customers.rows) {
+    const inserted = await client.query(
+      `INSERT INTO customer_notifications(
+         id,org_id,problem_id,customer_name,status
+       ) VALUES($1,$2,$3,$4,'Drafted')
+       ON CONFLICT (org_id,problem_id,customer_name) DO NOTHING
+       RETURNING id`,
+      [randomUUID(), input.orgId, input.problemId, customer.customer_name],
+    );
+    prepared += inserted.rowCount ?? 0;
+  }
+  if (prepared > 0) {
+    const action = `Prepared ${prepared} customer follow-up draft${prepared === 1 ? "" : "s"} after approved agent merge of ${input.repository}#${input.pullRequestNumber}`;
+    await client.query(
+      `INSERT INTO audit_events(
+         id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+       ) VALUES($1,$2,'closespan_agent','CloseSpan agent',$3,'CustomerNotification',$4,$5)
+       ON CONFLICT DO NOTHING`,
+      [
+        randomUUID(),
+        input.orgId,
+        action,
+        input.problemId,
+        `agent-merge-follow-up:${input.repository}:${input.pullRequestNumber}:${input.mergeSha ?? "pending-merge-sha"}`,
+      ],
+    );
+    await client.query(
+      "UPDATE workspaces SET version=version+1,updated_at=now() WHERE org_id=$1",
+      [input.orgId],
+    );
+  }
+  return prepared;
+}
+
 export function finalExecutionScopeAllowsApproval(evidenceSnapshot: unknown): boolean {
   if (!evidenceSnapshot || typeof evidenceSnapshot !== "object") return true;
   const snapshot = evidenceSnapshot as {
@@ -416,6 +474,7 @@ interface ApprovalCandidate {
   installation_id: string;
   run_status: string;
   implementation_commit_sha: string;
+  tenki_review_required: boolean;
   verification_status: string | null;
   evidence_snapshot: {
     releaseVerificationScope?: ReleaseVerificationScopeAssessment;
@@ -430,7 +489,7 @@ async function loadCandidate(orgId: string, approvalId: string): Promise<Approva
             approval.agent_run_id,approval.repository,approval.base_branch,
             approval.pull_request_number,approval.pull_request_url,approval.head_sha,
             allowlist.installation_id::text,run.status AS run_status,
-            run.implementation_commit_sha,
+            run.implementation_commit_sha,run.tenki_review_required,
             run.implementation_report->'independentVerification'->>'status' AS verification_status,
             approval.evidence_snapshot,
             attempt.id AS attempt_id,attempt.status AS attempt_status
@@ -450,6 +509,32 @@ async function loadCandidate(orgId: string, approvalId: string): Promise<Approva
   const row = result.rows[0];
   if (!row) throw new FinalExecutionError("Final execution approval was not found", 404);
   return row;
+}
+
+async function assertExactHeadTenkiApproval(
+  orgId: string,
+  candidate: ApprovalCandidate,
+): Promise<void> {
+  if (!candidate.tenki_review_required) return;
+  const approval = await databasePool().query(
+    `SELECT 1
+       FROM tenki_pr_review_cycles
+      WHERE org_id=$1 AND repository=$2 AND pull_request_number=$3
+        AND state='Approved' AND lower(head_sha_after)=lower($4)
+      LIMIT 1`,
+    [
+      orgId,
+      candidate.repository,
+      candidate.pull_request_number,
+      candidate.head_sha,
+    ],
+  );
+  if (!approval.rowCount) {
+    throw new FinalExecutionError(
+      "Tenki has not approved the exact current pull request commit yet. Address the review or request Tenki review again before merging.",
+      409,
+    );
+  }
 }
 
 export async function approveFinalExecution(
@@ -489,6 +574,7 @@ export async function approveFinalExecution(
       409,
     );
   }
+  await assertExactHeadTenkiApproval(orgId, candidate);
 
   const attemptId = retryingApprovedMerge && candidate.attempt_id
     ? candidate.attempt_id
@@ -556,6 +642,7 @@ interface QueuedExecution {
   org_id: string;
   approval_id: string;
   agent_run_id: string;
+  problem_id: string;
   repository: string;
   base_branch: string;
   pull_request_number: number;
@@ -590,7 +677,7 @@ export async function processQueuedFinalExecutions(
             AND allowlist.active=true
             AND allowlist.workspace_selected=true
           RETURNING attempt.id,attempt.org_id,attempt.approval_id,attempt.agent_run_id,
-                    attempt.repository,approval.base_branch,attempt.pull_request_number,
+                    approval.problem_id,attempt.repository,approval.base_branch,attempt.pull_request_number,
                     attempt.expected_head_sha,allowlist.installation_id::text`,
       );
       return claimed.rows[0] ?? null;
@@ -623,6 +710,13 @@ export async function processQueuedFinalExecutions(
             `Merged ${queued.repository}#${queued.pull_request_number} as ${merged.sha}`,
             queued.agent_run_id, `release-execution:${queued.id}:succeeded`],
         );
+        await prepareAgentMergeFollowUps(client, {
+          orgId: queued.org_id,
+          problemId: queued.problem_id,
+          repository: queued.repository,
+          pullRequestNumber: queued.pull_request_number,
+          mergeSha: merged.sha,
+        });
       });
       results.push({ attemptId: queued.id, status: "Succeeded" });
     } catch (error) {

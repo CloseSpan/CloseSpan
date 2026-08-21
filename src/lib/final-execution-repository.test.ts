@@ -1,8 +1,10 @@
 import type { Octokit } from "@octokit/rest";
+import type { PoolClient } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   finalExecutionScopeAllowsApproval,
   mergeApprovedPullRequest,
+  prepareAgentMergeFollowUps,
 } from "./final-execution-repository";
 import { parseReleaseVerificationPlan, releaseVerificationPlanSchema } from "./release-verification-plan";
 
@@ -126,5 +128,66 @@ describe("final pull request execution", () => {
       releaseVerificationPlan: frontendOnly,
       changedFiles: ["src/app/api/orders/route.ts"],
     })).toBe(false);
+  });
+
+  it("prepares one idempotent follow-up draft per affected customer after merge", async () => {
+    const query = vi.fn(async (statement: unknown) => {
+      const normalized = typeof statement === "string" ? statement.replace(/\s+/g, " ") : "";
+      if (normalized.includes("SELECT DISTINCT feedback.customer_name")) {
+        return {
+          rows: [{ customer_name: "Acme" }, { customer_name: "Globex" }],
+          rowCount: 2,
+        };
+      }
+      return { rows: [{ id: "created" }], rowCount: 1 };
+    });
+
+    await expect(prepareAgentMergeFollowUps(
+      { query } as unknown as PoolClient,
+      {
+        orgId: "org-1",
+        problemId: "problem-1",
+        repository: "acme/api",
+        pullRequestNumber: 42,
+        mergeSha: "b".repeat(40),
+      },
+    )).resolves.toBe(2);
+
+    expect(query.mock.calls.filter(([statement]) =>
+      typeof statement === "string" && statement.includes("INSERT INTO customer_notifications"),
+    )).toHaveLength(2);
+    expect(query.mock.calls.filter(([statement]) =>
+      typeof statement === "string" && statement.includes("'CustomerNotification'"),
+    )).toHaveLength(1);
+    expect(query.mock.calls.some(([statement]) =>
+      typeof statement === "string" && statement.includes("UPDATE workspaces SET version=version+1"),
+    )).toBe(true);
+  });
+
+  it("does not duplicate or re-audit already prepared merge follow-ups", async () => {
+    const query = vi.fn(async (statement: unknown) => {
+      const normalized = typeof statement === "string" ? statement.replace(/\s+/g, " ") : "";
+      if (normalized.includes("SELECT DISTINCT feedback.customer_name")) {
+        return { rows: [{ customer_name: "Acme" }], rowCount: 1 };
+      }
+      if (normalized.includes("INSERT INTO customer_notifications")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await expect(prepareAgentMergeFollowUps(
+      { query } as unknown as PoolClient,
+      {
+        orgId: "org-1",
+        problemId: "problem-1",
+        repository: "acme/api",
+        pullRequestNumber: 42,
+        mergeSha: "b".repeat(40),
+      },
+    )).resolves.toBe(0);
+    expect(query.mock.calls.some(([statement]) =>
+      typeof statement === "string" && statement.includes("UPDATE workspaces SET version=version+1"),
+    )).toBe(false);
   });
 });

@@ -297,6 +297,16 @@ export interface AgentRunExecutionContext {
   executionProfileId: string;
   executionProfileHash: string;
   executionProfileSnapshot: ExecutionProfileSnapshot;
+  runKind?: "implementation" | "tenki_review_remediation";
+  parentRunId?: string;
+  reviewCycle?: number;
+  reviewId?: number;
+  reviewInstructions?: string;
+  reviewCommentIds?: number[];
+  pullRequestNumber?: number;
+  pullRequestUrl?: string;
+  sourcePromptCommitSha?: string;
+  pullRequestBaseBranch?: string;
 }
 
 export class EngineeringWorkflowError extends Error {
@@ -2677,6 +2687,16 @@ export async function getAgentRunExecutionContext(
     approval_execution_profile_snapshot: unknown;
     verification_execution_profile_id: string | null; verification_execution_profile_hash: string | null;
     verification_execution_profile_snapshot: unknown;
+    run_kind: "implementation" | "tenki_review_remediation";
+    parent_run_id: string | null;
+    review_cycle: number | null;
+    review_id: string | number | null;
+    review_instructions: string | null;
+    review_comment_ids: unknown;
+    pull_request_number: number | null;
+    pull_request_url: string | null;
+    prompt_commit_sha: string | null;
+    pull_request_base_branch: string | null;
   }>(`SELECT run.problem_id,run.approval_id,run.repository,allowlist.installation_id::text,
              run.base_branch,run.base_sha,run.branch_name,run.prompt_revision_id,run.prompt_hash,
              prompt.rendered_content,prompt.artifact_path,prompt.structured_snapshot,
@@ -2691,7 +2711,10 @@ export async function getAgentRunExecutionContext(
              approval.execution_profile_snapshot AS approval_execution_profile_snapshot,
              verification.execution_profile_id AS verification_execution_profile_id,
              verification.execution_profile_hash AS verification_execution_profile_hash,
-             verification.execution_profile_snapshot AS verification_execution_profile_snapshot
+             verification.execution_profile_snapshot AS verification_execution_profile_snapshot,
+             run.run_kind,run.parent_run_id,run.review_cycle,run.review_id,
+             run.review_instructions,run.review_comment_ids,run.pull_request_number,
+             run.pull_request_url,run.prompt_commit_sha,run.pull_request_base_branch
         FROM agent_runs run
         JOIN implementation_prompts prompt ON prompt.org_id=run.org_id AND prompt.id=run.prompt_revision_id
         JOIN approval_requests approval ON approval.org_id=run.org_id AND approval.id=run.approval_id
@@ -2738,6 +2761,12 @@ export async function getAgentRunExecutionContext(
     permittedPaths: row.structured_snapshot.ticket.permittedPaths,
     requiredCommands: row.structured_snapshot.ticket.requiredCommands,
   });
+  const reviewCommentIds = Array.isArray(row.review_comment_ids)
+    ? row.review_comment_ids.filter(
+        (value): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0,
+      )
+    : [];
+  const reviewId = row.review_id === null ? undefined : Number(row.review_id);
   return {
     orgId, problemId: row.problem_id, runId, approvalId: row.approval_id,
     repository: row.repository, installationId: row.installation_id,
@@ -2750,6 +2779,16 @@ export async function getAgentRunExecutionContext(
     executionProfileId: executionProfileSnapshot.profileId,
     executionProfileHash: executionProfileSnapshot.contentHash,
     executionProfileSnapshot,
+    runKind: row.run_kind === "tenki_review_remediation" ? "tenki_review_remediation" : "implementation",
+    ...(row.parent_run_id ? { parentRunId: row.parent_run_id } : {}),
+    ...(row.review_cycle ? { reviewCycle: row.review_cycle } : {}),
+    ...(reviewId && Number.isSafeInteger(reviewId) ? { reviewId } : {}),
+    ...(row.review_instructions ? { reviewInstructions: row.review_instructions } : {}),
+    ...(reviewCommentIds.length ? { reviewCommentIds } : {}),
+    ...(row.pull_request_number ? { pullRequestNumber: row.pull_request_number } : {}),
+    ...(row.pull_request_url ? { pullRequestUrl: row.pull_request_url } : {}),
+    ...(row.prompt_commit_sha ? { sourcePromptCommitSha: row.prompt_commit_sha } : {}),
+    ...(row.pull_request_base_branch ? { pullRequestBaseBranch: row.pull_request_base_branch } : {}),
   };
 }
 
@@ -2764,6 +2803,12 @@ export async function markAgentRunRunning(
     [orgId, runId, sandboxId],
   );
   if (!result.rowCount) throw new EngineeringWorkflowError("Agent run cannot be started", 409);
+  await databasePool().query(
+    `UPDATE tenki_pr_review_cycles
+        SET state='Correction running',updated_at=now()
+      WHERE org_id=$1 AND remediation_run_id=$2 AND state='Correction queued'`,
+    [orgId, runId],
+  );
 }
 
 export async function claimQueuedAgentRun(
@@ -2796,6 +2841,7 @@ export async function completeAgentRun(
     implementationCommitSha: string;
     pullRequestNumber: number;
     pullRequestUrl: string;
+    tenkiReviewRequested?: boolean;
   },
 ): Promise<EngineeringWorkflowView> {
   const report = validateAgentImplementationReport(input, {
@@ -2826,7 +2872,9 @@ export async function completeAgentRun(
     await client.query(
       `UPDATE agent_runs SET status=$3,changed_files=$4,test_results=$5,implementation_report=$6,
          failure_code=$7,failure_message=$8,prompt_commit_sha=$9,implementation_commit_sha=$10,
-         pull_request_number=$11,pull_request_url=$12,completed_at=CASE WHEN $3 IN ('Draft PR opened','Failed','No changes') THEN now() ELSE completed_at END
+         pull_request_number=$11,pull_request_url=$12,
+         tenki_review_required=CASE WHEN $11::integer IS NOT NULL THEN true ELSE tenki_review_required END,
+         completed_at=CASE WHEN $3 IN ('Draft PR opened','Failed','No changes') THEN now() ELSE completed_at END
        WHERE org_id=$1 AND id=$2`,
       [context.orgId, context.runId, finalStatus,
         JSON.stringify(report.changedFiles.map((file) => file.path)), JSON.stringify(report.tests), JSON.stringify(report),
@@ -2844,13 +2892,21 @@ export async function completeAgentRun(
       );
     }
     if (publication) {
+      await client.query(
+        `UPDATE approval_requests
+            SET status='Superseded',updated_at=now()
+          WHERE org_id=$1 AND action_type='final_execution' AND status='Pending'
+            AND repository=$2 AND pull_request_number=$3
+            AND agent_run_id<>$4`,
+        [context.orgId, context.repository, publication.pullRequestNumber, context.runId],
+      );
       await createFinalExecutionApproval(client, {
         orgId: context.orgId,
         problemId: context.problemId,
         runId: context.runId,
         promptRevisionId: context.promptId,
         repository: context.repository,
-        baseBranch: context.baseBranch,
+        baseBranch: context.pullRequestBaseBranch ?? context.baseBranch,
         pullRequestNumber: publication.pullRequestNumber,
         pullRequestUrl: publication.pullRequestUrl,
         headSha: publication.implementationCommitSha,
@@ -2868,17 +2924,48 @@ export async function completeAgentRun(
         autoDeployOnMerge: process.env.AUTO_DEPLOY_ON_MERGE === "true",
         rollbackPlan: process.env.DEFAULT_ROLLBACK_PLAN?.trim() || null,
       });
+      if (context.runKind === "tenki_review_remediation") {
+        await client.query(
+          `UPDATE tenki_pr_review_cycles
+              SET state=$3,head_sha_after=$4,completed_at=now(),updated_at=now()
+            WHERE org_id=$1 AND remediation_run_id=$2
+              AND state IN ('Correction queued','Correction running','Correction published')`,
+          [
+            context.orgId,
+            context.runId,
+            publication.tenkiReviewRequested ? "Review requested" : "Correction published",
+            publication.implementationCommitSha,
+          ],
+        );
+      }
     }
     const implementationState: EngineeringImplementationState = publication
       ? "Draft PR opened"
       : finalStatus === "Tests passed"
         ? "Tests passed"
-        : "Prompt ready";
+        : context.runKind === "tenki_review_remediation"
+          ? "Draft PR opened"
+          : "Prompt ready";
     await client.query("UPDATE engineering_ticket_specifications SET implementation_state=$3,updated_at=now() WHERE org_id=$1 AND problem_id=$2", [context.orgId, context.problemId, implementationState]);
-    if (finalStatus === "Failed" || finalStatus === "No changes") {
+    if (
+      context.runKind !== "tenki_review_remediation"
+      && (finalStatus === "Failed" || finalStatus === "No changes")
+    ) {
       await client.query(
         "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
         [context.orgId, context.promptId],
+      );
+    }
+    if (
+      context.runKind === "tenki_review_remediation"
+      && (finalStatus === "Failed" || finalStatus === "No changes")
+    ) {
+      await client.query(
+        `UPDATE tenki_pr_review_cycles
+            SET state='Failed',failure_message=$3,completed_at=now(),updated_at=now()
+          WHERE org_id=$1 AND remediation_run_id=$2
+            AND state IN ('Correction queued','Correction running','Correction published')`,
+        [context.orgId, context.runId, report.summary.slice(0, 2_000)],
       );
     }
     await client.query(
@@ -2923,10 +3010,16 @@ export async function failAgentRun(
     current.run.failureCode = code.slice(0, 120);
     current.run.failureMessage = message.slice(0, 2_000);
     current.run.completedAt = new Date().toISOString();
-    if (current.prompt?.id === context.promptId && current.prompt.status === "Approved") {
+    if (
+      context.runKind !== "tenki_review_remediation"
+      && current.prompt?.id === context.promptId
+      && current.prompt.status === "Approved"
+    ) {
       current.prompt.status = "Ready";
     }
-    current.specification.implementationState = "Prompt ready";
+    current.specification.implementationState = context.runKind === "tenki_review_remediation"
+      ? "Draft PR opened"
+      : "Prompt ready";
     return;
   }
   await transaction(async (client) => {
@@ -2938,13 +3031,29 @@ export async function failAgentRun(
     );
     if (!result.rowCount) return;
     await client.query(
-      "UPDATE engineering_ticket_specifications SET implementation_state='Prompt ready',updated_at=now() WHERE org_id=$1 AND problem_id=$2",
-      [context.orgId, context.problemId],
+      `UPDATE engineering_ticket_specifications
+          SET implementation_state=$3,updated_at=now()
+        WHERE org_id=$1 AND problem_id=$2`,
+      [
+        context.orgId,
+        context.problemId,
+        context.runKind === "tenki_review_remediation" ? "Draft PR opened" : "Prompt ready",
+      ],
     );
-    await client.query(
-      "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
-      [context.orgId, context.promptId],
-    );
+    if (context.runKind !== "tenki_review_remediation") {
+      await client.query(
+        "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
+        [context.orgId, context.promptId],
+      );
+    } else {
+      await client.query(
+        `UPDATE tenki_pr_review_cycles
+            SET state='Failed',failure_message=$3,completed_at=now(),updated_at=now()
+          WHERE org_id=$1 AND remediation_run_id=$2
+            AND state IN ('Correction queued','Correction running','Correction published')`,
+        [context.orgId, context.runId, message.slice(0, 2_000)],
+      );
+    }
     await client.query(
       `INSERT INTO audit_events(id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id)
        VALUES($1,$2,'agent_executor','CloseSpan agent executor',$3,'AgentRun',$4,$5)`,

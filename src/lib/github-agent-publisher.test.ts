@@ -2,7 +2,7 @@ import type { Octokit } from "@octokit/rest";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentImplementationReport } from "./agent-run-verification";
 import type { AgentRunExecutionContext } from "./engineering-workflow-repository";
-import { publishAgentRun } from "./github-agent-publisher";
+import { publishAgentRun, publishTenkiReviewRemediation } from "./github-agent-publisher";
 
 const context = {
   repository: "owner/repo",
@@ -110,5 +110,97 @@ describe("GitHub agent publisher", () => {
       expect.objectContaining({ pullRequestNumber: 8 }),
     );
     warn.mockRestore();
+  });
+
+  it("publishes Tenki corrections to the existing branch, replies, resolves, and requests re-review", async () => {
+    const createComment = vi.fn().mockResolvedValue({ data: { id: 2 } });
+    const createReply = vi.fn().mockResolvedValue({ data: { id: 3 } });
+    const updateRef = vi.fn().mockResolvedValue({ data: {} });
+    const graphql = vi.fn(async (query: string) => {
+      if (query.includes("query CloseSpanReviewThreads")) {
+        return {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: [{
+                  id: "thread-77",
+                  isResolved: false,
+                  comments: { nodes: [{ databaseId: 77 }] },
+                }],
+              },
+            },
+          },
+        };
+      }
+      return { resolveReviewThread: { thread: { id: "thread-77", isResolved: true } } };
+    });
+    const client = {
+      paginate: vi.fn().mockResolvedValue([]),
+      graphql,
+      rest: {
+        git: {
+          getRef: vi.fn().mockResolvedValue({ data: { object: { sha: "reviewed-head" } } }),
+          getCommit: vi.fn().mockResolvedValue({ data: { tree: { sha: "reviewed-tree" }, parents: [] } }),
+          createBlob: vi.fn().mockResolvedValue({ data: { sha: "correction-blob" } }),
+          createTree: vi.fn().mockResolvedValue({ data: { sha: "correction-tree" } }),
+          createCommit: vi.fn().mockResolvedValue({ data: { sha: "corrected-head" } }),
+          updateRef,
+        },
+        pulls: {
+          get: vi.fn().mockResolvedValue({
+            data: {
+              state: "open",
+              head: { ref: "closespan/change", sha: "reviewed-head" },
+              base: { ref: "main" },
+            },
+          }),
+          createReplyForReviewComment: createReply,
+        },
+        issues: {
+          listComments: vi.fn(),
+          createComment,
+        },
+      },
+    } as unknown as Octokit;
+    const remediationContext = {
+      ...context,
+      runKind: "tenki_review_remediation",
+      baseBranch: "closespan/change",
+      baseSha: "reviewed-head",
+      pullRequestNumber: 8,
+      pullRequestUrl: "https://github.com/owner/repo/pull/8",
+      pullRequestBaseBranch: "main",
+      reviewCycle: 1,
+      reviewId: 901,
+      reviewCommentIds: [77],
+      sourcePromptCommitSha: "prompt-commit",
+    } satisfies AgentRunExecutionContext;
+
+    await expect(publishTenkiReviewRemediation(
+      remediationContext,
+      report,
+      { createClient: () => client },
+    )).resolves.toEqual(expect.objectContaining({
+      implementationCommitSha: "corrected-head",
+      pullRequestNumber: 8,
+      tenkiReviewRequested: true,
+    }));
+    expect(updateRef).toHaveBeenCalledWith(expect.objectContaining({
+      ref: "heads/closespan/change",
+      sha: "corrected-head",
+      force: false,
+    }));
+    expect(createReply).toHaveBeenCalledWith(expect.objectContaining({
+      pull_number: 8,
+      comment_id: 77,
+    }));
+    expect(graphql).toHaveBeenCalledWith(
+      expect.stringContaining("resolveReviewThread"),
+      { threadId: "thread-77" },
+    );
+    expect(createComment).toHaveBeenCalledWith(expect.objectContaining({
+      issue_number: 8,
+      body: expect.stringContaining("cycle=1"),
+    }));
   });
 });
