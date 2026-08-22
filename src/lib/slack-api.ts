@@ -220,11 +220,12 @@ export async function createPublicSlackChannel(
 export async function setSlackChannelPurpose(
   context: SlackApiContext,
   channelId: string,
+  purpose =
+    "Product conversations monitored by CloseSpan. Clear feedback is recorded, ambiguous feedback requires confirmation, and casual chat is ignored.",
 ): Promise<void> {
   await slackPost(context, "conversations.setPurpose", {
     channel: channelId,
-    purpose:
-      "Product conversations monitored by CloseSpan. Mention @CloseSpan to submit an issue or feature for confirmation. Other clear feedback is recorded, ambiguous feedback requires confirmation, and casual chat is ignored.",
+    purpose,
   });
 }
 
@@ -248,6 +249,23 @@ export async function postSlackMessage(
   if (typeof response.ts !== "string")
     throw new SlackApiError("chat.postMessage", "missing_timestamp");
   return { ts: response.ts };
+}
+
+export async function updateSlackMessage(
+  context: SlackApiContext,
+  input: {
+    channelId: string;
+    messageTs: string;
+    text: string;
+    blocks?: unknown[];
+  },
+): Promise<void> {
+  await slackPost(context, "chat.update", {
+    channel: input.channelId,
+    ts: input.messageTs,
+    text: input.text,
+    ...(input.blocks ? { blocks: input.blocks } : {}),
+  });
 }
 
 export async function listSlackChannelMessages(

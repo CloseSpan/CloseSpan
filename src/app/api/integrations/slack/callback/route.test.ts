@@ -4,7 +4,7 @@ const security = vi.hoisted(() => ({ adminRead: vi.fn() }));
 const state = vi.hoisted(() => ({ verify: vi.fn() }));
 const slackApp = vi.hoisted(() => ({ exchange: vi.fn(), save: vi.fn() }));
 const intake = vi.hoisted(() => ({ status: vi.fn(), setMode: vi.fn() }));
-const slack = vi.hoisted(() => ({ join: vi.fn(), post: vi.fn() }));
+const slack = vi.hoisted(() => ({ join: vi.fn() }));
 
 vi.mock("@/lib/request-security", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/request-security")>();
@@ -24,7 +24,6 @@ vi.mock("@/lib/slack-intake", () => ({
 }));
 vi.mock("@/lib/slack-api", () => ({
   joinSlackChannel: slack.join,
-  postSlackMessage: slack.post,
 }));
 
 import { NextRequest } from "next/server";
@@ -68,7 +67,6 @@ describe("CloseSpan Slack app callback", () => {
     });
     intake.setMode.mockReset().mockResolvedValue({ intakeMode: "mentions" });
     slack.join.mockReset().mockResolvedValue(undefined);
-    slack.post.mockReset().mockResolvedValue({ ts: "100.1" });
   });
 
   it("joins the feedback channel, saves the bot, and enables mention-only intake", async () => {
@@ -92,12 +90,6 @@ describe("CloseSpan Slack app callback", () => {
       mode: "mentions",
       actor: context,
     });
-    expect(slack.post).toHaveBeenCalledWith(
-      { orgId: "org_test", accessToken: "xoxb-closespan" },
-      expect.objectContaining({
-        text: expect.stringContaining("<@UCLOSESPAN>"),
-      }),
-    );
   });
 
   it("rejects a callback whose state does not match the install cookie", async () => {

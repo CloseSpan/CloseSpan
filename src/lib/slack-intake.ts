@@ -22,11 +22,13 @@ import {
   listSlackThreadReplies,
   postSlackMessage,
   setSlackChannelPurpose,
+  updateSlackMessage,
   type SlackFile,
   type SlackMessage,
   type SlackReaction,
   type SlackApiContext,
   type SlackProxyContext,
+  SlackApiError,
 } from "./slack-api";
 import {
   getSlackAppInstallation,
@@ -37,7 +39,7 @@ import { workspacePersistenceMode } from "./workspace-persistence";
 
 export const SLACK_INTAKE_CHANNEL = "closespan-feedback";
 export const SLACK_INTAKE_WELCOME_TEXT =
-  "CloseSpan is listening in #closespan-feedback. Mention @CloseSpan to submit an issue or feature directly for confirmation. Nearby messages and thread replies are grouped into conversations; ambiguous conversations are held for confirmation, and casual chat is ignored.";
+  "CloseSpan feedback intake is active. Post customer feedback or discuss it naturally. CloseSpan monitors this channel, groups nearby messages and replies, records clear feedback, requests confirmation for ambiguous feedback, and ignores casual chat.";
 const MAX_THREAD_FETCHES_PER_TICK = 25;
 const MAX_SIGNAL_TEXT = 8_000;
 const IN_BATCH_CLUSTER_THRESHOLD = 0.9;
@@ -325,6 +327,109 @@ type SlackNotificationEvent =
   | "verification_required"
   | "verified";
 
+export function slackIntakeWelcomeCopy(input: {
+  mode: SlackIntakeStatus["intakeMode"];
+  botUserId?: string | null;
+}): { text: string; blocks: unknown[]; purpose: string } {
+  const mentionsBot = input.mode === "mentions" && validSlackUserId(input.botUserId);
+  const directInstruction = mentionsBot
+    ? `Mention <@${input.botUserId}> to submit an issue or feature directly. CloseSpan will ask you to confirm it in Slack before recording anything.`
+    : "Post customer feedback or discuss it naturally. CloseSpan monitors the full channel, so you do not need to mention anyone.";
+  const text = mentionsBot
+    ? "CloseSpan bot is active. Mention @CloseSpan to submit an issue or feature directly for confirmation."
+    : SLACK_INTAKE_WELCOME_TEXT;
+  return {
+    text,
+    purpose: mentionsBot
+      ? "Product conversations monitored by CloseSpan. Mention @CloseSpan to submit an issue or feature for confirmation."
+      : "Product conversations monitored by CloseSpan. Clear feedback is recorded, ambiguous feedback requires confirmation, and casual chat is ignored.",
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: mentionsBot
+            ? "CloseSpan bot is active"
+            : "CloseSpan feedback intake is active",
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `${directInstruction} Nearby messages and thread replies are grouped into conversations; ambiguous conversations are held for confirmation, and casual chat is ignored.`,
+        },
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "Human action is requested only for *Approve one run*, scope changes, and post-release verification.",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+async function refreshSlackIntakeWelcomeMessage(input: {
+  orgId: string;
+  connection: SlackIntakeRow;
+  mode: SlackIntakeStatus["intakeMode"];
+}): Promise<void> {
+  const bot = input.mode === "mentions"
+    ? await getSlackBotContext({ orgId: input.orgId })
+    : null;
+  const copy = slackIntakeWelcomeCopy({
+    mode: input.mode,
+    botUserId: bot?.installation.botUserId,
+  });
+  const context: SlackProxyContext = {
+    orgId: input.orgId,
+    accountId: input.connection.account_id,
+  };
+  await setSlackChannelPurpose(
+    context,
+    input.connection.channel_id,
+    copy.purpose,
+  );
+
+  let messageTs = input.connection.welcome_message_ts;
+  if (messageTs) {
+    try {
+      await updateSlackMessage(context, {
+        channelId: input.connection.channel_id,
+        messageTs,
+        text: copy.text,
+        blocks: copy.blocks,
+      });
+    } catch (error) {
+      if (
+        !(error instanceof SlackApiError) ||
+        !["message_not_found", "cant_update_message", "not_authorized"].includes(error.code)
+      ) {
+        throw error;
+      }
+      messageTs = null;
+    }
+  }
+  if (!messageTs) {
+    const welcome = await postSlackMessage(context, {
+      channelId: input.connection.channel_id,
+      text: copy.text,
+      blocks: copy.blocks,
+    });
+    messageTs = welcome.ts;
+  }
+  await databasePool().query(
+    `UPDATE slack_intake_connections
+        SET welcome_message_ts=$2,updated_at=now()
+      WHERE org_id=$1`,
+    [input.orgId, messageTs],
+  );
+}
+
 function timestampNow(): string {
   return `${Math.floor(Date.now() / 1_000)}.000000`;
 }
@@ -453,6 +558,11 @@ export async function ensureSlackIntakeChannel(input: {
     previous.state === "Connected" &&
     previous.bot_user_id
   ) {
+    await refreshSlackIntakeWelcomeMessage({
+      orgId: input.orgId,
+      connection: previous,
+      mode: previous.intake_mode,
+    });
     return rowToStatus(previous);
   }
   if (
@@ -466,6 +576,11 @@ export async function ensureSlackIntakeChannel(input: {
         WHERE org_id=$1`,
       [input.orgId, identity.userId],
     );
+    await refreshSlackIntakeWelcomeMessage({
+      orgId: input.orgId,
+      connection: { ...previous, bot_user_id: identity.userId },
+      mode: previous.intake_mode,
+    });
     return (await getSlackIntakeStatus(input.orgId))!;
   }
 
@@ -481,13 +596,6 @@ export async function ensureSlackIntakeChannel(input: {
     context,
     SLACK_INTAKE_CHANNEL,
   );
-  const channelBindingChanged =
-    previous?.account_id !== input.accountId ||
-    previous?.channel_id !== channel.id;
-  if (!existing || channelBindingChanged) {
-    await setSlackChannelPurpose(context, channel.id);
-  }
-
   const cursor = previous?.cursor_ts ?? timestampNow();
   await transaction(async (client) => {
     await client.query(
@@ -530,53 +638,20 @@ export async function ensureSlackIntakeChannel(input: {
   });
 
   const current = await getSlackIntakeRow(input.orgId);
-  if (!current?.welcome_message_ts) {
+  if (!current) throw new Error("Slack intake connection could not be loaded.");
+  if (!current.welcome_message_ts) {
     const recent = await listSlackChannelMessages(context, channel.id, "0");
-    const existingWelcome = recent.find(
-      (message) => message.text?.trim() === SLACK_INTAKE_WELCOME_TEXT,
+    const existingWelcome = recent.find((message) =>
+      message.text?.includes("CloseSpan") &&
+      /feedback intake is active|CloseSpan is listening/i.test(message.text),
     );
-    if (existingWelcome) {
-      await databasePool().query(
-        `UPDATE slack_intake_connections
-            SET welcome_message_ts=$2,updated_at=now()
-          WHERE org_id=$1`,
-        [input.orgId, existingWelcome.ts],
-      );
-      return (await getSlackIntakeStatus(input.orgId))!;
-    }
-    const welcome = await postSlackMessage(context, {
-      channelId: channel.id,
-      text: SLACK_INTAKE_WELCOME_TEXT,
-      blocks: [
-        {
-          type: "header",
-          text: { type: "plain_text", text: "CloseSpan feedback intake is active" },
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `Post customer feedback or discuss it naturally. Mention <@${identity.userId}> to submit an issue or feature directly; CloseSpan will ask you to confirm it in Slack before recording anything. Other conversations are grouped and filtered automatically.`,
-          },
-        },
-        {
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: "Human action is requested only for *Approve one run*, scope changes, and post-release verification.",
-            },
-          ],
-        },
-      ],
-    });
-    await databasePool().query(
-      `UPDATE slack_intake_connections
-          SET welcome_message_ts=$2,updated_at=now()
-        WHERE org_id=$1`,
-      [input.orgId, welcome.ts],
-    );
+    if (existingWelcome) current.welcome_message_ts = existingWelcome.ts;
   }
+  await refreshSlackIntakeWelcomeMessage({
+    orgId: input.orgId,
+    connection: current,
+    mode: current.intake_mode,
+  });
   return (await getSlackIntakeStatus(input.orgId))!;
 }
 
@@ -625,6 +700,11 @@ export async function setSlackIntakeMode(input: {
       );
     }
   }
+  await refreshSlackIntakeWelcomeMessage({
+    orgId: input.orgId,
+    connection,
+    mode: input.mode,
+  });
   await transaction(async (client) => {
     await client.query(
       `UPDATE slack_intake_connections

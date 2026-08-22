@@ -8,7 +8,7 @@ import {
   verifySlackInstallStateToken,
 } from "@/lib/slack-app-state";
 import { getSlackIntakeStatus, setSlackIntakeMode } from "@/lib/slack-intake";
-import { joinSlackChannel, postSlackMessage } from "@/lib/slack-api";
+import { joinSlackChannel } from "@/lib/slack-api";
 import {
   authorizeAdminRead,
   HttpError,
@@ -104,15 +104,6 @@ export async function GET(request: NextRequest) {
       orgId: context.orgId,
       mode: "mentions",
       actor: context,
-    });
-    await postSlackMessage(botContext, {
-      channelId: intake.channelId,
-      text: `CloseSpan bot is active. Mention <@${installation.botUserId}> to submit product feedback for confirmation.`,
-    }).catch((error) => {
-      console.warn("CloseSpan Slack bot welcome message could not be posted", {
-        orgId: context.orgId,
-        errorType: error instanceof Error ? error.name : "UnknownError",
-      });
     });
     return workspaceRedirect(request, { slackBot: "connected" });
   } catch (error) {

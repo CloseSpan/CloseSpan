@@ -4,6 +4,7 @@ import {
   classifySlackConversation,
   slackConversationControl,
   slackConversationMentionsCloseSpan,
+  slackIntakeWelcomeCopy,
   shouldConsiderSlackConversation,
   summarizeSlackThread,
 } from "./slack-intake";
@@ -78,6 +79,27 @@ describe("Slack intake normalization", () => {
         },
       ])?.text,
     ).toBe("Attachments: trace.txt (text/plain)");
+  });
+});
+
+describe("Slack intake welcome copy", () => {
+  it("mentions the CloseSpan bot rather than the connected administrator", () => {
+    const copy = slackIntakeWelcomeCopy({
+      mode: "mentions",
+      botUserId: "UCLOSESPAN",
+    });
+
+    expect(JSON.stringify(copy.blocks)).toContain("<@UCLOSESPAN>");
+    expect(JSON.stringify(copy.blocks)).not.toContain("Sam Karri");
+    expect(copy.text).toContain("@CloseSpan");
+  });
+
+  it("does not tell users to mention anyone in channel-monitoring mode", () => {
+    const copy = slackIntakeWelcomeCopy({ mode: "channel" });
+
+    expect(JSON.stringify(copy.blocks)).toContain("do not need to mention anyone");
+    expect(JSON.stringify(copy.blocks)).not.toContain("<@");
+    expect(copy.purpose).not.toContain("Mention");
   });
 });
 

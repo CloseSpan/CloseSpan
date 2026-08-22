@@ -15,6 +15,7 @@ import {
   listSlackChannelMessages,
   listSlackThreadReplies,
   postSlackMessage,
+  updateSlackMessage,
 } from "./slack-api";
 
 describe("Slack history polling", () => {
@@ -85,5 +86,30 @@ describe("Slack history polling", () => {
       Authorization: "Bearer xoxb-closespan",
     });
     expect(proxy.post).not.toHaveBeenCalled();
+  });
+
+  it("updates an existing Slack welcome message", async () => {
+    proxy.post.mockResolvedValueOnce({ ok: true, ts: "100.1" });
+
+    await updateSlackMessage(
+      { orgId: "org_test", accountId: "apn_test" },
+      {
+        channelId: "C123",
+        messageTs: "100.1",
+        text: "CloseSpan bot is active.",
+      },
+    );
+
+    expect(proxy.post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://slack.com/api/chat.update",
+        body: expect.objectContaining({
+          channel: "C123",
+          ts: "100.1",
+          text: "CloseSpan bot is active.",
+        }),
+      }),
+      { timeoutInSeconds: 10 },
+    );
   });
 });
