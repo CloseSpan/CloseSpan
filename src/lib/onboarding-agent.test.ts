@@ -76,6 +76,15 @@ describe("inferConnectorsFromText", () => {
     expect(ids).toContain("int_github");
   });
 
+  it("maps Discord community mentions to the native Discord connector", () => {
+    const connectors = inferConnectorsFromText(
+      "Our customers report feature requests in our Discord community server.",
+    );
+    expect(connectors.map((item) => item.integrationId)).toContain(
+      "int_discord",
+    );
+  });
+
   it("falls back to webhook when no keywords match", () => {
     const connectors = inferConnectorsFromText("unknown stack");
     expect(connectors[0]?.integrationId).toBe("int_webhook");
@@ -114,6 +123,17 @@ describe("discoverFeedbackSourcesFromProduct", () => {
     expect(result.understanding.productType).toBe("b2b_saas");
     expect(ids).toContain("int_zendesk");
     expect(ids).toContain("int_slack");
+  });
+
+  it("prioritizes Discord when the product community lives there", async () => {
+    const result = await discoverFeedbackSourcesFromProduct({
+      orgId: "org_test",
+      productBrief:
+        "A creator platform whose customers report feedback in a Discord community server",
+    });
+    expect(result.recommendedConnectors[0]?.integrationId).toBe(
+      "int_discord",
+    );
   });
 });
 
@@ -462,5 +482,34 @@ describe("runOnboardingTurn product-first", () => {
       expect.objectContaining({ type: "connect_webhook" }),
     );
     expect(guidance.suggestedReplies).toContain("Connect GitHub");
+  });
+
+  it("offers the native Discord OAuth action during onboarding", () => {
+    const state = connectorState();
+    state.recommendedConnectors = [
+      ...state.recommendedConnectors,
+      {
+        integrationId: "int_discord",
+        provider: "Discord",
+        reason: "Customer community feedback",
+        priority: "required",
+        connectionMethod: "oauth",
+      },
+    ];
+
+    const guidance = onboardingGuidanceForWorkspace({
+      state,
+      workspaceStatus: {
+        ...emptyWorkspaceStatus,
+        githubConnected: true,
+        connectedIntegrationIds: ["int_github"],
+      },
+    });
+
+    expect(guidance.suggestedActions).toContainEqual({
+      type: "oauth_connect",
+      integrationId: "int_discord",
+      label: "Connect Discord",
+    });
   });
 });

@@ -175,7 +175,7 @@ function buildSystemPrompt(catalog: readonly ConnectorCatalogEntry[]): string {
     "You are CloseSpan's Expert Operations Manager, an autonomous ops lead inside the product.",
     "Phase rules:",
     "1) First, collect ONLY product details (name, URL if any, what it does, who uses it). Do not ask which tools they use.",
-    "2) Once you have a usable product brief, set phase to connect and recommend feedback connectors inferred from the product (Zendesk, Slack, Intercom, App Store, Play Store, webhook, etc.).",
+    "2) Once you have a usable product brief, set phase to connect and recommend feedback connectors inferred from the product (Discord, Zendesk, Slack, Intercom, App Store, Play Store, webhook, etc.).",
     "After company confirmation, GitHub is always the first connection. Until it is connected, explain briefly that repository selection is required for testing and approved PRs.",
     "Never ask the user to list Zendesk, Slack, or other tools. Infer sources from the product itself.",
     "Speak like a senior ops manager: decisive, calm, practical.",
@@ -244,6 +244,7 @@ const failureAliases: ReadonlyArray<{
   { integrationId: "int_zendesk", pattern: /\bzendesk\b/i },
   { integrationId: "int_intercom", pattern: /\bintercom\b/i },
   { integrationId: "int_slack", pattern: /\bslack\b/i },
+  { integrationId: "int_discord", pattern: /\bdiscord\b/i },
   {
     integrationId: "int_app_store",
     pattern: /\b(?:apple\s+)?app\s+store\b/i,
@@ -289,6 +290,7 @@ function feedbackFallback(input: {
     "int_zendesk",
     "int_intercom",
     "int_slack",
+    "int_discord",
     "int_app_store",
     "int_play_store",
   ].filter((integrationId, index, values) => values.indexOf(integrationId) === index);

@@ -142,6 +142,18 @@ function heuristicDiscovery(brief: string): ProductDiscoveryResult {
     picks.push({ entry, reason, confidence });
   };
 
+  if (
+    /\bdiscord\b|community server|online community|gaming community|creator community/.test(
+      lower,
+    )
+  ) {
+    push(
+      "int_discord",
+      "The product brief identifies Discord or a community server as a customer feedback surface.",
+      "high",
+    );
+  }
+
   if (productType === "consumer_mobile") {
     push(
       "int_app_store",
@@ -254,7 +266,7 @@ async function callDiscoveryModel(
   const systemPrompt = [
     "You are CloseSpan's product intelligence module for an Expert Operations Manager.",
     "Given only a product brief, infer where customer feedback likely lives.",
-    "Prefer feedback sources (Zendesk, Slack, Intercom, App Store, Play Store, webhook).",
+    "Prefer feedback sources (Discord, Zendesk, Slack, Intercom, App Store, Play Store, webhook).",
     "Do not ask the user which tools they use. Infer them from the product type and description.",
     "Only recommend ids from the allowed catalog.",
     "Allowed catalog:",

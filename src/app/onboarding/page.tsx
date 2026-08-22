@@ -12,6 +12,7 @@ export default async function OnboardingPage({
 }: {
   searchParams: Promise<{
     github?: string | string[];
+    discord?: string | string[];
     reason?: string | string[];
   }>;
 }) {
@@ -27,10 +28,16 @@ export default async function OnboardingPage({
   const githubCallbackReason = Array.isArray(params.reason)
     ? params.reason[0]
     : params.reason;
+  const discordCallback = Array.isArray(params.discord)
+    ? params.discord[0]
+    : params.discord;
   const returningFromGithub =
     githubCallback === "connected" || githubCallback === "error";
+  const returningFromDiscord =
+    discordCallback === "connected" || discordCallback === "error";
   const showOnboarding =
     returningFromGithub ||
+    returningFromDiscord ||
     (onboarding.phase !== "complete" &&
       !setup.setupComplete &&
       setup.feedbackCount === 0);
@@ -44,6 +51,8 @@ export default async function OnboardingPage({
         initialSetup={setup}
         githubCallbackStatus={githubCallback ?? null}
         githubCallbackReason={githubCallbackReason ?? null}
+        discordCallbackStatus={discordCallback ?? null}
+        discordCallbackReason={githubCallbackReason ?? null}
       />
     </AppShell>
   );

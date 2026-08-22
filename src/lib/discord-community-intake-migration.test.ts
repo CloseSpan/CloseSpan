@@ -6,6 +6,10 @@ const migrationPath = join(
   process.cwd(),
   "db/migrations/073_discord_community_intake.sql",
 );
+const catalogBackfillMigrationPath = join(
+  process.cwd(),
+  "db/migrations/074_discord_integration_catalog_backfill.sql",
+);
 
 describe("Discord community intake migration", () => {
   it("keeps each Discord server bound to one workspace", async () => {
@@ -28,5 +32,12 @@ describe("Discord community intake migration", () => {
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS discord_feedback_sources");
     expect(sql).toContain("UNIQUE (org_id,guild_id,channel_id,message_id)");
     expect(sql).toContain("REFERENCES feedback_items(org_id,id) ON DELETE CASCADE");
+  });
+
+  it("makes Discord available to every existing workspace", async () => {
+    const sql = await readFile(catalogBackfillMigrationPath, "utf8");
+    expect(sql).toContain("'int_discord'");
+    expect(sql).toContain("FROM organizations");
+    expect(sql).toContain("ON CONFLICT DO NOTHING");
   });
 });

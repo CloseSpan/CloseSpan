@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeDiscordOAuthCode, registerDiscordCommands } from "@/lib/discord-api";
 import { saveDiscordInstallation } from "@/lib/discord-app-repository";
-import { DISCORD_INSTALL_STATE_COOKIE, verifyDiscordInstallStateToken } from "@/lib/discord-app-state";
+import {
+  DISCORD_INSTALL_STATE_COOKIE,
+  type DiscordInstallReturnTo,
+  verifyDiscordInstallStateToken,
+} from "@/lib/discord-app-state";
 import { authorizeAdminRead, HttpError } from "@/lib/request-security";
 
 export const runtime = "nodejs";
@@ -11,10 +15,17 @@ function callbackUrl(request: NextRequest): string {
   return new URL("/api/integrations/discord/callback", base).toString();
 }
 
-function redirect(request: NextRequest, state: "connected" | "error", reason?: string) {
-  const target = new URL("/integrations", request.nextUrl.origin);
-  target.searchParams.set("view", "connections");
-  target.searchParams.set("focus", "int_discord");
+function redirect(
+  request: NextRequest,
+  state: "connected" | "error",
+  reason?: string,
+  returnTo: DiscordInstallReturnTo = "/integrations",
+) {
+  const target = new URL(returnTo, request.nextUrl.origin);
+  if (returnTo === "/integrations") {
+    target.searchParams.set("view", "connections");
+    target.searchParams.set("focus", "int_discord");
+  }
   target.searchParams.set("discord", state);
   if (reason) target.searchParams.set("reason", reason);
   const response = NextResponse.redirect(target, 303);
@@ -27,12 +38,14 @@ function redirect(request: NextRequest, state: "connected" | "error", reason?: s
 }
 
 export async function GET(request: NextRequest) {
+  let returnTo: DiscordInstallReturnTo = "/integrations";
   try {
     const context = await authorizeAdminRead(request);
     const stateToken = request.nextUrl.searchParams.get("state") ?? "";
     const stateCookie = request.cookies.get(DISCORD_INSTALL_STATE_COOKIE)?.value ?? "";
     if (!stateToken || stateToken !== stateCookie) throw new HttpError(400, "Discord installation state did not match.");
     const state = verifyDiscordInstallStateToken(stateToken);
+    returnTo = state.returnTo ?? "/integrations";
     if (state.orgId !== context.orgId || state.actorId !== context.actorId) throw new HttpError(403, "Discord installation belongs to another workspace.");
     const denied = request.nextUrl.searchParams.get("error");
     if (denied) throw new HttpError(400, `Discord installation was not completed (${denied}).`);
@@ -41,9 +54,14 @@ export async function GET(request: NextRequest) {
     const installation = await exchangeDiscordOAuthCode({ code, redirectUri: callbackUrl(request) });
     await registerDiscordCommands(installation.guildId);
     await saveDiscordInstallation({ orgId: context.orgId, installation, context });
-    return redirect(request, "connected");
+    return redirect(request, "connected", undefined, returnTo);
   } catch (error) {
     console.error("CloseSpan Discord callback failed", { errorType: error instanceof Error ? error.name : "UnknownError" });
-    return redirect(request, "error", error instanceof HttpError ? String(error.status) : "connection_failed");
+    return redirect(
+      request,
+      "error",
+      error instanceof HttpError ? String(error.status) : "connection_failed",
+      returnTo,
+    );
   }
 }

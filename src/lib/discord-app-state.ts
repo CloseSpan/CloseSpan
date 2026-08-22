@@ -4,12 +4,15 @@ import { HttpError } from "./request-security";
 export const DISCORD_INSTALL_STATE_COOKIE = "closespan_discord_install";
 export const DISCORD_INSTALL_STATE_TTL_SECONDS = 10 * 60;
 
+export type DiscordInstallReturnTo = "/integrations" | "/onboarding";
+
 interface DiscordInstallStatePayload {
   version: 1;
   nonce: string;
   orgId: string;
   actorId: string;
   expiresAt: string;
+  returnTo?: DiscordInstallReturnTo;
 }
 
 function stateSecret(explicit?: string): string {
@@ -30,7 +33,11 @@ function signature(payload: string, secret?: string): string {
 }
 
 export function createDiscordInstallStateToken(
-  input: { orgId: string; actorId: string },
+  input: {
+    orgId: string;
+    actorId: string;
+    returnTo?: DiscordInstallReturnTo;
+  },
   now = new Date(),
   secret?: string,
 ): string {
@@ -39,6 +46,7 @@ export function createDiscordInstallStateToken(
     nonce: randomUUID(),
     orgId: input.orgId,
     actorId: input.actorId,
+    returnTo: input.returnTo ?? "/integrations",
     expiresAt: new Date(
       now.getTime() + DISCORD_INSTALL_STATE_TTL_SECONDS * 1_000,
     ).toISOString(),
@@ -78,6 +86,9 @@ export function verifyDiscordInstallStateToken(
     !/^[0-9a-f-]{36}$/i.test(payload.nonce) ||
     !payload.orgId ||
     !payload.actorId ||
+    (payload.returnTo !== undefined &&
+      payload.returnTo !== "/integrations" &&
+      payload.returnTo !== "/onboarding") ||
     !Number.isFinite(Date.parse(payload.expiresAt))
   ) {
     throw new HttpError(400, "Invalid Discord installation state");
@@ -85,5 +96,5 @@ export function verifyDiscordInstallStateToken(
   if (Date.parse(payload.expiresAt) <= now.getTime()) {
     throw new HttpError(410, "Discord installation request expired");
   }
-  return payload;
+  return { ...payload, returnTo: payload.returnTo ?? "/integrations" };
 }

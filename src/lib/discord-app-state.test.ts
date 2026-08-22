@@ -10,7 +10,11 @@ const NOW = new Date("2026-08-22T18:00:00.000Z");
 describe("Discord installation state", () => {
   it("round-trips the workspace and installer through a signed token", () => {
     const token = createDiscordInstallStateToken(
-      { orgId: "org_zup", actorId: "user_admin" },
+      {
+        orgId: "org_zup",
+        actorId: "user_admin",
+        returnTo: "/onboarding",
+      },
       NOW,
       SECRET,
     );
@@ -19,6 +23,19 @@ describe("Discord installation state", () => {
       version: 1,
       orgId: "org_zup",
       actorId: "user_admin",
+      returnTo: "/onboarding",
+    });
+  });
+
+  it("returns legacy and unspecified installs to Integrations", () => {
+    const token = createDiscordInstallStateToken(
+      { orgId: "org_zup", actorId: "user_admin" },
+      NOW,
+      SECRET,
+    );
+
+    expect(verifyDiscordInstallStateToken(token, NOW, SECRET)).toMatchObject({
+      returnTo: "/integrations",
     });
   });
 

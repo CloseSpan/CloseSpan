@@ -137,6 +137,12 @@ describe("organization repository", () => {
       calls.filter(([sql]) => sqlIncludes(sql, "INSERT INTO integrations")),
     ).toHaveLength(integrationCatalog.length);
     expect(calls.some(([sql, values]) =>
+      sqlIncludes(sql, "INSERT INTO integrations") &&
+      values[0] === "int_discord" &&
+      values[1] === result.organizationId &&
+      values[2] === "Discord",
+    )).toBe(true);
+    expect(calls.some(([sql, values]) =>
       sqlIncludes(sql, "INSERT INTO audit_events") &&
       values[1] === result.organizationId,
     )).toBe(true);

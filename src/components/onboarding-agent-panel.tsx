@@ -59,6 +59,19 @@ const GITHUB_CALLBACK_ERRORS: Readonly<Record<string, string>> = {
     "GitHub kept the installation, but CloseSpan could not finish linking it to this workspace.",
 };
 
+const DISCORD_CALLBACK_ERRORS: Readonly<Record<string, string>> = {
+  "400":
+    "Discord did not complete the installation. Try connecting the server again.",
+  "403":
+    "This Discord installation belongs to another workspace or requires a workspace administrator.",
+  "409":
+    "That Discord server is already connected to another CloseSpan workspace.",
+  "503":
+    "The CloseSpan Discord app is not configured in this environment yet.",
+  connection_failed:
+    "CloseSpan could not finish connecting Discord. Try again or review the Discord app configuration.",
+};
+
 const SUPPORT_EMAIL = "support@closespan.com";
 const SUPPORT_REQUEST_PATTERN =
   /^(?:contact|email|message|talk to|speak to|connect (?:me )?(?:to|with))\s+(?:the\s+)?support(?:\s+team)?[.!]?$/i;
@@ -308,11 +321,15 @@ export function OnboardingAgentPanel({
   initialSetup,
   githubCallbackStatus,
   githubCallbackReason,
+  discordCallbackStatus,
+  discordCallbackReason,
 }: {
   orgId: string;
   initialSetup: WorkspaceSetupStatus;
   githubCallbackStatus: string | null;
   githubCallbackReason: string | null;
+  discordCallbackStatus: string | null;
+  discordCallbackReason: string | null;
 }) {
   const router = useRouter();
   const prefersReducedMotion = useReducedMotion();
@@ -326,7 +343,12 @@ export function OnboardingAgentPanel({
   const [draft, setDraft] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    discordCallbackStatus === "error"
+      ? DISCORD_CALLBACK_ERRORS[discordCallbackReason ?? ""] ??
+        DISCORD_CALLBACK_ERRORS.connection_failed
+      : null,
+  );
   const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -457,7 +479,7 @@ export function OnboardingAgentPanel({
           normalizedMessages[index - 1]?.role === "user" &&
           normalizedMessages[index - 1]?.content.startsWith("Confirmed ");
         if (followsConfirmation) return true;
-        return !/(feedback source|intercom|posthog|custom webhook)/i.test(
+        return !/(feedback source|discord|intercom|posthog|custom webhook)/i.test(
           message.content,
         );
       })
@@ -1004,9 +1026,31 @@ export function OnboardingAgentPanel({
           "Choose repositories. You’ll return here automatically.",
         );
       }
+      if (
+        action.type === "oauth_connect" &&
+        action.integrationId === "int_discord"
+      ) {
+        const result = await integrationFetch(
+          "/api/integrations/discord/install",
+          orgId,
+          { returnTo: "/onboarding" },
+        );
+        recordActivityExchange(
+          "Connect Discord",
+          "Select a Discord server",
+          "Authorize CloseSpan. You’ll return here automatically.",
+        );
+        window.location.assign(result.installUrl as string);
+      }
       router.refresh();
-    } catch {
-      setError(FRIENDLY_ERROR);
+    } catch (reason) {
+      setError(
+        action.type === "oauth_connect" &&
+          action.integrationId === "int_discord" &&
+          reason instanceof Error
+          ? reason.message
+          : FRIENDLY_ERROR,
+      );
     } finally {
       setBusy(null);
     }
@@ -1591,6 +1635,37 @@ export function OnboardingAgentPanel({
                       );
                     }
 
+                    if (connector.integrationId === "int_discord") {
+                      const opening = busy === "oauth_connect";
+                      return (
+                        <button
+                          key={connector.integrationId}
+                          className="delphi-sync-source-shortcut"
+                          type="button"
+                          aria-label="Connect Discord"
+                          title="Connect Discord"
+                          disabled={opening}
+                          onClick={() =>
+                            void runAction({
+                              type: "oauth_connect",
+                              integrationId: "int_discord",
+                              label: "Connect Discord",
+                            })
+                          }
+                        >
+                          {opening ? (
+                            <LoaderCircle
+                              className="spin"
+                              size={16}
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            icon
+                          )}
+                        </button>
+                      );
+                    }
+
                     return null;
                   })}
               </div>
@@ -1704,6 +1779,16 @@ export function OnboardingAgentPanel({
                           recordPipedreamConnection(connector, integrationId)
                         }
                       />
+                    ) : action?.type === "oauth_connect" &&
+                      action.integrationId === "int_discord" ? (
+                      <button
+                        className="btn primary"
+                        type="button"
+                        disabled={busy === action.type}
+                        onClick={() => void runAction(action)}
+                      >
+                        {busy === action.type ? "Opening..." : "Connect"}
+                      </button>
                     ) : action?.type === "oauth_connect" ? (
                       <Link
                         className="btn"

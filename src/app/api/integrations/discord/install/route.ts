@@ -18,7 +18,14 @@ export async function POST(request: NextRequest) {
   try {
     const context = await authorizeAdminMutation(request);
     if (!discordAppConfigured()) throw new HttpError(503, "The CloseSpan Discord app is not configured in this environment.");
-    const state = createDiscordInstallStateToken({ orgId: context.orgId, actorId: context.actorId });
+    const body = (await request.json().catch(() => ({}))) as {
+      returnTo?: unknown;
+    };
+    const state = createDiscordInstallStateToken({
+      orgId: context.orgId,
+      actorId: context.actorId,
+      returnTo: body.returnTo === "/onboarding" ? "/onboarding" : "/integrations",
+    });
     const response = NextResponse.json(
       { installUrl: buildDiscordInstallUrl({ state, redirectUri: callbackUrl(request) }) },
       { headers: noStoreHeaders },
