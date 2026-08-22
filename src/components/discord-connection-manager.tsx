@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, LoaderCircle, RefreshCw, Server, Unplug } from "lucide-react";
 import type { IntegrationConnectionState } from "@/lib/integration-client";
 import type { DiscordGuildChannel } from "@/lib/discord-api";
@@ -41,7 +41,12 @@ export function DiscordConnectionManager({
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState<"load" | "install" | "save" | "disconnect" | null>("load");
   const [error, setError] = useState<string | null>(null);
+  const onConnectionStateChangeRef = useRef(onConnectionStateChange);
   const installation = status?.discordInstallation;
+
+  useEffect(() => {
+    onConnectionStateChangeRef.current = onConnectionStateChange;
+  }, [onConnectionStateChange]);
 
   const load = useCallback(async () => {
     setBusy("load"); setError(null);
@@ -50,10 +55,10 @@ export function DiscordConnectionManager({
       setStatus(next);
       setMode(next.discordInstallation?.intakeMode ?? "commands");
       setSelected(next.discordInstallation?.monitoredChannelIds ?? []);
-      onConnectionStateChange?.(next.discordInstallation?.state === "Connected" ? "Connected" : "Disconnected");
+      onConnectionStateChangeRef.current?.(next.discordInstallation?.state === "Connected" ? "Connected" : "Disconnected");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Discord status could not be loaded."); }
     finally { setBusy(null); }
-  }, [onConnectionStateChange, orgId]);
+  }, [orgId]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void load(), 0);
@@ -98,7 +103,7 @@ export function DiscordConnectionManager({
       await json(await fetch("/api/integrations/discord/status", { method: "DELETE", headers: requestHeaders(orgId, true), body: "{}" }));
       setStatus((current) => current ? { ...current, discordInstallation: null } : current);
       setChannels([]); setSelected([]); setMode("commands");
-      onConnectionStateChange?.("Disconnected");
+      onConnectionStateChangeRef.current?.("Disconnected");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Discord could not be disconnected."); }
     finally { setBusy(null); }
   }
