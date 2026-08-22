@@ -483,6 +483,41 @@ describe("PddScreen", () => {
     expect(markup).toContain("Back to problems");
   });
 
+  it("explains when Cognee assisted signal retrieval without relabeling the final score", () => {
+    const problem = analytics.problems.find((item) => item.id === primaryProblem.id)!;
+    const markup = renderToStaticMarkup(
+      <GenericProblemScreen
+        problem={problem}
+        investigation={investigation}
+        promptDraftReadiness={{
+          problemId: problem.id,
+          investigationId: investigation.id,
+          investigationConfidence: investigation.confidence,
+          requiredConfidence: 0.6,
+          evidenceCount: investigation.relatedSignalCount,
+          requiredEvidence: 1,
+          hasInvestigation: true,
+          verificationStatus: "Confirmed current",
+          hasExistingWorkflow: true,
+          repositoryReady: true,
+          signalConfidenceFactors: {
+            clusterMatch: 0.96,
+            evidenceQuality: 0.9,
+            lowAmbiguity: 0.92,
+            cogneeRetrieved: true,
+            cogneeBestRank: 2,
+          },
+          canGenerate: true,
+          reason: "Ready",
+        }}
+      />,
+    );
+
+    expect(markup).toContain("Semantic match (Cognee-assisted)");
+    expect(markup).toContain("Cognee retrieved the accepted problem at rank 2");
+    expect(markup).toContain("CloseSpan independently evaluated the semantic fit");
+  });
+
   it("can omit the repeated investigation summary after it moves to available evidence", () => {
     const problem = analytics.problems.find((item) => item.id === primaryProblem.id)!;
     const markup = renderToStaticMarkup(

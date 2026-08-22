@@ -6357,8 +6357,9 @@ export function GenericProblemScreen({
         : "Review the open evidence gaps below before generating a prompt."
       : promptDraftReadiness.reason;
   const confidenceFactors = promptDraftReadiness.signalConfidenceFactors;
+  const cogneeAssisted = confidenceFactors?.cogneeRetrieved === true;
   const confidenceFactorRows = [
-    ["Semantic match", confidenceFactors?.clusterMatch ?? null, 0.65],
+    [cogneeAssisted ? "Semantic match (Cognee-assisted)" : "Semantic match", confidenceFactors?.clusterMatch ?? null, 0.65],
     ["Evidence quality", confidenceFactors?.evidenceQuality ?? null, 0.2],
     ["Low ambiguity", confidenceFactors?.lowAmbiguity ?? null, 0.15],
   ] as const;
@@ -6442,6 +6443,15 @@ export function GenericProblemScreen({
                         <span className="prompt-tooltip-note">
                           This older record stores only the final score; new evaluations retain
                           each factor.
+                        </span>
+                      )}
+                      {cogneeAssisted && (
+                        <span className="prompt-tooltip-note">
+                          Cognee retrieved the accepted problem
+                          {confidenceFactors.cogneeBestRank
+                            ? ` at rank ${confidenceFactors.cogneeBestRank}`
+                            : ""}. CloseSpan independently evaluated the semantic fit and applied
+                          the weights shown above.
                         </span>
                       )}
                       <span className="prompt-tooltip-note">

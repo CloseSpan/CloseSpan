@@ -80,6 +80,9 @@ export async function listLatestFeedbackAnalyses(
       classificationClarity?: number;
       clusterMatch?: number;
       ambiguityPenalty?: number;
+      clusterMatchSource?: "ai" | "cognee-assisted";
+      cogneeRetrieved?: boolean;
+      cogneeRank?: number | null;
     };
     rationale: string;
     evidence: string[];
@@ -124,6 +127,13 @@ export async function listLatestFeedbackAnalyses(
     ),
     clusterMatch: Number(row.confidence_factors?.clusterMatch ?? 0),
     ambiguityPenalty: Number(row.confidence_factors?.ambiguityPenalty ?? 0),
+    clusterMatchSource: row.confidence_factors?.clusterMatchSource === "cognee-assisted"
+      ? "cognee-assisted"
+      : "ai",
+    cogneeRetrieved: row.confidence_factors?.cogneeRetrieved === true,
+    cogneeRank: typeof row.confidence_factors?.cogneeRank === "number"
+      ? row.confidence_factors.cogneeRank
+      : null,
     rationale: row.rationale,
     evidence: Array.isArray(row.evidence) ? row.evidence : [],
     reviewStatus: row.review_status,
@@ -223,7 +233,15 @@ export async function completeModelRun(input: {
           JSON.stringify(analysis.sentimentEvidence), analysis.sentimentRationale,
           analysis.redactedSummary, analysis.proposedProblemId,
           analysis.classificationConfidence, analysis.clusterConfidence,
-          JSON.stringify({ evidenceQuality:analysis.evidenceQuality, classificationClarity:analysis.classificationClarity, clusterMatch:analysis.clusterMatch, ambiguityPenalty:analysis.ambiguityPenalty }),
+          JSON.stringify({
+            evidenceQuality: analysis.evidenceQuality,
+            classificationClarity: analysis.classificationClarity,
+            clusterMatch: analysis.clusterMatch,
+            ambiguityPenalty: analysis.ambiguityPenalty,
+            clusterMatchSource: analysis.clusterMatchSource,
+            cogneeRetrieved: analysis.cogneeRetrieved,
+            cogneeRank: analysis.cogneeRank,
+          }),
           analysis.rationale, JSON.stringify(analysis.evidence),
         ],
       );

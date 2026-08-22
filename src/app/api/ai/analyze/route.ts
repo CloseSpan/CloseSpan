@@ -12,6 +12,7 @@ import {
   AiProviderConfigurationError,
   AiProviderResponseError,
 } from "@/lib/ai-provider";
+import { retrieveCogneeProblemMemory } from "@/lib/cognee-memory";
 import {
   CredentialDecryptionError,
   CredentialVaultConfigurationError,
@@ -77,11 +78,18 @@ export async function POST(request: NextRequest) {
       );
     run = { orgId: context.orgId, runId: reservation.runId };
 
+    const cogneeMemory = await retrieveCogneeProblemMemory({
+      orgId: context.orgId,
+      feedback: analysisContext.feedback,
+      candidates: analysisContext.candidates,
+    });
+
     const result = await analyzeFeedbackWithProvider({
       configuration,
       systemPrompt: analysisContext.prompt.systemPrompt,
       feedback: analysisContext.feedback,
       candidates: analysisContext.candidates,
+      memory: cogneeMemory.feedback,
     });
     return NextResponse.json(
       await completeModelRun({

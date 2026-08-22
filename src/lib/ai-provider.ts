@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import { zodResponseFormat, zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { AiRuntimeConfiguration } from "./ai-config";
+import type { CogneeFeedbackMemory } from "./cognee-memory";
 import { redactUntrustedText } from "./redaction";
 import { hasExplicitMalfunctionSignal } from "./feedback-classification";
 
@@ -72,6 +73,9 @@ export interface AiAnalysisResult {
       classificationConfidence: number;
       clusterConfidence: number;
       sentimentConfidence: number;
+      clusterMatchSource: "ai" | "cognee-assisted";
+      cogneeRetrieved: boolean;
+      cogneeRank: number | null;
     }
   >;
 }
@@ -129,6 +133,7 @@ function validateModelOutput(
   requestedIds: string[],
   candidateProblemIds: string[],
   feedback: AiFeedbackInput[] = [],
+  memory: CogneeFeedbackMemory[] = [],
 ): AiAnalysisResult["analyses"] {
   const returnedIds = parsed.analyses.map((analysis) => analysis.feedbackId);
   if (new Set(returnedIds).size !== returnedIds.length)
@@ -152,6 +157,7 @@ function validateModelOutput(
       );
   }
   const feedbackById = new Map(feedback.map((item) => [item.id, item.quote]));
+  const memoryByFeedback = new Map(memory.map((item) => [item.feedbackId, item.matches]));
   return parsed.analyses.map((analysis) => {
     const explicitMalfunction = hasExplicitMalfunctionSignal(
       feedbackById.get(analysis.feedbackId) ?? "",
@@ -166,11 +172,19 @@ function validateModelOutput(
           rationale: `Explicit malfunction language establishes a bug report. ${analysis.rationale}`.slice(0, 800),
         }
       : analysis;
+    const cogneeMatch = guarded.proposedProblemId
+      ? memoryByFeedback.get(guarded.feedbackId)?.find(
+          (match) => match.problemId === guarded.proposedProblemId,
+        )
+      : undefined;
     return {
       ...guarded,
       classificationConfidence: classificationConfidence(guarded),
       clusterConfidence: clusterConfidence(guarded),
       sentimentConfidence: sentimentConfidence(guarded),
+      clusterMatchSource: cogneeMatch ? "cognee-assisted" : "ai",
+      cogneeRetrieved: Boolean(cogneeMatch),
+      cogneeRank: cogneeMatch?.rank ?? null,
     };
   });
 }
@@ -180,21 +194,24 @@ export function validateAiAnalysisForTest(
   requestedIds: string[],
   candidateProblemIds: string[],
   feedback: AiFeedbackInput[] = [],
+  memory: CogneeFeedbackMemory[] = [],
 ): AiAnalysisResult["analyses"] {
   return validateModelOutput(
     feedbackAnalysisSchema.parse(value),
     requestedIds,
     candidateProblemIds,
     feedback,
+    memory,
   );
 }
 
 function modelPayload(input: {
   feedback: AiFeedbackInput[];
   candidates: AiProblemCandidate[];
+  memory?: CogneeFeedbackMemory[];
 }) {
   return {
-    task: "Classify each feedback record and propose an existing cluster only when supported by evidence.",
+    task: "Classify each feedback record and propose an existing cluster only when supported by evidence. Cognee memory results are retrieval candidates, not calibrated scores; independently evaluate their semantic fit.",
     feedback: input.feedback.map((item) => ({
       feedbackId: item.id,
       source: item.source,
@@ -202,7 +219,20 @@ function modelPayload(input: {
       environment: redactUntrustedText(item.environment),
       content: redactUntrustedText(item.quote),
     })),
-    candidateProblems: input.candidates,
+    candidateProblems: input.candidates.map((candidate) => ({
+      ...candidate,
+      title: redactUntrustedText(candidate.title),
+      statement: redactUntrustedText(candidate.statement),
+      productArea: redactUntrustedText(candidate.productArea),
+    })),
+    cogneeMemoryMatches: (input.memory ?? []).map((item) => ({
+      feedbackId: item.feedbackId,
+      matches: item.matches.map((match) => ({
+        problemId: match.problemId,
+        retrievalRank: match.rank,
+        evidenceExcerpt: redactUntrustedText(match.excerpt),
+      })),
+    })),
   };
 }
 
@@ -323,6 +353,7 @@ export async function analyzeFeedbackWithProvider(input: {
   systemPrompt: string;
   feedback: AiFeedbackInput[];
   candidates: AiProblemCandidate[];
+  memory?: CogneeFeedbackMemory[];
 }): Promise<AiAnalysisResult> {
   if (!input.configuration.apiKey)
     throw new AiProviderConfigurationError(
@@ -360,6 +391,7 @@ export async function analyzeFeedbackWithProvider(input: {
       payload.feedback.map((item) => item.feedbackId),
       input.candidates.map((item) => item.id),
       input.feedback,
+      input.memory,
     ),
   };
 }

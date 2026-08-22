@@ -89,4 +89,26 @@ describe("AI provider feedback intelligence boundary", () => {
 
     expect(guarded.classification).toBe("Question");
   });
+
+  it("records Cognee retrieval provenance without replacing CloseSpan confidence", () => {
+    const [guarded] = validateAiAnalysisForTest(
+      { analyses: [analysis] },
+      ["fb_001"],
+      ["prob_export"],
+      [],
+      [{
+        feedbackId: "fb_001",
+        matches: [{
+          problemId: "prob_export",
+          rank: 2,
+          excerpt: "Export evidence",
+        }],
+      }],
+    );
+
+    expect(guarded.clusterConfidence).toBe(clusterConfidence(analysis));
+    expect(guarded.clusterMatchSource).toBe("cognee-assisted");
+    expect(guarded.cogneeRetrieved).toBe(true);
+    expect(guarded.cogneeRank).toBe(2);
+  });
 });

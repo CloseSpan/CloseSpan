@@ -8,6 +8,7 @@ import {
   reserveModelRun,
 } from "./ai-repository";
 import { analyzeFeedbackWithProvider } from "./ai-provider";
+import { retrieveCogneeProblemMemory } from "./cognee-memory";
 import { databasePool, transaction } from "./db";
 import { reviewLatestFeedbackAnalysis } from "./feedback-review-repository";
 import { redactUntrustedText } from "./redaction";
@@ -1275,11 +1276,17 @@ export async function analyzeAndClusterSlackSignals(orgId: string): Promise<{
   if (reservation.kind !== "created")
     return { analyzed: reservation.kind === "replay" ? feedbackIds.length : 0, clustered: 0 };
   try {
+    const cogneeMemory = await retrieveCogneeProblemMemory({
+      orgId,
+      feedback: analysisContext.feedback,
+      candidates: analysisContext.candidates,
+    });
     const analysis = await analyzeFeedbackWithProvider({
       configuration,
       systemPrompt: analysisContext.prompt.systemPrompt,
       feedback: analysisContext.feedback,
       candidates: analysisContext.candidates,
+      memory: cogneeMemory.feedback,
     });
     const context = {
       orgId,

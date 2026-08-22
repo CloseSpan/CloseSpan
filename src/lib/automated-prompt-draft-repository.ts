@@ -67,6 +67,8 @@ export interface PromptDraftReadiness {
     clusterMatch: number;
     evidenceQuality: number;
     lowAmbiguity: number;
+    cogneeRetrieved: boolean;
+    cogneeBestRank: number | null;
   } | null;
   canGenerate: boolean;
   reason: string;
@@ -412,6 +414,8 @@ export async function readPromptDraftReadiness(
       clusterMatch?: number;
       evidenceQuality?: number;
       ambiguityPenalty?: number;
+      cogneeRetrieved?: boolean;
+      cogneeBestRank?: number | null;
     } | null;
   }>(
     `SELECT problem.confidence AS problem_confidence,
@@ -482,7 +486,14 @@ export async function readPromptDraftReadiness(
          SELECT jsonb_build_object(
                   'clusterMatch',avg((latest.confidence_factors->>'clusterMatch')::float),
                   'evidenceQuality',avg((latest.confidence_factors->>'evidenceQuality')::float),
-                  'ambiguityPenalty',avg((latest.confidence_factors->>'ambiguityPenalty')::float)
+                  'ambiguityPenalty',avg((latest.confidence_factors->>'ambiguityPenalty')::float),
+                  'cogneeRetrieved',bool_or(coalesce((latest.confidence_factors->>'cogneeRetrieved')::boolean,false)),
+                  'cogneeBestRank',min(
+                    CASE WHEN (latest.confidence_factors->>'cogneeRank') ~ '^[0-9]+$'
+                      THEN (latest.confidence_factors->>'cogneeRank')::int
+                      ELSE NULL
+                    END
+                  )
                 ) AS factors
            FROM (
              SELECT DISTINCT ON (analysis.feedback_id)
@@ -559,6 +570,10 @@ export async function readPromptDraftReadiness(
           clusterMatch: row.signal_confidence_factors.clusterMatch,
           evidenceQuality: row.signal_confidence_factors.evidenceQuality,
           lowAmbiguity: 1 - row.signal_confidence_factors.ambiguityPenalty,
+          cogneeRetrieved: row.signal_confidence_factors.cogneeRetrieved === true,
+          cogneeBestRank: typeof row.signal_confidence_factors.cogneeBestRank === "number"
+            ? row.signal_confidence_factors.cogneeBestRank
+            : null,
         }
       : null,
     canGenerate,
