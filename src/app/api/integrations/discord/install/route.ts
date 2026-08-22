@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildDiscordInstallUrl, discordAppConfigured } from "@/lib/discord-api";
+import {
+  buildDiscordInstallUrl,
+  discordAppConfigured,
+  discordOAuthRedirectUri,
+} from "@/lib/discord-api";
 import {
   createDiscordInstallStateToken,
   DISCORD_INSTALL_STATE_COOKIE,
@@ -8,11 +12,6 @@ import {
 import { authorizeAdminMutation, errorResponse, HttpError, noStoreHeaders } from "@/lib/request-security";
 
 export const runtime = "nodejs";
-
-function callbackUrl(request: NextRequest): string {
-  const base = (process.env.AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/$/, "");
-  return new URL("/api/integrations/discord/callback", base).toString();
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,7 +26,12 @@ export async function POST(request: NextRequest) {
       returnTo: body.returnTo === "/onboarding" ? "/onboarding" : "/integrations",
     });
     const response = NextResponse.json(
-      { installUrl: buildDiscordInstallUrl({ state, redirectUri: callbackUrl(request) }) },
+      {
+        installUrl: buildDiscordInstallUrl({
+          state,
+          redirectUri: discordOAuthRedirectUri(request.nextUrl.origin),
+        }),
+      },
       { headers: noStoreHeaders },
     );
     response.cookies.set(DISCORD_INSTALL_STATE_COOKIE, state, {

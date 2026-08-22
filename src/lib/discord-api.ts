@@ -1,6 +1,7 @@
 import { HttpError } from "./request-security";
 
 const DISCORD_API = "https://discord.com/api/v10";
+const DISCORD_CALLBACK_PATH = "/api/integrations/discord/callback";
 
 export interface DiscordGuildChannel {
   id: string;
@@ -28,6 +29,20 @@ export function discordAppConfigured(): boolean {
 
 export function discordInteractionsConfigured(): boolean {
   return discordAppConfigured() && Boolean(process.env.DISCORD_PUBLIC_KEY?.trim());
+}
+
+export function discordOAuthRedirectUri(requestOrigin: string): string {
+  const explicit = process.env.DISCORD_OAUTH_REDIRECT_URI?.trim();
+  if (explicit) return new URL(explicit).toString();
+
+  // AUTH_URL belongs to the application authentication flow and may use a
+  // different canonical hostname. Discord requires an exact redirect match,
+  // so default to the origin that initiated this installation instead.
+  const base = (process.env.NEXT_PUBLIC_APP_URL?.trim() || requestOrigin).replace(
+    /\/$/,
+    "",
+  );
+  return new URL(DISCORD_CALLBACK_PATH, base).toString();
 }
 
 function discordConfiguration(): {

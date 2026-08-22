@@ -1,11 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildDiscordInstallUrl,
+  discordOAuthRedirectUri,
   listDiscordGuildChannels,
   registerDiscordCommands,
 } from "./discord-api";
 
-const ENV_KEYS = ["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET", "DISCORD_BOT_TOKEN"] as const;
+const ENV_KEYS = [
+  "DISCORD_CLIENT_ID",
+  "DISCORD_CLIENT_SECRET",
+  "DISCORD_BOT_TOKEN",
+  "DISCORD_OAUTH_REDIRECT_URI",
+  "NEXT_PUBLIC_APP_URL",
+  "AUTH_URL",
+] as const;
 const previous = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
 function configure() {
@@ -22,6 +30,23 @@ afterEach(() => {
 });
 
 describe("Discord app API", () => {
+  it("uses the installation request origin instead of AUTH_URL for OAuth callbacks", () => {
+    process.env.AUTH_URL = "https://closespan.com";
+
+    expect(discordOAuthRedirectUri("https://www.closespan.com")).toBe(
+      "https://www.closespan.com/api/integrations/discord/callback",
+    );
+  });
+
+  it("supports an explicit canonical Discord OAuth callback", () => {
+    process.env.DISCORD_OAUTH_REDIRECT_URI =
+      "https://connect.closespan.com/api/integrations/discord/callback";
+
+    expect(discordOAuthRedirectUri("https://www.closespan.com")).toBe(
+      "https://connect.closespan.com/api/integrations/discord/callback",
+    );
+  });
+
   it("builds a least-privilege server installation URL", () => {
     configure();
     const url = new URL(

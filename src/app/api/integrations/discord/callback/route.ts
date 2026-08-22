@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exchangeDiscordOAuthCode, registerDiscordCommands } from "@/lib/discord-api";
+import {
+  discordOAuthRedirectUri,
+  exchangeDiscordOAuthCode,
+  registerDiscordCommands,
+} from "@/lib/discord-api";
 import { saveDiscordInstallation } from "@/lib/discord-app-repository";
 import {
   DISCORD_INSTALL_STATE_COOKIE,
@@ -9,11 +13,6 @@ import {
 import { authorizeAdminRead, HttpError } from "@/lib/request-security";
 
 export const runtime = "nodejs";
-
-function callbackUrl(request: NextRequest): string {
-  const base = (process.env.AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/$/, "");
-  return new URL("/api/integrations/discord/callback", base).toString();
-}
 
 function redirect(
   request: NextRequest,
@@ -51,7 +50,10 @@ export async function GET(request: NextRequest) {
     if (denied) throw new HttpError(400, `Discord installation was not completed (${denied}).`);
     const code = request.nextUrl.searchParams.get("code")?.trim();
     if (!code) throw new HttpError(400, "Discord did not return an authorization code.");
-    const installation = await exchangeDiscordOAuthCode({ code, redirectUri: callbackUrl(request) });
+    const installation = await exchangeDiscordOAuthCode({
+      code,
+      redirectUri: discordOAuthRedirectUri(request.nextUrl.origin),
+    });
     await registerDiscordCommands(installation.guildId);
     await saveDiscordInstallation({ orgId: context.orgId, installation, context });
     return redirect(request, "connected", undefined, returnTo);
