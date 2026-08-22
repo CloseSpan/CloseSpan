@@ -54,6 +54,7 @@ import {
 } from "./custom-retention-input";
 import { IntegrationSyncStatus } from "./integration-sync-status";
 import { PipedreamAccountManager } from "./pipedream-account-manager";
+import { DiscordConnectionManager } from "./discord-connection-manager";
 import { IntegrationProviderIcon } from "./integration-provider-icon";
 import { IntegrationCopilot } from "./integration-copilot";
 import { IntegrationSuggestionsView } from "./integration-suggestions-view";
@@ -5057,7 +5058,7 @@ export function IntegrationsScreen({
   const [activeFilter, setActiveFilter] = useState<IntegrationFilter>("All");
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
-  >(focusedIntegrationId === "int_slack" ? focusedIntegrationId : null);
+  >(focusedIntegrationId);
   const [integrationDrawerMode, setIntegrationDrawerMode] =
     useState<IntegrationInspectionMode>("details");
   const connectedGithubRepositories = useMemo(
@@ -5720,6 +5721,13 @@ export function IntegrationsScreen({
                     </div>
                   )}
                 </div>
+              ) : selectedRow.item.id === "int_discord" ? (
+                <DiscordConnectionManager
+                  orgId={orgId}
+                  onConnectionStateChange={(nextState) =>
+                    updateConnectionState(selectedRow.item.id, nextState)
+                  }
+                />
               ) : isPipedreamConnectorId(selectedRow.item.id) ? (
                 <PipedreamAccountManager
                   orgId={orgId}

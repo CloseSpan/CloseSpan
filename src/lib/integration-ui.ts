@@ -44,6 +44,12 @@ const experiences: Record<string, IntegrationExperience> = {
     importedData: ["Messages", "Threads", "Reactions", "Attachment metadata", "Channel references"],
     requestedPermissions: ["Create #closespan-feedback", "Read its message history", "Post problem threads and approval links"],
   },
+  int_discord: {
+    filter: "Feedback",
+    summary: "Capture confirmed reports and selected community conversations from Discord.",
+    importedData: ["Messages", "Threads and replies", "Channel references", "Attachment metadata", "Server context"],
+    requestedPermissions: ["Install the CloseSpan bot", "Read selected channel messages", "Post confirmation controls"],
+  },
   int_app_store: {
     filter: "Feedback",
     summary: "Continuously import reviews submitted through Apple’s App Store.",

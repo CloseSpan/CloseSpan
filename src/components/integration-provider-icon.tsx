@@ -22,6 +22,7 @@ const providerIcons: Record<
   int_zendesk: { icon: Headset, tone: "zendesk" },
   int_intercom: { icon: MessageSquareMore, tone: "intercom" },
   int_slack: { icon: Slack, tone: "slack" },
+  int_discord: { icon: MessageSquareMore, tone: "discord" },
   int_app_store: { icon: PlugZap, tone: "apple" },
   int_play_store: { icon: Play, tone: "play-store" },
   int_github: { icon: Github, tone: "github" },
@@ -60,6 +61,14 @@ const brandMarks: Partial<Record<string, ReactNode>> = {
       <rect x="9.5" y="3" width="5" height="8" rx="2.5" fill="#2EB67D" />
       <rect x="13" y="9.5" width="8" height="5" rx="2.5" fill="#ECB22E" />
       <rect x="9.5" y="13" width="5" height="8" rx="2.5" fill="#E01E5A" />
+    </svg>
+  ),
+  int_discord: (
+    <svg viewBox="0 0 24 24" role="img" aria-label="Discord">
+      <rect width="24" height="24" rx="6" fill="#5865F2" />
+      <path d="M7.1 7.4c2.9-1.5 6.9-1.5 9.8 0 .9 1.4 1.6 3.6 1.7 5.7-1.3 1.7-2.9 2.8-4.5 3.4l-.8-1.1c.6-.2 1.1-.5 1.6-.8-1.9.9-3.9.9-5.8 0 .5.3 1 .6 1.6.8l-.8 1.1c-1.6-.6-3.2-1.7-4.5-3.4.1-2.1.8-4.3 1.7-5.7Z" fill="#fff" />
+      <circle cx="9.4" cy="11.7" r="1" fill="#5865F2" />
+      <circle cx="14.6" cy="11.7" r="1" fill="#5865F2" />
     </svg>
   ),
   int_play_store: (

@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env scripts/dev-with-scheduler.mjs",
     "dev:app": "next dev",
+    "discord:gateway": "node --env-file-if-exists=.env scripts/discord-gateway.mjs",
     "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "node --env-file-if-exists=.env .next/standalone/server.js",
     "db:up": "docker-compose up -d postgres",

@@ -63,6 +63,15 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     agentKeywords: ["slack", "channel"],
   },
   {
+    id: "int_discord",
+    provider: "Discord",
+    category: "Feedback",
+    displayOrder: 4,
+    connectionMethod: "oauth",
+    feedbackSource: true,
+    agentKeywords: ["discord", "community", "server", "slash command"],
+  },
+  {
     id: "int_app_store",
     provider: "Apple App Store",
     category: "Reviews",
@@ -142,6 +151,7 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
 const availableIntegrationIds = new Set<string>([
   "int_webhook",
   "int_github",
+  "int_discord",
   ...PIPEDREAM_CONNECTOR_IDS,
 ]);
 
@@ -162,6 +172,11 @@ const integrationCapabilities: Readonly<Record<string, IntegrationCapabilities>>
     approvedActions: false,
   },
   int_slack: {
+    connect: true,
+    feedbackImport: "automatic",
+    approvedActions: false,
+  },
+  int_discord: {
     connect: true,
     feedbackImport: "automatic",
     approvedActions: false,

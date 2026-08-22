@@ -1315,9 +1315,8 @@ async function pendingSlackFeedback(orgId: string): Promise<string[]> {
   const result = await databasePool().query<{ id: string }>(
     `SELECT feedback.id
        FROM feedback_items feedback
-       JOIN slack_feedback_sources source
-         ON source.org_id=feedback.org_id AND source.feedback_id=feedback.id
       WHERE feedback.org_id=$1
+        AND feedback.integration_id IN ('int_slack','int_discord')
         AND NOT EXISTS (
           SELECT 1 FROM ai_feedback_analyses analysis
           JOIN model_runs run ON run.org_id=analysis.org_id
