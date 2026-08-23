@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Github } from "lucide-react";
+import { CustomSelect } from "@/components/custom-select";
 import type {
   ExecutionProfileAssignmentView,
   ExecutionProfileSettingsView,
@@ -1194,6 +1196,17 @@ function assignmentForWorkspace(assignments: ExecutionProfileAssignmentView[]) {
   return assignments.find((assignment) => assignment.repository === "") ?? null;
 }
 
+export function selectedExecutionRepository(
+  repositories: GithubRepositoryAuthorization[],
+  requestedRepository: string,
+): GithubRepositoryAuthorization | undefined {
+  const activeRepositories = repositories.filter(
+    (repository) => repository.active && repository.workspaceSelected,
+  );
+  return activeRepositories.find((repository) => repository.repository === requestedRepository)
+    ?? activeRepositories[0];
+}
+
 export function ExecutionProfileSettings({
   orgId,
   isAdmin,
@@ -1213,6 +1226,7 @@ export function ExecutionProfileSettings({
   const [busyDeactivation, setBusyDeactivation] = useState<string>();
   const [busyExecutionBranch, setBusyExecutionBranch] = useState<string>();
   const [executionBranches, setExecutionBranches] = useState<Record<string, string>>({});
+  const [selectedRepositoryName, setSelectedRepositoryName] = useState("");
   const [error, setError] = useState<string>();
   const [runtimeSecrets, setRuntimeSecrets] = useState<RuntimeSecretMetadata[]>([]);
   const [runtimeSecretsLoading, setRuntimeSecretsLoading] = useState(isAdmin);
@@ -1566,6 +1580,11 @@ export function ExecutionProfileSettings({
 
   const workspaceAssignment = assignmentForWorkspace(view.assignments);
   const workspaceProfile = workspaceAssignment?.activeProfile ?? view.safeGenericProfile;
+  const activeRepositories = view.repositories.filter(
+    (repository) => repository.active && repository.workspaceSelected,
+  );
+  const selectedRepository = selectedExecutionRepository(view.repositories, selectedRepositoryName);
+  const displayedRepositories = selectedRepository ? [selectedRepository] : [];
   return (
     <div className="execution-profile-settings">
       {error && <div className="toast error" role="alert">{error}</div>}
@@ -1606,7 +1625,7 @@ export function ExecutionProfileSettings({
       </article>
 
       <div className="execution-profile-repositories">
-        {view.repositories.filter((repository) => repository.active).map((repository) => {
+        {displayedRepositories.map((repository) => {
           const assignments = assignmentsByRepository.get(repository.repository) ?? [];
           const needsRunnerWorkflow = assignments.some((assignment) => {
             const profile = assignment.detectedProfile ?? assignment.activeProfile;
@@ -1619,7 +1638,21 @@ export function ExecutionProfileSettings({
               <div className="execution-profile-scope-head">
                 <div>
                   <span className="eyebrow">Authorized repository</span>
-                  <h3>{repository.repository}</h3>
+                  {activeRepositories.length > 1 ? (
+                    <CustomSelect
+                      ariaLabel="Repository to manage"
+                      className="execution-profile-repository-select"
+                      leadingIcon={<Github aria-hidden="true" size={16} strokeWidth={2} />}
+                      options={activeRepositories.map((activeRepository) => ({
+                        label: activeRepository.repository,
+                        value: activeRepository.repository,
+                      }))}
+                      value={repository.repository}
+                      onValueChange={setSelectedRepositoryName}
+                    />
+                  ) : (
+                    <h3>{repository.repository}</h3>
+                  )}
                   <p className="subtle">Default branch <code>{repository.defaultBranch}</code> · runtime verification pins the selected execution branch to an exact commit SHA</p>
                   <label className="field execution-branch-field">
                     <span>Execution branch</span>
@@ -1796,7 +1829,7 @@ export function ExecutionProfileSettings({
             </article>
           );
         })}
-        {view.repositories.filter((repository) => repository.active).length === 0 && (
+        {activeRepositories.length === 0 && (
           <div className="empty-state execution-profile-no-repositories">
             <strong>Connect a GitHub repository first</strong>
             <p className="subtle">Install the CloseSpan GitHub App and explicitly authorize repositories before creating execution profiles.</p>

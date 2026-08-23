@@ -7,6 +7,8 @@ import { launchPricingNote } from "@/lib/plans";
 import type { SettingsView } from "@/lib/workspace-repository";
 import type { BillingShadowStatus } from "@/lib/billing-outbox";
 import { AiProviderSettings } from "./ai-provider-settings";
+import { OrchestrationProviderSettings } from "./orchestration-provider-settings";
+import type { OrchestrationProviderPublicConfiguration } from "@/lib/orchestration-provider-repository";
 import {
   CUSTOM_RETENTION_OPTION,
   CustomRetentionInput,
@@ -30,6 +32,7 @@ const settingsSections = [
   ["prompt-drafts", "Prompt drafting"],
   ["prompt-evaluation", "Prompt evaluation"],
   ["execution", "Execution environments"],
+  ["orchestration", "Workflow orchestration"],
   ["model", "AI provider"],
   ["priority", "Prioritization"],
   ["data", "Data & privacy"],
@@ -58,6 +61,7 @@ export function SettingsScreen({
   tenkiConfigured,
   promptEmailConfigured,
   billingStatus,
+  orchestration,
 }: {
   settings: SettingsView;
   orgId: string;
@@ -65,6 +69,7 @@ export function SettingsScreen({
   tenkiConfigured: boolean;
   promptEmailConfigured: boolean;
   billingStatus: BillingShadowStatus;
+  orchestration: OrchestrationProviderPublicConfiguration;
 }) {
   const router = useRouter();
   const [weights, setWeights] = useState<Record<string, number>>(
@@ -492,6 +497,11 @@ export function SettingsScreen({
               <ExecutionProfileSettings orgId={orgId} isAdmin={isAdmin} />
             </div>
           </section>
+          <OrchestrationProviderSettings
+            initial={orchestration}
+            orgId={orgId}
+            isAdmin={isAdmin}
+          />
           <AiProviderSettings initial={settings.ai} orgId={orgId} isAdmin={isAdmin} />
           <section className="card" id="priority">
             <div className="card-head">

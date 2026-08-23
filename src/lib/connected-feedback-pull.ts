@@ -10,7 +10,10 @@ import {
   listPipedreamConnections,
   type PipedreamConnection,
 } from "./pipedream-repository";
-import type { PipedreamConnectorId } from "./pipedream-connectors";
+import {
+  PIPEDREAM_CONNECTOR_IDS,
+  type PipedreamConnectorId,
+} from "./pipedream-connectors";
 import {
   analyzeAndClusterSlackSignals,
   deliverSlackNotifications,
@@ -19,11 +22,24 @@ import {
   syncSlackIntake,
 } from "./slack-intake";
 import { runProblemAutomationTick } from "./problem-automation-repository";
+import {
+  N8nConfigurationError,
+  triggerN8nFeedbackPull,
+} from "./n8n-client";
+import { getOrchestrationProviderRuntimeConfiguration } from "./orchestration-provider-repository";
 
 export type ConnectedFeedbackPullStatus =
   | "succeeded"
   | "failed"
   | "unsupported";
+
+export const CONNECTED_FEEDBACK_SOURCE_IDS = [
+  ...PIPEDREAM_CONNECTOR_IDS,
+  "int_discord",
+] as const;
+
+export type ConnectedFeedbackSourceId =
+  (typeof CONNECTED_FEEDBACK_SOURCE_IDS)[number];
 
 export interface ConnectedFeedbackPullResult {
   integrationId: string;
@@ -45,10 +61,15 @@ export interface ConnectedFeedbackPullSummary {
   succeeded: number;
   failed: number;
   unsupported: number;
+  orchestrationProvider: "pipedream" | "n8n";
+  routed: boolean;
+  message?: string;
+  executionId?: string | null;
+  runUrl?: string | null;
 }
 
 export interface ConnectedFeedbackSourceOption {
-  integrationId: PipedreamConnectorId;
+  integrationId: ConnectedFeedbackSourceId;
   provider: string;
   accountCount: number;
   manualPullAvailable: boolean;
@@ -177,13 +198,55 @@ async function pullSupportedAccount(
 
 export async function pullConnectedFeedbackSources(
   context: ConnectedFeedbackPullContext,
-  integrationIds?: readonly PipedreamConnectorId[],
+  integrationIds?: readonly ConnectedFeedbackSourceId[],
+  accountIds?: readonly string[],
 ): Promise<ConnectedFeedbackPullSummary> {
+  const orchestration = await getOrchestrationProviderRuntimeConfiguration(
+    context.orgId,
+  );
+  if (orchestration.activeProvider === "n8n") {
+    if (
+      !orchestration.n8n.configured
+      || !orchestration.n8nApiKey
+      || !orchestration.n8nSigningSecret
+    ) {
+      throw new N8nConfigurationError(
+        "n8n is active but its verified credentials are unavailable. Reconnect n8n in Settings → Workflow orchestration or switch back to Pipedream.",
+      );
+    }
+    const triggered = await triggerN8nFeedbackPull({
+      baseUrl: orchestration.n8n.baseUrl,
+      triggerUrl: orchestration.n8n.triggerUrl,
+      signingSecret: orchestration.n8nSigningSecret,
+      orgId: context.orgId,
+      actorId: context.actorId,
+      actorName: context.actorName,
+      traceId: context.traceId,
+      integrationIds,
+      accountIds,
+    });
+    return {
+      results: [],
+      connectedSources: integrationIds?.length ?? 0,
+      succeeded: 0,
+      failed: 0,
+      unsupported: 0,
+      orchestrationProvider: "n8n",
+      routed: true,
+      message: triggered.message,
+      executionId: triggered.executionId,
+      runUrl: triggered.runUrl,
+    };
+  }
+
   const selected = integrationIds?.length ? new Set(integrationIds) : null;
+  const selectedAccounts = accountIds?.length ? new Set(accountIds) : null;
   const connected = connectedFeedbackConnections(
     await listPipedreamConnections(context.orgId),
   ).filter(
-    (connection) => !selected || selected.has(connection.integrationId),
+    (connection) =>
+      (!selected || selected.has(connection.integrationId))
+      && (!selectedAccounts || selectedAccounts.has(connection.accountId)),
   );
 
   const tasks: Array<Promise<ConnectedFeedbackPullResult>> = [];
@@ -222,5 +285,7 @@ export async function pullConnectedFeedbackSources(
     succeeded: results.filter((result) => result.status === "succeeded").length,
     failed: results.filter((result) => result.status === "failed").length,
     unsupported: results.filter((result) => result.status === "unsupported").length,
+    orchestrationProvider: "pipedream",
+    routed: false,
   };
 }

@@ -808,6 +808,9 @@ export function FeedbackScreen({
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
         failed?: number;
+        routed?: boolean;
+        message?: string;
+        orchestrationProvider?: "pipedream" | "n8n";
         results?: Array<{
           provider: string;
           status: "succeeded" | "failed" | "unsupported";
@@ -820,6 +823,14 @@ export function FeedbackScreen({
         }>;
       };
       if (!response.ok) throw new Error(payload.error || "Feedback could not be pulled.");
+      if (payload.routed) {
+        setNotice({
+          kind: "success",
+          text: payload.message || "n8n accepted the feedback collection request.",
+        });
+        router.refresh();
+        return;
+      }
       const results = payload.results ?? [];
       const completed = results.filter((result) => result.status === "succeeded");
       const sourceSummary = completed.map(

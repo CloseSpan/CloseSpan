@@ -6,7 +6,9 @@ import {
 import {
   configureBrowserInteraction,
   runtimeSecretBindingOptions,
+  selectedExecutionRepository,
 } from "./execution-profile-settings";
+import type { GithubRepositoryAuthorization } from "../lib/github-repository-allowlist";
 
 const secrets = [
   {
@@ -74,6 +76,52 @@ describe("runtime secret binding options", () => {
     const options = runtimeSecretBindingOptions(secrets, "", ".");
     expect(options.map((option) => option.environmentName)).toEqual(["SHARED_TOKEN"]);
     expect(options.some((option) => option.secretVersion === 1)).toBe(false);
+  });
+});
+
+function repositoryAuthorization(
+  repository: string,
+  active = true,
+  workspaceSelected = true,
+): GithubRepositoryAuthorization {
+  return {
+    id: `repo-${repository}`,
+    installationId: "installation-1",
+    repository,
+    defaultBranch: "main",
+    executionBranch: "main",
+    workspaceSelected,
+    active,
+  };
+}
+
+describe("execution repository selection", () => {
+  const repositories = [
+    repositoryAuthorization("acme/api"),
+    repositoryAuthorization("acme/web"),
+    repositoryAuthorization("acme/archived", false),
+  ];
+
+  it("keeps the active repository selected by the administrator", () => {
+    expect(selectedExecutionRepository(repositories, "acme/web")?.repository).toBe("acme/web");
+  });
+
+  it("falls back to the first active repository for a stale or inactive selection", () => {
+    expect(selectedExecutionRepository(repositories, "acme/archived")?.repository).toBe("acme/api");
+    expect(selectedExecutionRepository(repositories, "acme/missing")?.repository).toBe("acme/api");
+  });
+
+  it("does not expose repositories that belong to another workspace", () => {
+    expect(selectedExecutionRepository([
+      repositoryAuthorization("acme/other-workspace", true, false),
+      repositoryAuthorization("acme/current-workspace"),
+    ], "acme/other-workspace")?.repository).toBe("acme/current-workspace");
+  });
+
+  it("returns no selection when no repository is active", () => {
+    expect(selectedExecutionRepository([
+      repositoryAuthorization("acme/archived", false),
+    ], "acme/archived")).toBeUndefined();
   });
 });
 

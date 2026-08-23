@@ -11,6 +11,8 @@ const dependencies = vi.hoisted(() => ({
   reconcileSlack: vi.fn(),
   deliverSlack: vi.fn(),
   runAutomation: vi.fn(),
+  getOrchestration: vi.fn(),
+  triggerN8n: vi.fn(),
 }));
 
 vi.mock("./pipedream-repository", () => ({
@@ -32,6 +34,15 @@ vi.mock("./slack-intake", () => ({
 
 vi.mock("./problem-automation-repository", () => ({
   runProblemAutomationTick: dependencies.runAutomation,
+}));
+
+vi.mock("./orchestration-provider-repository", () => ({
+  getOrchestrationProviderRuntimeConfiguration: dependencies.getOrchestration,
+}));
+
+vi.mock("./n8n-client", () => ({
+  N8nConfigurationError: class N8nConfigurationError extends Error {},
+  triggerN8nFeedbackPull: dependencies.triggerN8n,
 }));
 
 import {
@@ -79,6 +90,13 @@ describe("connected feedback pull", () => {
     dependencies.reconcileSlack.mockReset().mockResolvedValue(undefined);
     dependencies.deliverSlack.mockReset().mockResolvedValue({ sent: 0, failed: 0 });
     dependencies.runAutomation.mockReset().mockResolvedValue({ moved: false });
+    dependencies.getOrchestration.mockReset().mockResolvedValue({
+      activeProvider: "pipedream",
+      n8n: { configured: false, baseUrl: "", triggerUrl: "" },
+      n8nApiKey: null,
+      n8nSigningSecret: null,
+    });
+    dependencies.triggerN8n.mockReset();
   });
 
   it("pulls Slack through its native intake and intelligence pipeline", async () => {
@@ -221,6 +239,76 @@ describe("connected feedback pull", () => {
     expect(dependencies.syncSlack).not.toHaveBeenCalled();
   });
 
+  it("pulls only the selected account without bypassing the active provider", async () => {
+    dependencies.listConnections.mockResolvedValue([
+      connection("int_zendesk", "apn_zendesk_one"),
+      connection("int_zendesk", "apn_zendesk_two"),
+    ]);
+    dependencies.pullPipedream.mockResolvedValue({
+      integrationId: "int_zendesk",
+      accountId: "apn_zendesk_two",
+      accountName: "Support two",
+      fetched: 1,
+      created: 1,
+      updated: 0,
+      skipped: 0,
+    });
+
+    const result = await pullConnectedFeedbackSources(
+      context,
+      ["int_zendesk"],
+      ["apn_zendesk_two"],
+    );
+
+    expect(result.connectedSources).toBe(1);
+    expect(dependencies.pullPipedream).toHaveBeenCalledTimes(1);
+    expect(dependencies.pullPipedream).toHaveBeenCalledWith({
+      orgId: "org_test",
+      integrationId: "int_zendesk",
+      accountId: "apn_zendesk_two",
+    });
+  });
+
+  it("routes Discord collection through n8n without invoking preserved Pipedream connections", async () => {
+    dependencies.getOrchestration.mockResolvedValue({
+      activeProvider: "n8n",
+      n8n: {
+        configured: true,
+        baseUrl: "https://example.app.n8n.cloud",
+        triggerUrl: "https://example.app.n8n.cloud/webhook/closespan",
+      },
+      n8nApiKey: "n8n_api_key",
+      n8nSigningSecret: "signing_secret_value",
+    });
+    dependencies.triggerN8n.mockResolvedValue({
+      accepted: true,
+      deliveryId: "n8n_delivery",
+      executionId: "42",
+      runUrl: "https://example.app.n8n.cloud/execution/42",
+      message: "Collection queued by n8n.",
+    });
+
+    const result = await pullConnectedFeedbackSources(
+      context,
+      ["int_discord"],
+      ["guild_discord"],
+    );
+
+    expect(dependencies.listConnections).not.toHaveBeenCalled();
+    expect(dependencies.triggerN8n).toHaveBeenCalledWith(expect.objectContaining({
+      orgId: "org_test",
+      integrationIds: ["int_discord"],
+      accountIds: ["guild_discord"],
+      signingSecret: "signing_secret_value",
+    }));
+    expect(result).toMatchObject({
+      orchestrationProvider: "n8n",
+      routed: true,
+      message: "Collection queued by n8n.",
+      executionId: "42",
+    });
+  });
+
   it("ignores connected engineering destinations", async () => {
     dependencies.listConnections.mockResolvedValue([
       connection("int_linear", "apn_linear"),
@@ -234,6 +322,8 @@ describe("connected feedback pull", () => {
       succeeded: 0,
       failed: 0,
       unsupported: 0,
+      orchestrationProvider: "pipedream",
+      routed: false,
     });
   });
 });

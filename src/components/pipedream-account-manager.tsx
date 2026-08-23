@@ -117,7 +117,7 @@ export function PipedreamAccountManager({
     setError(null);
     setPullNotice(null);
     try {
-      const response = await fetch("/api/integrations/pipedream/pull", {
+      const response = await fetch("/api/integrations/pull", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -125,13 +125,26 @@ export function PipedreamAccountManager({
           "idempotency-key": crypto.randomUUID(),
           "x-request-id": crypto.randomUUID(),
         },
-        body: JSON.stringify({ integrationId, accountId }),
+        body: JSON.stringify({
+          integrationIds: [integrationId],
+          accountIds: [accountId],
+        }),
       });
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
+        routed?: boolean;
+        orchestrationProvider?: "pipedream" | "n8n";
+        message?: string;
         results?: Array<{ fetched: number; created: number; updated: number }>;
       };
       if (!response.ok) throw new Error(payload.error || "Feedback could not be pulled.");
+      if (payload.routed) {
+        setPullNotice(
+          payload.message
+            ?? "n8n accepted the feedback collection request. Results will appear after the workflow returns them.",
+        );
+        return;
+      }
       const result = payload.results?.[0];
       setPullNotice(result
         ? `Pull complete: ${result.created} new, ${result.updated} updated (${result.fetched} fetched).`

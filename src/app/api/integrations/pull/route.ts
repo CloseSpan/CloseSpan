@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  CONNECTED_FEEDBACK_SOURCE_IDS,
   listConnectedFeedbackSources,
   pullConnectedFeedbackSources,
 } from "@/lib/connected-feedback-pull";
-import { PIPEDREAM_CONNECTOR_IDS } from "@/lib/pipedream-connectors";
+import {
+  N8nConfigurationError,
+  N8nConnectionError,
+} from "@/lib/n8n-client";
 import {
   authorizeAdminRead,
   authorizeAdminMutation,
@@ -17,7 +21,8 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const schema = z.object({
-  integrationIds: z.array(z.enum(PIPEDREAM_CONNECTOR_IDS)).min(1).max(20).optional(),
+  integrationIds: z.array(z.enum(CONNECTED_FEEDBACK_SOURCE_IDS)).min(1).max(20).optional(),
+  accountIds: z.array(z.string().trim().min(1).max(200)).min(1).max(50).optional(),
 }).strict();
 
 export async function GET(request: NextRequest) {
@@ -39,8 +44,9 @@ export async function POST(request: NextRequest) {
     const result = await pullConnectedFeedbackSources(
       context,
       parsed.data.integrationIds,
+      parsed.data.accountIds,
     );
-    if (result.connectedSources === 0)
+    if (!result.routed && result.connectedSources === 0)
       throw new HttpError(
         409,
         parsed.data.integrationIds
@@ -50,6 +56,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { headers: noStoreHeaders });
   } catch (error) {
     if (error instanceof HttpError) return errorResponse(error);
+    if (error instanceof N8nConfigurationError) {
+      return errorResponse(new HttpError(409, error.message));
+    }
+    if (error instanceof N8nConnectionError) {
+      return errorResponse(new HttpError(502, error.message));
+    }
     console.error("[feedback:connected-pull]", {
       errorType: error instanceof Error ? error.name : "UnknownError",
     });
