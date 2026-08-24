@@ -456,6 +456,8 @@ p { margin:0; line-height:1.55; }
   box-shadow:var(--shadow-raised);
   transition:background-color var(--duration-normal) ease,color var(--duration-normal) ease,box-shadow var(--duration-normal) ease;
 }
+
+.discord-manager-alert.connected{color:var(--success)}
 .execution-profile-scope-head { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
 .execution-profile-scope-head > div { min-width:0; }
 .execution-profile-repositories .execution-profile-scope-head { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; }
@@ -3212,27 +3214,15 @@ html,body { background:var(--neu-canvas); }
 .app-shell .runner-workflow-review-button {
   min-height:34px;
   padding:0 13px;
-  border:1px solid rgba(255,255,255,.58);
+  border:1px solid var(--border-subtle);
   border-radius:10px;
-  background:var(--neu-surface-raised);
-  color:#5147c7;
+  background:var(--surface);
+  color:var(--text-strong);
   font-size:11px;
   font-weight:760;
   line-height:1;
   white-space:nowrap;
-  box-shadow:4px 4px 10px rgba(145,155,176,.3),-4px -4px 10px rgba(255,255,255,.84);
-}
-
-.app-shell .runner-workflow-review-button:hover:not(:disabled) {
-  border-color:rgba(79,70,229,.22);
-  background:#f2f4fa;
-  color:#4036b2;
-  box-shadow:5px 5px 12px rgba(145,155,176,.32),-5px -5px 12px rgba(255,255,255,.9);
-}
-
-.app-shell .runner-workflow-review-button:active:not(:disabled) {
-  transform:translateY(1px);
-  box-shadow:var(--neu-pressed);
+  box-shadow:var(--shadow-raised-sm);
 }
 
 /* Public landing: dark and light neumorphic surfaces remain visually distinct. */

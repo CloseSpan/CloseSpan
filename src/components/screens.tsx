@@ -4993,6 +4993,8 @@ export function IntegrationsScreen({
   recommendedConnectors,
   initialIntegrationActivity,
   initialView,
+  discordCallbackStatus = null,
+  discordCallbackReason = null,
 }: {
   integrations: IntegrationView[];
   githubRepositories: GithubRepositoryAuthorization[];
@@ -5010,6 +5012,8 @@ export function IntegrationsScreen({
     lastImportCount: number;
   }>;
   initialView: "suggestions" | "connections";
+  discordCallbackStatus?: string | null;
+  discordCallbackReason?: string | null;
 }) {
   const reduceMotion = useReducedMotion();
   const focusedCardRef = useRef<HTMLElement | null>(null);
@@ -5735,6 +5739,8 @@ export function IntegrationsScreen({
               ) : selectedRow.item.id === "int_discord" ? (
                 <DiscordConnectionManager
                   orgId={orgId}
+                  callbackStatus={discordCallbackStatus}
+                  callbackReason={discordCallbackReason}
                   onConnectionStateChange={(nextState) =>
                     updateConnectionState(selectedRow.item.id, nextState)
                   }

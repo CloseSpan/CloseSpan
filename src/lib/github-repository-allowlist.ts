@@ -19,6 +19,12 @@ export interface GithubAuthorizedBranchHead {
   sha: string;
 }
 
+export interface GithubAuthorizedBranchList {
+  repository: string;
+  branches: string[];
+  truncated: boolean;
+}
+
 interface GithubReferenceClient {
   rest: {
     git: {
@@ -39,6 +45,31 @@ interface GithubBranchHeadDependencies {
     installationId: string,
   ) => Promise<GithubReferenceClient>;
 }
+
+interface GithubBranchListingClient {
+  rest: {
+    repos: {
+      listBranches(input: {
+        owner: string;
+        repo: string;
+        per_page: number;
+        page: number;
+      }): Promise<{ data: Array<{ name: string }> }>;
+    };
+  };
+}
+
+interface GithubBranchListingDependencies {
+  listAuthorizations?: (
+    orgId: string,
+  ) => Promise<GithubRepositoryAuthorization[]>;
+  createInstallationClient?: (
+    installationId: string,
+  ) => Promise<GithubBranchListingClient>;
+}
+
+const GITHUB_BRANCH_PAGE_SIZE = 100;
+const GITHUB_BRANCH_PAGE_LIMIT = 5;
 
 const memoryAuthorizations = new Map<string, GithubRepositoryAuthorization[]>();
 
@@ -111,6 +142,73 @@ export async function resolveAuthorizedGithubBranchHead(
     throw new HttpError(409, "GitHub returned an invalid branch commit SHA");
   }
   return { repository: input.repository, branch, sha };
+}
+
+export async function listAuthorizedGithubRepositoryBranches(
+  input: {
+    orgId: string;
+    repository: string;
+  },
+  dependencies: GithubBranchListingDependencies = {},
+): Promise<GithubAuthorizedBranchList> {
+  const listAuthorizations = dependencies.listAuthorizations
+    ?? listGithubRepositoryAuthorizations;
+  const authorization = (await listAuthorizations(input.orgId)).find(
+    (candidate) => candidate.repository === input.repository
+      && candidate.active
+      && candidate.workspaceSelected,
+  );
+  if (!authorization) {
+    throw new HttpError(
+      409,
+      `Repository ${input.repository} is no longer authorized for this workspace`,
+    );
+  }
+
+  const [owner, repo, ...rest] = input.repository.split("/");
+  if (!owner || !repo || rest.length) {
+    throw new HttpError(409, "The authorized GitHub repository is invalid");
+  }
+
+  const github = dependencies.createInstallationClient
+    ? await dependencies.createInstallationClient(authorization.installationId)
+    : await createGithubInstallationClient(authorization.installationId);
+  const discovered: string[] = [];
+  let truncated = false;
+
+  try {
+    for (let page = 1; page <= GITHUB_BRANCH_PAGE_LIMIT; page += 1) {
+      const response = await github.rest.repos.listBranches({
+        owner,
+        repo,
+        per_page: GITHUB_BRANCH_PAGE_SIZE,
+        page,
+      });
+      discovered.push(...response.data.map((branch) => branch.name.trim()).filter(Boolean));
+      if (response.data.length < GITHUB_BRANCH_PAGE_SIZE) break;
+      if (page === GITHUB_BRANCH_PAGE_LIMIT) truncated = true;
+    }
+  } catch (error) {
+    if (error && typeof error === "object" && "status" in error && error.status === 404) {
+      throw new HttpError(409, `GitHub could not list branches for ${input.repository}`);
+    }
+    throw error;
+  }
+
+  const defaultBranch = authorization.defaultBranch.trim();
+  const executionBranch = authorization.executionBranch.trim();
+  const priority = new Map(
+    [defaultBranch, executionBranch]
+      .filter(Boolean)
+      .map((branch, index) => [branch, index] as const),
+  );
+  const branches = [...new Set(discovered)].sort((left, right) => {
+    const leftPriority = priority.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightPriority = priority.get(right) ?? Number.MAX_SAFE_INTEGER;
+    return leftPriority - rightPriority || left.localeCompare(right);
+  });
+
+  return { repository: input.repository, branches, truncated };
 }
 
 export function normalizeGithubExecutionBranch(value: unknown): string {

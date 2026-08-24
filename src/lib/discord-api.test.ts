@@ -32,6 +32,7 @@ afterEach(() => {
 describe("Discord app API", () => {
   it("uses the installation request origin instead of AUTH_URL for OAuth callbacks", () => {
     process.env.AUTH_URL = "https://closespan.com";
+    process.env.NEXT_PUBLIC_APP_URL = "https://closespan.com";
 
     expect(discordOAuthRedirectUri("https://www.closespan.com")).toBe(
       "https://www.closespan.com/api/integrations/discord/callback",

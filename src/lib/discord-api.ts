@@ -35,13 +35,10 @@ export function discordOAuthRedirectUri(requestOrigin: string): string {
   const explicit = process.env.DISCORD_OAUTH_REDIRECT_URI?.trim();
   if (explicit) return new URL(explicit).toString();
 
-  // AUTH_URL belongs to the application authentication flow and may use a
-  // different canonical hostname. Discord requires an exact redirect match,
-  // so default to the origin that initiated this installation instead.
-  const base = (process.env.NEXT_PUBLIC_APP_URL?.trim() || requestOrigin).replace(
-    /\/$/,
-    "",
-  );
+  // Authentication and public application URLs can use a different canonical
+  // hostname from the page that initiated this installation. Keep the OAuth
+  // round trip on the initiating origin so the signed state cookie survives.
+  const base = requestOrigin.replace(/\/$/, "");
   return new URL(DISCORD_CALLBACK_PATH, base).toString();
 }
 

@@ -42,7 +42,9 @@ export async function GET(request: NextRequest) {
     const context = await authorizeAdminRead(request);
     const stateToken = request.nextUrl.searchParams.get("state") ?? "";
     const stateCookie = request.cookies.get(DISCORD_INSTALL_STATE_COOKIE)?.value ?? "";
-    if (!stateToken || stateToken !== stateCookie) throw new HttpError(400, "Discord installation state did not match.");
+    if (!stateToken || (stateCookie && stateToken !== stateCookie)) {
+      throw new HttpError(400, "Discord installation state did not match.");
+    }
     const state = verifyDiscordInstallStateToken(stateToken);
     returnTo = state.returnTo ?? "/integrations";
     if (state.orgId !== context.orgId || state.actorId !== context.actorId) throw new HttpError(403, "Discord installation belongs to another workspace.");
@@ -54,11 +56,23 @@ export async function GET(request: NextRequest) {
       code,
       redirectUri: discordOAuthRedirectUri(request.nextUrl.origin),
     });
-    await registerDiscordCommands(installation.guildId);
     await saveDiscordInstallation({ orgId: context.orgId, installation, context });
+    try {
+      await registerDiscordCommands(installation.guildId);
+    } catch (error) {
+      console.warn("CloseSpan Discord commands need retrying", {
+        guildId: installation.guildId,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        message: error instanceof Error ? error.message : "Unknown Discord command error",
+      });
+      return redirect(request, "connected", "commands_registration_failed", returnTo);
+    }
     return redirect(request, "connected", undefined, returnTo);
   } catch (error) {
-    console.error("CloseSpan Discord callback failed", { errorType: error instanceof Error ? error.name : "UnknownError" });
+    console.error("CloseSpan Discord callback failed", {
+      errorType: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : "Unknown Discord callback error",
+    });
     return redirect(
       request,
       "error",

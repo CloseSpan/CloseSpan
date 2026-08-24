@@ -13,6 +13,18 @@ interface DiscordStatus {
   discordInstallation: DiscordInstallation | null;
 }
 
+function discordCallbackError(reason: string | null): string {
+  const messages: Record<string, string> = {
+    "400": "The Discord authorization session did not match this browser. Please connect again.",
+    "403": "This Discord authorization belongs to another CloseSpan workspace.",
+    "409": "Discord could not link this server. It may already belong to another CloseSpan workspace.",
+    "410": "The Discord authorization expired. Please connect again.",
+    "503": "The CloseSpan Discord app is not fully configured in this environment.",
+    connection_failed: "Discord added the bot but CloseSpan could not finish saving the connection. Please connect again.",
+  };
+  return messages[reason ?? ""] ?? "CloseSpan could not complete the Discord connection. Please connect again.";
+}
+
 function requestHeaders(orgId: string, mutation = false): HeadersInit {
   return {
     "x-org-id": orgId,
@@ -30,17 +42,24 @@ async function json<T>(response: Response): Promise<T> {
 
 export function DiscordConnectionManager({
   orgId,
+  callbackStatus = null,
+  callbackReason = null,
   onConnectionStateChange,
 }: {
   orgId: string;
+  callbackStatus?: string | null;
+  callbackReason?: string | null;
   onConnectionStateChange?: (state: IntegrationConnectionState) => void;
 }) {
   const [status, setStatus] = useState<DiscordStatus | null>(null);
   const [channels, setChannels] = useState<DiscordGuildChannel[]>([]);
   const [mode, setMode] = useState<DiscordIntakeMode>("commands");
   const [selected, setSelected] = useState<string[]>([]);
-  const [busy, setBusy] = useState<"load" | "install" | "save" | "disconnect" | null>("load");
+  const [busy, setBusy] = useState<"load" | "install" | "commands" | "save" | "disconnect" | null>("load");
   const [error, setError] = useState<string | null>(null);
+  const [commandSetupIssue, setCommandSetupIssue] = useState(
+    callbackStatus === "connected" && callbackReason === "commands_registration_failed",
+  );
   const onConnectionStateChangeRef = useRef(onConnectionStateChange);
   const installation = status?.discordInstallation;
 
@@ -97,6 +116,17 @@ export function DiscordConnectionManager({
     finally { setBusy(null); }
   }
 
+  async function retryCommands() {
+    setBusy("commands"); setError(null);
+    try {
+      await json(await fetch("/api/integrations/discord/commands", {
+        method: "POST", headers: requestHeaders(orgId, true), body: "{}",
+      }));
+      setCommandSetupIssue(false);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Discord commands could not be registered."); }
+    finally { setBusy(null); }
+  }
+
   async function disconnect() {
     setBusy("disconnect"); setError(null);
     try {
@@ -112,6 +142,7 @@ export function DiscordConnectionManager({
   if (!status?.configured) return <div className="discord-manager-alert" role="alert"><AlertTriangle size={17} /><p><strong>Discord app configuration required</strong><span>Add the Discord application credentials before connecting a server.</span></p></div>;
   if (!installation || installation.state !== "Connected") return (
     <div className="discord-connection-manager">
+      {callbackStatus === "error" && <div className="discord-manager-alert" role="alert"><AlertTriangle size={17} /><p><strong>Discord connection was not saved</strong><span>{discordCallbackError(callbackReason)}</span></p></div>}
       <div className="discord-manager-summary"><Server size={19} /><p><strong>Connect one Discord server</strong><span>CloseSpan registers its own commands and asks for confirmation before recording feedback.</span></p></div>
       <button className="btn primary" type="button" disabled={Boolean(busy)} onClick={() => void install()}>{busy === "install" ? <><LoaderCircle className="spin" size={16} />Opening Discord…</> : "Add CloseSpan to Discord"}</button>
       {error && <p className="integration-import failed" role="alert"><AlertTriangle size={13} />{error}</p>}
@@ -120,7 +151,9 @@ export function DiscordConnectionManager({
 
   return (
     <div className="discord-connection-manager">
-      <div className="discord-manager-summary connected"><Check size={18} /><p><strong>{installation.guildName || "Discord server"}</strong><span>CloseSpan bot installed · commands ready</span></p></div>
+      <div className="discord-manager-summary connected"><Check size={18} /><p><strong>{installation.guildName || "Discord server"}</strong><span>CloseSpan bot installed</span></p></div>
+      {callbackStatus === "connected" && !commandSetupIssue && <div className="discord-manager-alert connected" role="status"><Check size={16} /><p><strong>Discord connected</strong><span>This server is now linked to the current CloseSpan workspace.</span></p></div>}
+      {commandSetupIssue && <><div className="discord-manager-alert" role="alert"><AlertTriangle size={16} /><p><strong>Bot installed; commands need one retry</strong><span>The server connection was saved, but Discord did not finish registering the CloseSpan commands.</span></p></div><button className="btn" type="button" disabled={Boolean(busy)} onClick={() => void retryCommands()}>{busy === "commands" ? <><LoaderCircle className="spin" size={15} />Retrying commands…</> : <><RefreshCw size={14} />Retry command setup</>}</button></>}
       {!status.interactionsConfigured && <div className="discord-manager-alert" role="alert"><AlertTriangle size={16} /><p><strong>Commands need one final setting</strong><span>Add the Discord public key and set the Interactions Endpoint URL.</span></p></div>}
       <fieldset className="discord-intake-modes">
         <legend>How CloseSpan should listen</legend>

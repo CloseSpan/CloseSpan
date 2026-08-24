@@ -21,6 +21,7 @@ export default async function Page({
     focus?: string | string[];
     view?: string | string[];
     github?: string | string[];
+    discord?: string | string[];
     reason?: string | string[];
   }>;
 }) {
@@ -48,6 +49,7 @@ export default async function Page({
       ? "connections"
       : "suggestions";
   const callbackStatus = Array.isArray(params.github) ? params.github[0] : params.github;
+  const discordCallbackStatus = Array.isArray(params.discord) ? params.discord[0] : params.discord;
   const callbackReason = Array.isArray(params.reason) ? params.reason[0] : params.reason;
   const showGithubConnection =
     focusedIntegrationId === "int_github" || callbackStatus === "connected" || callbackStatus === "error";
@@ -95,6 +97,8 @@ export default async function Page({
         recommendedConnectors={onboarding.recommendedConnectors}
         initialIntegrationActivity={initialIntegrationActivity}
         initialView={initialView}
+        discordCallbackStatus={discordCallbackStatus ?? null}
+        discordCallbackReason={callbackReason ?? null}
       />
     </>
   );
