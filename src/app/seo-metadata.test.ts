@@ -114,6 +114,13 @@ describe("public search metadata", () => {
           node["@type"].includes("WebApplication"),
       ),
     ).toBe(true);
+    const applicationNode = graph.find(
+      (node) =>
+        Array.isArray(node["@type"]) &&
+        node["@type"].includes("WebApplication"),
+    );
+    expect(applicationNode).toMatchObject({ isAccessibleForFree: true });
+    expect(applicationNode).not.toHaveProperty("offers");
     const faqNode = graph.find((node) => node["@type"] === "FAQPage");
     if (!faqNode || !("mainEntity" in faqNode)) {
       throw new Error("FAQPage schema is missing its visible questions");
@@ -148,6 +155,7 @@ describe("public search metadata", () => {
     expect(body).toContain(`${SITE_URL}/`);
     expect(body).toContain(`Preferred product name: ${SITE_NAME}`);
     expect(body).toContain("feedback-to-fix");
+    expect(body).not.toContain("/#pricing");
     expect(body).toContain(`${SITE_URL}/resources`);
     expect(body).toContain(`${SITE_URL}/connectors`);
     expect(body).toContain(`${SITE_URL}/integrations/zendesk`);

@@ -3,16 +3,14 @@ import { requireWorkspaceUser } from "@/lib/auth-user";
 import { tenkiSandboxConfigured } from "@/lib/tenki-sandbox-check";
 import { getWorkspaceData } from "@/lib/workspace-repository";
 import { cloudflarePromptEmailConfiguration } from "@/lib/prompt-review-email";
-import { getBillingShadowStatus } from "@/lib/billing-outbox";
 import { getOrchestrationProviderPublicConfiguration } from "@/lib/orchestration-provider-repository";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const user = await requireWorkspaceUser();
-  const [data, billingStatus, orchestration] = await Promise.all([
+  const [data, orchestration] = await Promise.all([
     getWorkspaceData(user.orgId),
-    getBillingShadowStatus(user.orgId),
     getOrchestrationProviderPublicConfiguration(user.orgId),
   ]);
   return (
@@ -22,7 +20,6 @@ export default async function Page() {
       userRole={user.role}
       tenkiConfigured={tenkiSandboxConfigured()}
       promptEmailConfigured={Boolean(cloudflarePromptEmailConfiguration())}
-      billingStatus={billingStatus}
       orchestration={orchestration}
     />
   );

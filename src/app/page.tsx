@@ -18,10 +18,8 @@ import { CloseSpanLogo } from "@/components/closespan-logo";
 import { CloseSpan3DLogo } from "@/components/closespan-3d-logo";
 import { FitText } from "@/components/fit-text";
 import { MotionTextReveal } from "@/components/motion-text-reveal";
-import { launchPlans, launchPricingNote } from "@/lib/plans";
 import {
   LANDING_FAQS,
-  PUBLIC_EMAILS,
   SITE_ALTERNATE_NAMES,
   SITE_DESCRIPTION,
   SITE_NAME,
@@ -138,13 +136,7 @@ export const structuredData = {
         "Human approval for external actions",
         "Release verification and customer follow-up",
       ],
-      offers: {
-        "@type": "Offer",
-        price: "0",
-        priceCurrency: "USD",
-        url: `${SITE_URL}/#pricing`,
-        description: "Private authenticated evaluation workspace.",
-      },
+      isAccessibleForFree: true,
     },
     {
       "@type": "FAQPage",
@@ -162,8 +154,6 @@ export const structuredData = {
   ],
 };
 
-const pilotHref =
-  `mailto:${PUBLIC_EMAILS.hello}?subject=CloseSpan%20Design%20Partner%20Pilot`;
 const workspaceLoginHref = "/login?callbackUrl=%2Foverview";
 
 const integrations = [
@@ -247,16 +237,16 @@ export default function LandingPage() {
             <Link href="/guides/customer-feedback-to-fix-workflow">How it works</Link>
             <Link href="/connectors">Connectors</Link>
             <Link href="/resources">Resources</Link>
-            <a href="#pricing">Pricing</a>
+            <Link href="/about">About</Link>
             <Link href="/requests">Requests</Link>
           </nav>
           <div className="landing-actions">
             <Link className="btn landing-secondary" href="/login">
               Sign in
             </Link>
-            <a className="btn primary" href={pilotHref}>
-              Apply for pilot <ArrowRight aria-hidden="true" size={14} />
-            </a>
+            <Link className="btn primary" href={workspaceLoginHref}>
+              Get started <ArrowRight aria-hidden="true" size={14} />
+            </Link>
             <details className="landing-mobile-menu">
               <summary aria-label="Open navigation">
                 <Menu aria-hidden="true" size={18} />
@@ -268,7 +258,6 @@ export default function LandingPage() {
                 <Link href="/resources">Resources</Link>
                 <Link href="/security">Security</Link>
                 <Link href="/about">About</Link>
-                <a href="#pricing">Pricing</a>
                 <Link href="/requests">Requests</Link>
                 <Link href="/login">Sign in</Link>
               </nav>
@@ -290,12 +279,12 @@ export default function LandingPage() {
               then move every fix through approval and customer follow-up.
             </p>
             <div className="hero-actions">
-              <a className="btn primary large" href={pilotHref}>
-                Apply for a design-partner pilot
+              <Link className="btn primary large" href={workspaceLoginHref}>
+                Get started with CloseSpan
                 <ArrowRight aria-hidden="true" size={16} />
-              </a>
-              <Link className="btn large landing-secondary" href={workspaceLoginHref}>
-                Continue with Google
+              </Link>
+              <Link className="btn large landing-secondary" href="/customer-feedback-operations">
+                Explore the workflow
               </Link>
             </div>
             <div className="hero-proof" aria-label="Product safeguards">
@@ -515,51 +504,6 @@ export default function LandingPage() {
           <ApprovalPreview />
         </section>
 
-        <section className="pricing-section" id="pricing">
-          <div className="section-intro">
-            <span>Early-access pricing</span>
-            <FitText as="h2" maxFontSize={42} maxLines={2} minFontSize={28}>
-              Free to evaluate. Paid when it owns a real workflow.
-            </FitText>
-            <p>
-              Sign in with Google to evaluate the workflow, then prove accuracy
-              and operational ROI in one tightly scoped design-partner pilot.
-            </p>
-          </div>
-          <div className="pricing-grid">
-            {launchPlans.map((plan) => (
-              <article className={plan.featured ? "featured" : ""} key={plan.id}>
-                {plan.featured && <span className="pricing-flag">Recommended</span>}
-                <div className="pricing-name">{plan.name}</div>
-                <div className="pricing-price">{plan.price}</div>
-                <div className="pricing-cadence">{plan.cadence}</div>
-                <p>{plan.description}</p>
-                <ul>
-                  {plan.features.map((feature) => (
-                    <li key={feature}>
-                      <Check aria-hidden="true" size={14} />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-                {plan.href.startsWith("/") ? (
-                  <Link className={`btn ${plan.featured ? "primary" : ""}`} href={plan.href}>
-                    {plan.callToAction}
-                  </Link>
-                ) : (
-                  <a className={`btn ${plan.featured ? "primary" : ""}`} href={plan.href}>
-                    {plan.callToAction}
-                  </a>
-                )}
-              </article>
-            ))}
-          </div>
-          <p className="pricing-note">
-            {launchPricingNote} Usage caps stop processing instead of triggering
-            surprise upgrades.
-          </p>
-        </section>
-
         <section className="faq-section" id="faq" aria-labelledby="faq-title">
           <div className="section-intro">
             <span>CloseSpan FAQ</span>
@@ -594,16 +538,16 @@ export default function LandingPage() {
               See one customer defect move from signal to verified resolution.
             </FitText>
             <p>
-              Sign in with Google to enter the workspace, or apply for a
-              design-partner pilot built around one high-value workflow.
+              Sign in with Google to create a private workspace and start using
+              the complete feedback-to-fix workflow.
             </p>
           </div>
           <div className="landing-cta-actions">
-            <a className="btn primary large" href={pilotHref}>
-              Apply for pilot <ArrowRight aria-hidden="true" size={16} />
-            </a>
-            <Link className="btn large" href={workspaceLoginHref}>
-              Continue with Google
+            <Link className="btn primary large" href={workspaceLoginHref}>
+              Get started <ArrowRight aria-hidden="true" size={16} />
+            </Link>
+            <Link className="btn large" href="/security">
+              Review security
             </Link>
           </div>
         </section>

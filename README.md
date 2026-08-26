@@ -25,7 +25,7 @@ binds the exact profile ID, version, hash, and snapshot through Prompt Testing, 
 implementation, and independent verification. See the
 [execution-profile architecture and rollout guide](docs/execution-profiles.md).
 
-The initial go-to-market wedge is **feedback-to-fix operations for mid-market B2B SaaS**: detect repeated customer-reported defects, quantify account and revenue impact, prepare engineering evidence, govern external actions, verify the release, and close the affected customer conversations. See the [product-market-fit and pricing plan](docs/product-market-fit.md).
+The initial product wedge is **feedback-to-fix operations for mid-market B2B SaaS**: detect repeated customer-reported defects, quantify account and revenue impact, prepare engineering evidence, govern external actions, verify the release, and close the affected customer conversations. See the [product-market-fit notes](docs/product-market-fit.md).
 
 ## Run locally
 
@@ -58,10 +58,11 @@ AUTH_GOOGLE_ID=<Google OAuth client ID>
 AUTH_GOOGLE_SECRET=<Google OAuth client secret>
 ```
 
-Use `openssl rand -hex 32` to generate `AUTH_SECRET`. In production mode, the
-Google email must match a row in `workspace_members`; that row supplies the
-organization, member ID, display name, and role. Provision the first owner
-into an empty organization with:
+Use `openssl rand -hex 32` to generate `AUTH_SECRET`. In production mode, each
+verified Google identity receives an isolated starter workspace when it has no
+existing membership. Existing memberships continue to supply the organization,
+member ID, display name, and role. Provision the platform owner explicitly when
+initializing an empty production database with:
 
 ```bash
 PRODUCTION_OWNER_EMAIL=you@company.com \
@@ -75,7 +76,7 @@ npm run db:provision-owner
 The public site uses role-based CloseSpan addresses rather than exposing the
 private workspace-owner email:
 
-- `hello@closespan.com` for pilots, general questions, and waitlist inquiries
+- `hello@closespan.com` for product and deployment questions
 - `support@closespan.com` for product and connector support
 - `security@closespan.com` for responsible security reports
 - `privacy@closespan.com` for privacy and data-subject requests
@@ -84,8 +85,8 @@ Configure these aliases in Cloudflare Email Routing and forward them to the
 appropriate monitored mailbox before deploying the public links. Cloudflare
 Email Routing handles inbound forwarding only; sending replies from a
 `@closespan.com` address requires a separate outbound mail provider. The
-private beta owner identity remains controlled separately by application
-access policy and `PRODUCTION_OWNER_EMAIL`.
+platform administrator identity remains controlled separately from ordinary
+workspace access and `PRODUCTION_OWNER_EMAIL`.
 
 Add the exact production callback
 `https://closespan.com/api/auth/callback/google` to the Google OAuth 2.0 Web

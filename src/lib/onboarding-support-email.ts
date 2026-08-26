@@ -30,8 +30,7 @@ function configuration() {
   const apiToken = process.env.CLOUDFLARE_EMAIL_API_TOKEN?.trim();
   const from =
     process.env.SUPPORT_EMAIL_FROM?.trim() ||
-    process.env.PROMPT_REVIEW_EMAIL_FROM?.trim() ||
-    process.env.WAITLIST_APPROVAL_EMAIL_FROM?.trim();
+    process.env.PROMPT_REVIEW_EMAIL_FROM?.trim();
   if (!accountId || !apiToken || !from) return null;
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(from)) return null;
   return { accountId, apiToken, from };

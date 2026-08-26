@@ -40,7 +40,6 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { launchPricingNote } from "@/lib/plans";
 import { autonomyDescription, autonomyLevels, type AutonomyLevel } from "@/lib/autonomy-policy";
 import type { DemoState } from "@/lib/store";
 import { FeedbackVolumeChart } from "./feedback-volume-chart";
@@ -6101,7 +6100,6 @@ export function SettingsScreen({
           <a href="#priority">Prioritization</a>
           <a href="#data">Data & privacy</a>
           <a href="#members">Members & roles</a>
-          <a href="#billing">Plan & billing</a>
           <a href="#usage">Usage limits</a>
         </nav>
         <div className="detail-stack">
@@ -6288,39 +6286,6 @@ export function SettingsScreen({
                   </span>
                 </div>
               ))}
-            </div>
-          </section>
-          <section className="card" id="billing">
-            <div className="card-head">
-              <div>
-                <h2>Plan & billing</h2>
-                <p className="subtle">
-                  Transparent sandbox boundary and early-access packaging
-                </p>
-              </div>
-              <span className="badge brand">{settings.planName}</span>
-            </div>
-            <div className="card-body">
-              <div className="split plan-summary">
-                <div>
-                  <div className="metric-label">Current price</div>
-                  <strong>{settings.planPrice}</strong>
-                  <p className="subtle">
-                    Seeded workspace · no live customer data · no external
-                    writes
-                  </p>
-                </div>
-                <Link className="btn" href="/#pricing">
-                  View early-access pricing
-                </Link>
-              </div>
-              <div className="callout section-gap-sm">
-                <div className="callout-title">No automatic upgrades</div>
-                <p className="subtle">
-                  {launchPricingNote} Production usage limits stop processing at
-                  the configured cap instead of creating surprise charges.
-                </p>
-              </div>
             </div>
           </section>
           <section className="card" id="usage">

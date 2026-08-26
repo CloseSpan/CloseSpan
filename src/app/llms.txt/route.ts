@@ -52,7 +52,6 @@ const LANDING_SECTION_LINKS = [
   ["Product", "/#product"],
   ["Workflow", "/#workflow"],
   ["Trust", "/#trust"],
-  ["Pricing", "/#pricing"],
   ["FAQ", "/#faq"],
 ] as const;
 
@@ -93,11 +92,11 @@ The connector catalog includes Zendesk, Intercom, Slack, Apple App Store, Google
 
 ## Trust
 
-Customer content is treated as evidence, not agent instruction. Confidence, assumptions, affected systems, shared data, reversibility, approval decisions, and audit events remain visible. Workspace access requires Google sign-in and membership.
+Customer content is treated as evidence, not agent instruction. Confidence, assumptions, affected systems, shared data, reversibility, approval decisions, and audit events remain visible. Workspace access requires verified Google sign-in and remains scoped to authorized workspace memberships.
 
-## Pricing and access
+## Access
 
-A private authenticated evaluation workspace is available at no charge. A six-week design-partner pilot is listed at $1,500, with custom pricing for larger deployments. Current public details are on ${SITE_URL}/#pricing.
+Verified Google users can create a private CloseSpan workspace and use the feedback-to-fix workflow. No paid-plan selection or checkout page is published.
 
 ## Frequently asked questions
 

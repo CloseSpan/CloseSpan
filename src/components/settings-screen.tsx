@@ -1,11 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { launchPricingNote } from "@/lib/plans";
 import type { SettingsView } from "@/lib/workspace-repository";
-import type { BillingShadowStatus } from "@/lib/billing-outbox";
 import { AiProviderSettings } from "./ai-provider-settings";
 import { OrchestrationProviderSettings } from "./orchestration-provider-settings";
 import type { OrchestrationProviderPublicConfiguration } from "@/lib/orchestration-provider-repository";
@@ -37,7 +33,6 @@ const settingsSections = [
   ["priority", "Prioritization"],
   ["data", "Data & privacy"],
   ["members", "Members & roles"],
-  ["billing", "Plan & billing"],
   ["usage", "Usage limits"],
 ] as const;
 
@@ -50,17 +45,12 @@ function sectionFromHash(hash: string): SettingsSectionId {
     : "agent";
 }
 
-function billingTimestamp(value: string): string {
-  return new Date(value).toUTCString();
-}
-
 export function SettingsScreen({
   settings,
   orgId,
   userRole,
   tenkiConfigured,
   promptEmailConfigured,
-  billingStatus,
   orchestration,
 }: {
   settings: SettingsView;
@@ -68,10 +58,8 @@ export function SettingsScreen({
   userRole: string;
   tenkiConfigured: boolean;
   promptEmailConfigured: boolean;
-  billingStatus: BillingShadowStatus;
   orchestration: OrchestrationProviderPublicConfiguration;
 }) {
-  const router = useRouter();
   const [weights, setWeights] = useState<Record<string, number>>(
     settings.priorityWeights,
   );
@@ -88,8 +76,6 @@ export function SettingsScreen({
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
-  const [billingRetrying, setBillingRetrying] = useState(false);
-  const [billingRetryError, setBillingRetryError] = useState<string>();
   const [promptDraftPolicy, setPromptDraftPolicy] = useState(
     settings.promptDraftPolicy,
   );
@@ -185,34 +171,6 @@ export function SettingsScreen({
       setSaveError(error instanceof Error ? error.message : "Workspace policy could not be saved.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function retryBillingDelivery(): Promise<void> {
-    if (!isAdmin) return;
-    setBillingRetrying(true);
-    setBillingRetryError(undefined);
-    try {
-      const response = await fetch("/api/settings/billing/retry", {
-        method: "POST",
-        headers: {
-          "x-org-id": orgId,
-          "idempotency-key": `billing_${crypto.randomUUID().replaceAll("-", "")}`,
-          "x-request-id": crypto.randomUUID(),
-        },
-      });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok)
-        throw new Error(payload.error ?? "Billing delivery could not be requeued.");
-      router.refresh();
-    } catch (error) {
-      setBillingRetryError(
-        error instanceof Error
-          ? error.message
-          : "Billing delivery could not be requeued.",
-      );
-    } finally {
-      setBillingRetrying(false);
     }
   }
 
@@ -602,90 +560,6 @@ export function SettingsScreen({
                   </span>
                 </div>
               ))}
-            </div>
-          </section>
-          <section className="card" id="billing">
-            <div className="card-head">
-              <div>
-                <h2>Plan & billing</h2>
-                <p className="subtle">
-                  Usage evidence, delivery health, and early-access packaging
-                </p>
-              </div>
-              <div className="top-actions">
-                <span className="badge">{billingStatus.mode}</span>
-                <span className="badge brand">{settings.planName}</span>
-              </div>
-            </div>
-            <div className="card-body">
-              <div className="split plan-summary">
-                <div>
-                  <div className="metric-label">Current price</div>
-                  <strong>{settings.planPrice}</strong>
-                  <p className="subtle">
-                    {billingStatus.meteringEnabled
-                      ? "Production workspace · shadow usage only · no automatic charges"
-                      : "Simulated workspace · excluded from billing metering"}
-                  </p>
-                </div>
-                <Link className="btn" href="/#pricing">
-                  View early-access pricing
-                </Link>
-              </div>
-              <div className="callout section-gap-sm">
-                <div className="callout-title">
-                  Shadow metering does not charge customers
-                </div>
-                <p className="subtle">
-                  {!billingStatus.meteringEnabled
-                    ? "This workspace does not create or deliver billing events. "
-                    : billingStatus.configured
-                    ? `${billingStatus.provider} delivery is active. `
-                    : "The durable CloseSpan usage ledger is active; provider delivery is not configured. "}
-                  {billingStatus.acceptedEvents} events accepted by the provider · {billingStatus.pendingEvents} queued · {billingStatus.failedEvents} failed.
-                  {billingStatus.lastAcceptedAt
-                    ? ` Last accepted ${billingTimestamp(billingStatus.lastAcceptedAt)}.`
-                    : " No usage event has been accepted yet."}
-                </p>
-                {billingStatus.meteringEnabled ? (
-                  <p className="subtle section-gap-xs">
-                    Customer sync: {billingStatus.customerStatus}.
-                    {billingStatus.customerLastError
-                      ? ` Last error: ${billingStatus.customerLastError}.`
-                      : ""}
-                  </p>
-                ) : null}
-                {billingStatus.configurationIssue ? (
-                  <p className="subtle section-gap-xs">
-                    {billingStatus.configurationIssue}. This does not interrupt
-                    feedback ingestion or agent workflows.
-                  </p>
-                ) : null}
-                {isAdmin &&
-                (billingStatus.customerStatus === "Failed" ||
-                  billingStatus.failedEvents > 0) ? (
-                  <button
-                    className="btn section-gap-xs"
-                    type="button"
-                    disabled={billingRetrying}
-                    onClick={() => void retryBillingDelivery()}
-                  >
-                    {billingRetrying ? "Requeuing…" : "Retry failed delivery"}
-                  </button>
-                ) : null}
-                {billingRetryError ? (
-                  <p className="toast error section-gap-xs" role="alert">
-                    {billingRetryError}
-                  </p>
-                ) : null}
-              </div>
-              <div className="callout section-gap-sm">
-                <div className="callout-title">No automatic upgrades</div>
-                <p className="subtle">
-                  {launchPricingNote} Production usage limits stop processing at
-                  the configured cap instead of creating surprise charges.
-                </p>
-              </div>
             </div>
           </section>
           <section className="card" id="usage">
