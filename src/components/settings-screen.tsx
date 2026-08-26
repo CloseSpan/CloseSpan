@@ -184,7 +184,7 @@ export function SettingsScreen({
         </div>
       )}
       <div className="settings-layout">
-        <div className="detail-stack">
+        <div className="detail-stack settings-detail-stack">
           <section className="card" id="agent">
             <div className="card-head">
               <div>

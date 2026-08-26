@@ -1168,6 +1168,32 @@ textarea {
   box-shadow: var(--shadow-inset-sm), var(--shadow-focus);
 }
 
+.app-shell .settings-sidebar-navigation .settings-back-link {
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-raised-sm);
+}
+
+.app-shell .settings-sidebar-navigation .settings-back-link:hover {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.app-shell .settings-sidebar-navigation .settings-back-link:active {
+  background: var(--surface-pressed);
+  color: var(--accent);
+  box-shadow: var(--shadow-inset-sm);
+}
+
+.app-shell .settings-sidebar-navigation .settings-back-link:focus-visible {
+  outline: 0;
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-raised-sm), var(--shadow-focus);
+}
+
 .demo-label {
   border: 0;
   border-radius: var(--radius-md);

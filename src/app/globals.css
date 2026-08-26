@@ -1789,12 +1789,17 @@ p { margin:0; line-height:1.55; }
 .app-shell .settings-nav a.active { background:#ececf8; color:#3932ae; }
 .app-shell .settings-layout .detail-stack > [id] { scroll-margin-top:92px; }
 .app-shell .settings-layout > .detail-stack { width:100%; }
+.app-shell .settings-detail-stack > [id] { display:none; }
+.app-shell .settings-detail-stack > [id]:target { display:block; }
+.app-shell .settings-detail-stack:not(:has(> [id]:target)) > #agent { display:block; }
 .app-shell .workspace-primary-action { gap:8px; }
 .app-shell .settings-sidebar-navigation { display:flex; flex-direction:column; }
 .app-shell .settings-sidebar-navigation .settings-back-link {
   margin-bottom:10px;
-  border:1px solid var(--app-line);
-  background:rgba(255,255,255,.7);
+  border:0;
+  background:var(--surface);
+  color:var(--text);
+  box-shadow:var(--shadow-raised-sm);
 }
 .app-shell .settings-navigation-label { padding:10px 11px 5px; }
 .app-shell .settings-sidebar-sections { display:grid; gap:2px; }

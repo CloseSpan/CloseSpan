@@ -215,6 +215,37 @@ scope, and verify a release. The scheduler and application deployment must use
 the same `CRON_SECRET`. Pipedream stores the read credential, while the optional
 CloseSpan bot token is encrypted at rest and never returned to the browser.
 
+### Evaluate Mitosis Cortex safely
+
+CloseSpan includes an opt-in, backend-only Mitosis Cortex pilot. It adds no
+user-facing navigation or settings surface and remains intentionally separate
+from the authoritative PostgreSQL workflow. It does not alter feedback
+classification, problem matching, prompt drafting, or agent execution.
+
+The pilot can target exactly one CloseSpan organization and one Mitosis office.
+Only feedback already marked redacted is eligible. Before transmission,
+CloseSpan excludes customer names, account tiers, ARR, member data, and raw
+connector metadata, then redacts email addresses, phone numbers, and
+secret-like values. Stable, organization-scoped session identifiers make a
+repeat sync update the same Mitosis records instead of duplicating them.
+
+Create a scoped Mitosis agent credential, keep it only in the server secret
+store, and configure:
+
+```env
+MITOSIS_PILOT_ENABLED=true
+MITOSIS_PILOT_ORG_ID=<exact CloseSpan organization id>
+MITOSIS_MCP_URL=https://mitosislabs.ai/api/mcp/o/<office id>
+MITOSIS_API_KEY=<scoped Mitosis bearer credential>
+MITOSIS_AGENT_SURFACE=closespan
+MITOSIS_TIMEOUT_MS=15000
+```
+
+Start with a small sanitized dataset through the admin-protected memory API and
+compare the returned answer and citations with CloseSpan's existing evidence
+pipeline. Keep automatic workflow use disabled until the pilot demonstrates
+materially better retrieval and the production privacy review is complete.
+
 ### Configure optional public feedback discovery
 
 Public discovery is explicitly opt-in and is separate from authenticated Pipedream
