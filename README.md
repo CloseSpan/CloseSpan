@@ -385,3 +385,7 @@ tenant-scoped source files and searchable chunks in PostgreSQL, and retrieves
 cited code evidence for investigation and prompt drafting. No separate context
 provider account is required. Apply database migrations before connecting or
 re-indexing repositories.
+
+## License
+
+CloseSpan is licensed under the [Apache License 2.0](LICENSE).
