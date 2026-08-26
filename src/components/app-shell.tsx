@@ -1,7 +1,6 @@
 import {
   Bell,
   LogOut,
-  Search,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,6 +17,10 @@ import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 import { WorkspaceBreadcrumb } from "./workspace-breadcrumb";
 import { WorkspaceRouteTransition } from "./workspace-route-transition";
+import {
+  WorkspaceChromeProvider,
+  WorkspacePrimaryActionControl,
+} from "./workspace-chrome";
 import { BackgroundPromptTestProvider } from "./background-prompt-tests";
 import { unreadPromptReviewNotificationCount } from "@/lib/prompt-review-notification-repository";
 import { isCloseSpanPlatformAdmin } from "@/lib/workspace-access-policy";
@@ -122,54 +125,59 @@ export async function AppShell({
   }
 
   return (
-    <BackgroundPromptTestProvider orgId={user.orgId} avoidGuidedDemo={Boolean(demoGuide)}>
-    <div className="shell app-shell">
-      <a className="skip-link" href="#main-content">
-        Skip to content
-      </a>
-      <Sidebar
-        organizations={user.organizations}
-        activeOrganizationId={user.orgId}
-        demoMode={!durableWorkspace || Boolean(demoGuide)}
-        canRenameWorkspace={canRenameWorkspace}
-        pendingApprovalCount={pendingApprovals}
-      />
-      <main className="main">
-        <header className="topbar">
-          <MobileNavigation
+    <WorkspaceChromeProvider>
+      <BackgroundPromptTestProvider
+        orgId={user.orgId}
+        avoidGuidedDemo={Boolean(demoGuide)}
+      >
+        <div className="shell app-shell">
+          <a className="skip-link" href="#main-content">
+            Skip to content
+          </a>
+          <Sidebar
             organizations={user.organizations}
             activeOrganizationId={user.orgId}
+            demoMode={!durableWorkspace || Boolean(demoGuide)}
             canRenameWorkspace={canRenameWorkspace}
             pendingApprovalCount={pendingApprovals}
           />
-          <WorkspaceBreadcrumb />
-          <div className="top-actions">
-            <Link
-              className="btn search-action"
-              href="/feedback"
-              prefetch={false}
-            >
-              <Search size={15} />
-              <span>Search feedback</span>
-            </Link>
-            <Link
-              className="btn icon-btn notification-button"
-              href="/notifications"
-              prefetch={false}
-              aria-label={`Open notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}
-            >
-              <Bell size={15} />
-              {unreadNotifications > 0 && <span className="notification-count">{Math.min(unreadNotifications, 99)}</span>}
-            </Link>
-            <AccountMenu user={user} showPlatformAdmin={showPlatformAdmin} />
-          </div>
-        </header>
-        <div className="content" id="main-content" tabIndex={-1}>
-          <WorkspaceRouteTransition>{children}</WorkspaceRouteTransition>
+          <main className="main">
+            <header className="topbar">
+              <MobileNavigation
+                organizations={user.organizations}
+                activeOrganizationId={user.orgId}
+                canRenameWorkspace={canRenameWorkspace}
+                pendingApprovalCount={pendingApprovals}
+              />
+              <WorkspaceBreadcrumb />
+              <div className="top-actions">
+                <WorkspacePrimaryActionControl />
+                <Link
+                  className="btn icon-btn notification-button"
+                  href="/notifications"
+                  prefetch={false}
+                  aria-label={`Open notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}
+                >
+                  <Bell size={15} />
+                  {unreadNotifications > 0 && (
+                    <span className="notification-count">
+                      {Math.min(unreadNotifications, 99)}
+                    </span>
+                  )}
+                </Link>
+                <AccountMenu
+                  user={user}
+                  showPlatformAdmin={showPlatformAdmin}
+                />
+              </div>
+            </header>
+            <div className="content" id="main-content" tabIndex={-1}>
+              <WorkspaceRouteTransition>{children}</WorkspaceRouteTransition>
+            </div>
+          </main>
+          {demoGuide && <GuidedDemo guide={demoGuide} orgId={user.orgId} />}
         </div>
-      </main>
-      {demoGuide && <GuidedDemo guide={demoGuide} orgId={user.orgId} />}
-    </div>
-    </BackgroundPromptTestProvider>
+      </BackgroundPromptTestProvider>
+    </WorkspaceChromeProvider>
   );
 }

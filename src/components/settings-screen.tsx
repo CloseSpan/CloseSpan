@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SettingsView } from "@/lib/workspace-repository";
 import { AiProviderSettings } from "./ai-provider-settings";
 import { OrchestrationProviderSettings } from "./orchestration-provider-settings";
@@ -22,28 +22,7 @@ import {
   type AutonomyLevel,
 } from "@/lib/autonomy-policy";
 import type { PromptEvaluationMode } from "@/lib/prompt-evaluation-policy";
-
-const settingsSections = [
-  ["agent", "Agent autonomy"],
-  ["prompt-drafts", "Prompt drafting"],
-  ["prompt-evaluation", "Prompt evaluation"],
-  ["execution", "Execution environments"],
-  ["orchestration", "Workflow orchestration"],
-  ["model", "AI provider"],
-  ["priority", "Prioritization"],
-  ["data", "Data & privacy"],
-  ["members", "Members & roles"],
-  ["usage", "Usage limits"],
-] as const;
-
-type SettingsSectionId = (typeof settingsSections)[number][0];
-
-function sectionFromHash(hash: string): SettingsSectionId {
-  const candidate = hash.replace(/^#/, "");
-  return settingsSections.some(([id]) => id === candidate)
-    ? (candidate as SettingsSectionId)
-    : "agent";
-}
+import { useWorkspaceChrome } from "./workspace-chrome";
 
 export function SettingsScreen({
   settings,
@@ -82,18 +61,7 @@ export function SettingsScreen({
   const [promptEvaluationMode, setPromptEvaluationMode] = useState(
     settings.promptEvaluationMode,
   );
-  const [activeSection, setActiveSection] =
-    useState<SettingsSectionId>("agent");
-
-  useEffect(() => {
-    function syncSectionFromHash(): void {
-      setActiveSection(sectionFromHash(window.location.hash));
-    }
-
-    syncSectionFromHash();
-    window.addEventListener("hashchange", syncSectionFromHash);
-    return () => window.removeEventListener("hashchange", syncSectionFromHash);
-  }, []);
+  const { setPrimaryAction, clearPrimaryAction } = useWorkspaceChrome();
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
   const retentionValid =
     retention !== CUSTOM_RETENTION_OPTION ||
@@ -174,29 +142,31 @@ export function SettingsScreen({
     }
   }
 
+  const savePolicyRef = useRef(savePolicy);
+  useEffect(() => {
+    savePolicyRef.current = savePolicy;
+  });
+  useEffect(() => {
+    setPrimaryAction({
+      id: "settings-save-policy",
+      label: "Save policy",
+      pendingLabel: "Saving…",
+      pending: saving,
+      disabled: Boolean(saveDisabledReason),
+      disabledReason: saveDisabledReason,
+      onTrigger: () => void savePolicyRef.current(),
+    });
+  }, [saveDisabledReason, saving, setPrimaryAction]);
+  useEffect(
+    () => () => clearPrimaryAction("settings-save-policy"),
+    [clearPrimaryAction],
+  );
+
   return (
     <>
       <PageTitle
         title="Settings & governance"
         description="Define permissions, data controls, model policies, and spending boundaries."
-        action={
-          <div className="settings-save-action">
-            <button
-              type="button"
-              className="btn primary"
-              disabled={Boolean(saveDisabledReason) || saving}
-              aria-describedby={saveDisabledReason ? "settings-save-reason" : undefined}
-              onClick={savePolicy}
-            >
-              {saving ? "Saving…" : "Save policy"}
-            </button>
-            {saveDisabledReason && (
-              <span className="subtle" id="settings-save-reason">
-                {saveDisabledReason}
-              </span>
-            )}
-          </div>
-        }
       />
       {saved && (
         <p className="toast success" role="status">
@@ -214,19 +184,6 @@ export function SettingsScreen({
         </div>
       )}
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Settings sections">
-          {settingsSections.map(([id, label]) => (
-            <a
-              className={activeSection === id ? "active" : undefined}
-              href={`#${id}`}
-              aria-current={activeSection === id ? "location" : undefined}
-              onClick={() => setActiveSection(id)}
-              key={id}
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
         <div className="detail-stack">
           <section className="card" id="agent">
             <div className="card-head">

@@ -1783,11 +1783,22 @@ p { margin:0; line-height:1.55; }
 .app-shell .integration-card-summary { font-size:12px; line-height:1.6; }
 .app-shell .integration-filterbar button { min-height:38px; padding:0 13px; border-color:var(--app-line); }
 
-.app-shell .settings-layout { width:100%; grid-template-columns:210px minmax(0,920px); gap:22px; }
+.app-shell .settings-layout { width:100%; display:block; }
 .app-shell .settings-nav { gap:4px; }
 .app-shell .settings-nav a { min-height:40px; display:flex; align-items:center; padding:9px 12px; border-radius:11px; }
 .app-shell .settings-nav a.active { background:#ececf8; color:#3932ae; }
 .app-shell .settings-layout .detail-stack > [id] { scroll-margin-top:92px; }
+.app-shell .settings-layout > .detail-stack { width:100%; }
+.app-shell .workspace-primary-action { gap:8px; }
+.app-shell .settings-sidebar-navigation { display:flex; flex-direction:column; }
+.app-shell .settings-sidebar-navigation .settings-back-link {
+  margin-bottom:10px;
+  border:1px solid var(--app-line);
+  background:rgba(255,255,255,.7);
+}
+.app-shell .settings-navigation-label { padding:10px 11px 5px; }
+.app-shell .settings-sidebar-sections { display:grid; gap:2px; }
+.app-shell .settings-sidebar-sections a { display:flex; align-items:center; }
 .app-shell .toggle-row { min-height:58px; }
 .app-shell .provider-picker { gap:12px; }
 .app-shell .provider-option { min-height:62px; padding:13px; border-color:var(--app-line); border-radius:14px; }
@@ -2078,6 +2089,9 @@ p { margin:0; line-height:1.55; }
   .app-shell .organization-switcher-trigger > svg { display:none; }
   .app-shell .organization-switcher-menu { left:0; }
   .app-shell .content { padding-inline:28px; }
+  .app-shell .settings-sidebar-navigation .settings-navigation-label { display:none; }
+  .app-shell .settings-sidebar-navigation a { justify-content:center; padding-inline:6px; }
+  .app-shell .settings-sidebar-navigation a span { display:none; }
 }
 
 @media (max-width:720px) {
@@ -2121,6 +2135,10 @@ p { margin:0; line-height:1.55; }
   }
   .app-shell .mobile-menu-panel nav a { min-height:42px; border-radius:10px; }
   .app-shell .mobile-menu-panel nav a.active { background:#ececf8; color:#3932ae; }
+  .app-shell .settings-mobile-navigation { display:flex; padding-bottom:9px; }
+  .app-shell .settings-mobile-navigation .settings-navigation-label,
+  .app-shell .settings-mobile-navigation a span { display:inline; }
+  .app-shell .settings-mobile-navigation a { justify-content:flex-start; padding-inline:11px; }
   .app-shell .mobile-organizations .organization-switcher-list { max-height:none; }
   .app-shell .feedback-drawer,
   .app-shell .integration-drawer { border-radius:0; }

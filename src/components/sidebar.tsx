@@ -36,6 +36,7 @@ import {
   OrganizationSwitcher,
   type OrganizationSwitcherItem,
 } from "./organization-switcher";
+import { SettingsNavigation } from "./settings-navigation";
 
 const navigationIcons: Record<WorkspaceNavigationId, typeof CircleGauge> = {
   overview: CircleGauge,
@@ -262,6 +263,10 @@ export function Sidebar({
   canRenameWorkspace: boolean;
   pendingApprovalCount: number;
 }) {
+  const pathname = usePathname();
+  const settingsRoute =
+    pathname === "/settings" || pathname.startsWith("/settings/");
+
   return (
     <aside className="sidebar">
       <Link
@@ -272,13 +277,17 @@ export function Sidebar({
       >
         <CloseSpan3DLogo size="sm" />
       </Link>
-      <nav className="nav" aria-label="Primary navigation">
-        <NavigationLinks
-          key={pendingApprovalCount}
-          collapsibleWorkflow
-          pendingApprovalCount={pendingApprovalCount}
-        />
-      </nav>
+      {settingsRoute ? (
+        <SettingsNavigation />
+      ) : (
+        <nav className="nav" aria-label="Primary navigation">
+          <NavigationLinks
+            key={pendingApprovalCount}
+            collapsibleWorkflow
+            pendingApprovalCount={pendingApprovalCount}
+          />
+        </nav>
+      )}
       <div className="sidebar-footer">
         {demoMode && (
           <div className="demo-label">
@@ -308,6 +317,8 @@ export function MobileNavigation({
   pendingApprovalCount: number;
 }) {
   const pathname = usePathname();
+  const settingsRoute =
+    pathname === "/settings" || pathname.startsWith("/settings/");
   const menuRef = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => {
@@ -328,12 +339,16 @@ export function MobileNavigation({
     <details className="mobile-menu" ref={menuRef}>
       <summary>Menu</summary>
       <div className="mobile-menu-panel">
-        <nav aria-label="Mobile navigation">
-          <NavigationLinks
-            key={pendingApprovalCount}
-            pendingApprovalCount={pendingApprovalCount}
-          />
-        </nav>
+        {settingsRoute ? (
+          <SettingsNavigation mobile />
+        ) : (
+          <nav aria-label="Mobile navigation">
+            <NavigationLinks
+              key={pendingApprovalCount}
+              pendingApprovalCount={pendingApprovalCount}
+            />
+          </nav>
+        )}
         <OrganizationSwitcher
           organizations={organizations}
           activeOrganizationId={activeOrganizationId}
