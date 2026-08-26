@@ -386,6 +386,12 @@ cited code evidence for investigation and prompt drafting. No separate context
 provider account is required. Apply database migrations before connecting or
 re-indexing repositories.
 
+## Contributing and security
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the short
+development and pull-request guide. Report vulnerabilities privately using the
+instructions in [SECURITY.md](SECURITY.md), not through a public issue.
+
 ## License
 
 CloseSpan is licensed under the [Apache License 2.0](LICENSE).
