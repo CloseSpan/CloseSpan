@@ -4,18 +4,14 @@ import { cache } from "react";
 import { auth } from "@/auth";
 import { persistenceMode } from "./db";
 import {
+  ensureOrganizationMemberships,
   listOrganizationMemberships,
   normalizeMembershipEmail,
   selectOrganizationMembership,
   type OrganizationMembership,
 } from "./organization-repository";
 import { ORG_ID } from "./seed";
-import {
-  isPrivateBetaAccessEnforced,
-  isPrivateBetaOwner,
-} from "./workspace-access-policy";
 import { isMemoryDemoOrganization } from "./workspace-persistence";
-import { isWorkspaceAccessApproved } from "./access-waitlist-repository";
 
 export const ACTIVE_ORGANIZATION_COOKIE = "closespan_active_org";
 export const LEGACY_ACTIVE_ORGANIZATION_COOKIE = "feelow_active_org";
@@ -49,7 +45,6 @@ export interface WorkspaceUser {
 export type WorkspaceAccess =
   | { status: "granted"; user: WorkspaceUser }
   | { status: "unauthenticated" }
-  | { status: "denied"; email: string }
   | { status: "unavailable"; email: string };
 
 export type WorkspaceMemberIdentityRow = OrganizationMembership;
@@ -151,6 +146,12 @@ async function findWorkspaceMember(
   if (persistenceMode() === "postgres") {
     try {
       memberships = await listOrganizationMemberships(normalizeEmail(email));
+      if (memberships.length === 0 && !includeDemo) {
+        memberships = await ensureOrganizationMemberships(
+          email,
+          verifiedSessionName,
+        );
+      }
     } catch (error) {
       if (
         !includeDemo ||
@@ -191,38 +192,6 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
   const name = session?.user?.name;
   if (!email) return { status: "unauthenticated" };
 
-  if (!isPrivateBetaAccessEnforced()) {
-    try {
-      const activeOrganizationId = await activeOrganizationIdFromCookie();
-      const member = await findWorkspaceMember(
-        email,
-        name,
-        activeOrganizationId,
-      );
-      if (member) return { status: "granted", user: member };
-      if (demoWorkspaceAvailable()) {
-        return { status: "granted", user: demoUser(email, name) };
-      }
-    } catch (error) {
-      console.error("Unable to load the selected workspace", {
-        errorType: error instanceof Error ? error.name : "UnknownError",
-      });
-    }
-    return { status: "unavailable", email };
-  }
-
-  if (!isPrivateBetaOwner(email)) {
-    try {
-      if (!(await isWorkspaceAccessApproved(email)))
-        return { status: "denied", email };
-    } catch (error) {
-      console.error("Unable to verify approved workspace access", {
-        errorType: error instanceof Error ? error.name : "UnknownError",
-      });
-      return { status: "unavailable", email };
-    }
-  }
-
   try {
     const activeOrganizationId = await activeOrganizationIdFromCookie();
     const member = await findWorkspaceMember(email, name, activeOrganizationId);
@@ -231,7 +200,7 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
       return { status: "granted", user: demoUser(email, name) };
     }
   } catch (error) {
-    console.error("Unable to load the private beta owner workspace", {
+    console.error("Unable to load or create the selected workspace", {
       errorType: error instanceof Error ? error.name : "UnknownError",
     });
   }
@@ -242,7 +211,6 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
 async function requireWorkspaceUserForRequest(): Promise<WorkspaceUser> {
   const access = await resolveWorkspaceAccess();
   if (access.status === "granted") return access.user;
-  if (access.status === "denied") redirect("/waitlist");
   if (access.status === "unavailable")
     redirect("/login?error=WorkspaceUnavailable");
   redirect("/login");

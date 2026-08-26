@@ -22,6 +22,7 @@ import { integrationCatalog } from "./integration-catalog";
 import {
   createOrganization,
   deleteOrganization,
+  ensureOrganizationMemberships,
   findOrganizationMembership,
   listOrganizationMemberships,
   normalizeMembershipEmail,
@@ -146,6 +147,69 @@ describe("organization repository", () => {
       sqlIncludes(sql, "INSERT INTO audit_events") &&
       values[1] === result.organizationId,
     )).toBe(true);
+  });
+
+  it("provisions one isolated workspace for a verified first-time user", async () => {
+    database.client.query.mockImplementation(async (sql: unknown) => {
+      if (sqlIncludes(sql, "FROM workspace_members")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await ensureOrganizationMemberships(
+      "Sam.Example+signup@googlemail.com",
+      "Sam Operator",
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      organizationName: "Sam Operator's workspace",
+      displayName: "Sam Operator",
+      email: "samexample@gmail.com",
+      role: "Admin",
+    });
+    expect(database.client.query).toHaveBeenCalledWith(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      ["samexample@gmail.com"],
+    );
+    expect(database.client.query.mock.calls.some(([sql, values]) =>
+      sqlIncludes(sql, "INSERT INTO workspace_members") &&
+      values[3] === "samexample@gmail.com",
+    )).toBe(true);
+  });
+
+  it("reuses an existing membership while holding the provisioning lock", async () => {
+    database.client.query.mockImplementation(async (sql: unknown) => {
+      if (sqlIncludes(sql, "FROM workspace_members")) {
+        return {
+          rows: [{
+            member_id: "member_existing",
+            org_id: "org_existing",
+            organization_name: "Existing workspace",
+            display_name: "Sam",
+            email: "sam@example.com",
+            role: "Admin",
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await expect(
+      ensureOrganizationMemberships("sam@example.com", "Sam"),
+    ).resolves.toEqual([{
+      memberId: "member_existing",
+      organizationId: "org_existing",
+      organizationName: "Existing workspace",
+      displayName: "Sam",
+      email: "sam@example.com",
+      role: "Admin",
+    }]);
+    expect(database.client.query.mock.calls.some(([sql]) =>
+      sqlIncludes(sql, "INSERT INTO organizations"),
+    )).toBe(false);
   });
 
   it("rejects an empty organization name before opening a transaction", async () => {

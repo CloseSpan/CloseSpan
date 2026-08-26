@@ -6,7 +6,7 @@ const authState = vi.hoisted(() => ({
   },
   activeOrganizationId: null as string | null,
   memberships: vi.fn(),
-  accessApproved: vi.fn(),
+  ensureMemberships: vi.fn(),
 }));
 
 vi.mock("@/auth", () => ({
@@ -33,12 +33,10 @@ vi.mock("./organization-repository", async (importOriginal) => {
   >();
   return {
     ...actual,
+    ensureOrganizationMemberships: authState.ensureMemberships,
     listOrganizationMemberships: authState.memberships,
   };
 });
-vi.mock("./access-waitlist-repository", () => ({
-  isWorkspaceAccessApproved: authState.accessApproved,
-}));
 
 import {
   resolveWorkspaceAccess,
@@ -138,26 +136,26 @@ describe("workspace organization selection", () => {
   });
 });
 
-describe("production private beta access", () => {
+describe("production workspace access", () => {
   beforeEach(() => {
     process.env.APP_MODE = "production";
     authState.session = null;
     authState.activeOrganizationId = null;
     authState.memberships.mockReset();
-    authState.accessApproved.mockReset().mockResolvedValue(false);
+    authState.ensureMemberships.mockReset();
   });
 
-  it("denies a non-owner even when a legacy membership exists", async () => {
+  it("grants every verified user access to an existing organization", async () => {
     authState.session = {
       user: { email: "sam@example.com", name: "Sam" },
     };
     authState.memberships.mockResolvedValue(memberships);
 
-    await expect(resolveWorkspaceAccess()).resolves.toEqual({
-      status: "denied",
-      email: "sam@example.com",
+    await expect(resolveWorkspaceAccess()).resolves.toMatchObject({
+      status: "granted",
+      user: { email: "sam@example.com", orgId: "org_acme", role: "Admin" },
     });
-    expect(authState.memberships).not.toHaveBeenCalled();
+    expect(authState.ensureMemberships).not.toHaveBeenCalled();
   });
 
   it("grants the owner access to a stored production organization", async () => {
@@ -190,15 +188,19 @@ describe("production private beta access", () => {
     });
   });
 
-  it("grants an approved waitlist user access to their provisioned organization", async () => {
+  it("provisions a private organization for a verified first-time user", async () => {
     authState.session = { user: { email: "sam@example.com", name: "Sam" } };
-    authState.accessApproved.mockResolvedValue(true);
-    authState.memberships.mockResolvedValue(memberships.slice(0, 1));
+    authState.memberships.mockResolvedValue([]);
+    authState.ensureMemberships.mockResolvedValue(memberships.slice(0, 1));
 
     await expect(resolveWorkspaceAccess()).resolves.toMatchObject({
       status: "granted",
       user: { email: "sam@example.com", orgId: "org_acme", role: "Admin" },
     });
+    expect(authState.ensureMemberships).toHaveBeenCalledWith(
+      "sam@example.com",
+      "Sam",
+    );
   });
 
   it("selects a durable organization when its trusted cookie is active", async () => {
@@ -237,7 +239,7 @@ describe("production private beta access", () => {
       email: "shanmukhsain@gmail.com",
     });
     expect(consoleError).toHaveBeenCalledWith(
-      "Unable to load the private beta owner workspace",
+      "Unable to load or create the selected workspace",
       { errorType: "Error" },
     );
     consoleError.mockRestore();
@@ -259,16 +261,23 @@ describe("production private beta access", () => {
     consoleError.mockRestore();
   });
 
-  it("does not invent a production workspace when membership is missing", async () => {
+  it("returns unavailable when first-time workspace provisioning fails", async () => {
     authState.session = {
       user: { email: "shanmukhsain@gmail.com", name: "Shanmukh" },
     };
     authState.memberships.mockResolvedValue([]);
+    authState.ensureMemberships.mockRejectedValue(new Error("database offline"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(resolveWorkspaceAccess()).resolves.toEqual({
       status: "unavailable",
       email: "shanmukhsain@gmail.com",
     });
+    expect(consoleError).toHaveBeenCalledWith(
+      "Unable to load or create the selected workspace",
+      { errorType: "Error" },
+    );
+    consoleError.mockRestore();
   });
 });
 
@@ -281,6 +290,7 @@ describe("hybrid demo access", () => {
     };
     authState.activeOrganizationId = null;
     authState.memberships.mockReset();
+    authState.ensureMemberships.mockReset();
   });
 
   it("merges the memory demo with durable organizations", async () => {
@@ -337,7 +347,7 @@ describe("hybrid demo access", () => {
       email: "sam@example.com",
     });
     expect(consoleError).toHaveBeenCalledWith(
-      "Unable to load the selected workspace",
+      "Unable to load or create the selected workspace",
       { errorType: "Error" },
     );
     consoleError.mockRestore();

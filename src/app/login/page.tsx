@@ -43,7 +43,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const callbackUrl = safeCallbackUrl(params.callbackUrl);
 
   if (access.status === "granted") redirect(callbackUrl);
-  if (access.status === "denied") redirect("/waitlist");
 
   const workspaceUnavailable =
     access.status === "unavailable" ||
@@ -64,8 +63,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <span>Continue with Google</span>
           <h1 id="login-title">Sign in to CloseSpan</h1>
           <p>
-            Connect your Google account. Private beta access is currently
-            limited, and everyone else can join the waitlist instantly.
+            Connect your Google account to create or open your private
+            CloseSpan workspace.
           </p>
         </div>
 
