@@ -36,10 +36,10 @@ function initials(name: string): string {
 
 function AccountMenu({
   user,
-  showWaitlistAdmin,
+  showPlatformAdmin,
 }: {
   user: WorkspaceUser;
-  showWaitlistAdmin: boolean;
+  showPlatformAdmin: boolean;
 }) {
   return (
     <UserMenu
@@ -54,7 +54,7 @@ function AccountMenu({
         </span>
       </div>
       <span className="user-role">{user.role}</span>
-      <AccountMenuNavigation showWaitlistAdmin={showWaitlistAdmin} />
+      <AccountMenuNavigation showPlatformAdmin={showPlatformAdmin} />
       <ThemeToggle />
       <form action={signOutCurrentUser}>
         <button type="submit">
@@ -82,7 +82,7 @@ export async function AppShell({
   ]);
   const durableWorkspace = workspacePersistenceMode(user.orgId) === "postgres";
   const canRenameWorkspace = durableWorkspace && user.role === "Admin";
-  const showWaitlistAdmin = isCloseSpanPlatformAdmin(user);
+  const showPlatformAdmin = isCloseSpanPlatformAdmin(user);
   if (immersive) {
     return (
       <div className="shell shell-immersive">
@@ -106,7 +106,7 @@ export async function AppShell({
                 canRenameWorkspace={canRenameWorkspace}
                 variant="topbar"
               />
-              <AccountMenu user={user} showWaitlistAdmin={showWaitlistAdmin} />
+              <AccountMenu user={user} showPlatformAdmin={showPlatformAdmin} />
             </div>
           </header>
           <div
@@ -161,7 +161,7 @@ export async function AppShell({
               <Bell size={15} />
               {unreadNotifications > 0 && <span className="notification-count">{Math.min(unreadNotifications, 99)}</span>}
             </Link>
-            <AccountMenu user={user} showWaitlistAdmin={showWaitlistAdmin} />
+            <AccountMenu user={user} showPlatformAdmin={showPlatformAdmin} />
           </div>
         </header>
         <div className="content" id="main-content" tabIndex={-1}>

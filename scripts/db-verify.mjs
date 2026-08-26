@@ -12,6 +12,7 @@ try {
     "feature_request_votes",
     "feature_request_rate_limits",
     "workspace_access_waitlist",
+    "platform_user_activity",
   ];
   for (const table of requiredConnectorTables) {
     const relation = await pool.query("SELECT to_regclass($1) table_name", [

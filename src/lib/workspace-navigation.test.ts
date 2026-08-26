@@ -48,12 +48,14 @@ describe("workspace navigation", () => {
     );
     expect(workspaceSection("/settings")).toBe("Settings & governance");
     expect(workspaceSection("/integrations")).toBe("Integrations");
-    expect(workspaceSection("/admin/waitlist")).toBe("Waitlist users");
+    expect(workspaceSection("/admin/users")).toBe("Active users");
+    expect(workspaceSection("/admin/waitlist")).toBe("Active users");
   });
 
   it("keeps account and administration routes outside the workflow order", () => {
     expect(workspaceRouteIndex("/settings")).toBeNull();
     expect(workspaceRouteIndex("/integrations")).toBeNull();
     expect(workspaceRouteIndex("/admin/waitlist")).toBeNull();
+    expect(workspaceRouteIndex("/admin/users")).toBeNull();
   });
 });

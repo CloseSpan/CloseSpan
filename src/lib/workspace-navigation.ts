@@ -112,7 +112,12 @@ export function workspaceSection(pathname: string): string {
   ) {
     return "Integrations";
   }
-  if (normalized === "/admin/waitlist") return "Waitlist users";
+  if (
+    normalized === "/admin/users" ||
+    normalized === "/admin/waitlist"
+  ) {
+    return "Active users";
+  }
   return (
     WORKSPACE_NAVIGATION.find(
       ({ href }) => normalized === href || normalized.startsWith(`${href}/`),

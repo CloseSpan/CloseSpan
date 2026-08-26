@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import { recordPlatformUserSignIn } from "@/lib/active-user-repository";
 import { normalizeEmail } from "@/lib/auth-user";
 import { PUBLIC_DISCOVERY_PATHS } from "@/lib/site";
 
@@ -39,6 +40,16 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         ? normalizeEmail(googleProfile.email)
         : "";
       if (!email || googleProfile?.email_verified !== true) return false;
+      try {
+        await recordPlatformUserSignIn(
+          email,
+          typeof profile?.name === "string" ? profile.name : null,
+        );
+      } catch (error) {
+        console.error("Unable to record verified user sign-in activity", {
+          errorType: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
       return true;
     },
     async authorized({ auth: session, request }) {

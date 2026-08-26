@@ -1,6 +1,6 @@
 "use client";
 
-import { Blocks, ListPlus, Settings } from "lucide-react";
+import { Blocks, Settings, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -18,24 +18,24 @@ const accountNavigation = [
     adminOnly: false,
   },
   {
-    href: "/admin/waitlist",
-    label: "Waitlist users",
-    icon: ListPlus,
+    href: "/admin/users",
+    label: "Active users",
+    icon: UsersRound,
     adminOnly: true,
   },
 ] as const;
 
 export function AccountMenuNavigation({
-  showWaitlistAdmin,
+  showPlatformAdmin,
 }: {
-  showWaitlistAdmin: boolean;
+  showPlatformAdmin: boolean;
 }) {
   const pathname = usePathname();
 
   return (
     <nav className="user-menu-navigation" aria-label="Account and administration">
       {accountNavigation.map(({ href, label, icon: Icon, adminOnly }) => {
-        if (adminOnly && !showWaitlistAdmin) {
+        if (adminOnly && !showPlatformAdmin) {
           return null;
         }
 
