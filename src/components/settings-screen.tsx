@@ -14,6 +14,7 @@ import {
 } from "./custom-retention-input";
 import { CustomSelect } from "./custom-select";
 import { PageTitle } from "./screens";
+import { CreateosSandboxCheck } from "./createos-sandbox-check";
 import { TenkiSandboxCheck } from "./tenki-sandbox-check";
 import { ExecutionProfileSettings } from "./execution-profile-settings";
 import {
@@ -29,6 +30,7 @@ export function SettingsScreen({
   orgId,
   userRole,
   tenkiConfigured,
+  createosConfigured,
   promptEmailConfigured,
   orchestration,
 }: {
@@ -36,6 +38,7 @@ export function SettingsScreen({
   orgId: string;
   userRole: string;
   tenkiConfigured: boolean;
+  createosConfigured: boolean;
   promptEmailConfigured: boolean;
   orchestration: OrchestrationProviderPublicConfiguration;
 }) {
@@ -252,6 +255,11 @@ export function SettingsScreen({
               <TenkiSandboxCheck
                 orgId={orgId}
                 configured={tenkiConfigured}
+                isAdmin={userRole === "Admin"}
+              />
+              <CreateosSandboxCheck
+                orgId={orgId}
+                configured={createosConfigured}
                 isAdmin={userRole === "Admin"}
               />
             </div>

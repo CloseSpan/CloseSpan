@@ -25,6 +25,13 @@ binds the exact profile ID, version, hash, and snapshot through Prompt Testing, 
 implementation, and independent verification. See the
 [execution-profile architecture and rollout guide](docs/execution-profiles.md).
 
+Administrators can also evaluate CreateOS beside Tenki from **Settings → Agent
+autonomy**. Set `CREATEOS_SANDBOX_API_KEY` and optionally
+`CREATEOS_SANDBOX_BASE_URL` in the Node deployment. The test creates one
+restricted microVM, runs a fixed offline marker command, destroys the sandbox,
+and reports success only after cleanup is confirmed. This pilot does not change
+the execution provider used by production workflows.
+
 The initial product wedge is **feedback-to-fix operations for mid-market B2B SaaS**: detect repeated customer-reported defects, quantify account and revenue impact, prepare engineering evidence, govern external actions, verify the release, and close the affected customer conversations. See the [product-market-fit notes](docs/product-market-fit.md).
 
 ## Run locally

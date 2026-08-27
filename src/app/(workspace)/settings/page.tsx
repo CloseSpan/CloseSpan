@@ -1,5 +1,6 @@
 import { SettingsScreen } from "@/components/settings-screen";
 import { requireWorkspaceUser } from "@/lib/auth-user";
+import { createosSandboxConfigured } from "@/lib/createos-sandbox-check";
 import { tenkiSandboxConfigured } from "@/lib/tenki-sandbox-check";
 import { getWorkspaceData } from "@/lib/workspace-repository";
 import { cloudflarePromptEmailConfiguration } from "@/lib/prompt-review-email";
@@ -19,6 +20,7 @@ export default async function Page() {
       orgId={data.orgId}
       userRole={user.role}
       tenkiConfigured={tenkiSandboxConfigured()}
+      createosConfigured={createosSandboxConfigured()}
       promptEmailConfigured={Boolean(cloudflarePromptEmailConfiguration())}
       orchestration={orchestration}
     />
