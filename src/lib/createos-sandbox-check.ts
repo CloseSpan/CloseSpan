@@ -15,6 +15,7 @@ const CREATE_TIMEOUT_MS = 30_000;
 const EXECUTION_TIMEOUT_MS = 10_000;
 const CLEANUP_TIMEOUT_MS = 30_000;
 const EGRESS_SINK = "127.0.0.1:1";
+const SANDBOX_NAME_PREFIX = "cs-test-";
 
 type CreateosSandbox = {
   id: string;
@@ -153,7 +154,8 @@ export async function runCreateosSandboxCheck(
   try {
     sandbox = await client.createSandbox(
       {
-        name: `closespan-connectivity-${crypto.randomUUID().slice(0, 8)}`,
+        // CreateOS limits sandbox names to 22 characters.
+        name: `${SANDBOX_NAME_PREFIX}${crypto.randomUUID().slice(0, 8)}`,
         shape: "s-1vcpu-256mb",
         rootfs: "devbox:1",
         ingress_enabled: false,

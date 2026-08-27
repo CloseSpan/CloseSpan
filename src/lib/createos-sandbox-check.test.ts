@@ -54,6 +54,7 @@ describe("CreateOS sandbox connectivity check", () => {
 
     expect(client.createSandbox).toHaveBeenCalledWith(
       expect.objectContaining({
+        name: expect.stringMatching(/^cs-test-[0-9a-f]{8}$/),
         shape: "s-1vcpu-256mb",
         rootfs: "devbox:1",
         ingress_enabled: false,
@@ -62,6 +63,8 @@ describe("CreateOS sandbox connectivity check", () => {
       }),
       { timeoutMs: 30_000 },
     );
+    const createRequest = client.createSandbox.mock.calls[0]?.[0];
+    expect(createRequest?.name.length).toBeLessThanOrEqual(22);
     expect(sandbox.runCommand).toHaveBeenCalledWith(
       "printf",
       ["closespan-createos-ready"],
