@@ -210,31 +210,6 @@ async function checkService(service: ServiceRow, env: Env, scheduledAt: number):
     await resolveAutomaticIncident(env, service, scheduledAt);
 }
 
-async function rollupDay(db: D1Database, serviceId: string, day: string, now: number): Promise<void> {
-  await db.prepare(`INSERT INTO daily_rollups
-    (service_id,day,total_checks,successful_checks,degraded_checks,failed_checks,maintenance_checks,worst_status,calculated_at)
-    SELECT ?,?,COUNT(*),
-      SUM(CASE WHEN succeeded=1 AND maintenance_excluded=0 THEN 1 ELSE 0 END),
-      SUM(CASE WHEN status='degraded' AND succeeded=1 AND maintenance_excluded=0 THEN 1 ELSE 0 END),
-      SUM(CASE WHEN succeeded=0 AND maintenance_excluded=0 THEN 1 ELSE 0 END),
-      SUM(maintenance_excluded),
-      CASE
-        WHEN SUM(CASE WHEN status='major_outage' AND maintenance_excluded=0 THEN 1 ELSE 0 END)>0 THEN 'major_outage'
-        WHEN SUM(CASE WHEN status='partial_outage' AND maintenance_excluded=0 THEN 1 ELSE 0 END)>0 THEN 'partial_outage'
-        WHEN SUM(CASE WHEN status='degraded' AND maintenance_excluded=0 THEN 1 ELSE 0 END)>0 THEN 'degraded'
-        WHEN SUM(maintenance_excluded)>0 THEN 'maintenance'
-        ELSE 'operational'
-      END,
-      ?
-    FROM checks WHERE service_id=? AND date(checked_at / 1000, 'unixepoch')=?
-    HAVING COUNT(*)>0
-    ON CONFLICT(service_id,day) DO UPDATE SET
-      total_checks=excluded.total_checks,successful_checks=excluded.successful_checks,
-      degraded_checks=excluded.degraded_checks,failed_checks=excluded.failed_checks,
-      maintenance_checks=excluded.maintenance_checks,worst_status=excluded.worst_status,calculated_at=excluded.calculated_at`)
-    .bind(serviceId, day, now, serviceId, day).run();
-}
-
 async function updateMaintenance(env: Env, now: number): Promise<void> {
   const starting = await env.DB.prepare(`SELECT id,title,message FROM maintenance_windows
     WHERE status='scheduled' AND starts_at<=? AND ends_at>?`).bind(now, now).all<{ id: string; title: string; message: string }>();
@@ -274,12 +249,6 @@ export async function runScheduledMonitoring(env: Env, scheduledAt: number): Pro
       }));
     }
   });
-  const today = utcDay(scheduledAt);
-  const yesterday = utcDay(scheduledAt - 86_400_000);
-  await Promise.all(dueServices.map((service) => rollupDay(env.DB, service.id, today, Date.now())));
-  if (new Date(scheduledAt).getUTCHours() === 0 && new Date(scheduledAt).getUTCMinutes() === 0) {
-    await Promise.all(services.map((service) => rollupDay(env.DB, service.id, yesterday, Date.now())));
-  }
   if (new Date(scheduledAt).getUTCMinutes() === 0) {
     await Promise.all([
       env.DB.prepare(`DELETE FROM checks WHERE checked_at<?`).bind(scheduledAt - 14 * 86_400_000).run(),
