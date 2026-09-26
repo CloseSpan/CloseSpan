@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import type { WorkspaceUser } from "./auth-user";
 import { ORG_ID } from "./seed";
+import { readPresentationDemo } from "./presentation-demo";
 
 export class HttpError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
@@ -96,6 +97,11 @@ export async function authorizeMutation(
     throw new HttpError(403, "Contributor permission is required");
   const idempotencyKey = request.headers.get("idempotency-key") ?? "";
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) throw new HttpError(400, "A valid idempotency key is required");
+  // A presentation workspace may show realistic runs and approvals, but those
+  // fixtures must never authorize real execution or enable live integrations.
+  // Keep read access and workspace switching independent of this mutation gate.
+  if (await readPresentationDemo(user.orgId))
+    throw new HttpError(403, "This demo workspace is read-only. Switch to a live workspace to take actions.");
   enforceRateLimit(request, user.id);
   return {
     orgId: user.orgId,

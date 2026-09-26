@@ -3,6 +3,7 @@ import { databasePool, transaction } from "./db";
 import type { RequestContext } from "./request-security";
 import type { AiProvider } from "./ai-config";
 import type { AiAnalysisResult, AiFeedbackInput, AiProblemCandidate } from "./ai-provider";
+import { feedbackProblemTitle } from "./problem-subject";
 import {
   BILLING_EVENT_NAMES,
   enqueueBillingUsageEvent,
@@ -76,6 +77,7 @@ export async function listLatestFeedbackAnalyses(
     classification_confidence: number;
     cluster_confidence: number;
     confidence_factors: {
+      problemSubject?: string;
       evidenceQuality?: number;
       classificationClarity?: number;
       clusterMatch?: number;
@@ -118,6 +120,7 @@ export async function listLatestFeedbackAnalyses(
       : [],
     sentimentRationale: row.sentiment_rationale,
     redactedSummary: row.redacted_summary,
+    problemSubject: feedbackProblemTitle(row.redacted_summary, row.confidence_factors?.problemSubject),
     proposedProblemId: row.proposed_problem_id,
     classificationConfidence: row.classification_confidence,
     clusterConfidence: row.cluster_confidence,
@@ -235,6 +238,7 @@ export async function completeModelRun(input: {
           analysis.classificationConfidence, analysis.clusterConfidence,
           JSON.stringify({
             evidenceQuality: analysis.evidenceQuality,
+            problemSubject: analysis.problemSubject,
             classificationClarity: analysis.classificationClarity,
             clusterMatch: analysis.clusterMatch,
             ambiguityPenalty: analysis.ambiguityPenalty,

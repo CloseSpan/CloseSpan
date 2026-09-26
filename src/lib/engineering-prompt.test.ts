@@ -107,7 +107,7 @@ describe("engineering prompt contract", () => {
     expect(first).toContain("**AC-1**");
     expect(first).toContain("### TEST-1");
     expect(first).toContain("<scenario_title>\nLarge export\n</scenario_title>");
-    expect(first).toContain('drafting_guidance: "pdd-alignment-v1"');
+    expect(first).toContain('drafting_guidance: "closespan-pdd-agent-v1"');
     expect(first).toContain("## Contract: Requested outcome");
     expect(first).toContain("## Repository context");
     expect(first).toContain("Pinned repository: northstar/analytics-api@");

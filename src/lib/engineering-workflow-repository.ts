@@ -66,12 +66,14 @@ import {
 } from "./final-execution-repository";
 import { parseReleaseVerificationPlan } from "./release-verification-plan";
 import { autonomyCapabilities } from "./autonomy-policy";
-import { readAutonomyLevel } from "./workspace-settings-repository";
+import { automaticPromptAcceptanceSql } from "./automatic-prompt-acceptance";
+import { automaticCodingBudgetAvailable, readAutonomyLevel } from "./workspace-settings-repository";
 import {
   readPddPromptEvaluation,
   type PddPromptEvaluationView,
 } from "./pdd-prompt-evaluation-repository";
 import { enrichPromptEvidence } from "./problem-evidence-bundle";
+import { domainResultReworkEnabled } from "./issue-result-review";
 
 async function assertPromptPreparationAllowed(orgId: string): Promise<void> {
   const level = await readAutonomyLevel(orgId);
@@ -297,7 +299,8 @@ export interface AgentRunExecutionContext {
   executionProfileId: string;
   executionProfileHash: string;
   executionProfileSnapshot: ExecutionProfileSnapshot;
-  runKind?: "implementation" | "tenki_review_remediation";
+  runKind?: "implementation" | "tenki_review_remediation" | "domain_result_rework";
+  resultReviewId?: string;
   parentRunId?: string;
   reviewCycle?: number;
   reviewId?: number;
@@ -318,7 +321,7 @@ export class EngineeringWorkflowError extends Error {
   }
 }
 
-interface ActorContext {
+export interface ActorContext {
   actorId: string;
   actorName: string;
   traceId: string;
@@ -699,10 +702,15 @@ export async function getAgentRunById(orgId: string, runId: string): Promise<{ p
 
 export async function listAgentRuns(
   orgId: string,
+  runId?: string,
 ): Promise<AgentRunSummaryView[]> {
   if (workspacePersistenceMode(orgId) === "memory") {
     return [...memoryWorkflows.entries()]
-      .filter(([key, workflow]) => key.startsWith(`${orgId}:`) && workflow.run)
+      .filter(([key, workflow]) =>
+        key.startsWith(`${orgId}:`)
+        && workflow.run
+        && (runId === undefined || workflow.run.id === runId),
+      )
       .map(([key, workflow]) => {
         const run = workflow.run as AgentRunView;
         const problemId = key.slice(orgId.length + 1);
@@ -775,11 +783,12 @@ export async function listAgentRuns(
           WHERE attempt.org_id=run.org_id AND attempt.agent_run_id=run.id
           ORDER BY attempt.created_at DESC,attempt.id DESC
           LIMIT 1
-       ) final_execution ON true
+      ) final_execution ON true
       WHERE run.org_id=$1
+        AND ($2::uuid IS NULL OR run.id=$2)
       ORDER BY run.queued_at DESC,run.id DESC
       LIMIT 100`,
-    [orgId],
+    [orgId, runId ?? null],
   );
 
   return result.rows.map((row) => ({
@@ -1859,7 +1868,7 @@ export async function applyPddPromptRevision(
   input: {
     currentPromptHash: string;
     revisedPrompt: string;
-    source?: "Prompt Testing" | "CloseSpan conversation";
+    source?: "Prompt Testing" | "CloseSpan conversation" | "CloseSpan Prompt Agent";
   },
   actor: ActorContext,
 ): Promise<EngineeringWorkflowView> {
@@ -2448,12 +2457,18 @@ export async function prepareImplementationRunRetry(
   }
 
   if (workspacePersistenceMode(orgId) === "postgres") {
-    const binding = await databasePool().query<{ prompt_revision_id: string }>(
-      `SELECT prompt_revision_id
+    const binding = await databasePool().query<{ prompt_revision_id: string; run_kind: string }>(
+      `SELECT prompt_revision_id,run_kind
          FROM agent_runs
         WHERE org_id=$1 AND id=$2 AND problem_id=$3`,
       [orgId, runId, located.problemId],
     );
+    if (binding.rows[0]?.run_kind === "domain_result_rework") {
+      throw new EngineeringWorkflowError(
+        "A failed domain follow-up needs a new scoped authorization. The generic retry cannot discard its recorded feedback or create a separate pull request.",
+        409,
+      );
+    }
     if (!binding.rows[0] || workflow.prompt?.id !== binding.rows[0].prompt_revision_id) {
       throw new EngineeringWorkflowError(
         "The ticket prompt changed after this run. Prepare another coding run from Prompt Testing to review the updated contract.",
@@ -2508,6 +2523,14 @@ export async function approveImplementationRun(
   actor: ActorContext,
 ): Promise<EngineeringWorkflowView> {
   await assertAgentExecutionAllowed(orgId);
+  if (actor.actorId.toLowerCase().startsWith("system:")) {
+    if (!autonomyCapabilities(await readAutonomyLevel(orgId)).automaticallyAuthorizeExecution) {
+      throw new EngineeringWorkflowError("Automatic coding is no longer enabled; a human must approve this run.", 409);
+    }
+    if (!await automaticCodingBudgetAvailable(orgId)) {
+      throw new EngineeringWorkflowError("Automatic coding is blocked by the workspace budget or its hard-stop setting.", 409);
+    }
+  }
   if (workspacePersistenceMode(orgId) === "memory") {
     const pair = [...memoryWorkflows.entries()].find(([, item]) => item.approval?.id === approvalId);
     if (!pair?.[1].approval || !pair[1].prompt) throw new EngineeringWorkflowError("Approval was not found", 404);
@@ -2553,6 +2576,19 @@ export async function approveImplementationRun(
       await client.query("UPDATE engineering_ticket_specifications SET implementation_state='Prompt ready',updated_at=now() WHERE org_id=$1 AND problem_id=$2", [orgId, row.problem_id]);
       expired = true;
       return;
+    }
+    if (actor.actorId.toLowerCase().startsWith("system:")) {
+      const blockedReview = await client.query(
+        `SELECT 1 FROM problem_prompt_reviews review
+          WHERE review.org_id=$1 AND review.problem_id=$2
+            AND (review.prompt_hash IS DISTINCT FROM $3
+              OR (review.confirmed_at IS NULL AND NOT COALESCE(${automaticPromptAcceptanceSql("review", "$3")},false)))
+          LIMIT 1`,
+        [orgId, row.problem_id, row.prompt_hash],
+      );
+      if (blockedReview.rowCount) {
+        throw new EngineeringWorkflowError("This prompt needs current human confirmation or valid automatic policy acceptance before coding.", 409);
+      }
     }
     const approvalProfile = validatedExecutionProfileBinding(row, "Approval request");
     if (executionProfileExecutor(approvalProfile.config).kind === "tenki_github_actions") {
@@ -2687,7 +2723,9 @@ export async function getAgentRunExecutionContext(
     approval_execution_profile_snapshot: unknown;
     verification_execution_profile_id: string | null; verification_execution_profile_hash: string | null;
     verification_execution_profile_snapshot: unknown;
-    run_kind: "implementation" | "tenki_review_remediation";
+    run_kind: "implementation" | "tenki_review_remediation" | "domain_result_rework";
+    result_review_id: string | null;
+    run_status: string;
     parent_run_id: string | null;
     review_cycle: number | null;
     review_id: string | number | null;
@@ -2713,6 +2751,7 @@ export async function getAgentRunExecutionContext(
              verification.execution_profile_hash AS verification_execution_profile_hash,
              verification.execution_profile_snapshot AS verification_execution_profile_snapshot,
              run.run_kind,run.parent_run_id,run.review_cycle,run.review_id,
+             to_jsonb(run)->>'result_review_id' AS result_review_id,run.status AS run_status,
              run.review_instructions,run.review_comment_ids,run.pull_request_number,
              run.pull_request_url,run.prompt_commit_sha,run.pull_request_base_branch
         FROM agent_runs run
@@ -2767,6 +2806,33 @@ export async function getAgentRunExecutionContext(
       )
     : [];
   const reviewId = row.review_id === null ? undefined : Number(row.review_id);
+  if (row.run_kind === "domain_result_rework") {
+    if (!row.result_review_id || !row.parent_run_id || !row.review_instructions || !row.pull_request_number) {
+      throw new EngineeringWorkflowError("The follow-up run is missing its human feedback authorization", 409);
+    }
+    if (["Queued", "Running"].includes(row.run_status)) {
+      if (!domainResultReworkEnabled()) throw new EngineeringWorkflowError("Follow-up execution is disabled until the coding executor update is enabled", 409);
+      await assertAgentExecutionAllowed(orgId);
+      const authorized = await databasePool().query(
+        `SELECT 1 FROM issue_result_rework_requests request
+           JOIN issue_result_reviews review ON review.org_id=request.org_id AND review.id=request.review_id
+           JOIN agent_runs run ON run.org_id=request.org_id AND run.id=request.run_id
+           JOIN approval_requests approval ON approval.org_id=run.org_id AND approval.id=run.approval_id
+           JOIN workspace_members member ON member.org_id=request.org_id AND member.id=request.actor_id AND member.role='Admin'
+          WHERE request.org_id=$1 AND request.run_id=$2 AND request.review_id=$3
+            AND request.problem_id=run.problem_id AND review.problem_id=run.problem_id
+            AND request.source_run_id=run.parent_run_id AND review.run_id=run.parent_run_id
+            AND review.decision='changes' AND review.commit_sha=run.base_sha AND review.prompt_hash=run.prompt_hash
+            AND approval.status='Approved' AND approval.action_type='agent_run'
+            AND approval.prompt_hash=run.prompt_hash AND approval.base_sha=run.base_sha
+            AND approval.repository=run.repository AND approval.base_branch=run.base_branch
+            AND approval.pdd_verification_id=run.pdd_verification_id
+            AND request.approval_id=approval.id AND lower(request.actor_id) NOT LIKE 'system:%'`,
+        [orgId, runId, row.result_review_id],
+      );
+      if (!authorized.rowCount) throw new EngineeringWorkflowError("The human follow-up authorization is no longer current", 409);
+    }
+  }
   return {
     orgId, problemId: row.problem_id, runId, approvalId: row.approval_id,
     repository: row.repository, installationId: row.installation_id,
@@ -2779,7 +2845,8 @@ export async function getAgentRunExecutionContext(
     executionProfileId: executionProfileSnapshot.profileId,
     executionProfileHash: executionProfileSnapshot.contentHash,
     executionProfileSnapshot,
-    runKind: row.run_kind === "tenki_review_remediation" ? "tenki_review_remediation" : "implementation",
+    runKind: row.run_kind === "tenki_review_remediation" || row.run_kind === "domain_result_rework" ? row.run_kind : "implementation",
+    ...(row.result_review_id ? { resultReviewId: row.result_review_id } : {}),
     ...(row.parent_run_id ? { parentRunId: row.parent_run_id } : {}),
     ...(row.review_cycle ? { reviewCycle: row.review_cycle } : {}),
     ...(reviewId && Number.isSafeInteger(reviewId) ? { reviewId } : {}),
@@ -2871,8 +2938,8 @@ export async function completeAgentRun(
       throw new EngineeringWorkflowError("Agent run is already terminal", 409);
     await client.query(
       `UPDATE agent_runs SET status=$3,changed_files=$4,test_results=$5,implementation_report=$6,
-         failure_code=$7,failure_message=$8,prompt_commit_sha=$9,implementation_commit_sha=$10,
-         pull_request_number=$11,pull_request_url=$12,
+         failure_code=$7,failure_message=$8,prompt_commit_sha=coalesce($9,prompt_commit_sha),implementation_commit_sha=$10,
+         pull_request_number=coalesce($11,pull_request_number),pull_request_url=coalesce($12,pull_request_url),
          tenki_review_required=CASE WHEN $11::integer IS NOT NULL THEN true ELSE tenki_review_required END,
          completed_at=CASE WHEN $3 IN ('Draft PR opened','Failed','No changes') THEN now() ELSE completed_at END
        WHERE org_id=$1 AND id=$2`,
@@ -2943,12 +3010,12 @@ export async function completeAgentRun(
       ? "Draft PR opened"
       : finalStatus === "Tests passed"
         ? "Tests passed"
-        : context.runKind === "tenki_review_remediation"
+        : context.runKind === "tenki_review_remediation" || context.runKind === "domain_result_rework"
           ? "Draft PR opened"
           : "Prompt ready";
     await client.query("UPDATE engineering_ticket_specifications SET implementation_state=$3,updated_at=now() WHERE org_id=$1 AND problem_id=$2", [context.orgId, context.problemId, implementationState]);
     if (
-      context.runKind !== "tenki_review_remediation"
+      context.runKind !== "tenki_review_remediation" && context.runKind !== "domain_result_rework"
       && (finalStatus === "Failed" || finalStatus === "No changes")
     ) {
       await client.query(
@@ -3011,13 +3078,13 @@ export async function failAgentRun(
     current.run.failureMessage = message.slice(0, 2_000);
     current.run.completedAt = new Date().toISOString();
     if (
-      context.runKind !== "tenki_review_remediation"
+      context.runKind !== "tenki_review_remediation" && context.runKind !== "domain_result_rework"
       && current.prompt?.id === context.promptId
       && current.prompt.status === "Approved"
     ) {
       current.prompt.status = "Ready";
     }
-    current.specification.implementationState = context.runKind === "tenki_review_remediation"
+    current.specification.implementationState = context.runKind === "tenki_review_remediation" || context.runKind === "domain_result_rework"
       ? "Draft PR opened"
       : "Prompt ready";
     return;
@@ -3037,15 +3104,15 @@ export async function failAgentRun(
       [
         context.orgId,
         context.problemId,
-        context.runKind === "tenki_review_remediation" ? "Draft PR opened" : "Prompt ready",
+        context.runKind === "tenki_review_remediation" || context.runKind === "domain_result_rework" ? "Draft PR opened" : "Prompt ready",
       ],
     );
-    if (context.runKind !== "tenki_review_remediation") {
+    if (context.runKind !== "tenki_review_remediation" && context.runKind !== "domain_result_rework") {
       await client.query(
         "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
         [context.orgId, context.promptId],
       );
-    } else {
+    } else if (context.runKind === "tenki_review_remediation") {
       await client.query(
         `UPDATE tenki_pr_review_cycles
             SET state='Failed',failure_message=$3,completed_at=now(),updated_at=now()

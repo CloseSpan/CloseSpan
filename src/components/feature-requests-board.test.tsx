@@ -4,6 +4,72 @@ import { FeatureRequestsBoard } from "./feature-requests-board";
 import { TURNSTILE_TEST_SITE_KEY } from "@/lib/turnstile-config";
 
 describe("FeatureRequestsBoard", () => {
+  it("keeps moderation actions available without public submission or voting controls", () => {
+    const markup = renderToStaticMarkup(
+      <FeatureRequestsBoard
+        turnstileSiteKey=""
+        initialRequests={[
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            title: "An existing public request",
+            description: "Already published requests belong on the public board.",
+            status: "Planned",
+            votingOpen: true,
+            upvoteCount: 7,
+            downvoteCount: 2,
+            viewerVote: null,
+            createdAt: "2026-07-22T00:00:00.000Z",
+          },
+        ]}
+        initialPendingRequests={[
+          {
+            id: "33333333-3333-4333-8333-333333333333",
+            title: "Review this improvement",
+            description: "Review the community suggestion before publishing.",
+            moderationStatus: "Pending review",
+            createdAt: "2026-07-22T00:00:00.000Z",
+          },
+          {
+            id: "55555555-5555-4555-8555-555555555555",
+            title: "Previously rejected improvement",
+            description: "Keep rejected requests available to moderators.",
+            moderationStatus: "Rejected",
+            createdAt: "2026-07-22T00:00:00.000Z",
+          },
+        ]}
+        canModerate
+        moderationOnly
+      />,
+    );
+
+    expect(markup).toContain("Review this improvement");
+    expect(markup).toContain("Previously rejected improvement");
+    expect(markup).toContain("Publish");
+    expect(markup).toContain("Reject");
+    expect(markup).toContain('href="https://www.closespan.com/requests"');
+    expect(markup).not.toContain("New request");
+    expect(markup).not.toContain("Upvote");
+    expect(markup).not.toContain("Your submissions");
+    expect(markup).not.toContain("turnstile-challenge");
+    expect(markup).not.toContain("Security verification is temporarily unavailable");
+    expect(markup).not.toContain("An existing public request");
+    expect(markup).not.toContain("<main");
+  });
+
+  it("shows an empty moderation queue without inviting a public submission", () => {
+    const markup = renderToStaticMarkup(
+      <FeatureRequestsBoard
+        turnstileSiteKey=""
+        initialRequests={[]}
+        canModerate
+        moderationOnly
+      />,
+    );
+    expect(markup).toContain("No requests to review");
+    expect(markup).not.toContain("New request");
+    expect(markup).not.toContain("Start the roadmap conversation");
+  });
+
   it("shows one centered request action in the empty roadmap state", () => {
     const markup = renderToStaticMarkup(
       <FeatureRequestsBoard

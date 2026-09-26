@@ -12,6 +12,7 @@ import {
 } from "./release-verification-plan";
 import { autonomyCapabilities } from "./autonomy-policy";
 import { readAutonomyLevel } from "./workspace-settings-repository";
+import { issueResultChangesBlockExecution } from "./issue-result-review-repository";
 
 export type FinalExecutionApprovalStatus =
   | "Pending"
@@ -67,6 +68,7 @@ export interface FinalExecutionActor {
   actorId: string;
   actorName: string;
   traceId: string;
+  role?: string;
 }
 
 export class FinalExecutionError extends Error {
@@ -542,6 +544,9 @@ export async function approveFinalExecution(
   approvalId: string,
   actor: FinalExecutionActor,
 ): Promise<FinalExecutionApprovalView> {
+  if (actor.role !== "Admin" || !actor.actorId.trim() || actor.actorId.trim().toLowerCase().startsWith("system:")) {
+    throw new FinalExecutionError("An authorized human administrator must approve every merge or deployment.", 403);
+  }
   const level = await readAutonomyLevel(orgId);
   if (!autonomyCapabilities(level).requestAgentExecution) {
     throw new FinalExecutionError(
@@ -550,11 +555,11 @@ export async function approveFinalExecution(
     );
   }
   const candidate = await loadCandidate(orgId, approvalId);
-  const retryingApprovedMerge =
-    candidate.status === "Approved" && candidate.attempt_status === "Failed";
+  const reusingFailedAttempt = Boolean(candidate.attempt_id && candidate.attempt_status === "Failed");
+  const retryingApprovedMerge = reusingFailedAttempt && ["Approved", "Expired"].includes(candidate.status);
   if (candidate.status !== "Pending" && !retryingApprovedMerge)
     throw new FinalExecutionError("Final execution approval is no longer pending", 409);
-  if (candidate.expires_at.getTime() <= Date.now()) {
+  if (candidate.expires_at.getTime() <= Date.now() && !reusingFailedAttempt) {
     await databasePool().query(
       "UPDATE approval_requests SET status='Expired',updated_at=now() WHERE org_id=$1 AND id=$2 AND status='Pending'",
       [orgId, approvalId],
@@ -576,11 +581,39 @@ export async function approveFinalExecution(
   }
   await assertExactHeadTenkiApproval(orgId, candidate);
 
-  const attemptId = retryingApprovedMerge && candidate.attempt_id
+  const attemptId = reusingFailedAttempt && candidate.attempt_id
     ? candidate.attempt_id
     : randomUUID();
   await transaction(async (client) => {
-    if (retryingApprovedMerge) {
+    // Share the result-review lock before consuming any final authority. A
+    // concurrent changes request either wins first, or cancels the queued job.
+    const lockedRun = await client.query<{ implementation_commit_sha: string; status: string }>(
+      "SELECT implementation_commit_sha,status FROM agent_runs WHERE org_id=$1 AND problem_id=$2 AND id=$3 FOR UPDATE",
+      [orgId, candidate.problem_id, candidate.agent_run_id],
+    );
+    if (lockedRun.rows[0]?.implementation_commit_sha !== candidate.head_sha || lockedRun.rows[0]?.status !== "Draft PR opened") {
+      throw new FinalExecutionError("The implementation changed before final approval. Review it again.", 409);
+    }
+    if (await issueResultChangesBlockExecution(client, {
+      orgId, problemId: candidate.problem_id, runId: candidate.agent_run_id, commitSha: candidate.head_sha,
+    })) throw new FinalExecutionError("Human result review requested changes. Review the updated result before final execution.", 409);
+    if (reusingFailedAttempt) {
+      // This is a fresh human decision after failure or queue recovery. Expired
+      // authority is renewed only after the immutable verification checks above.
+      const consumed = await client.query(
+        `UPDATE approval_requests approval
+            SET status='Approved',consumed_at=now(),updated_at=now(),
+                expires_at=CASE WHEN expires_at<=now() THEN now()+interval '24 hours' ELSE expires_at END
+          WHERE approval.org_id=$1 AND approval.id=$2 AND approval.action_type='final_execution'
+            AND approval.status IN ('Pending','Approved','Expired') AND approval.head_sha=$3
+            AND EXISTS (SELECT 1 FROM final_execution_attempts attempt
+              WHERE attempt.org_id=approval.org_id AND attempt.approval_id=approval.id
+                AND attempt.id=$4 AND attempt.status='Failed' AND attempt.expected_head_sha=$3)
+          RETURNING approval.id`,
+        [orgId, approvalId, candidate.head_sha, attemptId],
+      );
+      if (!consumed.rowCount)
+        throw new FinalExecutionError("The final execution changed before the fresh human approval; review it again", 409);
       const retried = await client.query(
         `UPDATE final_execution_attempts
             SET status='Queued',failure_message=NULL,started_at=NULL,completed_at=NULL
@@ -615,21 +648,23 @@ export async function approveFinalExecution(
           candidate.head_sha,
         ],
       );
-      await client.query(
-        `INSERT INTO audit_events(
-           id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
-         ) VALUES($1,$2,$3,$4,$5,'ApprovalRequest',$6,$7)`,
-        [
-          randomUUID(),
-          orgId,
-          actor.actorId,
-          actor.actorName,
-          `Approved and queued merge of ${candidate.repository}#${candidate.pull_request_number} at ${candidate.head_sha}`,
-          approvalId,
-          `${actor.traceId}:final-execution-approved`,
-        ],
-      );
     }
+    // Persist the human decision for both first approvals and retries. The worker
+    // checks this receipt before executing, including for legacy queued attempts.
+    await client.query(
+      `INSERT INTO audit_events(
+         id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id
+       ) VALUES($1,$2,$3,$4,$5,'ApprovalRequest',$6,$7)`,
+      [
+        randomUUID(),
+        orgId,
+        actor.actorId,
+        actor.actorName,
+        `Approved and queued merge of ${candidate.repository}#${candidate.pull_request_number} at ${candidate.head_sha}`,
+        approvalId,
+        `${actor.traceId}:final-execution-approved`,
+      ],
+    );
   });
 
   const approval = await readFinalExecutionApproval(databasePool(), orgId, candidate.problem_id);
@@ -650,39 +685,120 @@ interface QueuedExecution {
   installation_id: string;
 }
 
+interface QueuedExecutionCandidate extends Omit<QueuedExecution, "installation_id"> {
+  installation_id: string | null;
+  approval_status: FinalExecutionApprovalStatus;
+  approval_expires_at: Date;
+  approval_head_sha: string;
+  has_current_human_approval: boolean;
+}
+
+type ClaimedFinalExecution =
+  | { kind: "queued"; execution: QueuedExecution }
+  | { kind: "blocked"; attemptId: string; message: string };
+
+/** Claim or recover one row under the worker's existing bounded loop. */
+async function claimFinalExecution(client: PoolClient): Promise<ClaimedFinalExecution | null> {
+  const result = await client.query<QueuedExecutionCandidate>(
+    `SELECT attempt.id,attempt.org_id,attempt.approval_id,attempt.agent_run_id,
+            approval.problem_id,attempt.repository,approval.base_branch,attempt.pull_request_number,
+            attempt.expected_head_sha,allowlist.installation_id::text,
+            approval.status AS approval_status,approval.expires_at AS approval_expires_at,
+            approval.head_sha AS approval_head_sha,
+            EXISTS (
+              SELECT 1 FROM audit_events decision
+              JOIN workspace_members member
+                ON member.org_id=decision.org_id AND member.id=decision.actor_id
+               AND member.role='Admin'
+              WHERE decision.org_id=attempt.org_id
+                AND decision.entity_type='ApprovalRequest'
+                AND decision.entity_id=attempt.approval_id
+                AND lower(decision.actor_id) NOT LIKE 'system:%'
+                AND decision.occurred_at>=approval.consumed_at
+                AND decision.action='Approved and queued merge of ' || attempt.repository
+                  || '#' || attempt.pull_request_number::text || ' at ' || attempt.expected_head_sha
+            ) AS has_current_human_approval
+       FROM final_execution_attempts attempt
+       JOIN approval_requests approval
+         ON approval.org_id=attempt.org_id AND approval.id=attempt.approval_id
+       JOIN agent_runs run
+         ON run.org_id=attempt.org_id AND run.id=attempt.agent_run_id AND run.problem_id=approval.problem_id
+       LEFT JOIN github_repository_allowlists allowlist
+         ON allowlist.org_id=attempt.org_id AND allowlist.repository=attempt.repository
+        AND allowlist.active=true AND allowlist.workspace_selected=true
+      WHERE attempt.status='Queued'
+      ORDER BY attempt.created_at,attempt.id
+      LIMIT 1 FOR UPDATE OF run,attempt SKIP LOCKED`,
+  );
+  const candidate = result.rows[0];
+  if (!candidate) return null;
+  // This runs after the row locks are acquired, with a fresh READ COMMITTED
+  // snapshot, so a feedback transaction that won the run lock is visible.
+  const changesRequested = await issueResultChangesBlockExecution(client, {
+    orgId: candidate.org_id, problemId: candidate.problem_id,
+    runId: candidate.agent_run_id, commitSha: candidate.expected_head_sha,
+  });
+  const headMatches = candidate.approval_head_sha === candidate.expected_head_sha;
+  const message = changesRequested
+    ? "Human result review requested changes. Scoped rework and a fresh final approval are required."
+    : candidate.approval_status !== "Approved"
+    ? "The final execution is not approved. A fresh human approval is required before merging."
+    : !headMatches
+      ? "The reviewed commit changed. A new verified approval is required before merging."
+      : !candidate.has_current_human_approval
+        ? "A fresh human approval is required: the queued merge has no matching decision from a current administrator."
+        : candidate.approval_expires_at.getTime() <= Date.now()
+          ? "A fresh human approval is required: the queued merge authorization expired."
+          : !candidate.installation_id
+            ? "Repository access changed. An administrator must restore access and provide a fresh human approval."
+            : null;
+  if (message) {
+    await client.query(
+      `UPDATE final_execution_attempts SET status='Failed',failure_message=$3,completed_at=now()
+        WHERE org_id=$1 AND id=$2 AND status='Queued'`,
+      [candidate.org_id, candidate.id, message],
+    );
+    // Reopen the decision, not the execution. Rejected/superseded approvals and
+    // changed commits stay closed; old receipts cannot authorize the new window.
+    if (!changesRequested && headMatches && ["Approved", "Pending", "Expired"].includes(candidate.approval_status)) {
+      await client.query(
+        `UPDATE approval_requests SET status='Pending',consumed_at=NULL,
+            expires_at=now()+interval '24 hours',reason=$3,updated_at=now()
+          WHERE org_id=$1 AND id=$2 AND action_type='final_execution'
+            AND status IN ('Approved','Pending','Expired') AND head_sha=$4`,
+        [candidate.org_id, candidate.approval_id, message, candidate.expected_head_sha],
+      );
+    }
+    await client.query(
+      `INSERT INTO audit_events(id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id)
+       VALUES($1,$2,'system:final-execution-recovery','CloseSpan',$3,'ApprovalRequest',$4,$5)`,
+      [randomUUID(), candidate.org_id, `Paused queued final execution: ${message}`,
+        candidate.approval_id, `final-execution-recovery:${candidate.id}:${randomUUID()}`],
+    );
+    await client.query("UPDATE workspaces SET version=version+1,updated_at=now() WHERE org_id=$1", [candidate.org_id]);
+    return { kind: "blocked", attemptId: candidate.id, message };
+  }
+  await client.query(
+    `UPDATE final_execution_attempts SET status='Running',started_at=now()
+      WHERE org_id=$1 AND id=$2 AND status='Queued'`,
+    [candidate.org_id, candidate.id],
+  );
+  return { kind: "queued", execution: { ...candidate, installation_id: candidate.installation_id! } };
+}
+
 export async function processQueuedFinalExecutions(
   limit = 10,
   dependencies: GithubMergeDependencies = {},
 ): Promise<Array<{ attemptId: string; status: "Succeeded" | "Failed"; message?: string }>> {
   const results: Array<{ attemptId: string; status: "Succeeded" | "Failed"; message?: string }> = [];
   for (let index = 0; index < Math.max(0, Math.min(limit, 50)); index += 1) {
-    const queued = await transaction(async (client) => {
-      const claimed = await client.query<QueuedExecution>(
-        `WITH candidate AS (
-           SELECT attempt.id
-             FROM final_execution_attempts attempt
-            WHERE attempt.status='Queued'
-            ORDER BY attempt.created_at,attempt.id
-            FOR UPDATE SKIP LOCKED LIMIT 1
-         )
-         UPDATE final_execution_attempts attempt
-            SET status='Running',started_at=now()
-           FROM candidate,
-                approval_requests approval,
-                github_repository_allowlists allowlist
-          WHERE attempt.id=candidate.id
-            AND approval.org_id=attempt.org_id AND approval.id=attempt.approval_id
-            AND allowlist.org_id=attempt.org_id
-            AND allowlist.repository=attempt.repository
-            AND allowlist.active=true
-            AND allowlist.workspace_selected=true
-          RETURNING attempt.id,attempt.org_id,attempt.approval_id,attempt.agent_run_id,
-                    approval.problem_id,attempt.repository,approval.base_branch,attempt.pull_request_number,
-                    attempt.expected_head_sha,allowlist.installation_id::text`,
-      );
-      return claimed.rows[0] ?? null;
-    });
-    if (!queued) break;
+    const claimed = await transaction(claimFinalExecution);
+    if (!claimed) break;
+    if (claimed.kind === "blocked") {
+      results.push({ attemptId: claimed.attemptId, status: "Failed", message: claimed.message });
+      continue;
+    }
+    const queued = claimed.execution;
 
     try {
       const merged = await mergeApprovedPullRequest(

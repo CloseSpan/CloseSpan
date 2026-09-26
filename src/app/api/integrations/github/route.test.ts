@@ -84,6 +84,21 @@ describe("GitHub integration API", () => {
     );
   });
 
+  it("binds popup mode and the random completion channel in signed state", async () => {
+    const popupChannel = "22222222-2222-4222-8222-222222222222";
+    const response = await POST(request("POST", { popup: true, popupChannel, returnTo: "/onboarding" }));
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { installUrl: string };
+    const { verifyGithubInstallStateToken } = await import("@/lib/github-installation-state");
+    expect(verifyGithubInstallStateToken(new URL(payload.installUrl).searchParams.get("state") ?? "")).toMatchObject({ popup: true, popupChannel, returnTo: "/onboarding" });
+  });
+
+  it("rejects malformed popup channels before creating an installation attempt", async () => {
+    const response = await POST(request("POST", { popup: true, popupChannel: "untrusted" }));
+    expect(response.status).toBe(400);
+    expect(integration.pending).not.toHaveBeenCalled();
+  });
+
   it("lists tenant-scoped installations and repositories", async () => {
     const response = await GET(request("GET"));
     await expect(response.json()).resolves.toEqual({ installations: [], repositories: [] });

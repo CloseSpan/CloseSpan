@@ -39,7 +39,6 @@ const defaultRelatedLinks = [
 
 export function TrustPublicPage({
   structuredData,
-  eyebrow,
   title,
   introduction,
   currentPage,
@@ -110,7 +109,6 @@ export function TrustPublicPage({
               )}
               <span aria-current="page">{currentPage}</span>
             </nav>
-            <div className={styles.eyebrow}>{eyebrow}</div>
             <h1>{title}</h1>
             <p className={styles.lead}>{introduction}</p>
             {status && <div className={styles.status}>{status}</div>}

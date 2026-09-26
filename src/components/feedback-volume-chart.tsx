@@ -2,7 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useState } from "react";
 import type { OverviewAnalytics } from "@/lib/overview-analytics";
 import { CustomSelect } from "./custom-select";
 
@@ -17,7 +17,6 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
   const [activeWeek, setActiveWeek] = useState<number | null>(null);
   const [pinnedWeek, setPinnedWeek] = useState<number | null>(null);
   const reduceMotion = useReducedMotion();
-  const chartHelpId = useId();
   const values = series[source] ?? series["All sources"] ?? [];
   const weeks = analytics.feedbackWeeks;
   const total = values.reduce((sum, value) => sum + value, 0);
@@ -31,7 +30,7 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
 
   return <section className="card feedback-volume-card">
     <div className="card-head">
-      <div><h2>Feedback volume</h2><p className="subtle">Customer signals received · last 8 weeks</p></div>
+      <div><h2>Feedback volume</h2></div>
       <CustomSelect
         ariaLabel="Feedback source"
         className="chart-source"
@@ -50,11 +49,9 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
         className={`chart${total === 0 ? " chart-is-empty" : ""}`}
         role="group"
         aria-label={`Weekly feedback volume for ${source}`}
-        aria-describedby={chartHelpId}
       >
         {total === 0 ? <div className="chart-empty-state" role="status">
           <strong>No feedback in this period</strong>
-          <span>Run an import to bring customer signals into CloseSpan.</span>
           <Link href="/integrations">Import feedback</Link>
         </div> : null}
         {values.map((value, index) => {
@@ -104,7 +101,6 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
           ))}
         </tbody>
       </table>
-      <p className="chart-help" id={chartHelpId}>{total > 0 ? "Hover or focus a bar for details. Select a bar to keep it highlighted." : "Imported feedback will appear here using its original received date."}</p>
     </div>
   </section>;
 }

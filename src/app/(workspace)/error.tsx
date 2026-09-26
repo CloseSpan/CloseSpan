@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 
 export default function WorkspaceError({
   error,
@@ -25,11 +26,12 @@ export default function WorkspaceError({
       <div className="card-body detail-stack">
         <h1>This page could not load</h1>
         <p className="subtle">
-          Your workspace is still available. Try loading this section again.
+          Retry this page. If it still fails, return to the overview.
         </p>
         <button className="btn primary" type="button" onClick={reset}>
-          Try again
+          Retry page
         </button>
+        <Link className="text-link" href="/overview">Back to overview</Link>
       </div>
     </section>
   );

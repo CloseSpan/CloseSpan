@@ -1,0 +1,40 @@
+.panel { border: 1px solid var(--border-subtle); border-radius: 12px; min-width: 0; background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
+.header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border-subtle); }
+.header h2 { font-size: 15px; font-weight: 600; margin: 0; color: var(--text-strong); }
+.header span, .muted { font-size: 12px; line-height: 1.6; color: var(--text-muted); }
+.thread { padding: 24px 20px; min-height: 230px; max-height: 470px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.intro { padding: 24px 0; max-width: 36ch; }
+.intro > svg { color: var(--text-muted); margin-bottom: 16px; }
+.intro h3 { font-size: 16px; font-weight: 550; margin: 0 0 8px; letter-spacing: -.02em; }
+.intro p, .message p, .check p, .check li { font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
+.intro p { color: var(--text-muted); }
+.suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.suggestions button { border: 1px solid var(--border-subtle); border-radius: 6px; padding: 7px 10px; font-size: 12px; background: transparent; color: var(--text-strong); text-align: left; cursor: pointer; }
+.suggestions button:hover { background: var(--surface-muted); }
+.message + .message { margin-top: 28px; }
+.message[data-role="user"] { background: var(--surface-muted); border-radius: 8px; padding: 12px; }
+.author { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.message[data-role="assistant"] .author { color: var(--text-strong); }
+.proposal { border-top: 1px solid var(--border-subtle); margin-top: 16px; padding-top: 12px; font-size: 13px; }
+.proposal button { margin-top: 12px; }
+.check { border-top: 1px solid var(--border-subtle); padding: 16px 20px; max-height: 250px; overflow: auto; font-size: 13px; }
+.check ul { padding-left: 18px; }
+.check .muted { display: block; margin-top: 12px; }
+.composer { border-top: 1px solid var(--border-subtle); padding: 16px; }
+.modes { display: flex; gap: 4px; margin-bottom: 12px; }
+.modes button { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; background: transparent; padding: 7px 9px; color: var(--text-muted); font-size: 12px; cursor: pointer; }
+.modes button[aria-pressed="true"] { background: var(--surface-muted); color: var(--text-strong); }
+.modes button:disabled { cursor: not-allowed; opacity: .5; }
+.composerField { display: flex; align-items: flex-end; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px; gap: 8px; }
+.composerField textarea { min-width: 0; flex: 1; resize: vertical; max-height: 220px; font-size: 13px; line-height: 1.6; }
+.send { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--text-strong); color: var(--surface); cursor: pointer; }
+.send:disabled { opacity: .4; cursor: not-allowed; }
+.composer > p { margin: 10px 0 0; }
+.readOnly, .error { margin: 0; padding: 16px 20px; font-size: 12px; line-height: 1.6; color: var(--text-muted); border-top: 1px solid var(--border-subtle); }
+.error { color: var(--danger); }
+@media (max-width: 900px) { .thread { max-height: 440px; min-height: 180px; } }
+@media (max-width: 720px), (pointer: coarse) {
+  .send { width: 44px; height: 44px; }
+  .modes button, .suggestions button { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .panel * { scroll-behavior: auto; } }

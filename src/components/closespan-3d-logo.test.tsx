@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { CloseSpan3DLogo } from "./closespan-3d-logo";
 
 describe("CloseSpan3DLogo", () => {
-  it("ships both theme-specific lockups", () => {
+  it("renders the flat wordmark without theme-specific image downloads", () => {
     const markup = renderToStaticMarkup(<CloseSpan3DLogo />);
 
-    expect(markup).toContain("closespan-3d-logo-light-transparent-v2.png");
-    expect(markup).toContain("closespan-3d-logo-dark-transparent-v2.png");
+    expect(markup).toContain("closespan-logo__name");
+    expect(markup).not.toContain("<img");
     expect(markup).toContain('aria-hidden="true"');
   });
 

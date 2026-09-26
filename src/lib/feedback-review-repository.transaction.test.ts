@@ -51,6 +51,23 @@ describe("feedback analysis review transaction", () => {
     );
   });
 
+  it("stores the semantic subject while keeping full evidence and avoiding title-based merges", async () => {
+    const summary = "Customer requests additional actions in the three-dot menu because it currently duplicates existing actions.";
+    database.client.query.mockImplementation(async (sql: unknown) => {
+      if (sqlIncludes(sql, "SELECT action FROM idempotency_keys")) return { rows: [] };
+      if (sqlIncludes(sql, "FROM ai_feedback_analyses analysis")) return { rows: [{ ...analysis, redacted_summary: summary, problem_subject: "Missing three-dot menu actions" }] };
+      return { rows: [], rowCount: 1 };
+    });
+    const result = await reviewLatestFeedbackAnalysis({ orgId: "org_test", feedbackId: "feedback_test", decision: "approve", context });
+    expect(result.problem?.title).toBe("Missing three-dot menu actions");
+    const insert = database.client.query.mock.calls.find(([sql]) => sqlIncludes(sql, "INSERT INTO product_problems"));
+    expect(insert?.[1][2]).toBe("Missing three-dot menu actions");
+    expect(insert?.[1][3]).toBe(summary);
+    const lookup = database.client.query.mock.calls.find(([sql]) => sqlIncludes(sql, "stage <> 'Closed'"));
+    expect(lookup?.[0]).not.toContain("lower(title)");
+    expect(lookup?.[1]).toEqual(["org_test", summary]);
+  });
+
   it("creates a minimal Needs review problem and links feedback when no match exists", async () => {
     database.client.query.mockImplementation(async (sql: unknown) => {
       if (sqlIncludes(sql, "SELECT action FROM idempotency_keys"))
@@ -119,7 +136,7 @@ describe("feedback analysis review transaction", () => {
         return { rows: [] };
       if (sqlIncludes(sql, "FROM ai_feedback_analyses analysis"))
         return { rows: [analysis] };
-      if (sqlIncludes(sql, "stage <> 'Closed'") && sqlIncludes(sql, "lower(title)=lower"))
+      if (sqlIncludes(sql, "stage <> 'Closed'") && sqlIncludes(sql, "lower(trim(summary))=lower"))
         return { rows: [{ id: "problem_existing", title: "Export fails on Safari", stage: "Needs review" }] };
       if (sqlIncludes(sql, "UPDATE ai_feedback_analyses"))
         return { rows: [], rowCount: 1 };

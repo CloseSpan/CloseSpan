@@ -4,6 +4,7 @@ import { updateWorkspacePolicy } from "@/lib/workspace-settings-repository";
 import { createNextAutomatedPromptDraft } from "@/lib/automated-prompt-draft-repository";
 import { deliverPromptReviewEmails } from "@/lib/prompt-review-email";
 import { reconcileFullAutonomy } from "@/lib/autonomy-automation-repository";
+import { autonomyCapabilities } from "@/lib/autonomy-policy";
 
 export async function PUT(request: NextRequest) {
   try {
@@ -18,7 +19,7 @@ export async function PUT(request: NextRequest) {
     const emailDelivery = policy.promptDraftPolicy.emailNotifications
       ? await deliverPromptReviewEmails(context.orgId)
       : undefined;
-    if (policy.autonomyLevel === "Full autonomy") {
+    if (autonomyCapabilities(policy.autonomyLevel).automaticallyAuthorizeExecution) {
       after(() => reconcileFullAutonomy(context.orgId).catch(() => undefined));
     }
     return NextResponse.json({ policy, promptDraft, emailDelivery }, { headers: noStoreHeaders });

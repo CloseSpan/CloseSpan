@@ -64,10 +64,6 @@ export function TenkiSandboxCheck({
           <div className="callout-title">
             <Box size={14} /> Tenki Sandbox
           </div>
-          <p className="subtle">
-            Create a disposable, network-isolated microVM and run one fixed
-            verification command. The sandbox is terminated after every test.
-          </p>
         </div>
         <span className={`badge ${configured ? "success" : "medium"}`}>
           {configured ? "Configured" : "Key required"}

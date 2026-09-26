@@ -4,6 +4,7 @@ import { feedback } from "@/lib/seed";
 import {
   classificationConfidenceLabel,
   FeedbackScreen,
+  feedbackInboxSubject,
   formatFeedbackReportedAt,
   orderFeedbackByReportedAt,
 } from "./screens";
@@ -12,8 +13,8 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-describe("FeedbackScreen sentiment", () => {
-  it("uses sentiment, not severity, as the inbox-level customer signal", () => {
+describe("FeedbackScreen focus", () => {
+  it("prioritizes review status and removes explanatory metadata from the inbox", () => {
     const item = feedback[0];
     const markup = renderToStaticMarkup(
       <FeedbackScreen
@@ -30,6 +31,7 @@ describe("FeedbackScreen sentiment", () => {
           sentimentEvidence: ["The customer reports a failed workflow."],
           sentimentRationale: "The reported failure is an adverse outcome.",
           redactedSummary: "The workflow produces an empty result.",
+          problemSubject: "Workflow produces an empty result",
           proposedProblemId: null,
           classificationConfidence: 0.88,
           clusterConfidence: 0,
@@ -40,10 +42,17 @@ describe("FeedbackScreen sentiment", () => {
       />,
     );
 
-    expect(markup).toContain("<th>Sentiment</th>");
+    expect(markup).toContain("<th>Status</th>");
+    expect(markup).toContain("Needs review");
+    expect(markup).toContain("1 needs review");
+    expect(markup).toContain("Workflow produces an empty result");
+    expect(markup).not.toContain("<th>Sentiment</th>");
     expect(markup).not.toContain("<th>Severity</th>");
-    expect(markup).toContain("feedback-sentiment is-negative");
-    expect(markup).toContain(">Negative<");
+    expect(markup).not.toContain("<th>Account</th>");
+    expect(markup).not.toContain("Why the model suggested this");
+    expect(markup).not.toContain("AI classification proposal");
+    expect(markup).not.toContain("Classification confidence =");
+    expect(markup).not.toContain("PII redacted");
   });
 
   it("names classification confidence explicitly", () => {
@@ -89,6 +98,9 @@ describe("FeedbackScreen sentiment", () => {
     expect(markup).toContain("Caption regeneration needs an undo option");
     expect(markup).not.toContain(">prob_caption_undo<");
     expect(markup).toContain('href="/problems/prob_caption_undo"');
+    expect(markup).not.toContain("0 awaiting review");
+    expect(markup).not.toContain('aria-label="Latest AI recommendations"');
+    expect(markup).not.toContain('<p class="truncate">');
   });
 
   it("defaults the Reported column to newest first with a readable UTC date", () => {
@@ -171,8 +183,17 @@ describe("FeedbackScreen sentiment", () => {
     expect(markup).toContain("Signal overview");
     expect(markup).toContain("More signal details");
     expect(markup).toContain("Why CloseSpan made this recommendation");
+    expect(markup).toContain(item.quote.replaceAll("&", "&amp;").replaceAll("'", "&#x27;"));
+    expect(markup).toContain("Sentiment");
+    expect(markup).toContain("Privacy");
     expect(markup).not.toContain("feedback-drawer-layer");
     expect(markup).not.toContain('role="dialog"');
     expect(markup).not.toContain("Where this feedback goes");
+  });
+
+  it("prefers the canonical linked subject and keeps unreviewed feedback identifiable", () => {
+    const item = { ...feedback[0], quote: "Export fails on Safari. Full report follows." };
+    expect(feedbackInboxSubject(item, undefined, { title: "Empty CSV downloads on Safari" })).toBe("Empty CSV downloads on Safari");
+    expect(feedbackInboxSubject(item)).toBe("Export fails on Safari");
   });
 });

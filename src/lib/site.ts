@@ -1,9 +1,9 @@
 export const SITE_URL = "https://www.closespan.com";
 export const SITE_NAME = "CloseSpan";
 export const SITE_TITLE =
-  "CloseSpan | Customer Feedback Intelligence for B2B SaaS";
+  "CloseSpan | Customer Calls to Clear Product Issues";
 export const SITE_DESCRIPTION =
-  "CloseSpan turns B2B SaaS customer feedback into prioritized product problems, engineering-ready evidence, approved actions, and verified fixes.";
+  "A customer-success workflow from call summaries to clear product issues and test previews. In development with design-partner pilots for B2B SaaS teams.";
 
 export const PUBLIC_EMAILS = {
   hello: "hello@closespan.com",
@@ -55,6 +55,12 @@ export const PUBLIC_DISCOVERY_PATHS = [
 
 export const PRIVATE_APP_PATHS = [
   "/api/",
+  "/login",
+  "/waitlist",
+  "/github/connection-result",
+  "/admin",
+  "/agent-runs",
+  "/notifications",
   "/overview",
   "/onboarding",
   "/feedback",
@@ -71,33 +77,23 @@ export const PRIVATE_APP_PATHS = [
 
 export const LANDING_FAQS = [
   {
-    question: "What is CloseSpan?",
+    question: "Who is CloseSpan for?",
     answer:
-      "CloseSpan is an AI-assisted feedback-to-fix operations workspace for B2B SaaS teams. It keeps customer evidence, business impact, engineering context, approvals, releases, and follow-up connected from the first report through a verified resolution.",
+      "Customer-success teams at B2B SaaS companies who need to turn customer conversations into clear, actionable product issues.",
   },
   {
-    question: "Who is CloseSpan built for?",
+    question: "How does the pilot work?",
     answer:
-      "CloseSpan is built for product operations, support operations, product, engineering, and customer-success teams that need one governed process for recurring customer-reported product problems.",
+      "We agree on one workflow: turn call summaries into issues, connect product context, investigate, and review a test preview where supported. This workflow is in development; scope is agreed with each design partner.",
   },
   {
-    question: "How does CloseSpan turn customer feedback into engineering work?",
+    question: "Does CloseSpan replace our existing tools?",
     answer:
-      "CloseSpan normalizes feedback, proposes related problem clusters, attaches account and revenue impact, and prepares engineering-ready evidence and proposed actions for human review. Live provider actions depend on the connector. The workspace then records release evidence, outcome verification, and affected-customer follow-up.",
+      "No. CloseSpan is designed to complement your support and engineering tools. We agree on the connections needed for your pilot rather than asking your team to migrate.",
   },
   {
-    question: "Which tools can CloseSpan connect to?",
+    question: "Who controls code changes?",
     answer:
-      "The CloseSpan connector catalog includes Zendesk, Intercom, Slack, Apple App Store, Google Play, GitHub, Linear, Jira, Sentry, PostHog, and custom webhooks. Connection, import, synchronization, and action capabilities vary by connector.",
-  },
-  {
-    question: "Does CloseSpan replace Zendesk, Intercom, or GitHub?",
-    answer:
-      "No. CloseSpan works above the tools a team already uses. It connects customer feedback to a persistent product-problem record and carries approved work into the engineering workflow without replacing the underlying support or delivery systems.",
-  },
-  {
-    question: "Does the AI take actions automatically?",
-    answer:
-      "Meaningful external actions require human approval by default. CloseSpan keeps confidence, assumptions, evidence, affected systems, shared data, reversibility, and audit history visible so operators can approve, reject, or revise a recommendation.",
+      "Your team. The pilot is designed around human approval. A test preview is separate from production, and reviewing it does not authorize a merge or deployment.",
   },
 ] as const;

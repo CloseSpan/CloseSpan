@@ -3,21 +3,25 @@
 import {
   ArrowLeft,
   Bot,
+  Cable,
   Boxes,
   Cpu,
   FilePenLine,
   FlaskConical,
   Gauge,
+  Palette,
   ShieldCheck,
   SlidersHorizontal,
+  Settings2,
   Users,
   Workflow,
 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export const SETTINGS_SECTIONS = [
-  ["agent", "Agent autonomy"],
+  ["agent", "Automation"],
   ["prompt-drafts", "Prompt drafting"],
   ["prompt-evaluation", "Prompt evaluation"],
   ["execution", "Execution environments"],
@@ -52,10 +56,16 @@ function sectionFromHash(hash: string): SettingsSectionId {
 }
 
 export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
+  const pathname = usePathname();
+  const isWorkspaceSettings = pathname === "/settings" || pathname === "/settings/";
+  const isAppearance = pathname === "/settings/appearance" || pathname.startsWith("/settings/appearance/");
+  const isTechnical = pathname === "/settings/technical";
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("agent");
 
   useEffect(() => {
+    if (!isWorkspaceSettings) return;
+
     function syncSectionFromHash(): void {
       setActiveSection(sectionFromHash(window.location.hash));
     }
@@ -63,31 +73,51 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
     syncSectionFromHash();
     window.addEventListener("hashchange", syncSectionFromHash);
     return () => window.removeEventListener("hashchange", syncSectionFromHash);
-  }, []);
+  }, [isWorkspaceSettings]);
 
   return (
     <nav
       className={`nav settings-sidebar-navigation${mobile ? " settings-mobile-navigation" : ""}`}
       aria-label="Settings sections"
     >
-      <Link className="settings-back-link" href="/overview" prefetch={false}>
+      <Link className="settings-back-link" href="/problems" prefetch={false}>
         <ArrowLeft aria-hidden="true" size={17} />
-        <span>Back to workspace</span>
+        <span>Back to issues</span>
       </Link>
       <span className="nav-section-label settings-navigation-label">
-        Settings
+        Personal
       </span>
       <div className="settings-sidebar-sections">
-        {SETTINGS_SECTIONS.map(([id, label]) => {
+        <Link
+          href="/settings/appearance"
+          className={isAppearance ? "active" : undefined}
+          aria-current={isAppearance ? "page" : undefined}
+          aria-label="Appearance"
+          title="Appearance"
+          prefetch={false}
+        >
+          <Palette aria-hidden="true" size={17} />
+          <span>Appearance</span>
+        </Link>
+      </div>
+      <span className="nav-section-label settings-navigation-label">
+        Workspace
+      </span>
+      <div className="settings-sidebar-sections">
+        <Link href="/integrations" prefetch={false}><Cable size={17} aria-hidden="true" /><span>Connections</span></Link>
+        {SETTINGS_SECTIONS.filter(([id]) => ["agent", "data", "members", "usage"].includes(id)).map(([id, label]) => {
           const Icon = settingsIcons[id];
+          const active = isWorkspaceSettings && activeSection === id;
           return (
             <a
-              className={activeSection === id ? "active" : undefined}
-              href={`#${id}`}
-              aria-current={activeSection === id ? "location" : undefined}
+              className={active ? "active" : undefined}
+              href={isWorkspaceSettings ? `#${id}` : `/settings#${id}`}
+              aria-current={active ? "location" : undefined}
               aria-label={label}
               title={label}
-              onClick={() => setActiveSection(id)}
+              onClick={() => {
+                if (isWorkspaceSettings) setActiveSection(id);
+              }}
               key={id}
             >
               <Icon aria-hidden="true" size={17} />
@@ -95,6 +125,11 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
             </a>
           );
         })}
+        <Link href="/settings/technical" prefetch={false}
+          className={isTechnical || (isWorkspaceSettings && !["agent", "data", "members", "usage"].includes(activeSection)) ? "active" : undefined}
+          aria-current={isTechnical ? "page" : undefined}>
+          <Settings2 size={17} aria-hidden="true" /><span>More settings</span>
+        </Link>
       </div>
     </nav>
   );

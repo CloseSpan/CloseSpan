@@ -18,7 +18,7 @@ import type {
 } from "@/lib/engineering-workflow-repository";
 import type { PddPromptReview } from "@/lib/pdd-prompt-review";
 import type { PddPromptTimingSummary } from "@/lib/pdd-prompt-timing-repository";
-import type { AutonomyLevel } from "@/lib/autonomy-policy";
+import { autonomyCapabilities, type AutonomyLevel } from "@/lib/autonomy-policy";
 import { announcePendingApprovalCountChange } from "@/lib/pending-approval-count-client";
 
 export interface PromptTestResult {
@@ -231,7 +231,7 @@ export async function prepareAlignedPromptApproval(input: {
     if (autonomyLevel === "Recommend") {
       return finalWorkflow.verification?.status === "Ready for approval";
     }
-    if (autonomyLevel === "Full autonomy") {
+    if (autonomyCapabilities(autonomyLevel).automaticallyAuthorizeExecution) {
       return Boolean(
         finalWorkflow.run
         || finalWorkflow.approval?.status === "Approved"

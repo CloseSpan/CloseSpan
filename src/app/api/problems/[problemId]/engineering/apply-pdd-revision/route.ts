@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { applyPddPromptRevision, getEngineeringWorkflow } from "@/lib/engineering-workflow-repository";
+import { getEngineeringWorkflow } from "@/lib/engineering-workflow-repository";
+import { applyPromptRevisionWithCloseSpanAgent } from "@/lib/closespan-prompt-agent";
 import { assertPddPromptRevisionReceipt } from "@/lib/pdd-prompt-revision-receipt";
 import { markPddPromptEvaluationApplied } from "@/lib/pdd-prompt-evaluation-repository";
 import { createPromptAlignmentReceipt } from "@/lib/prompt-alignment-receipt";
@@ -45,10 +46,13 @@ export async function POST(
       revisionHash,
       storyHash: sha256(body.userStory.replace(/\s+/g, " ").trim()),
     });
-    const appliedWorkflow = await applyPddPromptRevision(context.orgId, problemId, {
+    const appliedWorkflow = await applyPromptRevisionWithCloseSpanAgent({
+      orgId: context.orgId,
+      problemId,
       currentPromptHash: body.currentPromptHash,
       revisedPrompt: body.revisedPrompt,
-    }, context);
+      actor: context,
+    });
     if (!appliedWorkflow.prompt) {
       throw new Error("The applied prompt revision could not be loaded");
     }

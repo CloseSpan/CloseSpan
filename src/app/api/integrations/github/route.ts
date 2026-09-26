@@ -15,6 +15,7 @@ import {
   authorizeRead,
   errorResponse,
   noStoreHeaders,
+  HttpError,
 } from "@/lib/request-security";
 
 export async function GET(request: NextRequest) {
@@ -35,15 +36,22 @@ export async function POST(request: NextRequest) {
     const context = await authorizeAdminMutation(request);
     const body = (await request.json().catch(() => null)) as {
       returnTo?: unknown;
+      popup?: unknown;
+      popupChannel?: unknown;
     } | null;
     const returnTo = body?.returnTo === "/onboarding"
       ? "/onboarding"
       : "/integrations";
+    const popupChannel = body?.popup === true ? body.popupChannel : undefined;
+    if (body?.popup === true && (typeof popupChannel !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(popupChannel)))
+      throw new HttpError(400, "Invalid GitHub popup channel");
     const attempt = await markGithubPendingSetup(context.orgId, context.actorId);
     const stateToken = createGithubInstallStateToken(
       attempt.attemptId,
       attempt.expiresAt,
       returnTo,
+      undefined,
+      typeof popupChannel === "string" ? { channel: popupChannel } : undefined,
     );
     const installUrl = new URL(attempt.installUrl);
     installUrl.searchParams.set("state", stateToken);

@@ -91,7 +91,7 @@ export function GuidedDemo({
   }
 
   async function resetDemo() {
-    if (resetting) return;
+    if (guide.readOnly || resetting) return;
     setResetting(true);
     setNotice(null);
     try {
@@ -228,7 +228,7 @@ export function GuidedDemo({
               </button>
             )}
           </footer>
-          <div className="guided-demo-reset">
+          {!guide.readOnly && <div className="guided-demo-reset">
             {resetConfirmation ? (
               <div>
                 <span>Restore the approval workflow to the beginning?</span>
@@ -242,7 +242,7 @@ export function GuidedDemo({
                 <RotateCcw size={12} /> Reset walkthrough data
               </button>
             )}
-          </div>
+          </div>}
         </aside>
       )}
       <button

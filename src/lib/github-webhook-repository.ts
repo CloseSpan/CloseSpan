@@ -488,7 +488,9 @@ async function reconcileAgentWorkflow(
     [
       orgId,
       record.problem_id,
-      record.run_kind === "tenki_review_remediation" ? "Draft PR opened" : "Prompt ready",
+      record.run_kind === "tenki_review_remediation" || record.run_kind === "domain_result_rework"
+        ? "Draft PR opened"
+        : "Prompt ready",
     ],
   );
   if (record.run_kind === "tenki_review_remediation") {
@@ -499,7 +501,7 @@ async function reconcileAgentWorkflow(
           AND state IN ('Correction queued','Correction running','Correction published')`,
       [orgId, runId, failureMessage.slice(0, 2_000)],
     );
-  } else {
+  } else if (record.run_kind !== "domain_result_rework") {
     await client.query(
       "UPDATE implementation_prompts SET status='Ready' WHERE org_id=$1 AND id=$2 AND status='Approved'",
       [orgId, record.prompt_revision_id],

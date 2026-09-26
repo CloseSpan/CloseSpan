@@ -7,6 +7,9 @@ const repositories = vi.hoisted(() => ({ list: vi.fn() }));
 const runtimeSecrets = vi.hoisted(() => ({ validate: vi.fn() }));
 const runnerSetups = vi.hoisted(() => ({ list: vi.fn() }));
 const sizing = vi.hoisted(() => ({ list: vi.fn() }));
+const demo = vi.hoisted(() => ({ read: vi.fn() }));
+
+vi.mock("@/lib/presentation-demo", () => ({ readPresentationDemo: demo.read }));
 
 vi.mock("@/lib/execution-profile-repository", () => ({
   listExecutionProfileSettings: profiles.list,
@@ -48,6 +51,7 @@ function request(method = "GET", body?: unknown, role = "Admin") {
 
 describe("execution profile settings API", () => {
   beforeEach(() => {
+    demo.read.mockReset().mockResolvedValue(false);
     profiles.list.mockReset().mockResolvedValue({
       assignments: [],
       safeGenericProfile: { id: "safe" },
@@ -64,6 +68,19 @@ describe("execution profile settings API", () => {
       updatedAt: "2026-08-11T12:00:00.000Z",
     }]);
     sizing.list.mockReset().mockResolvedValue([]);
+  });
+
+  it("blocks presentation workspace changes before profile persistence", async () => {
+    demo.read.mockResolvedValue(true);
+    const response = await PUT(request("PUT", {
+      repository: "acme/app", workspaceRoot: ".", parentProfileId: null,
+      config: { schemaVersion: 1 },
+    }));
+
+    expect(response.status).toBe(403);
+    expect(demo.read).toHaveBeenCalledWith("org-1");
+    expect(profiles.override).not.toHaveBeenCalled();
+    expect(runtimeSecrets.validate).not.toHaveBeenCalled();
   });
 
   it("returns profiles and the workspace's GitHub-authorized repositories", async () => {

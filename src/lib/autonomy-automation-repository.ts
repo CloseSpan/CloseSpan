@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { databasePool } from "./db";
 import {
-  applyPddPromptRevision,
   approveImplementationRun,
   failAgentRun,
   failPddVerification,
@@ -16,14 +15,18 @@ import {
   agentRunDispatchFailureCode,
   dispatchAgentRun,
 } from "./agent-executor-client";
-import { approveFinalExecution } from "./final-execution-repository";
+import { autonomyCapabilities } from "./autonomy-policy";
+import { automaticPromptAcceptanceSql } from "./automatic-prompt-acceptance";
 import {
   dispatchPddVerification,
   pddRunnerConfigured,
 } from "./pdd-runner-client";
-import { evaluateWorkspacePrompt } from "./workspace-prompt-evaluation";
-import { PDD_CLI_VERSION } from "./pdd-verification";
 import {
+  applyPromptRevisionWithCloseSpanAgent,
+  testPromptWithCloseSpanAgent,
+} from "./closespan-prompt-agent";
+import {
+  automaticCodingBudgetAvailable,
   readAutonomyLevel,
 } from "./workspace-settings-repository";
 import { workspacePersistenceMode } from "./workspace-persistence";
@@ -42,7 +45,6 @@ export interface AutonomyAutomationResult {
     | "prompt_aligned"
     | "pdd_dispatched"
     | "agent_dispatched"
-    | "final_execution_queued"
     | "blocked";
   problemId: string | null;
   message: string;
@@ -79,29 +81,25 @@ async function approveAndDispatchAgent(
   };
 }
 
-async function pendingFinalApproval(orgId: string): Promise<{ id: string; problem_id: string } | null> {
+async function pendingAgentApproval(orgId: string, enabledAt: Date | string): Promise<{ id: string; problem_id: string } | null> {
   const result = await databasePool().query<{ id: string; problem_id: string }>(
-    `SELECT id,problem_id FROM approval_requests
-      WHERE org_id=$1 AND action_type='final_execution' AND status='Pending'
-        AND expires_at>now()
-      ORDER BY created_at,id LIMIT 1`,
-    [orgId],
+    `SELECT approval.id,approval.problem_id FROM approval_requests approval
+       JOIN implementation_prompts prompt
+         ON prompt.org_id=approval.org_id AND prompt.id=approval.prompt_revision_id
+      WHERE approval.org_id=$1 AND approval.action_type='agent_run' AND approval.status='Pending'
+        AND approval.expires_at>now()
+        AND approval.created_at >= $2::timestamptz AND prompt.created_at >= $2::timestamptz
+        AND NOT EXISTS (SELECT 1 FROM problem_prompt_reviews review
+          WHERE review.org_id=approval.org_id AND review.problem_id=approval.problem_id
+            AND (review.prompt_hash IS DISTINCT FROM approval.prompt_hash
+              OR (review.confirmed_at IS NULL AND NOT COALESCE(${automaticPromptAcceptanceSql("review", "approval.prompt_hash")},false))))
+      ORDER BY approval.created_at,approval.id LIMIT 1`,
+    [orgId, enabledAt],
   );
   return result.rows[0] ?? null;
 }
 
-async function pendingAgentApproval(orgId: string): Promise<{ id: string; problem_id: string } | null> {
-  const result = await databasePool().query<{ id: string; problem_id: string }>(
-    `SELECT id,problem_id FROM approval_requests
-      WHERE org_id=$1 AND action_type='agent_run' AND status='Pending'
-        AND expires_at>now()
-      ORDER BY created_at,id LIMIT 1`,
-    [orgId],
-  );
-  return result.rows[0] ?? null;
-}
-
-async function readyVerification(orgId: string): Promise<{ prompt_id: string; problem_id: string } | null> {
+async function readyVerification(orgId: string, enabledAt: Date | string): Promise<{ prompt_id: string; problem_id: string } | null> {
   const result = await databasePool().query<{ prompt_id: string; problem_id: string }>(
     `SELECT prompt.id AS prompt_id,prompt.problem_id
        FROM implementation_prompts prompt
@@ -111,6 +109,11 @@ async function readyVerification(orgId: string): Promise<{ prompt_id: string; pr
         AND verification.prompt_hash=prompt.content_hash
         AND verification.status='Ready for approval'
       WHERE prompt.org_id=$1 AND prompt.status='Ready'
+        AND prompt.created_at >= $2::timestamptz
+        AND NOT EXISTS (SELECT 1 FROM problem_prompt_reviews review
+          WHERE review.org_id=prompt.org_id AND review.problem_id=prompt.problem_id
+            AND (review.prompt_hash IS DISTINCT FROM prompt.content_hash
+              OR (review.confirmed_at IS NULL AND NOT COALESCE(${automaticPromptAcceptanceSql("review", "prompt.content_hash")},false))))
         AND NOT EXISTS (
           SELECT 1 FROM approval_requests approval
            WHERE approval.org_id=prompt.org_id
@@ -118,12 +121,12 @@ async function readyVerification(orgId: string): Promise<{ prompt_id: string; pr
              AND approval.status IN ('Pending','Approved')
         )
       ORDER BY verification.completed_at,prompt.created_at LIMIT 1`,
-    [orgId],
+    [orgId, enabledAt],
   );
   return result.rows[0] ?? null;
 }
 
-async function promptToAlign(orgId: string): Promise<{ problem_id: string; user_story: string } | null> {
+async function promptToAlign(orgId: string, enabledAt: Date | string): Promise<{ problem_id: string; user_story: string } | null> {
   const result = await databasePool().query<{ problem_id: string; user_story: string }>(
     `SELECT specification.problem_id,specification.user_story
        FROM engineering_ticket_specifications specification
@@ -136,6 +139,9 @@ async function promptToAlign(orgId: string): Promise<{ problem_id: string; user_
           ORDER BY candidate.revision DESC LIMIT 1
        ) prompt ON true
       WHERE specification.org_id=$1
+        AND prompt.created_at >= $2::timestamptz
+        AND NOT EXISTS (SELECT 1 FROM problem_prompt_reviews review
+          WHERE review.org_id=specification.org_id AND review.problem_id=specification.problem_id)
         AND NOT EXISTS (
           SELECT 1 FROM pdd_prompt_verifications verification
            WHERE verification.org_id=specification.org_id
@@ -143,7 +149,7 @@ async function promptToAlign(orgId: string): Promise<{ problem_id: string; user_
              AND verification.status IN ('Queued','Generating tests','Ready for approval')
         )
       ORDER BY prompt.created_at,specification.problem_id LIMIT 1`,
-    [orgId],
+    [orgId, enabledAt],
   );
   return result.rows[0] ?? null;
 }
@@ -155,12 +161,11 @@ async function alignAndDispatchPdd(
 ): Promise<AutonomyAutomationResult> {
   let context = await getPromptAlignmentContext(orgId, problemId, userStory, actor);
   for (let revision = 0; revision < 3; revision += 1) {
-    const evaluation = await evaluateWorkspacePrompt({
+    const evaluation = await testPromptWithCloseSpanAgent({
       orgId,
       promptHash: context.promptHash,
       userStory: context.userStory,
       implementationPrompt: context.implementationPrompt,
-      pddVersion: PDD_CLI_VERSION,
     });
     if (evaluation.verdict === "Passed") {
       const acceptance = await generatePddAcceptanceContract(orgId, problemId, userStory, actor);
@@ -184,20 +189,20 @@ async function alignAndDispatchPdd(
           : "Prompt Testing is not configured to execute the repository acceptance contract.",
       };
     }
-    const revisedPrompt = [
-      context.implementationPrompt.trim(),
-      "",
-      "## PDD-required outcomes",
-      ...evaluation.changes.map((change) => `- ${change}`),
-      "",
-      `Product-manager user story: ${context.userStory}`,
-    ].join("\n");
-    await applyPddPromptRevision(
+    if (!evaluation.suggestedRevision) {
+      return {
+        action: "blocked",
+        problemId,
+        message: "The CloseSpan Prompt Agent rejected an unsafe or incomplete PDD revision; human review is required.",
+      };
+    }
+    await applyPromptRevisionWithCloseSpanAgent({
       orgId,
       problemId,
-      { currentPromptHash: context.promptHash, revisedPrompt },
-      { ...actor, traceId: `full_autonomy_revision_${randomUUID()}` },
-    );
+      currentPromptHash: context.promptHash,
+      revisedPrompt: evaluation.suggestedRevision,
+      actor: { ...actor, traceId: `full_autonomy_revision_${randomUUID()}` },
+    });
     context = await getPromptAlignmentContext(orgId, problemId, userStory, actor);
   }
   return {
@@ -208,31 +213,33 @@ async function alignAndDispatchPdd(
 }
 
 export async function reconcileFullAutonomy(orgId: string): Promise<AutonomyAutomationResult> {
-  if (await readAutonomyLevel(orgId) !== "Full autonomy") {
-    return { action: "not_enabled", problemId: null, message: "Full autonomy is not enabled." };
+  const level = await readAutonomyLevel(orgId);
+  if (!autonomyCapabilities(level).automaticallyAuthorizeExecution) {
+    return { action: "not_enabled", problemId: null, message: "Automatic coding is not enabled." };
   }
   if (workspacePersistenceMode(orgId) !== "postgres") {
-    return { action: "blocked", problemId: null, message: "Full autonomy requires the persistent production workflow." };
+    return { action: "blocked", problemId: null, message: "Automatic coding requires the persistent workflow." };
   }
-
-  const finalApproval = await pendingFinalApproval(orgId);
-  if (finalApproval) {
-    await approveFinalExecution(orgId, finalApproval.id, {
-      actorId: actor.actorId,
-      actorName: actor.actorName,
-      traceId: `full_autonomy_final_${finalApproval.id}`,
-    });
-    return {
-      action: "final_execution_queued",
-      problemId: finalApproval.problem_id,
-      message: "The commit-locked final execution was authorized and queued.",
-    };
+  if (!await automaticCodingBudgetAvailable(orgId)) {
+    return { action: "blocked", problemId: null, message: "Automatic coding requires a positive workspace budget, recorded usage below that budget, and the budget hard stop enabled." };
   }
+  const activation = await databasePool().query<{ enabled_at: Date | null }>(
+    `SELECT max(occurred_at) AS enabled_at FROM audit_events
+      WHERE org_id=$1 AND entity_type='WorkspaceSettings'
+        AND action='Enabled automatic coding with human merge'`,
+    [orgId],
+  );
+  if (!activation.rows[0]?.enabled_at && level !== "Full autonomy") {
+    return { action: "blocked", problemId: null, message: "An administrator must enable automatic coding in Settings before work can start." };
+  }
+  // Previously saved legacy policies already authorized coding. New activations
+  // of either automatic mode always use the administrator's recorded boundary.
+  const enabledAt: Date | string = activation.rows[0]?.enabled_at ?? "-infinity";
 
-  const agentApproval = await pendingAgentApproval(orgId);
+  const agentApproval = await pendingAgentApproval(orgId, enabledAt);
   if (agentApproval) return approveAndDispatchAgent(orgId, agentApproval.id);
 
-  const verification = await readyVerification(orgId);
+  const verification = await readyVerification(orgId, enabledAt);
   if (verification) {
     const workflow = await requestImplementationApproval(orgId, verification.prompt_id, {
       ...actor,
@@ -245,8 +252,8 @@ export async function reconcileFullAutonomy(orgId: string): Promise<AutonomyAuto
     return approveAndDispatchAgent(orgId, workflow.approval.id);
   }
 
-  const prompt = await promptToAlign(orgId);
+  const prompt = await promptToAlign(orgId, enabledAt);
   if (prompt) return alignAndDispatchPdd(orgId, prompt.problem_id, prompt.user_story);
 
-  return { action: "idle", problemId: null, message: "No full-autonomy action is ready." };
+  return { action: "idle", problemId: null, message: "No automatic coding action is ready. Merges and deployments require human approval." };
 }

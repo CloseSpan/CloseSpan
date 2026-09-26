@@ -47,10 +47,13 @@ describe("OverviewScreen theme filter", () => {
     );
 
     expect(markup).toContain("Needs attention");
-    expect(markup).toContain("Open problem inventory");
+    expect(markup).toContain("View issues");
     expect(markup).toContain('class="overview-attention-list"');
     expect(markup).not.toContain('class="problem-table"');
     expect(markup).not.toContain("View board");
+    expect(markup).toContain('<section class="overview-insights section-gap" aria-label="Analytics and trends">');
+    expect(markup).not.toContain('<details class="overview-insights');
+    expect(markup).not.toContain("Analytics &amp; trends");
   });
 
   it("makes a long theme list keyboard-scrollable", () => {

@@ -16,6 +16,7 @@ export interface WorkspaceDemoGuide {
   title: string;
   description: string;
   steps: DemoGuideStep[];
+  readOnly?: boolean;
 }
 
 export const demoWorkspaceGuide: WorkspaceDemoGuide = {
@@ -169,17 +170,20 @@ export async function getWorkspaceDemoGuide(
       title: string;
       description: string;
       steps: unknown;
+      read_only: boolean;
     }>(
-      `SELECT title,description,steps
-         FROM workspace_demo_guides
-        WHERE org_id=$1 AND enabled=true`,
+      `SELECT guide.title,guide.description,guide.steps,
+              coalesce(onboarding.product_profile->>'demoMode'='presentation',false) AS read_only
+         FROM workspace_demo_guides guide
+         LEFT JOIN workspace_onboarding onboarding ON onboarding.org_id=guide.org_id
+        WHERE guide.org_id=$1 AND guide.enabled=true`,
       [orgId],
     );
     const row = result.rows[0];
     if (!row) return null;
     const steps = parseDemoGuideSteps(row.steps);
     if (steps.length === 0) return null;
-    return { title: row.title, description: row.description, steps };
+    return { title: row.title, description: row.description, steps, readOnly: row.read_only === true };
   } catch (error) {
     if ((error as { code?: string }).code === "42P01") return null;
     throw error;

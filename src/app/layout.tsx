@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 import {
   SITE_DESCRIPTION,
@@ -6,10 +7,20 @@ import {
   SITE_TITLE,
   SITE_URL,
 } from "@/lib/site";
-import { COLOR_THEME_STORAGE_KEY } from "@/lib/color-theme";
+import { COLOR_THEME_BOOTSTRAP_SCRIPT, DEFAULT_COLOR_THEME } from "@/lib/color-theme";
 import { ThemeController } from "@/components/theme-controller";
+import { GooeyInteractions } from "@/components/gooey-interactions";
 import "./globals.css";
 import "./neumorphic-theme.css";
+import "./product-theme.css";
+
+// Reuse Next's bundled Geist font; no third-party font request at build or runtime.
+const geist = localFont({
+  src: "../../node_modules/next/dist/next-devtools/server/font/geist-latin.woff2",
+  variable: "--font-geist",
+  weight: "100 900",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -72,38 +83,16 @@ export const viewport: Viewport = {
   colorScheme: "light dark",
 };
 
-const themeBootstrap = `(() => {
-  try {
-    const cookieTheme = document.cookie
-      .split("; ")
-      .find((entry) => entry.startsWith(${JSON.stringify(`${COLOR_THEME_STORAGE_KEY}=`)}))
-      ?.split("=")[1];
-    let storedTheme = null;
-    try {
-      storedTheme = localStorage.getItem(${JSON.stringify(COLOR_THEME_STORAGE_KEY)});
-    } catch {}
-    const saved = storedTheme || cookieTheme;
-    const theme = saved === "light" || saved === "dark"
-      ? saved
-      : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
-    document.querySelectorAll('meta[name="theme-color"]')
-      .forEach((meta) => meta.setAttribute("content", theme === "dark" ? "#151b27" : "#f0f2f9"));
-  } catch {
-    document.documentElement.dataset.theme = "light";
-  }
-})();`;
-
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={geist.variable} data-theme={DEFAULT_COLOR_THEME} suppressHydrationWarning>
       <head>
-        <meta id="closespan-theme-color" name="theme-color" content="#f0f2f9" />
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+        <meta id="closespan-theme-color" name="theme-color" content="#ffffff" />
+        <script dangerouslySetInnerHTML={{ __html: COLOR_THEME_BOOTSTRAP_SCRIPT }} />
       </head>
       <body>
         <ThemeController />
+        <GooeyInteractions />
         {children}
         <Analytics />
       </body>

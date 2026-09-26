@@ -19,6 +19,7 @@ import {
   applyPddPromptRevision,
   approveImplementationRun,
   claimQueuedAgentRun,
+  completeAgentRun,
   deleteAgentRun,
   failAgentRun,
   getAgentRunById,
@@ -188,6 +189,19 @@ describe("PostgreSQL engineering workflow state guards", () => {
     expect(query).toContain("LEFT JOIN LATERAL");
     expect(query).toContain("FROM final_execution_attempts attempt");
     expect(query).toContain("ORDER BY attempt.created_at DESC,attempt.id DESC");
+    expect(database.pool.query.mock.calls[0]?.[1]).toEqual(["org-1", null]);
+  });
+
+  it("scopes a run summary lookup to the exact run and workspace", async () => {
+    const runId = "0305a175-a11e-4dbc-8616-dbe0ad022978";
+
+    await expect(listAgentRuns("org-1", runId)).resolves.toEqual([]);
+
+    const query = normalizedSql(database.pool.query.mock.calls[0]?.[0]);
+    expect(query).toContain("WHERE run.org_id=$1 AND ($2::uuid IS NULL OR run.id=$2)");
+    expect(query).toContain("problem.org_id=run.org_id AND problem.id=run.problem_id");
+    expect(query).toContain("attempt.org_id=run.org_id AND attempt.agent_run_id=run.id");
+    expect(database.pool.query.mock.calls[0]?.[1]).toEqual(["org-1", runId]);
   });
 
   it("returns each acceptance criterion statement from the run's immutable prompt", async () => {
@@ -262,6 +276,39 @@ describe("PostgreSQL engineering workflow state guards", () => {
       expect.stringContaining("UPDATE implementation_prompts SET status='Ready'"),
       ["org-1", promptId],
     );
+  });
+
+  it("preserves the existing PR and prompt commit during a domain rework completion callback before publication", async () => {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    database.client.query.mockImplementation(async (sql: unknown) => normalizedSql(sql).includes("SELECT status,started_at FROM agent_runs")
+      ? { rows: [{ status: "Running", started_at: new Date() }], rowCount: 1 }
+      : { rows: [], rowCount: 1 });
+    await completeAgentRun({
+      orgId: "org-1", problemId: "problem-1", runId, promptId, promptHash, baseSha: "a".repeat(40),
+      promptArtifactPath: ".prompt/tickets/problem-1.prompt.md", runKind: "domain_result_rework",
+      promptSnapshot: { schemaVersion: 1, evidence: { problemId: "problem-1", title: "Exports", statement: "Broken", summary: "Broken", severity: "High", productArea: "Export", team: "Platform", assumptions: [], missingInformation: [], suspectedFiles: [], redactedEvidence: [] }, ticket: specificationDraft() },
+    } as unknown as Parameters<typeof completeAgentRun>[0], {
+      schemaVersion: 1, runId, promptHash, promptArtifactHash: promptHash, baseSha: "a".repeat(40),
+      status: "Tests passed", summary: "Corrected the export result.",
+      changedFiles: [{ path: "src/export.ts", contentBase64: Buffer.from("export const ok = true;\n").toString("base64"), reason: "Fix export" }],
+      testFiles: ["src/export.ts"], tests: [{ command: "npm test", status: "passed", output: "ok" }],
+      criteria: [{ criterionId: "AC-1", status: "Passed", evidence: "TEST-1 passed", scenarioIds: ["TEST-1"] }],
+      remainingRisks: [], assumptions: [], manualVerification: [], logs: [],
+    });
+    const update = database.client.query.mock.calls.find(([sql]) => normalizedSql(sql).includes("UPDATE agent_runs SET status=$3"))!;
+    expect(normalizedSql(update[0])).toContain("prompt_commit_sha=coalesce($9,prompt_commit_sha)");
+    expect(normalizedSql(update[0])).toContain("pull_request_number=coalesce($11,pull_request_number)");
+    expect(normalizedSql(update[0])).toContain("pull_request_url=coalesce($12,pull_request_url)");
+    expect(update[1][10]).toBeNull(); // No publication yet; retain the correction's tracked PR.
+  });
+
+  it("does not reopen original requirements or impersonate Tenki when domain follow-up fails", async () => {
+    database.client.query.mockResolvedValue({ rows: [{ started_at: new Date() }], rowCount: 1 });
+    await failAgentRun({ orgId: "org-1", problemId: "problem-1", runId: "run-1", promptId,
+      runKind: "domain_result_rework" } as Parameters<typeof failAgentRun>[0], "executor_failed", "Stopped.");
+    expect(database.client.query.mock.calls.some(([sql]) => normalizedSql(sql).includes("UPDATE implementation_prompts"))).toBe(false);
+    expect(database.client.query.mock.calls.some(([sql]) => normalizedSql(sql).includes("UPDATE tenki_pr_review_cycles"))).toBe(false);
+    expect(database.client.query).toHaveBeenCalledWith(expect.stringContaining("UPDATE engineering_ticket_specifications"), ["org-1", "problem-1", "Draft PR opened"]);
   });
 
   it("atomically claims a queued run only once before provisioning Tenki", async () => {
@@ -475,6 +522,28 @@ describe("PostgreSQL engineering workflow state guards", () => {
     const runInsert = database.client.query.mock.calls.find(([sql]) =>
       normalizedSql(sql).includes("INSERT INTO agent_runs"));
     expect(runInsert?.[1]?.[10]).toBe(verificationId);
+  });
+
+  it("rechecks policy acceptance before a system actor consumes the approval", async () => {
+    database.pool.query.mockImplementation(async (sql: unknown) => {
+      const normalized = normalizedSql(sql);
+      if (normalized.includes("SELECT autonomy_level")) return { rows: [{ autonomy_level: "Automatic coding, human merge" }], rowCount: 1 };
+      if (normalized.includes("SELECT monthly_model_budget")) return { rows: [{ monthly_model_budget: 100, used_model_cost: 20, hard_stop: true }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    database.client.query.mockImplementation(async (sql: unknown) => {
+      const normalized = normalizedSql(sql);
+      if (normalized.includes("FROM approval_requests")) return { rows: [approvalRow(verificationId)], rowCount: 1 };
+      if (normalized.includes("FROM problem_prompt_reviews review")) return { rows: [{ blocked: 1 }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(approveImplementationRun("org-1", "approval-1", { ...actor, actorId: "system:full-autonomy" }))
+      .rejects.toThrow("valid automatic policy acceptance");
+    const guarded = database.client.query.mock.calls.find(([sql]) => normalizedSql(sql).includes("FROM problem_prompt_reviews review"))!;
+    expect(guarded[1]).toEqual(["org-1", "problem-1", promptHash]);
+    expect(normalizedSql(guarded[0])).toContain("ProblemPromptPolicyAcceptance");
+    expect(normalizedSql(guarded[0])).toContain("policy_settings.autonomy_level='Automatic coding, human merge'");
+    expect(database.client.query.mock.calls.some(([sql]) => normalizedSql(sql).includes("INSERT INTO agent_runs"))).toBe(false);
   });
 
   it("safely binds an unambiguous legacy approval before creating its run", async () => {

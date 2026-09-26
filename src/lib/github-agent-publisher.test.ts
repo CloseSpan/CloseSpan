@@ -2,7 +2,7 @@ import type { Octokit } from "@octokit/rest";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentImplementationReport } from "./agent-run-verification";
 import type { AgentRunExecutionContext } from "./engineering-workflow-repository";
-import { publishAgentRun, publishTenkiReviewRemediation } from "./github-agent-publisher";
+import { publishAgentRun, publishDomainResultRework, publishTenkiReviewRemediation } from "./github-agent-publisher";
 
 const context = {
   repository: "owner/repo",
@@ -70,7 +70,130 @@ function githubClient(input?: { comments?: Array<{ body: string | null }> }) {
   return { client: client as unknown as Octokit, createComment };
 }
 
+const domainReworkContext = {
+  ...context,
+  runKind: "domain_result_rework",
+  baseBranch: "closespan/change",
+  baseSha: "reviewed-head",
+  pullRequestNumber: 8,
+  pullRequestUrl: "https://github.com/owner/repo/pull/8",
+  pullRequestBaseBranch: "main",
+  sourcePromptCommitSha: "prompt-commit",
+} satisfies AgentRunExecutionContext;
+
+function correctionGithubClient() {
+  const client = {
+    paginate: vi.fn().mockResolvedValue([]),
+    graphql: vi.fn(),
+    rest: {
+      git: {
+        getRef: vi.fn().mockResolvedValue({ data: { object: { sha: "reviewed-head" } } }),
+        getCommit: vi.fn().mockResolvedValue({ data: { tree: { sha: "reviewed-tree" }, parents: [] } }),
+        createBlob: vi.fn().mockResolvedValue({ data: { sha: "correction-blob" } }),
+        createTree: vi.fn().mockResolvedValue({ data: { sha: "correction-tree" } }),
+        createCommit: vi.fn().mockResolvedValue({ data: { sha: "corrected-head" } }),
+        createRef: vi.fn(),
+        updateRef: vi.fn().mockResolvedValue({ data: {} }),
+      },
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            state: "open",
+            head: { ref: "closespan/change", sha: "reviewed-head" },
+            base: { ref: "main" },
+          },
+        }),
+        create: vi.fn(),
+        createReplyForReviewComment: vi.fn(),
+      },
+      issues: {
+        listComments: vi.fn(),
+        createComment: vi.fn().mockResolvedValue({ data: { id: 2 } }),
+      },
+    },
+  };
+  return { ...client, client: client as unknown as Octokit };
+}
+
 describe("GitHub agent publisher", () => {
+  it("publishes human domain corrections to the original PR without attributing them to Tenki", async () => {
+    const github = correctionGithubClient();
+    github.paginate.mockResolvedValue([{ body: "<!-- closespan:tenki-code-review-request:v1 -->" }]);
+
+    await expect(publishDomainResultRework(domainReworkContext, report, {
+      createClient: () => github.client,
+    })).resolves.toMatchObject({
+      promptCommitSha: "prompt-commit",
+      implementationCommitSha: "corrected-head",
+      pullRequestNumber: 8,
+      tenkiReviewRequested: true,
+    });
+
+    expect(github.rest.git.createCommit).toHaveBeenCalledWith(expect.objectContaining({
+      parents: ["reviewed-head"],
+      message: "fix(closespan): address human domain feedback for problem-1",
+    }));
+    expect(github.rest.git.createTree).toHaveBeenCalledWith(expect.objectContaining({
+      tree: expect.arrayContaining([expect.objectContaining({
+        path: ".prompt/reports/problem-1-run-1-domain-result-rework.json",
+      })]),
+    }));
+    expect(github.rest.git.updateRef).toHaveBeenCalledWith(expect.objectContaining({
+      ref: "heads/closespan/change", sha: "corrected-head", force: false,
+    }));
+    expect(github.rest.git.createRef).not.toHaveBeenCalled();
+    expect(github.rest.pulls.create).not.toHaveBeenCalled();
+    expect(github.rest.pulls.createReplyForReviewComment).not.toHaveBeenCalled();
+    expect(github.graphql).not.toHaveBeenCalled();
+    expect(github.rest.issues.createComment).toHaveBeenCalledWith(expect.objectContaining({
+      body: expect.stringContaining("tenki-code-review-request:v3 head=corrected-head"),
+    }));
+    expect(github.rest.issues.createComment.mock.calls[0][0].body).not.toContain("cycle=");
+  });
+
+  it("does not repeat a genuine code review request already made for the corrected head", async () => {
+    const github = correctionGithubClient();
+    github.paginate.mockResolvedValue([{
+      body: "<!-- closespan:tenki-code-review-request:v3 head=corrected-head -->",
+    }]);
+    await publishDomainResultRework(domainReworkContext, report, { createClient: () => github.client });
+    expect(github.rest.issues.createComment).not.toHaveBeenCalled();
+  });
+
+  it.each(["branch", "pull", "before_update"])("rejects a stale domain-reviewed head at %s", async (stage) => {
+    const github = correctionGithubClient();
+    if (stage === "branch") {
+      github.rest.git.getRef.mockResolvedValue({ data: { object: { sha: "moved-head" } } });
+    } else if (stage === "pull") {
+      github.rest.pulls.get.mockResolvedValue({ data: {
+        state: "open", head: { ref: "closespan/change", sha: "moved-head" }, base: { ref: "main" },
+      } });
+    } else {
+      github.rest.git.getRef
+        .mockResolvedValueOnce({ data: { object: { sha: "reviewed-head" } } })
+        .mockResolvedValueOnce({ data: { object: { sha: "moved-head" } } });
+    }
+    await expect(publishDomainResultRework(domainReworkContext, report, {
+      createClient: () => github.client,
+    })).rejects.toThrow("stale_base:");
+    expect(github.rest.git.updateRef).not.toHaveBeenCalled();
+    expect(github.rest.issues.createComment).not.toHaveBeenCalled();
+  });
+
+  it.each(["closed", "different-base", "different-branch"])("rejects an incompatible existing PR: %s", async (change) => {
+    const github = correctionGithubClient();
+    github.rest.pulls.get.mockResolvedValue({ data: {
+      state: change === "closed" ? "closed" : "open",
+      head: { ref: change === "different-branch" ? "other" : "closespan/change", sha: "reviewed-head" },
+      base: { ref: change === "different-base" ? "release" : "main" },
+    } });
+    await expect(publishDomainResultRework(domainReworkContext, report, {
+      createClient: () => github.client,
+    })).rejects.toThrow("stale_base:");
+    expect(github.rest.git.createCommit).not.toHaveBeenCalled();
+    expect(github.rest.git.updateRef).not.toHaveBeenCalled();
+  });
+
   it("requests one Tenki review after opening a draft pull request", async () => {
     const github = githubClient();
 

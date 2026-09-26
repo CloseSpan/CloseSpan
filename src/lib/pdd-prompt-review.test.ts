@@ -19,8 +19,13 @@ describe("Prompt Testing prompt review contract", () => {
       promptHash: "a".repeat(64),
       alignmentReceipt: null,
       revisionReceipt: "signed.receipt",
+      agent: {
+        name: "CloseSpan Prompt Agent",
+        policyVersion: "closespan-pdd-agent-v1",
+      },
     });
     expect(result.verdict).toBe("Needs revision");
+    expect(result.agent?.name).toBe("CloseSpan Prompt Agent");
     expect(result).not.toHaveProperty("score");
   });
 

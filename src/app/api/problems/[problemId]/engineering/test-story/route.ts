@@ -3,12 +3,9 @@ import {
   getPromptAlignmentContext,
 } from "@/lib/engineering-workflow-repository";
 import { createPromptAlignmentReceipt } from "@/lib/prompt-alignment-receipt";
-import { PDD_CLI_VERSION, sha256 } from "@/lib/pdd-verification";
-import { evaluateWorkspacePrompt } from "@/lib/workspace-prompt-evaluation";
-import {
-  pddPromptReviewSchema,
-  reconcilePddPromptRevision,
-} from "@/lib/pdd-prompt-review";
+import { sha256 } from "@/lib/pdd-verification";
+import { pddPromptReviewSchema } from "@/lib/pdd-prompt-review";
+import { testPromptWithCloseSpanAgent } from "@/lib/closespan-prompt-agent";
 import {
   readPddPromptTimingSummary,
   recordPddPromptEvaluationTiming,
@@ -116,64 +113,55 @@ export async function POST(
           problemId,
           promptContext.promptId,
         );
-      const evaluation = await evaluateWorkspacePrompt({
+      const evaluation = await testPromptWithCloseSpanAgent({
         orgId: context.orgId,
         promptHash: promptContext.promptHash,
         userStory: promptContext.userStory,
         implementationPrompt: promptContext.implementationPrompt,
         acceptanceContract,
-        pddVersion: PDD_CLI_VERSION,
-      });
-      const reconciled = reconcilePddPromptRevision({
-        implementationPrompt: promptContext.implementationPrompt,
-        verdict: evaluation.verdict,
-        changes: evaluation.changes,
       });
       const alignmentReceipt =
-      reconciled.verdict === "Passed"
-        ? createPromptAlignmentReceipt({
-            orgId: context.orgId,
-            problemId,
-            promptHash: promptContext.promptHash,
-            storyHash,
-        })
-        : null;
-    const promptEvaluation = pddPromptReviewSchema.parse({
-      ...evaluation,
-      verdict: reconciled.verdict,
-      changes: reconciled.changes,
-      summary: reconciled.verdict === "Passed"
-        ? "The suggested prompt covers the outcome in your user story."
-        : `Prompt Testing found ${reconciled.changes.length} ${reconciled.changes.length === 1 ? "change" : "changes"} to make before approval.`,
-      suggestedRevision: reconciled.suggestedRevision,
-      alignmentReceipt,
-      revisionReceipt: reconciled.suggestedRevision
-        ? createPddPromptRevisionReceipt({
-            orgId: context.orgId,
-            problemId,
-            promptHash: promptContext.promptHash,
-            revisionHash: sha256(reconciled.suggestedRevision),
-            storyHash,
-          })
-        : null,
-    });
-    await completePddPromptEvaluation(
-      context.orgId,
-      evaluationRun.evaluation.id,
-      promptEvaluation,
-    );
-    const durationMs = Date.now() - timingStartedAt;
-    await recordPddPromptEvaluationTiming({
-      orgId: context.orgId,
-      problemId,
-      status: "Succeeded",
-      durationMs,
-    }).catch(() => undefined);
-    const timing = await readPddPromptTimingSummary(context.orgId).catch(() => ({
-      estimatedDurationMs: durationMs,
-      averageDurationMs: durationMs,
-      sampleCount: 1,
-    }));
+        evaluation.verdict === "Passed"
+          ? createPromptAlignmentReceipt({
+              orgId: context.orgId,
+              problemId,
+              promptHash: promptContext.promptHash,
+              storyHash,
+            })
+          : null;
+      const promptEvaluation = pddPromptReviewSchema.parse({
+        ...evaluation,
+        summary: evaluation.verdict === "Passed"
+          ? "The suggested prompt covers the outcome in your user story."
+          : `The CloseSpan Prompt Agent found ${evaluation.changes.length} ${evaluation.changes.length === 1 ? "change" : "changes"} to make before approval.`,
+        alignmentReceipt,
+        revisionReceipt: evaluation.suggestedRevision
+          ? createPddPromptRevisionReceipt({
+              orgId: context.orgId,
+              problemId,
+              promptHash: promptContext.promptHash,
+              revisionHash: sha256(evaluation.suggestedRevision),
+              storyHash,
+            })
+          : null,
+      });
+      await completePddPromptEvaluation(
+        context.orgId,
+        evaluationRun.evaluation.id,
+        promptEvaluation,
+      );
+      const durationMs = Date.now() - timingStartedAt;
+      await recordPddPromptEvaluationTiming({
+        orgId: context.orgId,
+        problemId,
+        status: "Succeeded",
+        durationMs,
+      }).catch(() => undefined);
+      const timing = await readPddPromptTimingSummary(context.orgId).catch(() => ({
+        estimatedDurationMs: durationMs,
+        averageDurationMs: durationMs,
+        sampleCount: 1,
+      }));
       return NextResponse.json(
         {
           workflow: promptContext.workflow,

@@ -2,6 +2,12 @@
 
 <!-- impeccable:product-schema 1 -->
 
+## Current discovery direction — September 18, 2026
+
+The owner requested a customer-success-focused MVP investigation before further feature work: uploaded post-call summaries, reviewable extracted concerns, and clear issue-to-feature relationships grounded in approved product/GitHub context. This is a proposed direction, not a built or market-validated capability. See `docs/customer-success-mvp-research.md` for the competitive evidence and two-view scope under consideration.
+
+The current localhost UI is deliberately reset through the reversible, development-only `CLOSESPAN_UI_RESET` flag. The previous screens and backend remain preserved; no execution or approval policy changed. The sections below describe that existing implementation, not the proposed MVP's everyday navigation.
+
 ## Platform
 
 web
@@ -12,9 +18,9 @@ CloseSpan serves a shared cross-functional team inside a B2B SaaS company. Produ
 
 ## Product Purpose
 
-CloseSpan owns the complete path from fragmented customer feedback and reported problems to a verified, deployed solution. It groups related evidence into durable problems, measures impact, prepares agentic solution recommendations, lets users define and run acceptance tests through English user stories, improves recommendations from those test results, and keeps code-writing, repository changes, review, and deployment behind explicit human approval.
+CloseSpan turns reports in Slack or Discord into tracked issues, agent implementations, reviewed pull requests, and tested fixes. People contribute domain knowledge and review outcomes; they do not operate the internal prompt, investigation, or runner pipeline. CloseSpan issues are the primary record. Linear is optional rather than a prerequisite.
 
-Success means the team can trace a customer-reported problem through evidence, prioritization, proposed solution, acceptance criteria, sandbox verification, code review, deployment, release verification, and customer follow-up without losing the reasoning or accountability between stages.
+Success means a domain expert can understand what was reported, what should happen, what changed, and what needs a decision. Detailed evidence remains available without filling the everyday interface.
 
 ## Positioning
 
@@ -22,37 +28,43 @@ CloseSpan is an accountable feedback-to-fix operating system, not a feedback ana
 
 ## Operating Context
 
-The workflow begins with feedback imported from approved customer and team sources. CloseSpan normalizes and clusters signals into product problems, connects affected accounts and revenue impact, and prepares agent investigations and proposed solutions. A product user expresses the expected outcome as an English user story; Prompt Testing turns that story into a repository-native acceptance test. Agents use the results to improve the proposed solution.
+The lifecycle is Report → Track → Implement → Review → Improve → Validate → Human merge. Reporting starts in approved sources. Investigation, prompt generation, protected acceptance tests, implementation, and trusted PR-review corrections run in the background within workspace policy. The interface shows actual current evidence, not a checklist of internal operations or a claim that incomplete automation has succeeded.
 
-After user approval, an agent writes code and runs the implementation against protected acceptance criteria in a Tenki virtual machine. The workflow includes automated tests, repository changes, pull-request review in Tenki, revisions in response to review, deployment, release verification, and closing the loop with affected customer conversations.
+The opt-in **Automatic coding, human merge** policy allows eligible new work in approved repositories. Complete, passing requirements can receive exact-prompt policy acceptance, recorded separately from human confirmation. Missing or ambiguous requirements still need attention. Existing manual policies remain supported. Every merge or deployment requires a current authorized human decision bound to the reviewed change, including on legacy Full autonomy workspaces. Saving this mode is a separate administrator action; a UI redesign does not enable it.
+
+Daily navigation is **Issues / Needs your review / Settings**. Issues has searchable list and board views; each issue has expected behavior, real results, checks, risks, and contextual actions. Needs your review combines domain questions and execution decisions, with history explicitly separate. Original reports, technical diagnostics, prompts, provider controls, and run history remain on secondary routes. Old Overview and Prompt Testing list URLs lead to Issues.
 
 ## Capabilities and Constraints
 
-- Recommendations and suggested solutions must be backed by visible customer evidence, impact, confidence, and unresolved gaps.
-- English user stories are product-manager-facing acceptance contracts, not hidden implementation prompts.
+- Recommendations must be grounded in customer evidence. Only unresolved gaps, risks, and actionable results belong in the default view; original evidence is one link away.
+- English requirements remain domain-readable acceptance contracts. Internal prompt text and technical preparation controls are secondary, not user-operated steps.
 - Acceptance tests are protected from being weakened by the implementation agent.
 - Code execution and testing occur in an isolated Tenki environment before repository or deployment actions proceed.
-- Human approval gates consequential actions, including implementation scope, repository changes, and deployment.
+- Administrator policy governs automatic coding; human decisions always gate merge and deployment. Confirming expected behavior is not proof of a live application test.
+- Automatic admission checks recorded model usage against configured limits. Missing provider charges or in-flight costs mean this is not a guaranteed billing cap.
+- Persistent issue conversation is separate from execution authorization. Scenario checks evaluate the expected requirement, not the running application. Saved current runtime evidence is the only basis for a reproduction claim.
+- Domain experts can record “This works” or “Needs changes” against the exact implementation commit. Requested changes block the final action on that result. A separate administrator decision can authorize one follow-up run on the existing PR, preserving the original acceptance contract. This human-feedback path is separate from trusted Tenki PR-review remediation.
+- These capabilities require their database migrations; human-feedback rework additionally requires a compatible executor rollout and an explicit enable flag. A local UI build does not deploy these dependencies or change workspace policy.
 - Agent progress, failures, review feedback, revisions, and final outcomes must remain visible and recoverable.
 - Customer data and credentials remain tenant-scoped; integrations use approved least-privilege access and explicit simulation boundaries where a connector is not live.
 - The existing product is implemented with Next.js, React, TypeScript, PostgreSQL, Prompt Testing, and Tenki-backed execution.
 
 ## Brand Commitments
 
-The product name is CloseSpan. The incumbent identity is a calm, accountable neomorphic interface built around cool blue-gray surfaces, restrained violet accents, soft physical depth, the CloseSpan `</>` mark, and clear human-control states. The visual language should communicate confidence and traceability without making agentic actions feel magical, opaque, or autonomous.
+The product name is CloseSpan. The user-selected reference is Attio: crisp neutral surfaces, fine borders, Geist typography, compact controls, a flat CloseSpan `</>` wordmark, and clear human-control states. Light and neutral are the defaults. Personal Appearance settings offer Light, Dark, System, and eight accent choices, saved automatically in the current browser; these do not alter workspace policy or status colors. Workspace navigation stays expanded and task labels stay concise. Avoid the previous purple default branding and raised neumorphic styling; optional personal accents do not change that structural language. The visual language should communicate confidence and traceability without making agentic actions feel magical, opaque, or autonomous.
 
 ## Evidence on Hand
 
 - The repository implements authenticated feedback, problem, investigation, approval, engineering-ticket, Prompt Testing, Tenki, notification, integration, release, and follow-up workflows.
 - `README.md` documents the feedback-to-fix operating model and the protected Prompt Testing/Tenki acceptance workflow.
-- The current Overview implementation and persisted Impeccable critique provide evidence of the incumbent visual system and current information architecture.
+- Current Issues, review inbox, issue detail, and settings components implement the issue-centered information architecture. The persisted Impeccable records document the incumbent Attio visual system.
 - No customer testimonials, production performance benchmarks, or outcome claims should be invented without separate verified evidence.
 
 ## Product Principles
 
 1. Preserve one inspectable chain from customer evidence to deployed outcome.
 2. Let agents propose, test, implement, and revise; let humans own intent and consequential approvals.
-3. Turn uncertainty into visible confidence, evidence gaps, and testable acceptance criteria.
+3. Surface uncertainty as an actionable question or failed check; keep confidence calculations and pipeline details out of routine screens.
 4. Prefer the next accountable action over passive reporting or vanity analytics.
 5. Make every automated step observable, reversible where possible, and recoverable when it fails.
 

@@ -80,13 +80,13 @@ describe("PddScreen", () => {
       />,
     );
 
-    expect(markup).toContain("Prompt-driven development");
+    expect(markup).toContain("Prompt Testing");
     expect(markup).not.toContain("Prompt Testing queue");
-    expect(markup).toContain("Back to Prompt Testing priorities");
+    expect(markup).toContain("Back to Prompt Testing");
     expect(markup).toContain("Prompt preparation");
     expect(markup).toContain("Prompt evaluation");
     expect(markup).toContain("Approval readiness");
-    expect(markup).toContain("View product problem");
+    expect(markup).toContain("View issue");
     expect(markup).not.toContain("Hypothesis—not confirmed");
     expect(markup).toContain("Prompt workflow");
   });
@@ -103,14 +103,14 @@ describe("PddScreen", () => {
       />,
     );
 
-    expect(markup).toContain("Prompt Testing priorities");
-    expect(markup).toContain("Rank: prompt-test readiness");
-    expect(markup).toContain("All readiness states");
+    expect(markup).toContain("Test queue");
+    expect(markup).toContain("Sort: readiness");
+    expect(markup).toContain("All statuses");
     expect(markup).toContain("Repository confirmed");
     expect(markup).toContain("Execution profile active");
     expect(markup).toContain("Implementation prompt ready");
     expect(markup).toContain("Acceptance tests generated");
-    expect(markup).toContain("Open Prompt Testing task");
+    expect(markup).toContain("Open task");
     expect(markup).toContain(`/pdd/${primaryProblem.id}#engineering-ticket`);
   });
 
@@ -124,7 +124,9 @@ describe("PddScreen", () => {
       />,
     );
 
-    expect(markup).toContain("No open Prompt Testing tasks");
+    expect(markup).toContain("No issues to test");
+    expect(markup).toContain('href="/problems"');
+    expect(markup).toContain("View issues");
     expect(markup).not.toContain("Choose another readiness state");
   });
 
@@ -310,7 +312,7 @@ describe("PddScreen", () => {
     expect(pddMarkup).toContain("Current issue verification required");
     expect(pddMarkup).not.toContain("Prompt workflow");
     expect(prioritizationMarkup).toContain("Issue verification required");
-    expect(prioritizationMarkup).toContain("Open Prompt Testing task");
+    expect(prioritizationMarkup).toContain("Open task");
     expect(prioritizationMarkup).toContain(`/pdd/${problem.id}#engineering-ticket`);
   });
 
@@ -357,7 +359,7 @@ describe("PddScreen", () => {
     expect(problemMarkup).toContain("samshanmukh/zup · aaaaaaaaaaaa");
     expect(problemMarkup).not.toContain("Continue to prompt");
     expect(priorityMarkup).toContain("Runtime verification running");
-    expect(priorityMarkup).toContain("Open Prompt Testing task");
+    expect(priorityMarkup).toContain("Open task");
     expect(priorityMarkup).toContain(`/pdd/${problem.id}#engineering-ticket`);
   });
 
@@ -480,7 +482,7 @@ describe("PddScreen", () => {
     expect(markup).toContain('aria-label="What evidence still needed means"');
     expect(markup).toContain('aria-label="What recommended checks means"');
     expect(markup).toContain("Ready for review");
-    expect(markup).toContain("Back to problems");
+    expect(markup).toContain("Back to issues");
   });
 
   it("explains when Cognee assisted signal retrieval without relabeling the final score", () => {

@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, ExternalLink, Github, Unplug } from "lucide-react";
 import type { GithubAppInstallationRecord } from "@/lib/github-installation-repository";
 import type { GithubRepositoryAuthorization } from "@/lib/github-repository-allowlist";
-import { requestGithubInstallUrl } from "@/lib/github-installation-client";
+import { startGithubInstallationPopup } from "@/lib/github-installation-client";
 
 const errorMessages: Record<string, string> = {
   authentication_required: "Sign in again, then reconnect GitHub from this workspace.",
@@ -38,6 +38,9 @@ export function GithubConnectionPanel({
     () => new Set(initialRepositories.filter((repository) => repository.workspaceSelected).map((repository) => repository.repository)),
   );
   const [busy, setBusy] = useState(false);
+  const [githubConnecting, setGithubConnecting] = useState(false);
+  const githubConnectionRef = useRef<AbortController | null>(null);
+  const githubConnectionMounted = useRef(true);
   const [error, setError] = useState<string | null>(null);
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const [selectorOpen, setSelectorOpen] = useState(
@@ -48,20 +51,59 @@ export function GithubConnectionPanel({
     (repository) => repository.active && repository.workspaceSelected,
   );
 
+  useEffect(() => {
+    githubConnectionMounted.current = true;
+    return () => {
+      githubConnectionMounted.current = false;
+      githubConnectionRef.current?.abort();
+    };
+  }, [orgId]);
+
   async function connectRepository() {
-    if (busy || !canManage) return;
+    if (busy || githubConnectionRef.current || !canManage) return;
+    const controller = new AbortController();
+    githubConnectionRef.current = controller;
     setBusy(true);
+    setGithubConnecting(true);
     setError(null);
     try {
-      const installUrl = await requestGithubInstallUrl(orgId);
-      window.location.assign(installUrl);
+      await startGithubInstallationPopup(orgId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      const response = await fetch("/api/integrations/github", {
+        headers: { "x-org-id": orgId },
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        installations?: GithubAppInstallationRecord[];
+        repositories?: GithubRepositoryAuthorization[];
+      };
+      if (!response.ok || !Array.isArray(payload.installations) || !Array.isArray(payload.repositories)) {
+        throw new Error("GitHub connected, but repositories could not be loaded. Refresh this page to try again.");
+      }
+      if (controller.signal.aborted) return;
+      setInstallations(payload.installations);
+      setRepositories(payload.repositories);
+      setSelectedRepositories(new Set(payload.repositories.filter((repository) => repository.workspaceSelected).map((repository) => repository.repository)));
+      setSelectorOpen(true);
+      setSelectionNotice(null);
+      router.refresh();
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "GitHub connection could not be started",
-      );
-      setBusy(false);
+      if (!controller.signal.aborted) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "GitHub connection could not be started",
+        );
+      }
+    } finally {
+      if (githubConnectionRef.current === controller) {
+        githubConnectionRef.current = null;
+        if (githubConnectionMounted.current) {
+          setGithubConnecting(false);
+          setBusy(false);
+        }
+      }
     }
   }
 
@@ -158,6 +200,12 @@ export function GithubConnectionPanel({
           </button>
         )}
       </div>
+
+      {githubConnecting && (
+        <button className="btn" type="button" onClick={() => githubConnectionRef.current?.abort()}>
+          Cancel GitHub connection
+        </button>
+      )}
 
       {callbackStatus === "connected" && (
         <div className="github-connection-message success" role="status">

@@ -1,45 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import { createEmptyOverviewAnalytics } from "@/lib/overview-analytics";
 
-const mocks = vi.hoisted(() => ({
-  getOverviewAnalytics: vi.fn(),
-  getWorkspaceData: vi.fn(),
-  requireWorkspaceUser: vi.fn(),
-}));
-
-vi.mock("@/lib/auth-user", () => ({
-  requireWorkspaceUser: mocks.requireWorkspaceUser,
-}));
-
-vi.mock("@/lib/overview-repository", () => ({
-  getOverviewAnalytics: mocks.getOverviewAnalytics,
-}));
-
-vi.mock("@/lib/workspace-repository", () => ({
-  getWorkspaceData: mocks.getWorkspaceData,
-}));
-
+const state = vi.hoisted(() => ({ getOverviewAnalytics: vi.fn(), requireWorkspaceUser: vi.fn() }));
+vi.mock("@/lib/auth-user", () => ({ requireWorkspaceUser: state.requireWorkspaceUser }));
+vi.mock("@/lib/overview-repository", () => ({ getOverviewAnalytics: state.getOverviewAnalytics }));
 vi.mock("@/components/screens", () => ({
-  ProblemsScreen: () => null,
+  ProblemsScreen: ({ analytics }: { analytics: { problems: unknown[] } }) =>
+    <section data-screen="production-problems">{analytics.problems.length} issues</section>,
 }));
 
 import Page from "./page";
 
-describe("Product problems page", () => {
-  beforeEach(() => {
-    mocks.getOverviewAnalytics.mockReset();
-    mocks.getWorkspaceData.mockReset();
-    mocks.requireWorkspaceUser.mockReset();
-  });
-
-  it("loads only the analytics required by the problems screen", async () => {
-    const analytics = { problems: [] };
-    mocks.requireWorkspaceUser.mockResolvedValue({ orgId: "org_test" });
-    mocks.getOverviewAnalytics.mockResolvedValue(analytics);
-
-    const result = await Page();
-
-    expect(mocks.getOverviewAnalytics).toHaveBeenCalledWith("org_test");
-    expect(mocks.getWorkspaceData).not.toHaveBeenCalled();
-    expect(result.props.analytics).toBe(analytics);
+describe("issues route", () => {
+  it("loads the signed-in workspace into the production problem screen", async () => {
+    state.requireWorkspaceUser.mockResolvedValue({ orgId: "org-current" });
+    state.getOverviewAnalytics.mockResolvedValue(createEmptyOverviewAnalytics());
+    const markup = renderToStaticMarkup(await Page());
+    expect(state.getOverviewAnalytics).toHaveBeenCalledWith("org-current");
+    expect(markup).toContain('data-screen="production-problems"');
+    expect(markup).toContain("0 issues");
   });
 });

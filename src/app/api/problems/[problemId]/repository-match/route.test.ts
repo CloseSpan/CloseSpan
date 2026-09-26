@@ -19,6 +19,9 @@ const activation = vi.hoisted(() => ({
   setup: vi.fn(),
   probes: vi.fn(),
 }));
+const demo = vi.hoisted(() => ({ read: vi.fn() }));
+
+vi.mock("@/lib/presentation-demo", () => ({ readPresentationDemo: demo.read }));
 
 vi.mock("@/lib/execution-profile-repository", () => ({
   listExecutionProfileSettings: profiles.settings,
@@ -93,6 +96,7 @@ const context = { params: Promise.resolve({ problemId }) };
 
 describe("problem repository match API", () => {
   beforeEach(() => {
+    demo.read.mockReset().mockResolvedValue(false);
     profiles.settings.mockReset().mockResolvedValue({ assignments: [] });
     profiles.matches.mockReset().mockResolvedValue([]);
     repositories.list.mockReset().mockResolvedValue([repository]);
@@ -129,6 +133,22 @@ describe("problem repository match API", () => {
     });
     expect(review.requireProblem).toHaveBeenCalledWith("org-1", problemId);
     expect(profiles.matches).toHaveBeenCalledWith("org-1", problemId);
+  });
+
+  it("blocks presentation workspace refreshes before detection or runner preparation", async () => {
+    demo.read.mockResolvedValue(true);
+    const response = await PUT(request("PUT", {
+      action: "refresh",
+      repository: "acme/app",
+    }), context);
+
+    expect(response.status).toBe(403);
+    expect(demo.read).toHaveBeenCalledWith("org-1");
+    expect(detector.detect).not.toHaveBeenCalled();
+    expect(activation.activate).not.toHaveBeenCalled();
+    expect(activation.setup).not.toHaveBeenCalled();
+    expect(activation.probes).not.toHaveBeenCalled();
+    expect(review.refresh).not.toHaveBeenCalled();
   });
 
   it("lets a contributor confirm an explicitly selected active profile", async () => {

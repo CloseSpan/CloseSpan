@@ -9,6 +9,17 @@ interface GithubInstallStatePayload {
   attemptId: string;
   expiresAt: string;
   returnTo: "/integrations" | "/onboarding";
+  popup?: true;
+  popupChannel?: string;
+}
+
+const channelPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface GithubInstallCompletion {
+  channel: string;
+  status: "connected" | "error";
+  reason?: string;
+  expiresAt: string;
 }
 
 function stateSecret(explicit?: string): string {
@@ -32,12 +43,16 @@ export function createGithubInstallStateToken(
   expiresAt: Date,
   returnTo: GithubInstallStatePayload["returnTo"] = "/integrations",
   secret?: string,
+  popup?: { channel: string },
 ): string {
+  if (popup && !channelPattern.test(popup.channel))
+    throw new HttpError(400, "Invalid GitHub popup channel");
   const payload: GithubInstallStatePayload = {
     version: 1,
     attemptId,
     expiresAt: expiresAt.toISOString(),
     returnTo,
+    ...(popup ? { popup: true as const, popupChannel: popup.channel } : {}),
   };
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   return `${encoded}.${signature(encoded, secret)}`;
@@ -66,7 +81,10 @@ export function verifyGithubInstallStateToken(
     !/^[0-9a-f-]{36}$/i.test(payload.attemptId) ||
     !Number.isFinite(Date.parse(payload.expiresAt)) ||
     (payload.returnTo !== undefined &&
-      !["/integrations", "/onboarding"].includes(payload.returnTo))
+      !["/integrations", "/onboarding"].includes(payload.returnTo)) ||
+    (payload.popup !== undefined && payload.popup !== true) ||
+    (payload.popup === true && (typeof payload.popupChannel !== "string" || !channelPattern.test(payload.popupChannel))) ||
+    (payload.popup !== true && payload.popupChannel !== undefined)
   ) {
     throw new HttpError(400, "Invalid GitHub installation state");
   }
@@ -76,4 +94,38 @@ export function verifyGithubInstallStateToken(
     ...payload,
     returnTo: payload.returnTo ?? "/integrations",
   };
+}
+
+export function createGithubInstallCompletionToken(
+  completion: GithubInstallCompletion,
+  secret?: string,
+): string {
+  const encoded = Buffer.from(JSON.stringify({ purpose: "github-install-completion", ...completion }), "utf8").toString("base64url");
+  return `${encoded}.${signature(encoded, secret)}`;
+}
+
+export function verifyGithubInstallCompletionToken(
+  token: string,
+  now = new Date(),
+  secret?: string,
+): GithubInstallCompletion {
+  const [encoded, supplied, extra] = token.split(".");
+  if (!encoded || !supplied || extra) throw new HttpError(400, "Invalid GitHub completion");
+  const expected = signature(encoded, secret);
+  if (expected.length !== supplied.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(supplied)))
+    throw new HttpError(400, "Invalid GitHub completion");
+  let payload: GithubInstallCompletion & { purpose?: string };
+  try {
+    payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as typeof payload;
+  } catch {
+    throw new HttpError(400, "Invalid GitHub completion");
+  }
+  if (
+    payload?.purpose !== "github-install-completion" ||
+    typeof payload.channel !== "string" || !channelPattern.test(payload.channel) ||
+    !["connected", "error"].includes(payload.status) ||
+    (payload.reason !== undefined && (typeof payload.reason !== "string" || !/^[a-z_]{1,80}$/.test(payload.reason))) ||
+    !Number.isFinite(Date.parse(payload.expiresAt)) || Date.parse(payload.expiresAt) <= now.getTime()
+  ) throw new HttpError(400, "Invalid or expired GitHub completion");
+  return { channel: payload.channel, status: payload.status, ...(payload.reason ? { reason: payload.reason } : {}), expiresAt: payload.expiresAt };
 }

@@ -10,31 +10,26 @@ type AiSettings = SettingsView["ai"];
 const providers: Array<{
   id: ProviderId;
   label: string;
-  description: string;
   defaultModel: string;
 }> = [
   {
     id: "openai",
     label: "OpenAI",
-    description: "Responses API",
     defaultModel: "gpt-5.6-sol",
   },
   {
     id: "xai",
     label: "xAI Grok",
-    description: "Direct Grok access",
     defaultModel: "grok-4.5",
   },
   {
     id: "anthropic",
     label: "Anthropic Claude",
-    description: "Messages API",
     defaultModel: "claude-sonnet-4-6",
   },
   {
     id: "openrouter",
     label: "OpenRouter",
-    description: "Multi-model gateway",
     defaultModel: "openai/gpt-5.6",
   },
 ];
@@ -160,9 +155,6 @@ export function AiProviderSettings({
       <div className="card-head">
         <div>
           <h2>AI provider</h2>
-          <p className="subtle">
-            Choose a provider and keep its credential server-side
-          </p>
         </div>
         <span className={`badge ${current.configured ? "success" : "medium"}`}>
           {current.configured ? "Configured" : "Key required"}
@@ -172,10 +164,6 @@ export function AiProviderSettings({
         {!isAdmin && (
           <div className="callout section-gap-sm">
             <div className="callout-title">Admin-managed credentials</div>
-            <p className="subtle">
-              Provider configuration is visible for transparency. Ask a
-              workspace admin to change the model or stored key.
-            </p>
           </div>
         )}
         <fieldset className="provider-picker" disabled={!isAdmin}>
@@ -193,7 +181,6 @@ export function AiProviderSettings({
               </span>
               <span>
                 <strong>{item.label}</strong>
-                <small>{item.description}</small>
               </span>
             </button>
           ))}
@@ -211,10 +198,6 @@ export function AiProviderSettings({
                 providers.find((item) => item.id === provider)?.defaultModel
               }
             />
-            <small>
-              Editable so you can use a model available to your provider
-              account.
-            </small>
           </label>
           <label className="field">
             API key

@@ -10,17 +10,14 @@ import type {
 const providers: Array<{
   id: OrchestrationProvider;
   label: string;
-  description: string;
 }> = [
   {
     id: "pipedream",
     label: "Pipedream",
-    description: "Current managed connector workflows",
   },
   {
     id: "n8n",
     label: "n8n",
-    description: "Self-hosted or n8n Cloud workflows",
   },
 ];
 
@@ -132,9 +129,6 @@ export function OrchestrationProviderSettings({
       <div className="card-head">
         <div>
           <h2>Workflow orchestration</h2>
-          <p className="subtle">
-            Choose which service handles new connected-source workflow runs.
-          </p>
         </div>
         <span className="badge success">{current.providerLabel} active</span>
       </div>
@@ -142,10 +136,6 @@ export function OrchestrationProviderSettings({
         {!isAdmin && (
           <div className="callout section-gap-sm">
             <div className="callout-title">Admin-managed routing</div>
-            <p className="subtle">
-              You can review the active provider, but only a workspace admin can
-              change workflow routing or n8n credentials.
-            </p>
           </div>
         )}
         <fieldset className="provider-picker" disabled={!isAdmin || busy}>
@@ -166,7 +156,6 @@ export function OrchestrationProviderSettings({
               </span>
               <span>
                 <strong>{item.label}</strong>
-                <small>{item.description}</small>
               </span>
             </button>
           ))}
@@ -261,14 +250,6 @@ export function OrchestrationProviderSettings({
           </>
         )}
 
-        <div className="callout section-gap-sm">
-          <div className="callout-title">Switch safely at any time</div>
-          <p className="subtle">
-            Changing providers does not remove Pipedream accounts, n8n
-            credentials, imported feedback, or source history. It only changes
-            which provider handles the next orchestration request.
-          </p>
-        </div>
 
         {notice && (
           <p

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   Copy,
@@ -12,6 +12,7 @@ import {
   Webhook,
 } from "lucide-react";
 import type { WorkspaceSetupStatus } from "@/lib/integration-repository";
+import { startGithubInstallationPopup } from "@/lib/github-installation-client";
 
 function StepBadge({
   complete,
@@ -71,6 +72,17 @@ export function WorkspaceSetupHub({
   const [error, setError] = useState<string | null>(null);
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [githubConnecting, setGithubConnecting] = useState(false);
+  const githubConnectionRef = useRef<AbortController | null>(null);
+  const githubConnectionMounted = useRef(true);
+
+  useEffect(() => {
+    githubConnectionMounted.current = true;
+    return () => {
+      githubConnectionMounted.current = false;
+      githubConnectionRef.current?.abort();
+    };
+  }, [orgId]);
 
   const completedSteps = [
     status.feedbackConnected,
@@ -116,15 +128,36 @@ export function WorkspaceSetupHub({
   }
 
   async function connectGithub() {
+    if (busy || githubConnectionRef.current) return;
+    const controller = new AbortController();
+    githubConnectionRef.current = controller;
     setBusy("github");
+    setGithubConnecting(true);
     setError(null);
     try {
-      const result = await setupFetch("/api/integrations/github", orgId);
-      window.location.assign(result.installUrl as string);
+      await startGithubInstallationPopup(orgId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      const response = await fetch("/api/integrations/setup", {
+        headers: { "x-org-id": orgId }, cache: "no-store", signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("GitHub connected. Open Integrations to choose repositories.");
+      const next = await response.json() as WorkspaceSetupStatus;
+      if (controller.signal.aborted) return;
+      setStatus(next);
+      router.push("/integrations?view=connections&focus=int_github&select=repositories");
+      router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "GitHub setup failed");
+      if (!controller.signal.aborted) {
+        setError(caught instanceof Error ? caught.message : "GitHub setup failed");
+      }
     } finally {
-      setBusy(null);
+      if (githubConnectionRef.current === controller) {
+        githubConnectionRef.current = null;
+        if (githubConnectionMounted.current) {
+          setGithubConnecting(false);
+          setBusy((current) => current === "github" ? null : current);
+        }
+      }
     }
   }
 
@@ -141,11 +174,6 @@ export function WorkspaceSetupHub({
         <div>
           <div className="eyebrow">{organizationName}</div>
           <h1>Welcome, {firstName}</h1>
-          <p className="subtle">
-            Connect your stack in three steps. CloseSpan will ingest feedback,
-            run governed AI agents on your board, and prepare GitHub actions
-            after approval.
-          </p>
         </div>
         <div className="setup-progress-card">
           <strong>{completedSteps} of 3 connected</strong>
@@ -328,13 +356,18 @@ export function WorkspaceSetupHub({
                 <button
                   className="btn primary"
                   type="button"
-                  disabled={busy === "github"}
+                  disabled={Boolean(busy) || githubConnecting}
                   onClick={connectGithub}
                 >
-                  {busy === "github" ? "Opening GitHub..." : "Connect GitHub"}
+                  {githubConnecting ? "Opening GitHub..." : "Connect GitHub"}
                 </button>
               )}
             </div>
+          )}
+          {githubConnecting && (
+            <button className="btn" type="button" onClick={() => githubConnectionRef.current?.abort()}>
+              Cancel GitHub connection
+            </button>
           )}
         </article>
       </div>

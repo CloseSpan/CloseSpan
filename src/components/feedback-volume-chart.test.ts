@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -104,12 +105,54 @@ describe("feedback volume chart", () => {
     expect(markup).toContain('class="chart chart-is-empty"');
     expect(markup).toContain('class="chart-empty-state" role="status"');
     expect(markup).toContain("No feedback in this period");
-    expect(markup).toContain(
+    expect(markup).not.toContain(
       "Run an import to bring customer signals into CloseSpan.",
     );
     expect(markup).toContain('href="/integrations">Import feedback</a>');
     expect(markup.match(/class="chart-zero-marker"/g)).toHaveLength(8);
     expect(markup).not.toMatch(/<button[^>]*class="chart-bar"/);
     expect(markup).toContain("Jul 20–26");
+  });
+
+  it("omits instructional copy without removing accessible chart data or controls", () => {
+    const markup = renderToStaticMarkup(
+      createElement(FeedbackVolumeChart, { analytics }),
+    );
+
+    expect(markup).not.toContain("Hover or focus");
+    expect(markup).not.toContain("chart-help");
+    expect(markup).not.toContain("Customer signals received");
+    expect(markup).toContain('aria-label="Jul 20–26, 2026: 3 signals"');
+    expect(markup).toContain('aria-pressed="false"');
+    expect(markup).toContain('<table class="sr-only">');
+    expect(markup).toContain('<th scope="col">Signals</th>');
+  });
+});
+
+describe("feedback volume chart theme states", () => {
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  function rule(selector: string) {
+    const block = css.split("}").find((part) => part.trimStart().startsWith(`${selector} {`));
+    expect(block, `Missing chart rule: ${selector}`).toBeDefined();
+    return block ?? "";
+  }
+
+  it("uses theme colors without a purple shadow on hover and keyboard focus", () => {
+    const states = rule(".chart-bar:hover,.chart-bar:focus-visible");
+    expect(states).toContain("background:var(--accent-fill-hover)");
+    expect(states).toContain("box-shadow:none");
+    expect(rule(".chart-bar:focus-visible")).toContain("var(--focus-ring)");
+  });
+
+  it("keeps a pinned bar in the active theme after the pointer leaves", () => {
+    const selected = rule('.chart-bar[aria-pressed="true"]');
+    expect(selected).toContain("background:var(--accent-fill-active)");
+    expect(selected).toContain("box-shadow:none");
+  });
+
+  it("uses matching theme surfaces for tooltip arrows and neutral empty-week markers", () => {
+    expect(rule(".chart-tooltip::after")).toContain("background:var(--surface)");
+    expect(rule(".chart-tooltip small")).toContain("color:var(--text-muted)");
+    expect(rule(".chart-zero-marker")).toContain("background:var(--border-strong)");
   });
 });

@@ -539,9 +539,6 @@ export function OrganizationSwitcher({
               maxLength={2000}
               placeholder="What the product does, who it serves, and where customers usually share feedback."
             />
-            <small>
-              CloseSpan uses this context to recommend relevant feedback sources.
-            </small>
           </label>
           {createState.error && (
             <p className="toast error" role="alert">

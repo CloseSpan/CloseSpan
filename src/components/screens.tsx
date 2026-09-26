@@ -24,9 +24,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Cloud,
   Copy,
   Database,
+  ExternalLink,
   Filter,
   GitBranch,
   GripVertical,
@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { autonomyDescription, autonomyLevels, type AutonomyLevel } from "@/lib/autonomy-policy";
 import type { DemoState } from "@/lib/store";
+import { feedbackProblemTitle, normalizeProblemSubject } from "@/lib/problem-subject";
 import { FeedbackVolumeChart } from "./feedback-volume-chart";
 import { FitText } from "./fit-text";
 import { CustomSelect } from "./custom-select";
@@ -74,7 +75,7 @@ import {
   type ProblemTableTrend,
 } from "@/lib/problem-table-filters";
 import { isPipedreamConnectorId } from "@/lib/pipedream-connectors";
-import { requestGithubInstallUrl } from "@/lib/github-installation-client";
+import { startGithubInstallationPopup } from "@/lib/github-installation-client";
 import {
   isFeedbackSourceIntegration,
   isIntegrationAvailable,
@@ -135,6 +136,7 @@ import {
   type ProblemActiveWorkStatus,
 } from "@/lib/problem-active-work";
 import { useOptionalBackgroundPromptTests } from "./background-prompt-tests";
+import { WORKSPACE_LABELS } from "@/lib/workspace-labels";
 import {
   EngineeringPreparationSteps,
   engineeringPreparationSteps,
@@ -214,12 +216,10 @@ function containModalFocus(
 export function PageTitle({
   eyebrow,
   title,
-  description,
   action,
 }: {
   eyebrow?: string;
   title: string;
-  description: string;
   action?: React.ReactNode;
 }) {
   return (
@@ -227,7 +227,6 @@ export function PageTitle({
       <div>
         {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         <h1>{title}</h1>
-        <p className="subtle">{description}</p>
       </div>
       {action}
     </div>
@@ -260,13 +259,19 @@ function EmptyWorkspaceState({
 export function OverviewScreen({
   analytics,
   firstName,
-  organizationName,
 }: {
   analytics: OverviewAnalytics;
   firstName: string;
   organizationName: string;
 }) {
   const { metrics, problems } = analytics;
+  const attentionProblems = problems.filter((problem) =>
+    !problem.activeWork
+    && problem.stage !== "Released"
+    && problem.stage !== "Verified"
+    && (problem.stage === "Needs review" || problem.confidence < 80),
+  );
+  const workingProblems = problems.filter((problem) => problem.activeWork);
   const [themeRange, setThemeRange] = useState<ThemeRange>("7d");
   const themes = analytics.themeRanges?.[themeRange] ?? analytics.themes;
   const activeThemeRange = THEME_RANGE_OPTIONS.find(
@@ -291,7 +296,7 @@ export function OverviewScreen({
       `${metrics.awaitingAnalysis} awaiting analysis`,
     ],
     [
-      "Active problems",
+      "Active issues",
       String(metrics.activeProblems),
       `${metrics.needsReview} need review`,
     ],
@@ -313,9 +318,7 @@ export function OverviewScreen({
   return (
     <>
       <PageTitle
-        eyebrow={organizationName}
         title={`Welcome, ${firstName}`}
-        description="Here is where customer signals need attention today."
         action={
           <Link className="btn primary" href={empty ? "/integrations" : "/approvals"}>
             {empty ? "Connect feedback" : "Review approvals"}{" "}
@@ -325,13 +328,90 @@ export function OverviewScreen({
       />
       {empty ? (
         <EmptyWorkspaceState
-          title="Your production workspace is ready"
-          description="No feedback, customer records, or product problems have been added. Connect an approved source when you are ready to begin."
+          title="Start with customer feedback"
+          description="Connect a feedback source to start tracking customer issues."
           actionHref="/integrations"
-          actionLabel="Review integrations"
+          actionLabel="Connect a source"
         />
       ) : (
         <>
+      <section className="card section-gap overview-attention-card">
+        <div className="card-head">
+          <div>
+            <h2>Needs attention</h2>
+          </div>
+          <Link href="/problems" className="btn">
+            View issues
+          </Link>
+        </div>
+        <div className="overview-attention-list">
+          {attentionProblems.length ? [...attentionProblems]
+            .sort((left, right) => {
+              const reviewDelta =
+                Number(right.stage === "Needs review") -
+                Number(left.stage === "Needs review");
+              if (reviewDelta) return reviewDelta;
+              const severityWeight = (severity: string) =>
+                severity === "Critical" ? 4 : severity === "High" ? 3 : severity === "Medium" ? 2 : 1;
+              return (
+                severityWeight(right.severity) - severityWeight(left.severity) ||
+                right.revenue - left.revenue
+              );
+            })
+            .slice(0, 4)
+            .map((problem) => {
+              const action =
+                problem.stage === "Needs review"
+                  ? "Review issue"
+                  : problem.confidence < 80
+                    ? "Check evidence"
+                    : "View issue";
+              return (
+                <Link
+                  className="overview-attention-row"
+                  href={`/problems/${problem.id}`}
+                  key={problem.id}
+                >
+                  <span className={`overview-attention-signal ${problem.severity.toLowerCase()}`} aria-hidden="true" />
+                  <span className="overview-attention-copy">
+                    <strong>{problem.title}</strong>
+                    <small>
+                      {problem.stage} · {problem.count} {problem.count === 1 ? "signal" : "signals"} · {compactMoney(problem.revenue)} ARR
+                    </small>
+                  </span>
+                  <span className={`badge ${problem.severity.toLowerCase()}`}>{problem.severity}</span>
+                  <span className="overview-attention-action">
+                    {action} <ChevronRight size={14} aria-hidden="true" />
+                  </span>
+                </Link>
+              );
+            }) : (
+              <div className="overview-attention-empty" role="status">
+                <strong>No issues need review</strong>
+                <p>Check Action approvals for any pending execution or release decisions.</p>
+              </div>
+            )}
+        </div>
+      </section>
+      {workingProblems.length > 0 && (
+        <section className="card section-gap">
+          <div className="card-head">
+            <div>
+              <h2>In progress</h2>
+            </div>
+            <Link className="btn" href="/agent-runs">View agent activity</Link>
+          </div>
+          <div className="overview-attention-list">
+            {workingProblems.slice(0, 4).map((problem) => (
+              <Link className="overview-attention-row overview-progress-row" href={`/problems/${problem.id}`} key={problem.id}>
+                <span className="overview-attention-copy"><strong>{problem.title}</strong></span>
+                <span className="badge">{problem.activeWork?.status}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+      <section className="overview-insights section-gap" aria-label="Analytics and trends">
       <div className="grid cols-4">
         {metricCards.map(([label, value, delta]) => (
           <div className="card metric" key={label}>
@@ -399,64 +479,6 @@ export function OverviewScreen({
           </section>
         </div>
       </div>
-      <section className="card section-gap overview-attention-card">
-        <div className="card-head">
-          <div>
-            <h2>Needs attention</h2>
-            <p className="subtle">The most important exceptions to review today.</p>
-          </div>
-          <Link href="/problems" className="btn">
-            Open problem inventory
-          </Link>
-        </div>
-        <div className="overview-attention-list">
-          {problems.length ? [...problems]
-            .sort((left, right) => {
-              const reviewDelta =
-                Number(right.stage === "Needs review") -
-                Number(left.stage === "Needs review");
-              if (reviewDelta) return reviewDelta;
-              const severityWeight = (severity: string) =>
-                severity === "Critical" ? 4 : severity === "High" ? 3 : severity === "Medium" ? 2 : 1;
-              return (
-                severityWeight(right.severity) - severityWeight(left.severity) ||
-                right.revenue - left.revenue
-              );
-            })
-            .slice(0, 4)
-            .map((problem) => {
-              const action =
-                problem.stage === "Needs review"
-                  ? "Review cluster"
-                  : problem.confidence < 80
-                    ? "Check evidence"
-                    : "Open problem";
-              return (
-                <Link
-                  className="overview-attention-row"
-                  href={`/problems/${problem.id}`}
-                  key={problem.id}
-                >
-                  <span className={`overview-attention-signal ${problem.severity.toLowerCase()}`} aria-hidden="true" />
-                  <span className="overview-attention-copy">
-                    <strong>{problem.title}</strong>
-                    <small>
-                      {problem.stage} · {problem.count} {problem.count === 1 ? "signal" : "signals"} · {compactMoney(problem.revenue)} ARR
-                    </small>
-                  </span>
-                  <span className={`badge ${problem.severity.toLowerCase()}`}>{problem.severity}</span>
-                  <span className="overview-attention-action">
-                    {action} <ChevronRight size={14} aria-hidden="true" />
-                  </span>
-                </Link>
-              );
-            }) : (
-              <div className="overview-attention-empty" role="status">
-                <strong>No problem exceptions</strong>
-                <p>Reviewed feedback has not produced a problem that needs attention.</p>
-              </div>
-            )}
-        </div>
       </section>
         </>
       )}
@@ -474,6 +496,7 @@ interface FeedbackAnalysisView {
   sentimentEvidence: string[];
   sentimentRationale: string | null;
   redactedSummary: string;
+  problemSubject?: string;
   proposedProblemId: string | null;
   classificationConfidence: number;
   clusterConfidence: number;
@@ -490,6 +513,16 @@ function sentimentTone(
 
 export function classificationConfidenceLabel(confidence: number): string {
   return `${Math.round(confidence * 100)}% classification confidence`;
+}
+
+export function feedbackInboxSubject(
+  item: FeedbackItem,
+  analysis?: FeedbackAnalysisView,
+  linkedProblem?: { title: string },
+): string {
+  return linkedProblem?.title
+    ?? (analysis?.reviewStatus !== "Rejected" ? normalizeProblemSubject(analysis?.problemSubject) : null)
+    ?? feedbackProblemTitle(item.quote);
 }
 
 export type FeedbackReportedOrder = "recent" | "first";
@@ -596,21 +629,6 @@ export function FeedbackScreen({
   >({});
   const feedbackDetailTriggerRef = useRef<HTMLElement | null>(null);
   const router = useRouter();
-  const visible = useMemo(
-    () => {
-      const filtered = feedbackItems.filter(
-        (item) =>
-          (source === "All" || item.source === source) &&
-          (severity === "All" || item.severity === severity) &&
-          (tier === "All" || item.accountTier === tier) &&
-          `${item.customer} ${item.quote}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
-      );
-      return orderFeedbackByReportedAt(filtered, reportedOrder);
-    },
-    [feedbackItems, query, reportedOrder, source, severity, tier],
-  );
   const problemById = useMemo(
     () => new Map(problemOptions.map((problem) => [problem.id, problem])),
     [problemOptions],
@@ -618,6 +636,21 @@ export function FeedbackScreen({
   const analysisByFeedback = useMemo(
     () => new Map(analyses.map((analysis) => [analysis.feedbackId, analysis])),
     [analyses],
+  );
+  const visible = useMemo(
+    () => {
+      const filtered = feedbackItems.filter(
+        (item) =>
+          (source === "All" || item.source === source) &&
+          (severity === "All" || item.severity === severity) &&
+          (tier === "All" || item.accountTier === tier) &&
+          `${item.customer} ${item.quote} ${feedbackInboxSubject(item, analysisByFeedback.get(item.id), reviewedProblems[item.id] ?? (item.problemId ? problemById.get(item.problemId) : undefined))}`
+            .toLowerCase()
+            .includes(query.toLowerCase()),
+      );
+      return orderFeedbackByReportedAt(filtered, reportedOrder);
+    },
+    [feedbackItems, query, reportedOrder, source, severity, tier, analysisByFeedback, reviewedProblems, problemById],
   );
   const openFeedback = openFeedbackId
     ? feedbackItems.find((item) => item.id === openFeedbackId) ?? null
@@ -770,7 +803,7 @@ export function FeedbackScreen({
         kind: "success",
         text:
           decision === "approve"
-            ? `${payload.createdProblem ? "Created" : "Linked"} product problem “${payload.problem?.title ?? "Needs review"}”.${payload.investigation ? " Its investigation is ready for review." : " The workflow will continue automatically."}`
+            ? `${payload.createdProblem ? "Created" : "Linked"} issue “${payload.problem?.title ?? "Needs review"}”.${payload.investigation ? " Its investigation is ready for review." : " The workflow will continue automatically."}`
             : "AI proposal rejected. The feedback remains in the inbox and unclustered.",
       });
       router.refresh();
@@ -907,16 +940,15 @@ export function FeedbackScreen({
     return (
       <>
         <PageTitle
-          title="Unified feedback inbox"
-          description="Review normalized customer signals across every connected source."
+          title={WORKSPACE_LABELS.feedback}
           action={pullControls(true)}
         />
         {notice && <p className={`toast ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>{notice.text}</p>}
         <EmptyWorkspaceState
-          title="No feedback has been imported"
-          description="This workspace has no customer signals. Connect an approved source before running classification or clustering."
+          title="No feedback yet"
+          description="Import feedback from a connected source, or connect a new one."
           actionHref="/integrations"
-          actionLabel="Review integrations"
+          actionLabel="Manage integrations"
         />
       </>
     );
@@ -925,7 +957,7 @@ export function FeedbackScreen({
     const linkedProblemId = openLinkedProblem?.id ?? openFeedback.problemId;
     const linkedProblemTitle = openLinkedProblem?.title
       ?? (linkedProblemId ? problemById.get(linkedProblemId)?.title : undefined)
-      ?? "Linked product problem";
+      ?? "Linked issue";
     return (
       <section
         className="feedback-detail-page"
@@ -1019,7 +1051,7 @@ export function FeedbackScreen({
                 </p>
                 {openAnalysis.proposedProblemId && openAnalysis.reviewStatus === "Proposed" && (
                   <p className="feedback-detail-suggested-problem">
-                    Suggested match · {problemById.get(openAnalysis.proposedProblemId)?.title ?? "Existing product problem"}
+                    Suggested match · {problemById.get(openAnalysis.proposedProblemId)?.title ?? "Existing issue"}
                     <span>{Math.round(openAnalysis.clusterConfidence * 100)}% confidence</span>
                   </p>
                 )}
@@ -1040,7 +1072,7 @@ export function FeedbackScreen({
             ) : (
               <section className="feedback-detail-recommendation feedback-detail-recommendation-empty">
                 <h2>No recommendation yet</h2>
-                <p>Analyze this signal when you are ready to classify it and check for a related product problem.</p>
+                <p>Analyze this report to classify it and find related issues.</p>
               </section>
             )}
           </main>
@@ -1129,7 +1161,7 @@ export function FeedbackScreen({
                     }))
                   }
                   options={[
-                    { value: "__new__", label: "Create a new product problem" },
+                    { value: "__new__", label: "Create a new issue" },
                     ...(openAnalysis.proposedProblemId && !problemOptions.some((problem) => problem.id === openAnalysis.proposedProblemId)
                       ? [{
                           value: openAnalysis.proposedProblemId,
@@ -1194,12 +1226,12 @@ export function FeedbackScreen({
   return (
     <>
       <PageTitle
-        title="Unified feedback inbox"
-        description="Review normalized customer signals across every connected source."
+        title={WORKSPACE_LABELS.feedback}
         action={<div className="page-title-actions">
+          {proposedAnalyses.length > 0 && <span className="badge brand" role="status">{proposedAnalyses.length} needs review</span>}
           {pullControls()}
-          <button type="button" className="btn primary feedback-analyze-button" disabled={!selected.length || busy} onClick={() => void classify()}>
-            <Sparkles size={14} /> {busy ? "Analyzing…" : `Analyze with ${providerLabel} ${selected.length || ""}`}
+          <button type="button" className="btn primary feedback-analyze-button" aria-label={`Analyze selected feedback with ${providerLabel}`} disabled={!selected.length || busy} onClick={() => void classify()}>
+            <Sparkles size={14} /> {busy ? "Analyzing…" : `Analyze${selected.length ? ` (${selected.length})` : ""}`}
           </button>
         </div>}
       />
@@ -1211,7 +1243,7 @@ export function FeedbackScreen({
             className="neumorphic-composite-field"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search customer feedback…"
+            placeholder="Search feedback…"
           />
         </label>
         <CustomSelect
@@ -1284,28 +1316,6 @@ export function FeedbackScreen({
           {notice.text}
         </p>
       )}
-      {analyses.length > 0 && (
-        <section
-          className="callout grok-result"
-          aria-label="Latest AI recommendations"
-        >
-          <div className="split">
-            <div>
-              <div className="callout-title">
-                <Sparkles size={13} /> {providerLabel} recommendations
-              </div>
-              <p className="subtle">
-                Classification confidence = 50% clarity + 35% evidence quality +
-                15% inverse ambiguity. Cluster confidence uses 65% semantic
-                match + 20% evidence quality + 15% inverse ambiguity.
-              </p>
-            </div>
-            <span className="badge brand">
-              {proposedAnalyses.length} awaiting review
-            </span>
-          </div>
-        </section>
-      )}
       <section className="card table-wrap">
         <table className="feedback-inbox-table">
           <caption className="sr-only">Customer feedback signals</caption>
@@ -1314,7 +1324,7 @@ export function FeedbackScreen({
               <th>
                 <span className="sr-only">Select</span>
               </th>
-              <th>Customer signal</th>
+              <th>Feedback</th>
               <th aria-sort={reportedOrder === "recent" ? "descending" : "ascending"}>
                 <button
                   type="button"
@@ -1344,9 +1354,8 @@ export function FeedbackScreen({
               </th>
               <th>Source</th>
               <th>Type</th>
-              <th>Sentiment</th>
-              <th>Account</th>
-              <th>Problem</th>
+              <th>Status</th>
+              <th><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -1357,9 +1366,8 @@ export function FeedbackScreen({
               const linkedProblem = item.problemId
                 ? problemById.get(item.problemId)
                 : undefined;
-              const proposedProblem = analysis?.proposedProblemId
-                ? problemById.get(analysis.proposedProblemId)
-                : undefined;
+              const subject = feedbackInboxSubject(item, analysis, reviewedProblem ?? linkedProblem);
+              const problemId = reviewedProblem?.id ?? item.problemId;
               return (
                 <tr key={item.id}>
                   <td>
@@ -1368,102 +1376,36 @@ export function FeedbackScreen({
                         type="checkbox"
                         checked={selected.includes(item.id)}
                         onChange={() => toggle(item.id)}
-                        aria-label={`Select feedback from ${item.customer}`}
+                        aria-label={`Select feedback: ${subject}, ${item.customer}, ${reportedAt.date}${reportedAt.time ? ` ${reportedAt.time}` : ""}`}
                       />
                     </label>
                   </td>
                   <td>
-                    <div className="feedback-signal-heading">
-                      <strong>{item.customer}</strong>
-                      <button
-                        type="button"
-                        className="feedback-expand-button"
-                        onClick={() => openFeedbackDetails(item.id)}
-                      >
-                        View details <ChevronRight size={13} />
-                      </button>
-                    </div>
-                    <p className="truncate">{item.quote}</p>
-                    <small>
-                      {analysis
-                        ? `${Math.round(analysis.classificationConfidence * 100)}% AI classification proposal`
-                        : `${Math.round(item.confidence * 100)}% classification confidence`}{" "}
-                      · {item.redacted ? "PII redacted" : "PII scan clear"}
-                    </small>
-                    {analysis && (
-                      <details className="ai-evidence">
-                        <summary>Why the model suggested this</summary>
-                        <p>{analysis.rationale}</p>
-                        <ul>
-                          {analysis.evidence.map((evidence) => (
-                            <li key={evidence}>{evidence}</li>
-                          ))}
-                        </ul>
-                      </details>
-                    )}
+                    <strong className="feedback-inbox-subject">{subject}</strong>
                   </td>
                   <td className="feedback-reported-date">
-                    <time dateTime={item.observedAt}>
+                    <time dateTime={item.observedAt} title={reportedAt.time ?? undefined}>
                       <strong>{reportedAt.date}</strong>
-                      {reportedAt.time && <small>{reportedAt.time}</small>}
                     </time>
                   </td>
                   <td>
                     <span className="badge">{item.source}</span>
                   </td>
                   <td>
-                    {analysis ? (
-                      <>
-                        <span>{analysis.classification}</span>
-                        <small>{analysis.reviewStatus}</small>
-                      </>
-                    ) : (
-                      item.type
-                    )}
+                    {analysis?.reviewStatus !== "Rejected" ? analysis?.classification ?? item.type : item.type}
                   </td>
                   <td>
-                    {analysis?.sentiment ? (
-                      <span className={`badge feedback-sentiment${sentimentTone(analysis.sentiment)}`}>
-                        {analysis.sentiment}
-                      </span>
-                    ) : (
-                      <span className="subtle">Not analyzed</span>
-                    )}
+                    <span className={`badge${analysis?.reviewStatus === "Proposed" ? " brand" : ""}`}>
+                      {analysis?.reviewStatus === "Proposed" ? "Needs review" : analysis?.reviewStatus ?? "Not analyzed"}
+                    </span>
                   </td>
                   <td>
-                    {item.accountTier}
-                  </td>
-                  <td>
-                    {reviewedProblem ? (
-                      <>
-                        <Link className="text-link" href={`/problems/${reviewedProblem.id}`}>
-                          {reviewedProblem.title}
-                        </Link>
-                        <small>Reviewed link</small>
-                      </>
-                    ) : item.problemId ? (
-                      <Link
-                        className="text-link feedback-problem-link"
-                        href={`/problems/${item.problemId}`}
-                      >
-                        {linkedProblem?.title ?? "Linked product problem"}
-                      </Link>
-                    ) : analysis?.proposedProblemId && analysis.reviewStatus === "Proposed" ? (
-                      <>
-                        <Link
-                          className="text-link feedback-problem-link"
-                          href={`/problems/${analysis.proposedProblemId}`}
-                        >
-                          {proposedProblem?.title ?? "Suggested product problem"}
-                        </Link>
-                        <small>
-                          {Math.round(analysis.clusterConfidence * 100)}%
-                          proposed match
-                        </small>
-                      </>
-                    ) : (
-                      <span className="subtle">Unclustered</span>
-                    )}
+                    <div className="feedback-inbox-actions">
+                      <button type="button" className="feedback-expand-button" aria-label={`${analysis?.reviewStatus === "Proposed" ? "Review" : "Details for"} ${subject}`} onClick={() => openFeedbackDetails(item.id)}>
+                        {analysis?.reviewStatus === "Proposed" ? "Review" : "Details"} <ChevronRight size={13} />
+                      </button>
+                      {problemId && <Link className="text-link" href={`/problems/${problemId}`} aria-label={`View issue: ${subject}`}>View issue</Link>}
+                    </div>
                   </td>
                 </tr>
               );
@@ -1612,7 +1554,7 @@ function RevenueCell({
 }
 
 const PROBLEM_FILTER_LABELS: Record<ProblemTableFilterColumn, string> = {
-  title: "Product problem",
+  title: "Issue",
   signals: "Signals",
   revenue: "Revenue",
   severity: "Severity",
@@ -2115,7 +2057,7 @@ function ProblemTable({
   if (problems.length === 0) {
     return (
       <div className="empty">
-        <strong>No product problems</strong>
+        <strong>No issues</strong>
         <p>Reviewed problem clusters will appear here.</p>
       </div>
     );
@@ -2186,13 +2128,13 @@ function ProblemTable({
         <table className="problem-table">
           <caption className="sr-only">
             {isClassification
-              ? "Product problem classification"
-              : "Product problem prioritization metrics"}
+              ? "Issue classification"
+              : "Issue prioritization metrics"}
           </caption>
           <thead>
             <tr>
               {isClassification ? (
-                <th scope="col">Product problem</th>
+                <th scope="col">Issue</th>
               ) : (
                 renderFilterHeader("title")
               )}
@@ -2666,7 +2608,7 @@ export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) 
     analytics.problems[0];
 
   const viewLabel = (view: ProblemView) => {
-    if (view === "problems") return "Inventory";
+    if (view === "problems") return "List";
     if (view === "classification") return "Classification";
     return "Board";
   };
@@ -2674,23 +2616,22 @@ export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) 
   return (
     <>
       <PageTitle
-        title="Product problems"
-        description="Persistent clusters that connect repeated feedback to business and engineering context."
+        title={WORKSPACE_LABELS.problems}
         action={
           reviewProblem ? (
             <Link
               className="btn"
               href={`/problems/${reviewProblem.id}#evidence`}
             >
-              <Sparkles size={14} /> Review clustering suggestion
+              <Sparkles size={14} /> Review issue
             </Link>
           ) : undefined
         }
       />
       {analytics.problems.length === 0 ? (
         <EmptyWorkspaceState
-          title="No product problems yet"
-          description="Problems will appear after feedback is imported and reviewed. No placeholder clusters have been created."
+          title="No issues yet"
+          description="Import and review customer feedback to create your first issue."
           actionHref="/feedback"
           actionLabel="Open feedback inbox"
         />
@@ -2700,8 +2641,8 @@ export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) 
             {[
               ["Needs review", analytics.metrics.needsReview],
               ["High or critical", high],
-              ["Uncertain clusters", uncertain],
-              ["Active problems", analytics.metrics.activeProblems],
+              ["Low-confidence matches", uncertain],
+              ["Active issues", analytics.metrics.activeProblems],
             ].map(([label, value]) => (
               <div className="card metric" key={label}>
                 <div className="metric-label">{label}</div>
@@ -2714,22 +2655,15 @@ export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) 
               <div>
                 <h2>
                   {tableView === "board"
-                    ? "Problem workflow"
-                    : "Problem inventory"}
+                    ? "Issue board"
+                    : "All issues"}
                 </h2>
-                <p>
-                  {tableView === "problems"
-                    ? "Decision metrics for each persistent problem."
-                    : tableView === "classification"
-                      ? "Product area and feedback taxonomy for each problem."
-                      : "Lifecycle status from detection through verification and closure."}
-                </p>
               </div>
               <div
                 className="problem-view-tabs"
                 data-view={tableView}
                 role="tablist"
-                aria-label="Product problem view"
+                aria-label="Issue view"
               >
                 <span
                   className="problem-view-switch-thumb"
@@ -2835,7 +2769,6 @@ export function PrioritizationScreen({
     <>
       <PageTitle
         title="Prioritization"
-        description="Decide what to solve next using visible customer and business impact."
         action={
           <CustomSelect
             className="prioritization-type-filter"
@@ -2859,7 +2792,7 @@ export function PrioritizationScreen({
       {allRows.length === 0 ? (
         <EmptyWorkspaceState
           title="Nothing to prioritize"
-          description="The decision queue is empty because this workspace has no product problems."
+          description="There are no issues to prioritize yet."
           actionHref="/feedback"
           actionLabel="Review feedback"
         />
@@ -2885,7 +2818,6 @@ export function PrioritizationScreen({
                   ),
                 )}
               </strong>
-              <small>customer ARR connected to this queue</small>
             </div>
             <div>
               <span>Needs evidence review</span>
@@ -2898,7 +2830,6 @@ export function PrioritizationScreen({
                   ).length
                 }
               </strong>
-              <small>before a confident roadmap decision</small>
             </div>
           </div>
           {rows.length === 0 ? (
@@ -2914,10 +2845,6 @@ export function PrioritizationScreen({
               <div className="prioritization-queue-head">
                 <div>
                   <h2>Impact review queue</h2>
-                  <p>
-                    Ordered by affected revenue, with the other decision
-                    drivers kept visible.
-                  </p>
                 </div>
                 <Link className="text-link" href="/settings#priority">
                   Review policy settings
@@ -2991,14 +2918,6 @@ export function PrioritizationScreen({
               </ol>
             </section>
           )}
-          <div className="prioritization-policy-note section-gap">
-            <Info size={16} aria-hidden="true" />
-            <p>
-              Affected revenue sets the current queue order. Signal volume,
-              severity, trend, and evidence confidence remain visible so ARR
-              never becomes an automatic roadmap decision.
-            </p>
-          </div>
         </>
       )}
     </>
@@ -3560,12 +3479,10 @@ export function ProductProblemInvestigationPanel({
             <div>
               <span>Related signals</span>
               <strong>{investigation?.relatedSignalCount ?? problem.count}</strong>
-              <small>Customer reports linked to this problem</small>
             </div>
             <div>
               <span>Details to confirm</span>
               <strong>{decisionContent ? decisionContent.detailsToConfirm.length : "—"}</strong>
-              <small>Open product decisions</small>
             </div>
             <div>
               <span>Validation checks</span>
@@ -3872,7 +3789,6 @@ export function ProductProblemInvestigationPanel({
           <section className="investigation-next-step">
             <div>
               <h3>Investigate before writing the prompt</h3>
-              <p>Establish a working hypothesis, identify evidence gaps, and propose repository-scoped checks before starting Prompt Testing.</p>
               <span className="subtle">Affected impact: {money(problem.revenue)} ARR across {problem.count} signals.</span>
             </div>
             <button className="btn primary" type="button" disabled={startingInvestigation} onClick={startInvestigation}>
@@ -4039,8 +3955,7 @@ export function PddPrioritizationScreen({
   return (
     <>
       <PageTitle
-        title="Prompt-driven development"
-        description="Rank product problems by prompt-test readiness, then open one task for focused Prompt evaluation."
+        title={WORKSPACE_LABELS.pdd}
         action={
           <div className="pdd-list-controls">
             <CustomSelect
@@ -4048,22 +3963,22 @@ export function PddPrioritizationScreen({
               value={readinessFilter}
               onValueChange={(value) => setReadinessFilter(value as PddReadinessFilter)}
               options={[
-                { value: "all", label: "All readiness states" },
+                { value: "all", label: "All statuses" },
                 { value: "ready", label: "Ready to test" },
                 { value: "preparing", label: "Needs preparation" },
-                { value: "active", label: "Prompt Testing active" },
-                { value: "approval", label: "Approval ready" },
+                { value: "active", label: "Testing" },
+                { value: "approval", label: "Ready for approval" },
               ]}
             />
             <CustomSelect
-              ariaLabel="Rank Prompt Testing tasks by"
+              ariaLabel="Sort Prompt Testing tasks"
               value={rankMode}
               onValueChange={(value) => setRankMode(value as PddRankMode)}
               options={[
-                { value: "readiness", label: "Rank: prompt-test readiness" },
-                { value: "revenue", label: "Rank: affected ARR" },
-                { value: "signals", label: "Rank: signal volume" },
-                { value: "severity", label: "Rank: severity" },
+                { value: "readiness", label: "Sort: readiness" },
+                { value: "revenue", label: "Sort: affected revenue" },
+                { value: "signals", label: "Sort: report count" },
+                { value: "severity", label: "Sort: severity" },
               ]}
             />
           </div>
@@ -4073,8 +3988,8 @@ export function PddPrioritizationScreen({
       <section className="pdd-priority-workspace">
         <div className="pdd-priority-head">
           <div>
-            <h2>Prompt Testing priorities</h2>
-            <p>{visibleRows.length} task{visibleRows.length === 1 ? "" : "s"} ranked for prompt preparation and testing.</p>
+            <h2>Test queue</h2>
+            <p>{visibleRows.length === 1 ? "1 issue" : `${visibleRows.length} issues`}</p>
           </div>
           <span className="badge brand">{rows.filter((row) => row.preparation.category === "ready").length} ready to test</span>
         </div>
@@ -4099,7 +4014,7 @@ export function PddPrioritizationScreen({
                       </p>
                     </div>
                     <span className="pdd-priority-open">
-                      Open Prompt Testing task
+                      Open task
                       <ChevronRight size={15} aria-hidden="true" />
                     </span>
                   </div>
@@ -4112,12 +4027,17 @@ export function PddPrioritizationScreen({
           </ol>
         ) : (
           <div className="empty pdd-priority-empty">
-            <strong>{rows.length ? "No tasks match this readiness filter" : "No open Prompt Testing tasks"}</strong>
+            <strong>{rows.length ? "No matching tasks" : "No issues to test"}</strong>
             <p>
               {rows.length
-                ? "Choose another readiness state to return tasks to the list."
-                : "Open product problems will appear here when they are available for preparation."}
+                ? "Try another status or clear the filter."
+                : "Review an issue to prepare its prompt."}
             </p>
+            {rows.length ? (
+              <button className="btn" type="button" onClick={() => setReadinessFilter("all")}>Clear filter</button>
+            ) : (
+              <Link className="btn" href="/problems">View issues</Link>
+            )}
           </div>
         )}
       </section>
@@ -4149,14 +4069,13 @@ export function PddScreen({
     return (
       <>
         <PageTitle
-          title="Prompt-driven development"
-          description="Turn an investigated product problem into a tested, approval-ready implementation contract."
+          title={WORKSPACE_LABELS.pdd}
         />
         <EmptyWorkspaceState
           title="Nothing is ready for Prompt Testing"
-          description="Review customer evidence and create a product problem before preparing implementation work."
+          description="Choose an issue to review its prompt."
           actionHref="/problems"
-          actionLabel="Review product problems"
+          actionLabel="View issues"
         />
       </>
     );
@@ -4172,11 +4091,10 @@ export function PddScreen({
   return (
     <>
       <PageTitle
-        title="Prompt-driven development"
-        description="Improve the immutable prompt, generate acceptance tests, and prepare investigated work for approval."
+        title={WORKSPACE_LABELS.pdd}
         action={
           <Link className="btn" href="/pdd">
-            <ChevronLeft size={14} aria-hidden="true" /> Back to Prompt Testing priorities
+            <ChevronLeft size={14} aria-hidden="true" /> Back to Prompt Testing
           </Link>
         }
       />
@@ -4189,7 +4107,7 @@ export function PddScreen({
               <p>{selectedProblem.productArea} · {selectedProblem.severity} severity · {money(selectedProblem.revenue)} ARR</p>
             </div>
             <Link className="text-link" href={`/problems/${encodeURIComponent(selectedProblem.id)}#investigation`}>
-              View product problem <ChevronRight size={13} aria-hidden="true" />
+              View issue <ChevronRight size={13} aria-hidden="true" />
             </Link>
           </section>
           <nav className="pdd-phase-rail card" aria-label="Prompt Testing preparation phases">
@@ -4236,7 +4154,7 @@ export function PddScreen({
                     ? "View runtime verification"
                     : selected?.verification.status === "Verification blocked"
                       ? "Resolve verification blocker"
-                      : "Open product problem"}
+                      : "View issue"}
                   <ChevronRight size={14} aria-hidden="true" />
                 </Link>
               </div>
@@ -4270,25 +4188,37 @@ async function workflowMutation(
 }
 
 export function ApprovalsScreen({
-  problem,
   problemTitles,
   initialEngineeringWorkflows,
   orgId,
+  canApprove: allowApproval = true,
+  initialApprovalId,
+  requirementReviews = [],
+  reviewStorageReady = true,
+  presentationDemo = false,
 }: {
   problem: ProductProblem | null;
   problemTitles: Record<string, string>;
   initialEngineeringWorkflows: EngineeringWorkflowView[];
   orgId: string;
+  canApprove?: boolean;
+  initialApprovalId?: string;
+  requirementReviews?: Array<{ problemId: string; title: string; needsHelp: boolean }>;
+  reviewStorageReady?: boolean;
+  presentationDemo?: boolean;
 }) {
-  const [engineeringWorkflows, setEngineeringWorkflows] = useState(
-    initialEngineeringWorkflows,
-  );
+  const router = useRouter();
+  const canApprove = allowApproval && !presentationDemo;
+  const demoNotice = presentationDemo
+    ? <p className="subtle"><span className="badge">Demo · sample data</span> Read-only decisions. No live work is running.</p> : null;
+  const [localWorkflows, setLocalWorkflows] = useState({ source: initialEngineeringWorkflows, rows: initialEngineeringWorkflows });
+  const engineeringWorkflows = localWorkflows.source === initialEngineeringWorkflows ? localWorkflows.rows : initialEngineeringWorkflows;
   const approvalItems: ApprovalItem[] = engineeringWorkflows.flatMap((workflow) => [
     workflow.approval
-      ? { key: `engineering:${workflow.problemId}`, kind: "engineering" as const, workflow }
+      ? { key: `engineering:${workflow.approval.id}`, kind: "engineering" as const, workflow }
       : null,
     workflow.finalApproval
-      ? { key: `final:${workflow.problemId}`, kind: "final" as const, workflow }
+      ? { key: `final:${workflow.finalApproval.id}`, kind: "final" as const, workflow }
       : null,
   ].filter(Boolean) as ApprovalItem[]);
   const initialPendingItems = approvalItems.filter((item) =>
@@ -4296,12 +4226,19 @@ export function ApprovalsScreen({
       ? item.workflow.approval?.status === "Pending"
       : item.workflow.finalApproval?.status === "Pending",
   );
-  const [tab, setTab] = useState<ApprovalTab>(() =>
-    initialPendingItems.length > 0 ? "pending" : "history",
-  );
-  const [selected, setSelected] = useState<string>(() =>
-    initialPendingItems[0]?.key ?? approvalItems[0]?.key ?? "",
-  );
+  const requestedItem = approvalItems.find((item) => (item.kind === "engineering" ? item.workflow.approval?.id : item.workflow.finalApproval?.id) === initialApprovalId);
+  const initialTab: ApprovalTab = requestedItem && !initialPendingItems.includes(requestedItem) ? "history" : "pending";
+  const initialSelected = requestedItem?.key ?? initialPendingItems[0]?.key ?? "";
+  const [localTab, setLocalTab] = useState({ requestId: initialApprovalId, value: initialTab });
+  const [localSelected, setLocalSelected] = useState({ requestId: initialApprovalId, value: initialSelected });
+  const selected = localSelected.requestId === initialApprovalId ? localSelected.value : initialSelected;
+  const selectedRecord = approvalItems.find((item) => item.key === selected);
+  const selectedStatus = selectedRecord?.kind === "engineering"
+    ? selectedRecord.workflow.approval?.status : selectedRecord?.workflow.finalApproval?.status;
+  const tab: ApprovalTab = selectedRecord ? selectedStatus === "Pending" ? "pending" : "history"
+    : localTab.requestId === initialApprovalId ? localTab.value : initialTab;
+  const setTab = (value: ApprovalTab) => setLocalTab({ requestId: initialApprovalId, value });
+  const setSelected = (value: string) => setLocalSelected({ requestId: initialApprovalId, value });
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{
     kind: "success" | "error";
@@ -4319,46 +4256,82 @@ export function ApprovalsScreen({
       : item.workflow.finalApproval?.status !== "Pending",
   );
   const visibleItems = tab === "pending" ? pendingItems : historyItems;
-  const selectedItem = visibleItems.find((item) => item.key === selected) ?? visibleItems[0];
+  const selectedItem = visibleItems.find((item) => item.key === selected) ?? (!selected ? visibleItems[0] : undefined);
   const engineeringWorkflow = selectedItem?.workflow ?? null;
   const engineeringApproval = engineeringWorkflow?.approval;
   const finalApproval = engineeringWorkflow?.finalApproval;
   const selectedKind = selectedItem?.kind;
+  const approvalBlockReason = selectedItem ? pendingApprovalBlockReason(selectedItem) : null;
+
+  useEffect(() => {
+    if (presentationDemo) return;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible" && !busy) router.refresh();
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [busy, router, presentationDemo]);
 
   function replaceWorkflow(next: EngineeringWorkflowView) {
-    setEngineeringWorkflows((current) =>
-      current.map((workflow) => workflow.problemId === next.problemId ? next : workflow),
-    );
+    setLocalWorkflows({ source: initialEngineeringWorkflows,
+      rows: engineeringWorkflows.map((workflow) => workflow.problemId === next.problemId ? next : workflow) });
   }
 
   function selectTab(nextTab: ApprovalTab) {
     const nextItems = nextTab === "pending" ? pendingItems : historyItems;
     setTab(nextTab);
-    if (!nextItems.some((item) => item.key === selected) && nextItems[0]) {
-      setSelected(nextItems[0].key);
+    if (!nextItems.some((item) => item.key === selected)) {
+      setSelected(nextItems[0]?.key ?? "");
     }
     setNotice(undefined);
+  }
+
+  const domainReviews = <>
+    {!reviewStorageReady && <p className="toast error" role="alert">Some reviews are unavailable. Ask an administrator to finish review setup.</p>}
+    {requirementReviews.length > 0 && <section className="card review-inbox" aria-label="Issue reviews">
+      {requirementReviews.map((item) => <Link className="review-inbox-row" href={`/problems/${item.problemId}`} key={item.problemId}>
+        <strong>{item.title}</strong>
+        <span className={`badge ${item.needsHelp ? "medium" : "brand"}`}>{item.needsHelp ? "Needs attention" : "Confirm expected behavior"}</span>
+        <ChevronRight size={16} aria-hidden="true" />
+      </Link>)}
+    </section>}
+  </>;
+
+  const unavailableApprovalId = initialApprovalId && !requestedItem ? initialApprovalId
+    : selected && !selectedRecord ? selected.slice(selected.indexOf(":") + 1) : null;
+  if (unavailableApprovalId) {
+    return <>
+      <PageTitle title={WORKSPACE_LABELS.approvals} />
+      {demoNotice}
+      <section className="card approval-detail-empty">
+        <h2>Decision unavailable</h2>
+        <p>This decision is no longer in the current review list. Open its record to see the original decision.</p>
+        <div className="top-actions">
+          <Link className="btn" href={`/approvals/${encodeURIComponent(unavailableApprovalId)}`}>View decision record</Link>
+          <Link className="btn" href="/approvals">View current reviews</Link>
+          <Link className="text-link" href="/problems">View issues</Link>
+        </div>
+      </section>
+    </>;
   }
 
   if (approvalItems.length === 0) {
     return (
       <>
-        <PageTitle
-          title="Execution approvals"
-          description="Human authorization for agent implementation and final code execution."
-        />
-        <EmptyWorkspaceState
-          title="No approval requests"
-          description="Agent-run and final-execution requests appear here when they are ready for a human decision."
-          actionHref={problem ? `/problems/${problem.id}` : "/feedback"}
-          actionLabel={problem ? "Review product problem" : "Open feedback inbox"}
-        />
+        <PageTitle title={WORKSPACE_LABELS.approvals} />
+        {demoNotice}
+        {domainReviews}
+        {!requirementReviews.length && <section className="card approval-detail-empty">
+          <h2>{reviewStorageReady ? "Nothing needs your review" : "Reviews unavailable"}</h2>
+          <Link className="btn" href="/problems">View issues</Link>
+        </section>}
       </>
     );
   }
   async function decideEngineering(action: "approve" | "reject") {
-    if (!engineeringApproval) return;
+    if (!engineeringApproval || !canApprove || busy) return;
     if (!selectedItem) return;
+    const blocked = pendingApprovalBlockReason(selectedItem);
+    if (action === "approve" && blocked) { setNotice({ kind: "error", text: blocked }); return; }
     setBusy(selectedItem.key);
     setNotice(undefined);
     try {
@@ -4388,8 +4361,8 @@ export function ApprovalsScreen({
         kind: "success",
         text:
           action === "approve"
-            ? "Coding run approved and queued. Track execution and verification in Agent runs."
-            : "Coding run rejected. The decision is recorded in the audit trail.",
+            ? "Coding run approved and queued."
+            : "Coding run rejected.",
       });
     } catch (error) {
       setNotice({
@@ -4402,8 +4375,10 @@ export function ApprovalsScreen({
   }
 
   async function decideFinalExecution(action: "approve" | "reject") {
-    if (!finalApproval) return;
+    if (!finalApproval || !canApprove || busy) return;
     if (!selectedItem) return;
+    const blocked = pendingApprovalBlockReason(selectedItem);
+    if (action === "approve" && blocked) { setNotice({ kind: "error", text: blocked }); return; }
     setBusy(selectedItem.key);
     setNotice(undefined);
     try {
@@ -4437,11 +4412,11 @@ export function ApprovalsScreen({
         text:
           action === "approve"
             ? executionFailed
-              ? payload.approval.attempt?.failureMessage ?? "GitHub could not merge the reviewed commit."
+              ? payload.approval.attempt?.failureMessage ?? "The approved action could not complete."
               : payload.approval.attempt?.status === "Queued"
-                ? "The reviewed commit was approved and queued for execution."
-                : "The reviewed commit was approved. Release verification remains automatic."
-            : "Final execution was rejected. The draft PR remains unchanged.",
+                ? "Approved and queued."
+                : "Approved."
+            : finalApproval.executionAction === "deploy" ? "Deployment rejected." : "Merge rejected. The PR is unchanged.",
       });
     } catch (error) {
       setNotice({
@@ -4456,17 +4431,15 @@ export function ApprovalsScreen({
     }
   }
 
-  const itemTitle = (item: ApprovalItem) => {
-    if (item.kind === "engineering") {
-      return `Authorize agent · ${problemTitles[item.workflow.problemId] ?? item.workflow.problemId}`;
-    }
-    if (item.kind === "final") {
-      return `Merge PR #${item.workflow.finalApproval?.pullRequestNumber ?? ""} · ${problemTitles[item.workflow.problemId] ?? item.workflow.problemId}`;
-    }
-    return "Final execution";
-  };
+  const itemTitle = (item: ApprovalItem) =>
+    problemTitles[item.workflow.problemId] ?? "Issue";
+
+  const itemAction = (item: ApprovalItem) => item.kind === "engineering"
+    ? "Coding run"
+    : `${item.workflow.finalApproval?.executionAction === "deploy" ? "Deploy" : "Merge"} PR #${item.workflow.finalApproval?.pullRequestNumber ?? ""}`;
 
   const itemStatus = (item: ApprovalItem) => {
+    if (pendingApprovalBlockReason(item)) return "Needs attention";
     if (item.kind === "engineering") return item.workflow.approval?.status ?? "Pending";
     if (item.kind === "final") {
       return item.workflow.finalApproval?.attempt?.status ?? item.workflow.finalApproval?.status ?? "Pending";
@@ -4476,17 +4449,9 @@ export function ApprovalsScreen({
 
   return (
     <>
-      <PageTitle
-        title="Execution approvals"
-        description="Two human gates protect code changes: authorize the agent, then authorize the reviewed result."
-        action={
-          <span className={`badge ${pendingItems.length ? "medium" : "success"}`}>
-            {pendingItems.length
-              ? `${pendingItems.length} awaiting review`
-              : "No pending decisions"}
-          </span>
-        }
-      />
+      <PageTitle title={WORKSPACE_LABELS.approvals} />
+      {demoNotice}
+      {tab === "pending" && domainReviews}
       <div className="approval-tabs" role="group" aria-label="Approval status">
         {(["pending", "history"] as const).map((item) => (
           <button
@@ -4501,19 +4466,9 @@ export function ApprovalsScreen({
           </button>
         ))}
       </div>
-      <div className="approval-layout">
-        <section className="card approval-queue-card">
-          <div className="card-head">
-            <div>
-              <h2>{tab === "pending" ? "Awaiting your decision" : "Decision history"}</h2>
-              <p className="subtle">
-                {tab === "pending"
-                  ? "Only agent-run and final-code decisions appear here."
-                  : "Completed execution decisions remain available for traceability."}
-              </p>
-            </div>
-          </div>
-          {visibleItems.length ? (
+      <div className={`approval-layout approval-compact${visibleItems.length ? "" : " is-empty"}`}>
+        {visibleItems.length ? (
+          <section className="card approval-queue-card" aria-label={tab === "pending" ? "Pending approvals" : "Approval history"}>
             <div className="approval-request-list">
               {visibleItems.map((item) => (
                 <button
@@ -4529,9 +4484,9 @@ export function ApprovalsScreen({
                   <div>
                     <strong>{itemTitle(item)}</strong>
                     <p className="subtle">
-                      {item.kind === "engineering"
-                        ? `${item.workflow.approval?.repository ?? "Repository"} · One-run authorization`
-                        : `${item.workflow.finalApproval?.repository ?? "Repository"} · Exact commit`}
+                      {itemAction(item)} · {item.kind === "engineering"
+                        ? item.workflow.approval?.repository
+                        : item.workflow.finalApproval?.repository}
                     </p>
                   </div>
                   <span
@@ -4542,93 +4497,58 @@ export function ApprovalsScreen({
                 </button>
               ))}
             </div>
-          ) : (
-            <div className="approval-queue-empty">
-              <strong>
-                {tab === "pending"
-                  ? "No execution decisions await you"
-                  : "No decisions recorded yet"}
-              </strong>
-              <p className="subtle">
-                {tab === "pending"
-                  ? "Agent activity continues automatically until it reaches one of the two human gates."
-                  : "Completed agent-run and final-execution approvals will appear here."}
-              </p>
-            </div>
-          )}
-        </section>
+          </section>
+        ) : null}
         {visibleItems.length ? (
           <section
             className="card approval-detail-card"
             id={`approval-${selectedKind === "engineering" ? engineeringApproval?.id : finalApproval?.id}`}
           >
-            {selectedKind === "engineering" && engineeringApproval && engineeringWorkflow?.prompt ? (
+            {selectedKind === "engineering" && engineeringApproval && engineeringWorkflow ? (
               <>
                 <div className="card-head">
                   <div>
-                    <h2>Authorize one coding run</h2>
-                    <p className="subtle">Bound to an immutable prompt, repository, and base commit.</p>
+                    <h2>Coding run</h2>
+                    <p className="subtle approval-destination">{engineeringApproval.repository} · {engineeringApproval.baseBranch}</p>
                   </div>
                   <span
-                    className={`badge ${engineeringApproval.status === "Approved" ? "success" : engineeringApproval.status === "Rejected" ? "high" : "medium"}`}
+                    className={`badge ${engineeringApproval.status === "Approved" ? "success" : ["Rejected", "Expired", "Superseded"].includes(engineeringApproval.status) ? "high" : "medium"}`}
                   >
-                    {engineeringApproval.status}
+                    {selectedItem ? itemStatus(selectedItem) : engineeringApproval.status}
                   </span>
                 </div>
-                <div className="card-body">
-                  <p>
-                    Approving starts one isolated coding run. Independent
-                    verification starts automatically after implementation.
-                  </p>
-                  <div className="approval-facts">
-                    <Fact
-                      icon={<Sparkles />}
-                      label="Prompt"
-                      value={`Revision ${engineeringWorkflow.prompt.revision} · ${engineeringApproval.promptHash}`}
-                    />
-                    <Fact
-                      icon={<GitBranch />}
-                      label="Destination"
-                      value={`${engineeringApproval.repository} · ${engineeringApproval.baseBranch}@${engineeringApproval.baseSha}`}
-                    />
-                    <Fact
-                      icon={<ShieldCheck />}
-                      label="Allowed capabilities"
-                      value={engineeringApproval.allowedCapabilities.join(", ")}
-                    />
-                    <Fact
-                      icon={<Clock3 />}
-                      label="Authorization expires"
-                      value={new Date(engineeringApproval.expiresAt).toLocaleString()}
-                    />
-                  </div>
+                <div className="card-body approval-summary">
                   {engineeringApproval.status === "Pending" ? (
-                    <div className="approval-actions">
-                      <button
-                        type="button"
-                        className="btn danger"
-                        disabled={busy !== null}
-                        onClick={() => decideEngineering("reject")}
-                      >
-                        Reject run
-                      </button>
-                      <button
-                        type="button"
-                        className="btn primary"
-                        disabled={busy !== null}
-                        onClick={() => decideEngineering("approve")}
-                      >
-                        Approve one run <Check size={14} />
-                      </button>
-                    </div>
+                    <>
+                      {approvalBlockReason && <p className="callout warning" role="alert">{approvalBlockReason}</p>}
+                      <p>One isolated coding run. Merge and deployment need separate approval.</p>
+                      <p className="subtle approval-expiry">Expires {new Date(engineeringApproval.expiresAt).toLocaleString()}</p>
+                      <Link className="text-link" href={`/problems/${engineeringWorkflow.problemId}`}>View issue <ChevronRight size={14} aria-hidden="true" /></Link>
+                      {!canApprove && !presentationDemo && <p role="status">An administrator must approve this action.</p>}
+                      <div className="approval-actions">
+                        <button
+                          type="button"
+                          className="btn danger"
+                          disabled={!canApprove || busy !== null}
+                          onClick={() => decideEngineering("reject")}
+                        >
+                          {busy === selectedItem?.key ? "Recording…" : "Reject run"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn primary"
+                          disabled={!canApprove || busy !== null || Boolean(approvalBlockReason)}
+                          onClick={() => decideEngineering("approve")}
+                        >
+                          {busy === selectedItem?.key ? "Queueing run…" : "Approve one run"} <Check size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+                    </>
                   ) : (
                     <div className="approval-result-actions">
-                      <div className="success-panel">
-                        <Check size={16} /> Decision recorded in the shared audit trail.
-                      </div>
                       {engineeringWorkflow.run ? (
                         <Link className="btn" href={`/agent-runs/${engineeringWorkflow.run.id}`}>
-                          View authorized run
+                          View result
                         </Link>
                       ) : null}
                     </div>
@@ -4639,10 +4559,8 @@ export function ApprovalsScreen({
               <>
                 <div className="card-head">
                   <div>
-                    <h2>Approve final PR execution</h2>
-                    <p className="subtle">
-                      The last human gate before GitHub merges the reviewed commit.
-                    </p>
+                    <h2>{finalApproval.executionAction === "deploy" ? "Deploy" : "Merge"} PR #{finalApproval.pullRequestNumber}</h2>
+                    <p className="subtle approval-destination">{finalApproval.repository} · {finalApproval.baseBranch}{finalApproval.targetEnvironment ? ` · ${finalApproval.targetEnvironment}` : ""}</p>
                   </div>
                   <span
                     className={`badge ${finalApproval.attempt?.status === "Succeeded" || finalApproval.status === "Approved" ? "success" : finalApproval.attempt?.status === "Failed" || finalApproval.status === "Rejected" || finalApproval.status === "Superseded" ? "high" : "medium"}`}
@@ -4650,95 +4568,31 @@ export function ApprovalsScreen({
                     {selectedItem ? itemStatus(selectedItem) : finalApproval.status}
                   </span>
                 </div>
-                <div className="card-body">
-                  <p>
-                    Independent verification passed. Approving will make the
-                    draft ready for review and squash-merge only the commit
-                    shown below. It does not mark the problem released without
-                    a separate deployment signal.
-                  </p>
-                  {finalApproval.autoDeployOnMerge ? (
-                    <div className="callout warning">
-                      <div className="callout-title">Production consequence</div>
-                      <p>Merging this PR will automatically deploy to production.</p>
-                    </div>
+                <div className="card-body approval-summary">
+                  {finalApproval.status === "Pending" || finalApproval.attempt?.status === "Failed" ? (
+                    <>
+                      <p>Only the reviewed commit will be {finalApproval.executionAction === "deploy" ? "deployed" : "merged"}.</p>
+                      <p className="subtle">{finalApproval.testSummary.passed} tests passed · {finalApproval.acceptanceSummary.passed} acceptance checks passed</p>
+                      {presentationDemo && <Link className="text-link" href={`/agent-runs/${finalApproval.agentRunId}`}>View sample result <ChevronRight size={14} aria-hidden="true" /></Link>}
+                      {!presentationDemo && <a className="text-link" href={`${finalApproval.pullRequestUrl}/commits/${finalApproval.headSha}`} target="_blank" rel="noreferrer">Review changes <ExternalLink size={14} aria-hidden="true" /></a>}
+                      {finalApproval.autoDeployOnMerge || finalApproval.executionAction === "deploy" ? (
+                        <div className="callout warning" role="note">
+                          <strong>{finalApproval.executionAction === "deploy" ? "This will deploy to production." : "Merging this PR will automatically deploy to production."}</strong>
+                        </div>
+                      ) : null}
+                      {finalApproval.remainingRisks.length ? (
+                        <div className="callout warning">
+                          <strong>Remaining risks</strong>
+                          <ul>{finalApproval.remainingRisks.map((risk) => <li key={risk}>{risk}</li>)}</ul>
+                        </div>
+                      ) : null}
+                      {finalApproval.rollbackPlan ? <p><strong>Rollback:</strong> {finalApproval.rollbackPlan}</p> : null}
+                    </>
                   ) : null}
-                  <div className="approval-facts final-execution-facts">
-                    <Fact
-                      icon={<GitBranch />}
-                      label="Pull request"
-                      value={`${finalApproval.repository} · #${finalApproval.pullRequestNumber} → ${finalApproval.baseBranch}`}
-                    />
-                    <Fact
-                      icon={<ShieldCheck />}
-                      label="Commit lock"
-                      value={finalApproval.headSha}
-                    />
-                    <Fact
-                      icon={<Check />}
-                      label="Verification"
-                      value={`${finalApproval.testSummary.passed} tests passed · ${finalApproval.acceptanceSummary.passed} acceptance checks passed`}
-                    />
-                    {finalApproval.releaseVerification ? (
-                      <>
-                        <Fact
-                          icon={<ShieldCheck />}
-                          label="Production verification contract"
-                          value={`${finalApproval.releaseVerification.backendChecks} backend check${finalApproval.releaseVerification.backendChecks === 1 ? "" : "s"} · ${finalApproval.releaseVerification.frontendJourneys} frontend journey${finalApproval.releaseVerification.frontendJourneys === 1 ? "" : "s"} · ${finalApproval.releaseVerification.planHash.slice(0, 8)}`}
-                        />
-                        <Fact
-                          icon={<GitBranch />}
-                          label="PR scope classification"
-                          value={(() => {
-                            const assessment = finalApproval.releaseVerification.scopeAssessment;
-                            const observed = [
-                              assessment.observed.backend ? "backend" : null,
-                              assessment.observed.frontend ? "frontend" : null,
-                              assessment.observed.unknown ? "unknown" : null,
-                            ].filter(Boolean).join(" + ") || "non-production files only";
-                            return `${observed} · ${assessment.compatible ? "matches approved contract" : "contract revision required"}`;
-                          })()}
-                        />
-                      </>
-                    ) : null}
-                    {finalApproval.uiBaseline ? (
-                      <Fact
-                        icon={<MonitorCheck />}
-                        label="Approved UI baseline"
-                        value={`${finalApproval.uiBaseline.captureCount} responsive capture${finalApproval.uiBaseline.captureCount === 1 ? "" : "s"} · ${finalApproval.uiBaseline.planHash.slice(0, 8)}`}
-                      />
-                    ) : null}
-                    <Fact
-                      icon={<AlertTriangle />}
-                      label="Remaining risks"
-                      value={
-                        finalApproval.remainingRisks.length
-                          ? finalApproval.remainingRisks.join(" · ")
-                          : "No unresolved risks reported"
-                      }
-                    />
-                    {finalApproval.targetEnvironment ? (
-                      <Fact
-                        icon={<Cloud />}
-                        label="Deployment target"
-                        value={finalApproval.targetEnvironment}
-                      />
-                    ) : null}
-                    {finalApproval.rollbackPlan ? (
-                      <Fact
-                        icon={<RotateCcw />}
-                        label="Rollback"
-                        value={finalApproval.rollbackPlan}
-                      />
-                    ) : null}
-                  </div>
                   {finalApproval.releaseVerification?.scopeAssessment.compatible === false ? (
                     <div className="callout warning" role="alert">
                       <div className="callout-title">Verification scope changed</div>
-                      <p>
-                        This PR touches a production surface outside the approved Prompt Testing contract.
-                        Final execution is locked until the Prompt Testing contract is revised and a new agent run is reviewed.
-                      </p>
+                      <p>The changes need new verification before approval.</p>
                       <ul>
                         {finalApproval.releaseVerification.scopeAssessment.mismatches.map((mismatch) => (
                           <li key={mismatch}>{mismatch}</li>
@@ -4746,95 +4600,73 @@ export function ApprovalsScreen({
                       </ul>
                     </div>
                   ) : null}
-                  <div className="callout warning final-execution-lock">
-                    <div className="callout-title">
-                      Approval applies only to {finalApproval.headSha.slice(0, 8)}
-                    </div>
-                    <p>
-                      If the PR receives another commit or changes its target
-                      branch, this authorization cannot merge it.
-                    </p>
-                  </div>
+                  {approvalBlockReason && finalApproval.releaseVerification?.scopeAssessment.compatible !== false
+                    ? <p className="callout warning" role="alert">{approvalBlockReason}</p> : null}
                   {finalApproval.status === "Pending" ? (
+                    <>
+                    {!canApprove && !presentationDemo && <p role="status">An administrator must approve this action.</p>}
                     <div className="approval-actions">
                       <button
                         type="button"
                         className="btn danger"
-                        disabled={busy !== null}
+                        disabled={!canApprove || busy !== null}
                         onClick={() => decideFinalExecution("reject")}
                       >
-                        {busy === selectedItem?.key ? "Recording…" : "Reject merge"}
+                        {busy === selectedItem?.key ? "Recording…" : finalApproval.executionAction === "deploy" ? "Reject deployment" : "Reject merge"}
                       </button>
-                      {finalApproval.releaseVerification?.scopeAssessment.compatible === false ? (
+                      {approvalBlockReason && (
                         <Link className="btn primary" href={`/problems/${finalApproval.problemId}`}>
-                          Revise Prompt Testing contract
+                          View issue
                           <ChevronRight size={14} />
                         </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn primary"
-                          disabled={busy !== null}
-                          onClick={() => decideFinalExecution("approve")}
-                        >
-                          {busy === selectedItem?.key
-                            ? "Queueing execution…"
-                            : finalApproval.executionAction === "deploy"
-                              ? "Approve production deployment"
-                              : "Approve and merge PR"}
-                          {busy !== selectedItem?.key ? <Check size={14} /> : null}
-                        </button>
                       )}
+                      <button
+                        type="button"
+                        className="btn primary"
+                        disabled={!canApprove || busy !== null || Boolean(approvalBlockReason)}
+                        onClick={() => decideFinalExecution("approve")}
+                      >
+                        {busy === selectedItem?.key
+                          ? "Queueing execution…"
+                          : finalApproval.executionAction === "deploy"
+                            ? "Approve production deployment"
+                            : "Approve and merge PR"}
+                        {busy !== selectedItem?.key ? <Check size={14} /> : null}
+                      </button>
                     </div>
+                    </>
                   ) : (
                     <div className="approval-result-actions">
-                      <div
-                        className={
-                          finalApproval.attempt?.status === "Failed"
-                            ? "callout warning"
-                            : "success-panel"
-                        }
-                      >
-                        {finalApproval.attempt?.status === "Failed" ? (
-                          <>
-                            <AlertTriangle size={16} /> Merge failed: {finalApproval.attempt.failureMessage}
-                          </>
-                        ) : (
-                          <>
-                            <Check size={16} />
-                            {finalApproval.status === "Rejected"
-                              ? "Merge rejected; the draft PR was not changed."
-                              : finalApproval.status === "Superseded"
-                                ? "Approval invalidated because the reviewed PR changed."
-                                : finalApproval.status === "Expired"
-                                  ? "Approval expired before the reviewed commit was merged."
-                                  : finalApproval.attempt?.status === "Succeeded"
-                                    ? "Reviewed commit merged and recorded in the audit trail."
-                                    : "Final execution decision recorded."}
-                          </>
-                        )}
-                      </div>
+                      {finalApproval.attempt?.status === "Failed" ? (
+                        <p className="callout warning" role="alert">
+                          {finalApproval.executionAction === "deploy" ? "Deployment" : "Merge"} failed: {finalApproval.attempt.failureMessage}
+                        </p>
+                      ) : finalApproval.status === "Superseded" || finalApproval.status === "Expired" ? (
+                        <p className="callout warning">
+                          {finalApproval.status === "Superseded" ? "The reviewed PR changed. A new approval is required." : "This approval expired. A new approval is required."}
+                        </p>
+                      ) : null}
                       <div className="top-actions">
                         {finalApproval.status === "Approved" && finalApproval.attempt?.status === "Failed" ? (
                           <button
                             type="button"
                             className="btn primary"
-                            disabled={busy !== null}
+                            disabled={!canApprove || busy !== null}
                             onClick={() => decideFinalExecution("approve")}
                           >
-                            {busy === selectedItem?.key ? "Queueing retry…" : "Retry approved merge"}
+                            {busy === selectedItem?.key ? "Queueing retry…" : finalApproval.executionAction === "deploy" ? "Retry approved deployment" : "Retry approved merge"}
                           </button>
                         ) : null}
-                        <a
+                        {!presentationDemo && <a
                           className="btn"
                           href={finalApproval.pullRequestUrl}
                           target="_blank"
                           rel="noreferrer"
                         >
                           Open pull request
-                        </a>
+                        </a>}
                         <Link className="btn" href={`/agent-runs/${finalApproval.agentRunId}`}>
-                          View verified run
+                          View result
                         </Link>
                       </div>
                     </div>
@@ -4853,15 +4685,9 @@ export function ApprovalsScreen({
           </section>
         ) : (
           <section className="card approval-detail-empty">
-            <ShieldCheck aria-hidden="true" size={28} />
-            <h2>{tab === "pending" ? "You are all caught up" : "No approval selected"}</h2>
-            <p className="subtle">
-              {tab === "pending"
-                ? "Agent activity that does not require authorization continues automatically and appears in Agent runs."
-                : "Resolved decisions will appear here when they are available."}
-            </p>
-            <Link className="btn" href="/agent-runs">
-              Open Agent runs
+            <h2>{tab === "pending" ? requirementReviews.length ? "No merge or coding approvals" : "Nothing needs your review" : "No decisions yet"}</h2>
+            <Link className="btn" href="/problems">
+              View issues
             </Link>
           </section>
         )}
@@ -4877,24 +4703,33 @@ interface ApprovalItem {
   kind: ApprovalKind;
   workflow: EngineeringWorkflowView;
 }
-function Fact({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="fact">
-      <span>{icon}</span>
-      <div>
-        <small>{label}</small>
-        <strong>{value}</strong>
-      </div>
-    </div>
-  );
+
+function pendingApprovalBlockReason(item: ApprovalItem, now = Date.now()): string | null {
+  const { workflow } = item;
+  const approval = item.kind === "engineering" ? workflow.approval : workflow.finalApproval;
+  // A failed, approved execution can receive fresh authorization through its retry action.
+  if (!approval || approval.status !== "Pending") return null;
+  if (!(Date.parse(approval.expiresAt) > now)) return "This approval expired. Open the issue for a new review.";
+  const codingApproval = workflow.approval;
+  const prompt = workflow.prompt;
+  const currentPrompt = prompt && codingApproval && prompt.status !== "Superseded"
+    && prompt.contentHash === codingApproval.promptHash
+    && prompt.repository === codingApproval.repository
+    && prompt.baseBranch === codingApproval.baseBranch
+    && prompt.baseSha === codingApproval.baseSha;
+  if (!currentPrompt) return "This approval does not match the current expected behavior. Open the issue for a new review.";
+  if (item.kind === "final") {
+    const finalApproval = workflow.finalApproval!;
+    if (codingApproval.status !== "Approved" || workflow.run?.approvalId !== codingApproval.id
+      || finalApproval.agentRunId !== workflow.run?.id || finalApproval.problemId !== workflow.problemId
+      || finalApproval.repository !== codingApproval.repository || finalApproval.baseBranch !== codingApproval.baseBranch) {
+      return "This approval does not match the current result. Open the issue for a new review.";
+    }
+    if (finalApproval.releaseVerification?.scopeAssessment.compatible === false) {
+      return "The changes need new verification before approval.";
+    }
+  }
+  return null;
 }
 
 function IntegrationProgressDrawer({
@@ -4947,14 +4782,12 @@ function IntegrationProgressDrawer({
             <span aria-hidden="true">2</span>
             <div>
               <strong>Build repository context</strong>
-              <p>Index the selected source at its pinned commit.</p>
             </div>
           </li>
           <li className="upcoming">
             <span aria-hidden="true">3</span>
             <div>
               <strong>Prepare runtime verification</strong>
-              <p>Detect the workload and configure the reviewed Tenki workflow.</p>
             </div>
           </li>
         </ol>
@@ -5014,6 +4847,7 @@ export function IntegrationsScreen({
   discordCallbackStatus?: string | null;
   discordCallbackReason?: string | null;
 }) {
+  const router = useRouter();
   const reduceMotion = useReducedMotion();
   const focusedCardRef = useRef<HTMLElement | null>(null);
   const suggestionsTabRef = useRef<HTMLButtonElement | null>(null);
@@ -5062,6 +4896,8 @@ export function IntegrationsScreen({
   const [webhookError, setWebhookError] = useState<string | null>(null);
   const [githubBusy, setGithubBusy] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
+  const githubConnectionRef = useRef<AbortController | null>(null);
+  const githubConnectionMounted = useRef(true);
   const [webhookCredentials, setWebhookCredentials] = useState<{
     webhookUrl: string;
     signingSecret: string;
@@ -5082,6 +4918,14 @@ export function IntegrationsScreen({
       ),
     [githubRepositories],
   );
+
+  useEffect(() => {
+    githubConnectionMounted.current = true;
+    return () => {
+      githubConnectionMounted.current = false;
+      githubConnectionRef.current?.abort();
+    };
+  }, [orgId]);
 
   const connectorRows = integrations.map((item) => {
     const progress = connectionProgress[item.id];
@@ -5269,19 +5113,30 @@ export function IntegrationsScreen({
   }
 
   async function connectGithub() {
-    if (githubBusy) return;
+    if (githubBusy || githubConnectionRef.current) return;
+    const controller = new AbortController();
+    githubConnectionRef.current = controller;
     setGithubBusy(true);
     setGithubError(null);
     try {
-      const installUrl = await requestGithubInstallUrl(orgId);
-      window.location.assign(installUrl);
+      await startGithubInstallationPopup(orgId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setSelectedIntegrationId(null);
+      router.push("/integrations?view=connections&focus=int_github&select=repositories");
+      router.refresh();
     } catch (caught) {
-      setGithubError(
-        caught instanceof Error
-          ? caught.message
-          : "GitHub connection could not be started",
-      );
-      setGithubBusy(false);
+      if (!controller.signal.aborted) {
+        setGithubError(
+          caught instanceof Error
+            ? caught.message
+            : "GitHub connection could not be started",
+        );
+      }
+    } finally {
+      if (githubConnectionRef.current === controller) {
+        githubConnectionRef.current = null;
+        if (githubConnectionMounted.current) setGithubBusy(false);
+      }
     }
   }
 
@@ -5385,7 +5240,6 @@ export function IntegrationsScreen({
     <>
       <PageTitle
         title="Integrations"
-        description="Let CloseSpan recommend the next source, or manage every connection directly."
         action={
           <div
             className="integration-view-tabs"
@@ -5642,6 +5496,14 @@ export function IntegrationsScreen({
               </div>
               <button ref={integrationDrawerCloseRef} type="button" className="icon-button" aria-label="Close connector details" onClick={() => setSelectedIntegrationId(null)}><X size={18} /></button>
             </div>
+            {githubBusy && selectedRow.item.id === "int_github" && (
+              <button className="btn" type="button" onClick={() => githubConnectionRef.current?.abort()}>
+                Cancel GitHub connection
+              </button>
+            )}
+            {githubError && selectedRow.item.id === "int_github" && integrationDrawerMode === "progress" && (
+              <p className="github-connection-message error" role="alert">{githubError}</p>
+            )}
             {integrationDrawerMode === "progress" ? (
               <IntegrationProgressDrawer
                 activity={selectedProgressActivity}
@@ -5814,14 +5676,13 @@ export function FollowUpScreen({
     return (
       <>
         <PageTitle
-          title="Customer follow-up"
-          description="Close the loop after a verified deployment, always with human approval."
+          title={WORKSPACE_LABELS["follow-up"]}
         />
         <EmptyWorkspaceState
           title="No follow-up workflow exists"
-          description="Customer drafts appear only after a real product problem has a reviewed workflow and a verified resolution."
+          description="Customer drafts become available after an issue is reviewed and its resolution is verified."
           actionHref={problem ? `/problems/${problem.id}` : "/feedback"}
-          actionLabel={problem ? "Review product problem" : "Open feedback inbox"}
+          actionLabel={problem ? "View issue" : "Open feedback inbox"}
         />
       </>
     );
@@ -5861,8 +5722,7 @@ export function FollowUpScreen({
   return (
     <>
       <PageTitle
-        title="Customer follow-up"
-        description="Close the loop after a verified deployment, always with human approval."
+        title={WORKSPACE_LABELS["follow-up"]}
         action={
           <span className={`badge ${verified ? "success" : prepared ? "brand" : ""}`}>
             {verified
@@ -5883,7 +5743,7 @@ export function FollowUpScreen({
             verification succeeds.
           </p>
           <Link className="btn primary" href={`/problems/${problem.id}`}>
-            Open product problem
+            View issue
           </Link>
         </section>
       ) : (
@@ -5973,7 +5833,6 @@ export function CustomersScreen({ customers }: { customers: CustomerView[] }) {
     <>
       <PageTitle
         title="Customers"
-        description="Business context connected to feedback, problems, and resolutions."
       />
       {customers.length === 0 ? (
         <EmptyWorkspaceState
@@ -5992,7 +5851,7 @@ export function CustomersScreen({ customers }: { customers: CustomerView[] }) {
               <th>Tier</th>
               <th>ARR</th>
               <th>Signals</th>
-              <th>Open problems</th>
+              <th>Open issues</th>
               <th>Churn risk</th>
             </tr>
           </thead>
@@ -6073,7 +5932,6 @@ export function SettingsScreen({
     <>
       <PageTitle
         title="Settings & governance"
-        description="Define permissions, data controls, model policies, and spending boundaries."
         action={
           <button
             type="button"
@@ -6107,7 +5965,6 @@ export function SettingsScreen({
             <div className="card-head">
               <div>
                 <h2>Agent autonomy</h2>
-                <p className="subtle">Default policy for all agent workflows</p>
               </div>
             </div>
             <div className="card-body">
@@ -6127,8 +5984,8 @@ export function SettingsScreen({
               <div className="callout section-gap-sm">
                 <div className="callout-title">Execution boundary</div>
                 <p className="subtle">
-                  {autonomy === "Full autonomy"
-                    ? "Configured execution, merge or deployment, and production verification run automatically with immutable audit records."
+                  {autonomy === "Full autonomy" || autonomy === "Automatic coding, human merge"
+                    ? "Agent codes automatically under workspace policy. A human approves every merge or deployment."
                     : autonomy === "Execute with approval"
                       ? "A human must approve the Tenki run and the commit-locked merge or deployment."
                       : "Tenki runs, merge, and deployment are blocked at this level."}
@@ -6140,9 +5997,6 @@ export function SettingsScreen({
             <div className="card-head">
               <div>
                 <h2>AI model</h2>
-                <p className="subtle">
-                  Server-only provider configuration and prompt provenance
-                </p>
               </div>
               <span
                 className={`badge ${settings.ai.configured ? "success" : "medium"}`}
@@ -6360,12 +6214,11 @@ export function GenericProblemScreen({
   return (
     <>
       <PageTitle
-        eyebrow={`Product problem · ${problem.id.replace("prob_", "CS-").toUpperCase()}`}
+        eyebrow={`Issue · ${problem.id.replace("prob_", "CS-").toUpperCase()}`}
         title={problem.title}
-        description="Database-backed problem summary with explicit limited-evidence state."
         action={<div className="page-title-actions">
           <Link className="btn" href="/problems">
-            <ChevronLeft size={14} aria-hidden="true" /> Back to problems
+            <ChevronLeft size={14} aria-hidden="true" /> Back to issues
           </Link>
           <span className={`badge ${problem.severity.toLowerCase()}`}>
             {problem.severity}
@@ -6376,7 +6229,6 @@ export function GenericProblemScreen({
           <div className="card-head">
             <div>
               <h2>Available evidence</h2>
-              <p className="subtle">Investigation evidence and prompt-drafting gates for this problem.</p>
             </div>
             <div className="investigation-detail-status">
               <span className={`badge ${investigation ? investigationStatusTone(investigation.status) : "high"}`}>
@@ -6515,7 +6367,7 @@ export function GenericProblemScreen({
                       <Info size={14} aria-hidden="true" />
                     </button>
                     <span id={relatedSignalsHelpId} role="tooltip" className="investigation-metric-tooltip">
-                      Customer feedback records currently linked to this product problem.
+                      Customer reports linked to this issue.
                     </span>
                   </span>
                 </span>

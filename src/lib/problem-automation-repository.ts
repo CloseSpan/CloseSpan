@@ -22,6 +22,7 @@ import {
 } from "./investigation-repository";
 import { autonomyCapabilities } from "./autonomy-policy";
 import { readAutonomyLevel } from "./workspace-settings-repository";
+import { runProblemPromptReviewTick } from "./problem-prompt-review-worker";
 import {
   reconcileFullAutonomy,
   type AutonomyAutomationResult,
@@ -425,12 +426,13 @@ export async function runProblemAutomationTick(
     ? runMemoryTick(orgId)
     : runPostgresTick(orgId);
   const completedStage = await stageResult;
+  if (policy.preparePrompt) await runProblemPromptReviewTick(orgId);
   const emailDelivery = await deliverPromptReviewEmails(orgId);
-  const autonomy = autonomyLevel === "Full autonomy"
+  const autonomy = policy.automaticallyAuthorizeExecution
     ? await reconcileFullAutonomy(orgId).catch((error: unknown) => ({
         action: "blocked" as const,
         problemId: promptDraft?.problemId ?? null,
-        message: error instanceof Error ? error.message : "Full-autonomy reconciliation failed.",
+        message: error instanceof Error ? error.message : "Automatic coding reconciliation failed.",
       }))
     : { action: "not_enabled" as const, problemId: null, message: `${autonomyLevel} does not auto-authorize execution.` };
   return { ...completedStage, investigation, promptDraft, emailDelivery, autonomy };

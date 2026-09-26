@@ -25,6 +25,10 @@ import { BackgroundPromptTestProvider } from "./background-prompt-tests";
 import { unreadPromptReviewNotificationCount } from "@/lib/prompt-review-notification-repository";
 import { isCloseSpanPlatformAdmin } from "@/lib/workspace-access-policy";
 import { pendingActionApprovalCount } from "@/lib/engineering-workflow-repository";
+import { isFeatureRequestModerator } from "@/lib/feature-request-security";
+import { listProblemReviewInbox } from "@/lib/problem-prompt-review-repository";
+import { readAutonomyLevel } from "@/lib/workspace-settings-repository";
+import { autonomyCapabilities } from "@/lib/autonomy-policy";
 
 function initials(name: string): string {
   return (
@@ -40,9 +44,11 @@ function initials(name: string): string {
 function AccountMenu({
   user,
   showPlatformAdmin,
+  showFeatureRequestModeration,
 }: {
   user: WorkspaceUser;
   showPlatformAdmin: boolean;
+  showFeatureRequestModeration: boolean;
 }) {
   return (
     <UserMenu
@@ -57,7 +63,10 @@ function AccountMenu({
         </span>
       </div>
       <span className="user-role">{user.role}</span>
-      <AccountMenuNavigation showPlatformAdmin={showPlatformAdmin} />
+      <AccountMenuNavigation
+        showPlatformAdmin={showPlatformAdmin}
+        showFeatureRequestModeration={showFeatureRequestModeration}
+      />
       <ThemeToggle />
       <form action={signOutCurrentUser}>
         <button type="submit">
@@ -78,14 +87,21 @@ export async function AppShell({
   children: React.ReactNode;
   immersive?: boolean;
 }) {
-  const [demoGuide, unreadNotifications, pendingApprovals] = await Promise.all([
+  const [demoGuide, unreadNotifications, pendingApprovals, issueReviews, autonomy] = await Promise.all([
     getWorkspaceDemoGuide(user.orgId),
     unreadPromptReviewNotificationCount(user.orgId, user.id),
     pendingActionApprovalCount(user.orgId),
+    listProblemReviewInbox(user.orgId).catch((error: unknown) => {
+      if (error && typeof error === "object" && "code" in error && error.code === "42P01") return [];
+      throw error;
+    }),
+    readAutonomyLevel(user.orgId),
   ]);
+  const reviewCount = pendingApprovals + issueReviews.filter((review) => demoGuide || review.needsHelp || autonomyCapabilities(autonomy).preparePrompt).length;
   const durableWorkspace = workspacePersistenceMode(user.orgId) === "postgres";
   const canRenameWorkspace = durableWorkspace && user.role === "Admin";
   const showPlatformAdmin = isCloseSpanPlatformAdmin(user);
+  const showFeatureRequestModeration = isFeatureRequestModerator(user.email, user.role);
   if (immersive) {
     return (
       <div className="shell shell-immersive">
@@ -109,7 +125,11 @@ export async function AppShell({
                 canRenameWorkspace={canRenameWorkspace}
                 variant="topbar"
               />
-              <AccountMenu user={user} showPlatformAdmin={showPlatformAdmin} />
+              <AccountMenu
+                user={user}
+                showPlatformAdmin={showPlatformAdmin}
+                showFeatureRequestModeration={showFeatureRequestModeration}
+              />
             </div>
           </header>
           <div
@@ -139,7 +159,7 @@ export async function AppShell({
             activeOrganizationId={user.orgId}
             demoMode={!durableWorkspace || Boolean(demoGuide)}
             canRenameWorkspace={canRenameWorkspace}
-            pendingApprovalCount={pendingApprovals}
+            pendingApprovalCount={reviewCount}
           />
           <main className="main">
             <header className="topbar">
@@ -147,7 +167,7 @@ export async function AppShell({
                 organizations={user.organizations}
                 activeOrganizationId={user.orgId}
                 canRenameWorkspace={canRenameWorkspace}
-                pendingApprovalCount={pendingApprovals}
+                pendingApprovalCount={reviewCount}
               />
               <WorkspaceBreadcrumb />
               <div className="top-actions">
@@ -168,6 +188,7 @@ export async function AppShell({
                 <AccountMenu
                   user={user}
                   showPlatformAdmin={showPlatformAdmin}
+                  showFeatureRequestModeration={showFeatureRequestModeration}
                 />
               </div>
             </header>

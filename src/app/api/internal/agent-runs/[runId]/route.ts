@@ -9,6 +9,7 @@ import {
 } from "@/lib/engineering-workflow-repository";
 import {
   publishAgentRun,
+  publishDomainResultRework,
   publishTenkiReviewRemediation,
 } from "@/lib/github-agent-publisher";
 import { noStoreHeaders } from "@/lib/request-security";
@@ -39,6 +40,7 @@ async function publishCompletedRun(
   context: Awaited<ReturnType<typeof getAgentRunExecutionContext>>,
   report: Parameters<typeof publishAgentRun>[1],
 ) {
+  if (context.runKind === "domain_result_rework") return publishDomainResultRework(context, report);
   return context.runKind === "tenki_review_remediation"
     ? publishTenkiReviewRemediation(context, report)
     : publishAgentRun(context, report);

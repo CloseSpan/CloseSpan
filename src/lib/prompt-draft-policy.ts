@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const promptDraftModes = ["manual", "automatic"] as const;
 export type PromptDraftMode = (typeof promptDraftModes)[number];
+export const PROMPT_DRAFT_MINIMUM_REPORTS = 1;
 
 export interface PromptDraftPolicy {
   mode: PromptDraftMode;
@@ -18,18 +19,28 @@ export const defaultPromptDraftPolicy: PromptDraftPolicy = {
   mode: "manual",
   bugReports: true,
   featureRequests: true,
-  minimumEvidence: 3,
-  minimumConfidence: 0.75,
+  minimumEvidence: PROMPT_DRAFT_MINIMUM_REPORTS,
+  minimumConfidence: 0.65,
   inAppNotifications: true,
   emailNotifications: false,
   reviewerId: null,
 };
 
+/** An unset reviewer uses a workspace admin; explicit choices always win. */
+export function resolvePromptDraftReviewer(
+  reviewerId: string | null,
+  members: ReadonlyArray<{ id: string; role: string }>,
+): string | null {
+  if (reviewerId) return reviewerId;
+  return members.filter((member) => member.role === "Admin")
+    .map((member) => member.id).sort()[0] ?? null;
+}
+
 export const promptDraftPolicySchema = z.object({
   mode: z.enum(promptDraftModes),
   bugReports: z.boolean(),
   featureRequests: z.boolean(),
-  minimumEvidence: z.number().int().min(1).max(100),
+  minimumEvidence: z.number().int().min(1).max(100).transform(() => PROMPT_DRAFT_MINIMUM_REPORTS),
   minimumConfidence: z.number().min(0.5).max(1),
   inAppNotifications: z.boolean(),
   emailNotifications: z.boolean(),
@@ -67,8 +78,8 @@ export function assessPromptDraftEligibility(
     return { eligible: false, reason: "Automatic feature prompt drafts are disabled." };
   if (evidence.kind === "Other")
     return { eligible: false, reason: "This feedback type does not create implementation drafts." };
-  if (evidence.evidenceCount < policy.minimumEvidence)
-    return { eligible: false, reason: `Waiting for ${policy.minimumEvidence} grouped reports.` };
+  if (evidence.evidenceCount < PROMPT_DRAFT_MINIMUM_REPORTS)
+    return { eligible: false, reason: "Waiting for 1 report." };
   if (evidence.confidence < policy.minimumConfidence)
     return { eligible: false, reason: `Waiting for ${Math.round(policy.minimumConfidence * 100)}% confidence.` };
   if (!evidence.hasInvestigation)

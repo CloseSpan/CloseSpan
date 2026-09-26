@@ -7,6 +7,7 @@ import { PUBLIC_DISCOVERY_PATHS } from "@/lib/site";
 const PUBLIC_PAGES = new Set<string>([
   ...PUBLIC_DISCOVERY_PATHS,
   "/waitlist",
+  "/github/connection-result",
 ]);
 
 export const { auth, handlers, signIn, signOut } = NextAuth({

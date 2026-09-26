@@ -16,6 +16,8 @@ const tenki = vi.hoisted(() => ({
 }));
 const github = vi.hoisted(() => ({
   publish: vi.fn(),
+  publishDomainRework: vi.fn(),
+  publishTenkiRemediation: vi.fn(),
 }));
 const runtimeSecrets = vi.hoisted(() => ({ resolve: vi.fn() }));
 const oidc = vi.hoisted(() => ({ verify: vi.fn(), assert: vi.fn() }));
@@ -49,6 +51,8 @@ vi.mock("@/lib/tenki-agent-verification", async (importOriginal) => {
 
 vi.mock("@/lib/github-agent-publisher", () => ({
   publishAgentRun: github.publish,
+  publishDomainResultRework: github.publishDomainRework,
+  publishTenkiReviewRemediation: github.publishTenkiRemediation,
 }));
 vi.mock("@/lib/runtime-secret-repository", () => ({
   resolveRuntimeSecretBindings: runtimeSecrets.resolve,
@@ -166,6 +170,13 @@ describe("agent-run completion callback", () => {
       pullRequestNumber: 2,
       pullRequestUrl: "https://github.com/owner/repo/pull/2",
     });
+    github.publishDomainRework.mockReset().mockResolvedValue({
+      promptCommitSha: "original-prompt-sha",
+      implementationCommitSha: "domain-corrected-sha",
+      pullRequestNumber: 2,
+      pullRequestUrl: "https://github.com/owner/repo/pull/2",
+    });
+    github.publishTenkiRemediation.mockReset();
     runtimeSecrets.resolve.mockReset().mockResolvedValue({
       setup: {},
       runtime: {},
@@ -202,6 +213,32 @@ describe("agent-run completion callback", () => {
     expect(tenki.verify).toHaveBeenCalledWith(context, report, {});
     expect(github.publish).toHaveBeenCalledOnce();
     expect(workflow.complete).toHaveBeenCalledTimes(2);
+    expect(workflow.fail).not.toHaveBeenCalled();
+  });
+
+  it("independently verifies domain rework before updating the existing PR", async () => {
+    const domainContext = { ...context, runKind: "domain_result_rework" };
+    workflow.context.mockResolvedValue(domainContext);
+
+    const response = await POST(
+      callbackRequest({ event: "completed", orgId: "org-1", report }),
+      { params: Promise.resolve({ runId }) },
+    );
+    expect(response.status).toBe(202);
+    expect(github.publishDomainRework).not.toHaveBeenCalled();
+    await background.tasks[0]!();
+
+    expect(tenki.verify).toHaveBeenCalledWith(domainContext, report, {});
+    expect(github.publishDomainRework).toHaveBeenCalledWith(domainContext, expect.objectContaining({
+      independentVerification: expect.objectContaining({ status: "passed" }),
+    }));
+    expect(github.publish).not.toHaveBeenCalled();
+    expect(github.publishTenkiRemediation).not.toHaveBeenCalled();
+    expect(workflow.complete).toHaveBeenLastCalledWith(domainContext, expect.objectContaining({
+      independentVerification: expect.objectContaining({ status: "passed" }),
+    }), expect.objectContaining({
+      implementationCommitSha: "domain-corrected-sha", pullRequestNumber: 2,
+    }));
     expect(workflow.fail).not.toHaveBeenCalled();
   });
 

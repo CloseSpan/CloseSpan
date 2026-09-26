@@ -7,6 +7,7 @@ import {
 import {
   GITHUB_INSTALL_STATE_COOKIE,
   verifyGithubInstallStateToken,
+  createGithubInstallCompletionToken,
 } from "@/lib/github-installation-state";
 import { authorizeAdminRead, HttpError } from "@/lib/request-security";
 import { detectAndSaveGithubRepositoryProfiles } from "@/lib/repository-profile-detection";
@@ -25,9 +26,17 @@ function workspaceRedirect(
   request: NextRequest,
   returnTo: "/integrations" | "/onboarding",
   parameters: Record<string, string>,
+  popupChannel?: string,
 ): NextResponse {
-  const target = new URL(returnTo, request.nextUrl.origin);
-  if (returnTo === "/integrations") {
+  const target = new URL(popupChannel ? "/github/connection-result" : returnTo, request.nextUrl.origin);
+  if (popupChannel) {
+    target.searchParams.set("receipt", createGithubInstallCompletionToken({
+      channel: popupChannel,
+      status: parameters.github === "connected" ? "connected" : "error",
+      ...(parameters.reason ? { reason: parameters.reason } : {}),
+      expiresAt: new Date(Date.now() + 2 * 60_000).toISOString(),
+    }));
+  } else if (returnTo === "/integrations") {
     target.searchParams.set("view", "connections");
     target.searchParams.set("focus", "int_github");
   }
@@ -114,14 +123,19 @@ async function detectInstallationRepositories(input: {
 export async function GET(request: NextRequest) {
   let returnTo: "/integrations" | "/onboarding" = "/integrations";
   let orgId: string | null = null;
+  let popupChannel: string | undefined;
+  const stateToken = request.nextUrl.searchParams.get("state") ?? request.cookies.get(GITHUB_INSTALL_STATE_COOKIE)?.value ?? "";
+  // A verified signed state may choose the result surface even when the login
+  // expired. It never bypasses the admin and install-attempt checks below.
+  try {
+    const state = verifyGithubInstallStateToken(stateToken);
+    returnTo = state.returnTo;
+    popupChannel = state.popup === true ? state.popupChannel : undefined;
+  } catch { /* Invalid state keeps the ordinary failure redirect. */ }
   try {
     const context = await authorizeAdminRead(request);
     orgId = context.orgId;
     const installationId = request.nextUrl.searchParams.get("installation_id") ?? "";
-    const stateToken =
-      request.nextUrl.searchParams.get("state") ??
-      request.cookies.get(GITHUB_INSTALL_STATE_COOKIE)?.value ??
-      "";
     const state = verifyGithubInstallStateToken(stateToken);
     returnTo = state.returnTo;
     await requireGithubInstallAttempt(state.attemptId, context.orgId, context.actorId);
@@ -163,7 +177,7 @@ export async function GET(request: NextRequest) {
       github: "connected",
       repositories: String(result.repositoryCount),
       availableRepositories: String(result.availableRepositoryCount),
-    });
+    }, popupChannel);
   } catch (error) {
     const reason = callbackErrorCode(error);
     console.error("GitHub installation callback failed", {
@@ -183,6 +197,6 @@ export async function GET(request: NextRequest) {
     return workspaceRedirect(request, returnTo, {
       github: "error",
       reason,
-    });
+    }, popupChannel);
   }
 }

@@ -1,14 +1,14 @@
-import { Bot, ExternalLink, Info, ShieldCheck } from "lucide-react";
+import { Bot, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { AgentRunDeleteButton } from "@/components/agent-run-delete-button";
 import { PageTitle } from "@/components/screens";
+import { WORKSPACE_LABELS } from "@/lib/workspace-labels";
 import { requireWorkspaceUser } from "@/lib/auth-user";
 import {
   listAgentRuns,
 } from "@/lib/engineering-workflow-repository";
 import {
   agentRunStatusPresentation,
-  agentRunVerificationExplanation,
   agentRunVerificationState,
 } from "@/lib/agent-run-presentation";
 
@@ -26,9 +26,7 @@ export default async function AgentRunsPage() {
   return (
     <>
       <PageTitle
-        eyebrow="Engineering delivery"
-        title="Agent runs & verification"
-        description="Track approved implementations, isolated Tenki tests, independent verification, and draft pull requests."
+        title={WORKSPACE_LABELS["agent-runs"]}
         action={
           <Link className="btn" href="/approvals">
             Review approvals
@@ -39,12 +37,8 @@ export default async function AgentRunsPage() {
         <section className="card empty-state">
           <Bot aria-hidden="true" size={28} />
           <h2>No agent runs yet</h2>
-          <p className="subtle">
-            Approved implementation prompts appear here when an agent run is
-            queued.
-          </p>
-          <Link className="btn primary" href="/approvals">
-            Open approvals
+          <Link className="btn primary" href="/problems">
+            View issues
           </Link>
         </section>
       ) : (
@@ -55,8 +49,8 @@ export default async function AgentRunsPage() {
             </caption>
             <thead>
               <tr>
-                <th>Product problem</th>
-                <th>Run status</th>
+                <th>Issue</th>
+                <th>Status</th>
                 <th>Verification</th>
                 <th>Repository</th>
                 <th>Queued</th>
@@ -70,8 +64,6 @@ export default async function AgentRunsPage() {
               {runs.map((run) => {
                 const runStatus = agentRunStatusPresentation(run);
                 const verification = agentRunVerificationState(run);
-                const verificationExplanation =
-                  agentRunVerificationExplanation(run);
                 return (
                   <tr key={run.id}>
                     <td>
@@ -81,7 +73,6 @@ export default async function AgentRunsPage() {
                       >
                         <strong>{run.problemTitle}</strong>
                       </Link>
-                      <small>{run.branchName}</small>
                     </td>
                     <td>
                       <span className={runStatus.className}>
@@ -89,37 +80,16 @@ export default async function AgentRunsPage() {
                       </span>
                     </td>
                     <td>
-                      <div className="status-with-help">
-                        <span className={verification.className}>
-                          {verification.label}
-                        </span>
-                        {verificationExplanation ? (
-                          <details className="status-help status-help-list">
-                            <summary aria-label={verificationExplanation.title}>
-                              <Info size={15} aria-hidden="true" />
-                            </summary>
-                            <div className="status-help-panel">
-                              <strong>{verificationExplanation.title}</strong>
-                              <p>{verificationExplanation.message}</p>
-                            </div>
-                          </details>
-                        ) : null}
-                      </div>
+                      <span className={verification.className}>
+                        {verification.label}
+                      </span>
                     </td>
                     <td>{run.repository ?? "Repository unavailable"}</td>
                     <td>{dateFormatter.format(new Date(run.queuedAt))}</td>
                     <td className="agent-run-result-links">
                       <Link className="text-link" href={`/agent-runs/${run.id}`}>
-                        View run
+                        View result
                       </Link>
-                      {run.approvalId ? (
-                        <Link
-                          className="text-link"
-                          href={`/approvals/${run.approvalId}`}
-                        >
-                          View approval
-                        </Link>
-                      ) : null}
                       {run.pullRequestUrl ? (
                         <a
                           className="text-link"
@@ -127,12 +97,8 @@ export default async function AgentRunsPage() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Draft PR <ExternalLink aria-hidden="true" size={12} />
+                          View PR <ExternalLink aria-hidden="true" size={12} />
                         </a>
-                      ) : run.independentVerificationStatus === "passed" ? (
-                        <small>
-                          <ShieldCheck aria-hidden="true" size={12} /> Verified
-                        </small>
                       ) : null}
                     </td>
                     <td className="agent-run-delete-cell">

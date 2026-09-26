@@ -23,6 +23,8 @@ import { IntegrationProviderIcon } from "@/components/integration-provider-icon"
 import { PublicSourceDiscovery } from "@/components/public-source-discovery";
 import { RepositoryContextProgress } from "@/components/repository-context-progress";
 import { RepositoryActivationProgress } from "@/components/repository-activation-progress";
+import { OnboardingGithubStep } from "@/components/onboarding-github-step";
+import { startGithubInstallationPopup } from "@/lib/github-installation-client";
 import {
   isFeedbackSourceIntegration,
   isIntegrationAvailable,
@@ -318,6 +320,7 @@ async function onboardingActionFetch(
 
 export function OnboardingAgentPanel({
   orgId,
+  canManageGithub,
   initialSetup,
   githubCallbackStatus,
   githubCallbackReason,
@@ -325,6 +328,7 @@ export function OnboardingAgentPanel({
   discordCallbackReason,
 }: {
   orgId: string;
+  canManageGithub: boolean;
   initialSetup: WorkspaceSetupStatus;
   githubCallbackStatus: string | null;
   githubCallbackReason: string | null;
@@ -337,6 +341,8 @@ export function OnboardingAgentPanel({
   const conversationRef = useRef<HTMLDivElement>(null);
   const shouldFollowConversationRef = useRef(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const githubPopupRef = useRef<AbortController | null>(null);
+  useEffect(() => () => githubPopupRef.current?.abort(), [orgId]);
   const [state, setState] = useState<OnboardingState | null>(null);
   const [actions, setActions] = useState<OnboardingAction[]>([]);
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>(STARTER_CHIPS);
@@ -344,7 +350,9 @@ export function OnboardingAgentPanel({
   const [loginEmail, setLoginEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(() =>
-    discordCallbackStatus === "error"
+    githubCallbackStatus === "error"
+      ? GITHUB_CALLBACK_ERRORS[githubCallbackReason ?? ""] ?? GITHUB_CALLBACK_ERRORS.connection_failed
+      : discordCallbackStatus === "error"
       ? DISCORD_CALLBACK_ERRORS[discordCallbackReason ?? ""] ??
         DISCORD_CALLBACK_ERRORS.connection_failed
       : null,
@@ -374,9 +382,6 @@ export function OnboardingAgentPanel({
     message: "",
   });
   const [supportDeliveryError, setSupportDeliveryError] = useState<
-    string | null
-  >(null);
-  const [githubRecoveryNotice, setGithubRecoveryNotice] = useState<
     string | null
   >(null);
 
@@ -441,7 +446,6 @@ export function OnboardingAgentPanel({
   );
   const hasSavedCompanyUrl = Boolean(state?.productProfile.productUrl?.trim());
   const githubConnected = setupStatus.githubConnected;
-  const githubInstalled = (setupStatus.github?.installationCount ?? 0) > 0;
   const githubRepositoryCount = setupStatus.github?.repositoryCount ?? 0;
   const githubFailureIsResolved = resolvedConnectorFailure({
     provider: "GitHub",
@@ -491,7 +495,7 @@ export function OnboardingAgentPanel({
           ? {
               ...message,
               content:
-                "Connect GitHub to test repositories and open approved PRs, or continue to the workspace and finish setup later.",
+                "Choose repositories for this workspace, or finish setup later.",
             }
           : message,
       );
@@ -665,24 +669,9 @@ export function OnboardingAgentPanel({
   }
 
   async function refreshGithubConnection() {
-    if (busy) return;
-    setBusy("refresh_github");
-    setError(null);
-    setGithubRecoveryNotice(null);
-    try {
-      const next = await workspaceSetupFetch(orgId);
-      setSetupStatus(next);
-      setConnectedIds(next.connectedIntegrationIds);
-      if (!next.githubConnected) {
-        setGithubRecoveryNotice(
-          "GitHub has not linked this installation to the workspace yet. You can continue now and reconnect later from Integrations.",
-        );
-      }
-    } catch {
-      setError(FRIENDLY_ERROR);
-    } finally {
-      setBusy(null);
-    }
+    const next = await workspaceSetupFetch(orgId);
+    setSetupStatus(next);
+    setConnectedIds(next.connectedIntegrationIds);
   }
 
   function startSupportFlow() {
@@ -1016,14 +1005,16 @@ export function OnboardingAgentPanel({
         );
       }
       if (action.type === "connect_github") {
-        const result = await integrationFetch("/api/integrations/github", orgId, {
-          returnTo: "/onboarding",
-        });
-        window.location.assign(result.installUrl as string);
+        if (!canManageGithub) throw new Error("A workspace admin must connect GitHub.");
+        const controller = new AbortController();
+        githubPopupRef.current = controller;
+        await startGithubInstallationPopup(orgId, { returnTo: "/onboarding", signal: controller.signal });
+        if (controller.signal.aborted) return;
+        await refreshGithubConnection();
         recordActivityExchange(
           "Select GitHub repositories",
           "Select repositories",
-          "Choose repositories. You’ll return here automatically.",
+          "GitHub connected. Choose repositories for this workspace.",
         );
       }
       if (
@@ -1044,9 +1035,10 @@ export function OnboardingAgentPanel({
       }
       router.refresh();
     } catch (reason) {
+      if (action.type === "connect_github" && githubPopupRef.current?.signal.aborted) return;
       setError(
-        action.type === "oauth_connect" &&
-          action.integrationId === "int_discord" &&
+        (action.type === "connect_github" || (action.type === "oauth_connect" &&
+          action.integrationId === "int_discord")) &&
           reason instanceof Error
           ? reason.message
           : FRIENDLY_ERROR,
@@ -1083,6 +1075,15 @@ export function OnboardingAgentPanel({
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       >
         <div className="delphi-stage" ref={stageRef}>
+        {busy === "connect_github" && (
+          <div className="delphi-soft-error" role="status">
+            <p>Connecting in popup…</p>
+            <button type="button" className="btn" onClick={() => {
+              githubPopupRef.current?.abort();
+              setBusy(null);
+            }}>Cancel</button>
+          </div>
+        )}
         {error && (
           <div className="delphi-soft-error" role="status">
             <p>{error}</p>
@@ -1427,88 +1428,10 @@ export function OnboardingAgentPanel({
         )}
 
         {state && hasProductBrief && !githubConnected && (
-          <motion.section
-            className="delphi-next-step delphi-confirmation-reveal reveal-next-step"
-            aria-labelledby="github-next-step-title"
-            layout
-            initial={
-              prefersReducedMotion
-                ? false
-                : { opacity: 0, y: 16, scale: 0.99 }
-            }
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <div className="delphi-next-step-icon" aria-hidden="true">
-              <IntegrationProviderIcon
-                integrationId="int_github"
-                size={22}
-                compact
-              />
-            </div>
-            <div className="delphi-next-step-copy">
-              <span>NEXT BEST STEP</span>
-              <h2 id="github-next-step-title">
-                {githubCallbackStatus === "error"
-                  ? "GitHub needs to be linked"
-                  : githubInstalled
-                    ? "Choose repositories"
-                    : "Connect GitHub"}
-              </h2>
-              <p>
-                {githubCallbackStatus === "error"
-                  ? GITHUB_CALLBACK_ERRORS[githubCallbackReason ?? ""] ??
-                    GITHUB_CALLBACK_ERRORS.connection_failed
-                  : githubInstalled
-                    ? "GitHub is connected. Select only the repositories that belong to this workspace; CloseSpan will not index the others."
-                    : "Connect GitHub, then choose the repositories this workspace may inspect and use for approved PRs."}
-              </p>
-              {githubRecoveryNotice && (
-                <p className="delphi-next-step-notice" role="status">
-                  {githubRecoveryNotice}
-                </p>
-              )}
-            </div>
-            <div className="delphi-next-step-actions">
-              {githubInstalled ? (
-                <Link className="btn primary" href="/integrations?view=connections&focus=int_github&select=repositories">
-                  Choose repositories
-                </Link>
-              ) : (
-                <button
-                  className="btn primary"
-                  type="button"
-                  disabled={Boolean(busy)}
-                  onClick={() =>
-                    void runAction({
-                      type: "connect_github",
-                      label: "Connect GitHub",
-                    })
-                  }
-                >
-                  {busy === "connect_github" ? "Opening..." : "Connect GitHub"}
-                </button>
-              )}
-              <button
-                className="btn"
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={() => void refreshGithubConnection()}
-              >
-                {busy === "refresh_github" ? "Checking..." : "Check again"}
-              </button>
-              <button
-                className="text-link delphi-next-step-skip"
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={() => void continueWithoutGithub()}
-              >
-                {busy === "continue_without_github"
-                  ? "Opening workspace..."
-                  : "Continue to workspace"}
-              </button>
-            </div>
-          </motion.section>
+          <OnboardingGithubStep key={`${orgId}:${canManageGithub}`} orgId={orgId} canManage={canManageGithub}
+            onConnectionChange={refreshGithubConnection}
+            onContinue={() => void continueWithoutGithub()}
+            continuing={Boolean(busy)} />
         )}
 
         {state && showSourceStage && setupStatus.feedbackConnected && (

@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, CircleAlert, ShieldCheck } from "lucide-react";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import {
   signInWithGoogle,
   signOutCurrentUser,
 } from "@/app/auth-actions";
 import { CloseSpan3DLogo } from "@/components/closespan-3d-logo";
 import { resolveWorkspaceAccess } from "@/lib/auth-user";
+import { isAppHostname } from "@/lib/app-domain-routing";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -41,6 +44,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const access = await resolveWorkspaceAccess();
   const callbackUrl = safeCallbackUrl(params.callbackUrl);
+  const host = (await headers()).get("host")?.split(":")[0] ?? "";
+  const publicHome = process.env.CLOSESPAN_APP_DOMAIN_ENABLED === "true" && isAppHostname(host)
+    ? SITE_URL
+    : "/";
 
   if (access.status === "granted") redirect(callbackUrl);
 
@@ -50,7 +57,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <main className="login-page">
-      <Link className="login-back" href="/">
+      <Link className="login-back" href={publicHome}>
         <ArrowLeft aria-hidden="true" size={15} />
         Back to CloseSpan
       </Link>
@@ -60,7 +67,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <CloseSpan3DLogo decorative={false} priority size="lg" />
         </div>
         <div className="login-heading">
-          <span>Continue with Google</span>
           <h1 id="login-title">Sign in to CloseSpan</h1>
           <p>
             Connect your Google account to create or open your private

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ImplementationPromptSnapshot } from "./engineering-prompt";
 import { normalizeSwiftAcceptanceHarnessCommand } from "./swift-acceptance-harness";
+import { renderCloseSpanPromptAgentRules } from "./closespan-prompt-agent-policy";
 
 export const PDD_CLI_VERSION = "0.0.309";
 
@@ -165,6 +166,9 @@ export function renderPddPrompt(
     .map((scenario) => `- ${scenario.id} (${scenario.testLevel})\n  Given ${scenario.given}\n  When ${scenario.when}\n  Then ${scenario.then}`)
     .join("\n");
   return [
+    "You are the acceptance-test generator used by the CloseSpan Prompt Agent.",
+    renderCloseSpanPromptAgentRules(),
+    "",
     "Generate executable acceptance tests for the proposed product change.",
     "Treat the user story and acceptance criteria as the contract. Do not implement the solution.",
     "Use only the repository's existing test framework and approved validation commands.",

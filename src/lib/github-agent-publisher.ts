@@ -16,7 +16,8 @@ export interface GithubPublisherDependencies {
 
 const LEGACY_TENKI_REVIEW_REQUEST_MARKER = "<!-- closespan:tenki-code-review-request:v1 -->";
 
-function tenkiReviewRequestMarker(headSha: string, cycle: number): string {
+function tenkiReviewRequestMarker(headSha: string, cycle?: number): string {
+  if (cycle === undefined) return `<!-- closespan:tenki-code-review-request:v3 head=${headSha.toLowerCase()} -->`;
   return `<!-- closespan:tenki-code-review-request:v2 head=${headSha.toLowerCase()} cycle=${cycle} -->`;
 }
 
@@ -25,7 +26,7 @@ async function requestTenkiCodeReview(
   repository: { owner: string; repo: string },
   pullRequestNumber: number,
   headSha: string,
-  cycle: number,
+  cycle?: number,
 ): Promise<boolean> {
   try {
     const marker = tenkiReviewRequestMarker(headSha, cycle);
@@ -363,6 +364,40 @@ export async function publishTenkiReviewRemediation(
     || !context.sourcePromptCommitSha
   ) throw new Error("Tenki review remediation is missing its approval-bound pull request context");
 
+  return publishPullRequestCorrection(context, report, dependencies);
+}
+
+export async function publishDomainResultRework(
+  context: AgentRunExecutionContext,
+  report: AgentImplementationReport,
+  dependencies: GithubPublisherDependencies = {},
+) {
+  if (
+    context.runKind !== "domain_result_rework"
+    || !context.pullRequestNumber
+    || !context.pullRequestUrl
+    || !context.pullRequestBaseBranch
+    || !context.sourcePromptCommitSha
+    || context.baseBranch !== context.branchName
+  ) throw new Error("Domain result rework is missing its approval-bound pull request context");
+
+  return publishPullRequestCorrection(context, report, dependencies);
+}
+
+async function publishPullRequestCorrection(
+  context: AgentRunExecutionContext,
+  report: AgentImplementationReport,
+  dependencies: GithubPublisherDependencies,
+): Promise<{
+  promptCommitSha: string;
+  implementationCommitSha: string;
+  pullRequestNumber: number;
+  pullRequestUrl: string;
+  tenkiReviewRequested: boolean;
+}> {
+  const isTenkiRemediation = context.runKind === "tenki_review_remediation";
+  const pullRequestNumber = context.pullRequestNumber!;
+
   const repository = repositoryParts(context.repository);
   const octokit = await installationClient(context.installationId, dependencies);
   const branch = await octokit.rest.git.getRef({
@@ -370,11 +405,11 @@ export async function publishTenkiReviewRemediation(
     ref: `heads/${context.branchName}`,
   });
   if (branch.data.object.sha.toLowerCase() !== context.baseSha.toLowerCase()) {
-    throw new Error("stale_base: pull request changed after Tenki requested corrections");
+    throw new Error("stale_base: pull request changed after corrections were requested");
   }
   const pull = await octokit.rest.pulls.get({
     ...repository,
-    pull_number: context.pullRequestNumber,
+    pull_number: pullRequestNumber,
   });
   if (
     pull.data.state !== "open"
@@ -387,11 +422,14 @@ export async function publishTenkiReviewRemediation(
     ...repository,
     commit_sha: context.baseSha,
   });
-  const reportPath = `.prompt/reports/${context.problemId}-${context.runId}-tenki-review-${context.reviewCycle}.json`;
+  const correctionLabel = isTenkiRemediation ? `tenki-review-${context.reviewCycle}` : "domain-result-rework";
+  const reportPath = `.prompt/reports/${context.problemId}-${context.runId}-${correctionLabel}.json`;
   const correction = await createTreeCommit(octokit, repository, {
     parentSha: context.baseSha,
     baseTreeSha: baseCommit.data.tree.sha,
-    message: `fix(closespan): address Tenki review cycle ${context.reviewCycle}`,
+    message: isTenkiRemediation
+      ? `fix(closespan): address Tenki review cycle ${context.reviewCycle}`
+      : `fix(closespan): address human domain feedback for ${context.problemId}`,
     files: [
       ...report.changedFiles.map((file) => ({
         path: file.path,
@@ -401,38 +439,47 @@ export async function publishTenkiReviewRemediation(
       { path: reportPath, content: verificationReportJson(report), encoding: "utf-8" as const },
     ],
   });
+  const currentBranch = await octokit.rest.git.getRef({
+    ...repository,
+    ref: `heads/${context.branchName}`,
+  });
+  if (currentBranch.data.object.sha.toLowerCase() !== context.baseSha.toLowerCase()) {
+    throw new Error("stale_base: pull request changed while corrections were being prepared");
+  }
   await octokit.rest.git.updateRef({
     ...repository,
     ref: `heads/${context.branchName}`,
     sha: correction.commitSha,
     force: false,
   });
-  await replyToTenkiReviewComments(
-    octokit,
-    repository,
-    context.pullRequestNumber,
-    context.reviewCommentIds ?? [],
-    correction.commitSha,
-    context.reviewCycle,
-  );
-  await resolveAddressedTenkiThreads(
-    octokit,
-    repository,
-    context.pullRequestNumber,
-    context.reviewCommentIds ?? [],
-  );
+  if (isTenkiRemediation) {
+    await replyToTenkiReviewComments(
+      octokit,
+      repository,
+      pullRequestNumber,
+      context.reviewCommentIds ?? [],
+      correction.commitSha,
+      context.reviewCycle!,
+    );
+    await resolveAddressedTenkiThreads(
+      octokit,
+      repository,
+      pullRequestNumber,
+      context.reviewCommentIds ?? [],
+    );
+  }
   const tenkiReviewRequested = await requestTenkiCodeReview(
     octokit,
     repository,
-    context.pullRequestNumber,
+    pullRequestNumber,
     correction.commitSha,
-    context.reviewCycle,
+    isTenkiRemediation ? context.reviewCycle : undefined,
   );
   return {
-    promptCommitSha: context.sourcePromptCommitSha,
+    promptCommitSha: context.sourcePromptCommitSha!,
     implementationCommitSha: correction.commitSha,
-    pullRequestNumber: context.pullRequestNumber,
-    pullRequestUrl: context.pullRequestUrl,
+    pullRequestNumber,
+    pullRequestUrl: context.pullRequestUrl!,
     tenkiReviewRequested,
   };
 }

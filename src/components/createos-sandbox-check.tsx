@@ -64,11 +64,6 @@ export function CreateosSandboxCheck({
           <div className="callout-title">
             <Boxes size={14} /> CreateOS Sandbox
           </div>
-          <p className="subtle">
-            Create a disposable Firecracker microVM and run one fixed offline
-            verification command. Ingress stays off, external egress is
-            restricted, and the sandbox is destroyed after every test.
-          </p>
         </div>
         <span className={`badge ${configured ? "success" : "medium"}`}>
           {configured ? "Configured" : "Key required"}

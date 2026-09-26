@@ -1047,12 +1047,7 @@ export function EngineeringTicketPanel({
     <section className="card section-gap" id="engineering-ticket">
       <div className="card-head">
         <div>
-          <h2>Improve the suggested prompt</h2>
-          <p className="subtle">
-            {preparesPromptAutomatically
-              ? "CloseSpan validates this immutable prompt once, applies at most one bounded improvement, then leaves the saved result ready for review."
-              : "Review the immutable suggested prompt, then run Prompt Testing manually when you are ready to evaluate it."}
-          </p>
+          <h2>Prompt review</h2>
         </div>
         <span
           className={`badge ${verificationReady ? "success" : "medium"}`}
@@ -1202,9 +1197,6 @@ export function EngineeringTicketPanel({
               </div>
               <span className="badge brand">SHA {workflow.prompt.contentHash.slice(0, 10)}</span>
             </div>
-            <p className="subtle">
-              This is the exact prompt CloseSpan will discuss with you below.
-            </p>
             <PromptViewSwitcher
               ariaLabel="Prompt currently under test"
               english={workflow.specification
@@ -1403,9 +1395,6 @@ export function EngineeringTicketPanel({
                 : <ArrowUp size={18} />}
             </button>
           </form>
-          <p className="prompt-testing-composer-hint">
-            Press Enter to send · Shift + Enter for a new line
-          </p>
           {retryableRun && (
             <div className="prompt-testing-quick-actions">
               <button

@@ -145,7 +145,7 @@ export async function processTenkiPullRequestReview(
          ON approval.org_id=run.org_id AND approval.id=run.approval_id
       WHERE run.org_id=$1 AND run.repository=$2 AND run.pull_request_number=$3
         AND run.status='Draft PR opened'
-      ORDER BY run.review_cycle DESC NULLS LAST,run.queued_at DESC
+      ORDER BY run.queued_at DESC,run.id DESC
       LIMIT 1 FOR UPDATE OF run`,
     [orgId, review.repository, review.pullRequestNumber],
   );
@@ -157,6 +157,18 @@ export async function processTenkiPullRequestReview(
   if (!source.implementation_commit_sha || source.implementation_commit_sha.toLowerCase() !== review.headSha.toLowerCase()) {
     return { outcome: "ignored_stale_tenki_pr_review" };
   }
+  // Domain follow-ups and trusted Tenki corrections share the source run lock.
+  // Use a fresh statement after acquiring it: another correction may have
+  // inserted its successor while the tracked-run SELECT was waiting.
+  const successor = await client.query(
+    `SELECT 1 FROM agent_runs next
+       JOIN agent_runs source ON source.org_id=next.org_id AND source.id=$3
+      WHERE next.org_id=$1 AND next.problem_id=$2 AND next.id<>source.id
+        AND (next.status IN ('Queued','Running','Tests passed')
+          OR (next.queued_at,next.id) > (source.queued_at,source.id)) LIMIT 1`,
+    [orgId, source.problem_id, source.id],
+  );
+  if (successor.rowCount) return { outcome: "ignored_tenki_review_while_newer_run_exists" };
 
   const prior = await client.query<{ cycles: string; active: boolean }>(
     `SELECT count(*) FILTER (WHERE remediation_run_id IS NOT NULL)::text AS cycles,

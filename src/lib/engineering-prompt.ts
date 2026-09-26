@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { userStoryInputIssue } from "./user-story-prompt-test";
 import { parseReleaseVerificationPlan } from "./release-verification-plan";
+import { CLOSESPAN_PROMPT_AGENT_POLICY_VERSION } from "./closespan-prompt-agent-policy";
 
 export const testLevels = [
   "unit",
@@ -131,7 +132,7 @@ export interface ImplementationPromptSnapshot {
 // This version identifies the reusable prompt-writing guidance learned from
 // accepted PDD revisions. It is intentionally a product-level rule set rather
 // than a copy of any customer's revised prompt.
-export const PDD_DRAFTING_GUIDANCE_VERSION = "pdd-alignment-v1";
+export const PDD_DRAFTING_GUIDANCE_VERSION = CLOSESPAN_PROMPT_AGENT_POLICY_VERSION;
 
 const list = z.array(z.string().trim().min(1).max(2_000)).max(50);
 const criterionSchema = z.object({

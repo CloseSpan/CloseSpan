@@ -119,13 +119,19 @@ describe("public search metadata", () => {
         Array.isArray(node["@type"]) &&
         node["@type"].includes("WebApplication"),
     );
-    expect(applicationNode).toMatchObject({ isAccessibleForFree: true });
+    expect(applicationNode).toHaveProperty("isAccessibleForFree", true);
     expect(applicationNode).not.toHaveProperty("offers");
     const faqNode = graph.find((node) => node["@type"] === "FAQPage");
     if (!faqNode || !("mainEntity" in faqNode)) {
       throw new Error("FAQPage schema is missing its visible questions");
     }
-    expect(faqNode.mainEntity).toHaveLength(LANDING_FAQS.length);
+    expect(faqNode.mainEntity).toEqual(
+      LANDING_FAQS.map(({ question, answer }) => ({
+        "@type": "Question",
+        name: question,
+        acceptedAnswer: { "@type": "Answer", text: answer },
+      })),
+    );
   });
 
   it("provides app identity and a crawlable product brief", async () => {
@@ -154,7 +160,7 @@ describe("public search metadata", () => {
     expect(body).toContain(`# ${SITE_NAME}`);
     expect(body).toContain(`${SITE_URL}/`);
     expect(body).toContain(`Preferred product name: ${SITE_NAME}`);
-    expect(body).toContain("feedback-to-fix");
+    expect(body).toContain(SITE_DESCRIPTION);
     expect(body).not.toContain("/#pricing");
     expect(body).toContain(`${SITE_URL}/resources`);
     expect(body).toContain(`${SITE_URL}/connectors`);

@@ -92,7 +92,6 @@ export function PublicSourceDiscovery({
       <div className="public-discovery-intro">
         <div>
           <strong>Find public feedback</strong>
-          <p>Search public reviews and communities.</p>
         </div>
         <button
           className="btn"

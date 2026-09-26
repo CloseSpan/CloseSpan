@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { workspaceSection } from "@/lib/workspace-navigation";
@@ -72,14 +72,12 @@ export function WorkspaceRouteTransition({
       <span className="sr-only" role="status" aria-live="polite">
         {workspaceSection(pathname)} loaded
       </span>
-      <AnimatePresence initial={false} mode="sync">
         <motion.div
           key={pathname}
           className="workspace-route-stage"
           data-route-direction="none"
           initial={reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0.86, y: enterOffset }}
           animate={{ opacity: 1, y: 0 }}
-          exit={reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0.9, y: -4 }}
           transition={
             reduceMotion
               ? { duration: 0 }
@@ -88,7 +86,6 @@ export function WorkspaceRouteTransition({
         >
           {children}
         </motion.div>
-      </AnimatePresence>
     </>
   );
 }

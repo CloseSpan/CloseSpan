@@ -3,6 +3,8 @@ import type { PoolClient } from "pg";
 import { transaction } from "./db";
 import type { RequestContext } from "./request-security";
 import { workspacePersistenceMode } from "./workspace-persistence";
+import { feedbackProblemTitle } from "./problem-subject";
+export { feedbackProblemTitle } from "./problem-subject";
 
 type ReviewDecision = "approve" | "reject";
 type ReviewStatus = "Approved" | "Rejected";
@@ -35,6 +37,7 @@ interface AnalysisRow {
   classification: string;
   severity: "Critical" | "High" | "Medium" | "Low";
   redacted_summary: string;
+  problem_subject?: string | null;
   proposed_problem_id: string | null;
   classification_confidence: number;
   cluster_confidence: number;
@@ -62,14 +65,6 @@ export class FeedbackReviewNotFoundError extends Error {}
 export class FeedbackReviewConflictError extends Error {}
 
 const normalizedProblemId = (value?: string | null) => value ?? null;
-
-export function feedbackProblemTitle(summary: string): string {
-  const compact = summary.replace(/\s+/g, " ").trim();
-  const firstSentence = compact.match(/^.*?(?:[.!?](?:\s|$)|$)/)?.[0] ?? compact;
-  const title = firstSentence.trim().replace(/[.!?]+$/, "").trim();
-  if (!title) return "Feedback needs product review";
-  return title.length <= 100 ? title : `${title.slice(0, 97).trimEnd()}…`;
-}
 
 function parseStoredAction(value: string): StoredReviewAction | null {
   try {
@@ -164,7 +159,7 @@ async function createProblem(
 ): Promise<ProblemRow> {
   const problem: ProblemRow = {
     id: `prob_${randomUUID().replaceAll("-", "")}`,
-    title: feedbackProblemTitle(analysis.redacted_summary),
+    title: feedbackProblemTitle(analysis.redacted_summary, analysis.problem_subject),
     stage: "Needs review",
   };
   await client.query(
@@ -190,7 +185,6 @@ async function findOrCreateProblem(
   input: FeedbackReviewInput,
   analysis: AnalysisRow,
 ): Promise<{ problem: ProblemRow; created: boolean }> {
-  const title = feedbackProblemTitle(analysis.redacted_summary);
   // Serialize fallback problem creation within a workspace. The AI candidate
   // snapshot can be stale when multiple feedback records are analyzed together
   // or when two intake jobs overlap.
@@ -200,9 +194,9 @@ async function findOrCreateProblem(
   );
   const existing = await client.query<ProblemRow>(
     `SELECT id,title,stage FROM product_problems
-      WHERE org_id=$1 AND stage <> 'Closed' AND lower(title)=lower($2)
+      WHERE org_id=$1 AND stage <> 'Closed' AND lower(trim(summary))=lower(trim($2))
       ORDER BY created_at,id LIMIT 1 FOR UPDATE`,
-    [input.orgId, title],
+    [input.orgId, analysis.redacted_summary],
   );
   if (existing.rows[0]) return { problem: existing.rows[0], created: false };
   return { problem: await createProblem(client, input, analysis), created: true };
@@ -228,6 +222,7 @@ async function performReview(
   const latest = await client.query<AnalysisRow>(
     `SELECT analysis.id,analysis.feedback_id,analysis.classification,
             analysis.severity,analysis.redacted_summary,
+            analysis.confidence_factors->>'problemSubject' AS problem_subject,
             analysis.proposed_problem_id,analysis.classification_confidence,
             analysis.cluster_confidence,analysis.review_status
        FROM ai_feedback_analyses analysis

@@ -12,6 +12,7 @@ const analysis = {
   sentimentEvidence: ["The export output is empty."],
   sentimentRationale: "The customer reports an adverse product outcome.",
   redactedSummary: "CSV export completes with an empty file.",
+  problemSubject: "CSV export produces empty files",
   proposedProblemId: "prob_export",
   evidenceQuality: 0.8,
   classificationClarity: 0.9,
@@ -22,6 +23,16 @@ const analysis = {
 };
 
 describe("AI provider feedback intelligence boundary", () => {
+  it("keeps a short subject separate from the full summary", () => {
+    const [result] = validateAiAnalysisForTest({ analyses: [analysis] }, ["fb_001"], ["prob_export"]);
+    expect(result.problemSubject).toBe("CSV export produces empty files");
+    expect(result.redactedSummary).toBe(analysis.redactedSummary);
+  });
+
+  it("rejects overlong subjects instead of silently clipping their meaning", () => {
+    expect(() => validateAiAnalysisForTest({ analyses: [{ ...analysis, problemSubject: "Customer requests many new export options that would help them work" }] }, ["fb_001"], ["prob_export"]))
+      .toThrow("invalid problem subject");
+  });
   it("computes transparent confidence from evidence factors", () => {
     expect(classificationConfidence(analysis)).toBe(0.865);
     expect(clusterConfidence(analysis)).toBe(0.893);

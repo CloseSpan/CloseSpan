@@ -24,10 +24,6 @@ export default async function AdminUsersPage() {
         <div>
           <div className="eyebrow">Platform administration</div>
           <h1>Active users</h1>
-          <p className="subtle">
-            Verified users with a CloseSpan workspace and their sign-in
-            activity.
-          </p>
         </div>
         <span className="badge brand">Admin only</span>
       </div>

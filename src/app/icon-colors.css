@@ -1,0 +1,88 @@
+/* One semantic palette for interface icons. Brand SVGs keep their own fills. */
+:root {
+  --icon-blue: #305fc0;
+  --icon-violet: #7551b8;
+  --icon-teal: #167b86;
+  --icon-green: #23794e;
+  --icon-amber: #996416;
+  --icon-red: #ba3e51;
+  --icon-on-solid: #b7ceff;
+}
+
+:root[data-theme="dark"] {
+  --icon-blue: #8caeff;
+  --icon-violet: #b59aee;
+  --icon-teal: #6bc4cc;
+  --icon-green: #7dc9a0;
+  --icon-amber: #e6ba70;
+  --icon-red: #ef96a4;
+  --icon-on-solid: #305fc0;
+}
+
+/* Set color, not fill/stroke: Lucide's open shapes and stroke weights stay intact.
+ * Each SVG owns its role so nested controls cannot leak one icon's color to another. */
+:root[data-theme] svg.lucide {
+  color: var(--icon-context-color, var(--icon-kind, var(--icon-blue)));
+}
+
+svg.lucide:is(
+  .lucide-bot, .lucide-brain-circuit, .lucide-sparkles, .lucide-command,
+  .lucide-cpu, .lucide-file-pen-line, .lucide-file-code2, .lucide-palette,
+  .lucide-git-branch, .lucide-git-pull-request, .lucide-git-merge,
+  .lucide-workflow, .lucide-moon
+) { --icon-kind: var(--icon-violet); }
+
+svg.lucide:is(
+  .lucide-users, .lucide-users-round, .lucide-user-round, .lucide-building2,
+  .lucide-message-square, .lucide-message-square-more, .lucide-headset,
+  .lucide-mail, .lucide-inbox, .lucide-cable, .lucide-plug-zap, .lucide-webhook,
+  .lucide-network, .lucide-database, .lucide-server, .lucide-box, .lucide-boxes,
+  .lucide-settings, .lucide-settings2, .lucide-sliders-horizontal
+) { --icon-kind: var(--icon-teal); }
+
+svg.lucide:is(
+  .lucide-check, .lucide-circle-check, .lucide-circle-check-big,
+  .lucide-badge-check, .lucide-shield-check, .lucide-file-check2,
+  .lucide-monitor-check, .lucide-list-checks, .lucide-flask-conical,
+  .lucide-lock-keyhole, .lucide-save
+) { --icon-kind: var(--icon-green); }
+
+svg.lucide:is(
+  .lucide-bell, .lucide-circle-alert, .lucide-triangle-alert,
+  .lucide-clock3, .lucide-history, .lucide-key-round, .lucide-sun,
+  .lucide-bug, .lucide-circle-dot, .lucide-gauge
+) { --icon-kind: var(--icon-amber); }
+
+svg.lucide:is(.lucide-trash2, .lucide-circle-x, .lucide-unplug) {
+  --icon-kind: var(--icon-red);
+}
+
+/* Context overrides the pictogram: a failed check must not become green. */
+:root[data-theme] :is(.callout.error, .toast.error, .btn.danger, [data-icon-tone="danger"]) { --icon-context-color: var(--icon-red); }
+:root[data-theme] :is(.callout.warning, .toast.warning, [data-icon-tone="warning"]) { --icon-context-color: var(--icon-amber); }
+:root[data-theme] :is(.callout.success, .toast.success, .btn.success, [data-icon-tone="success"]) { --icon-context-color: var(--icon-green); }
+
+:root[data-theme] :is(
+  .btn.primary, .feature-request-primary, .feature-request-new,
+  .organization-create-submit, .organization-rename-submit, .delphi-send,
+  .integration-copilot-primary-action, .prompt-testing-send
+) { --icon-context-color: var(--icon-on-solid); }
+
+/* A custom action accent can be any hue; inherit its tested foreground. */
+:root[data-theme][data-accent]:not([data-accent="neutral"]) :is(
+  .btn.primary, .feature-request-primary, .feature-request-new,
+  .organization-create-submit, .organization-rename-submit, .delphi-send,
+  .integration-copilot-primary-action, .prompt-testing-send
+) { --icon-context-color: currentColor; }
+
+:root[data-theme] :is(button:disabled, [aria-disabled="true"]) svg.lucide { color: var(--text-muted); }
+
+/* Fixed brand artwork is shared by the landing page and integration screens. */
+.brand-icon { display: block; flex-shrink: 0; }
+.brand-icon[data-brand="intercom"] { background: #181717; border-radius: 4px; }
+:root[data-theme="dark"] .brand-icon:is([data-brand="zendesk"], [data-brand="sentry"]) { background: #ffffff; border-radius: 4px; padding: 2px; }
+:root[data-theme] svg.lucide-github { color: var(--icon-context-color, var(--text-strong)); }
+
+@media (forced-colors: active) {
+  :root[data-theme] svg.lucide { color: inherit !important; }
+}

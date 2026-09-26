@@ -56,7 +56,7 @@ function queryResult<T extends QueryResultRow>(rows: T[]): QueryResult<T> {
 }
 
 function database() {
-  const query = vi.fn(async (sql: string, params?: unknown[]) => {
+  const query = vi.fn(async (sql: string, params?: unknown[]): Promise<QueryResult> => {
     void params;
     if (sql.includes("SELECT state FROM tenki_pr_review_cycles")) return queryResult([]);
     if (sql.includes("FROM agent_runs run")) return queryResult([trackedRun]);
@@ -128,5 +128,15 @@ describe("Tenki pull request review automation", () => {
     expect(db.query.mock.calls.some(([sql]) => (
       typeof sql === "string" && sql.includes("'Approved'")
     ))).toBe(true);
+  });
+
+  it("does not race a human follow-up that inserted a newer run while the source lock was waiting", async () => {
+    const db = database();
+    const implementation = db.query.getMockImplementation()!;
+    db.query.mockImplementation(async (sql, values) => sql.includes("SELECT 1 FROM agent_runs next")
+      ? queryResult([{ exists: 1 }]) : implementation(sql, values));
+    expect(await processTenkiPullRequestReview(db.client, "org-1", review)).toEqual({ outcome: "ignored_tenki_review_while_newer_run_exists" });
+    expect(db.query.mock.calls.some(([sql]) => sql.includes("INSERT INTO agent_runs"))).toBe(false);
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("next.status IN ('Queued','Running','Tests passed')"), ["org-1", "problem-1", "run-root"]);
   });
 });

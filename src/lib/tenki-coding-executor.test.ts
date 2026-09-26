@@ -8,6 +8,7 @@ import {
   assertTenkiExecutionProfileBinding,
   boundedAgentProgressOutput,
   executorImplementationModelSettings,
+  implementationPromptForJob,
   resolveExecutorAiConfiguration,
   runtimeToolsForAgent,
   tenkiSandboxCreateOptions,
@@ -107,6 +108,53 @@ const executionProfile = {
 };
 
 describe("Tenki coding executor approval boundary", () => {
+  it("prepends human result feedback while preserving the approved contract and protected tests", () => {
+    const job = tenkiAgentJobSchema.parse({
+      schemaVersion: 2,
+      orgId: "org-1",
+      runId: "11111111-1111-4111-8111-111111111111",
+      repository: "owner/repo",
+      baseSha: "a".repeat(40),
+      promptHash: "b".repeat(64),
+      promptContent: "The original approved prompt, including AC-1 and TEST-1.",
+      runKind: "domain_result_rework",
+      reviewInstructions: "The exported totals do not match the selected period.",
+      promptArtifactPath: policy.promptArtifactPath,
+      repositoryArchiveUrl: "https://example.com/repository.tar.gz",
+      requiredCommands: ["npm test"],
+      permittedPaths: profilePolicy,
+      generatedTests: [{
+        path: "apps/web/tests/acceptance.pdd.test.ts",
+        content: "test('contract', () => {})",
+        contentHash: "c".repeat(64),
+        command: "npm test",
+      }],
+      acceptanceCriteria: [{ id: "AC-1", scenarioIds: ["TEST-1"] }],
+      testScenarios: [{ id: "TEST-1", testLevel: "integration", criterionIds: ["AC-1"] }],
+      callbackUrl: "https://www.closespan.com/api/internal/agent-runs/11111111-1111-4111-8111-111111111111",
+      expiresAt: "2026-07-30T08:00:00.000Z",
+      capabilities: ["repository:read", "repository:write", "tests:execute", "pull_requests:write:draft"],
+      ...executionProfile,
+    });
+    const before = structuredClone(job);
+
+    const prompt = implementationPromptForJob(job);
+
+    expect(prompt).toContain("## Human domain feedback on the implementation result");
+    expect(prompt.indexOf(job.reviewInstructions!)).toBeLessThan(prompt.indexOf(job.promptContent));
+    expect(prompt.endsWith(job.promptContent)).toBe(true);
+    expect(prompt).toContain("immutable Prompt Testing-generated tests unchanged");
+    expect(prompt).not.toContain("## Trusted Tenki review remediation");
+    expect(job).toEqual(before);
+    expect(tenkiExecutorAllowsPath(job, job.promptArtifactPath)).toBe(false);
+    expect(tenkiExecutorAllowsPath(job, "apps/web/tests/acceptance.pdd.test.ts")).toBe(false);
+    expect(tenkiExecutorAllowsPath(job, "apps/web/src/export.ts")).toBe(true);
+    expect(() => implementationPromptForJob({ ...job, reviewInstructions: undefined }))
+      .toThrow("requires human domain feedback");
+    expect(() => implementationPromptForJob({ ...job, reviewInstructions: "   " }))
+      .toThrow("requires human domain feedback");
+  });
+
   it("uses an explicit OpenAI credential without leaking provider state", () => {
     expect(resolveExecutorAiConfiguration({
       openAiApiKey: "test-openai-key",

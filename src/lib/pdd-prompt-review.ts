@@ -13,6 +13,10 @@ export const pddPromptReviewSchema = z.object({
   promptHash: z.string().regex(/^[a-f0-9]{64}$/),
   alignmentReceipt: z.string().max(4_096).nullable(),
   revisionReceipt: z.string().max(4_096).nullable(),
+  agent: z.object({
+    name: z.literal("CloseSpan Prompt Agent"),
+    policyVersion: z.string().trim().min(1).max(64),
+  }).optional(),
   override: z.object({
     actorId: z.string().trim().min(1).max(200),
     actorName: z.string().trim().min(1).max(200),

@@ -48,6 +48,7 @@ export default async function OnboardingPage({
     <AppShell user={user} immersive>
       <OnboardingAgentPanel
         orgId={user.orgId}
+        canManageGithub={user.role === "Admin"}
         initialSetup={setup}
         githubCallbackStatus={githubCallback ?? null}
         githubCallbackReason={githubCallbackReason ?? null}

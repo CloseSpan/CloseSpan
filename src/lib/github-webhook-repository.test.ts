@@ -434,7 +434,7 @@ describe("GitHub webhook persistence", () => {
     expect(runUpdate?.[1]?.[3]).toBe(GITHUB_ACTIONS_JOB_NOT_STARTED_MESSAGE);
   });
 
-  it("stops an approval-bound run when GitHub finishes before its callback", async () => {
+  it.each(["implementation", "domain_result_rework"])("stops a %s run when GitHub finishes before its callback", async (runKind) => {
     const runId = "208b7b50-ad68-4e5b-9cd2-96e8b948aa8c";
     database.pool.query.mockImplementation(async (query: unknown) =>
       sql(query).includes("SELECT 1 FROM github_webhook_deliveries")
@@ -452,7 +452,7 @@ describe("GitHub webhook persistence", () => {
             problem_id: "problem-1",
             prompt_revision_id: "prompt-1",
             status: "Queued",
-            run_kind: "implementation",
+            run_kind: runKind,
           }],
           rowCount: 1,
         };
@@ -495,10 +495,13 @@ describe("GitHub webhook persistence", () => {
     expect(database.client.query.mock.calls.some(([query, parameters]) =>
       sql(query).includes("UPDATE engineering_ticket_specifications")
       && Array.isArray(parameters)
-      && parameters[2] === "Prompt ready",
+      && parameters[2] === (runKind === "domain_result_rework" ? "Draft PR opened" : "Prompt ready"),
     )).toBe(true);
     expect(database.client.query.mock.calls.some(([query]) =>
       sql(query).includes("UPDATE implementation_prompts SET status='Ready'"),
-    )).toBe(true);
+    )).toBe(runKind === "implementation");
+    expect(database.client.query.mock.calls.some(([query]) =>
+      sql(query).includes("UPDATE tenki_pr_review_cycles"),
+    )).toBe(false);
   });
 });

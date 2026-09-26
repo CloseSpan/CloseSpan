@@ -40,7 +40,7 @@ export function ProblemWorkspace({ initialState, problem: primaryProblem, feedba
   const activeIndex = stages.indexOf(state.problemStage);
   return <>
     <div className="page-head">
-      <div><div className="eyebrow">Product problem · {primaryProblem.id}</div><h1>{primaryProblem.title}</h1><p className="subtle">Detected from {evidence.length} customer signal{evidence.length === 1 ? "" : "s"}</p></div>
+      <div><div className="eyebrow">Issue · {primaryProblem.id}</div><h1>{primaryProblem.title}</h1><p className="subtle">{evidence.length === 1 ? "1 customer report" : `${evidence.length} customer reports`}</p></div>
       <div className="top-actions"><span className={`badge ${primaryProblem.severity.toLowerCase()}`}>{primaryProblem.severity} severity</span><span className="badge brand">{state.problemStage}</span></div>
     </div>
 
@@ -49,7 +49,7 @@ export function ProblemWorkspace({ initialState, problem: primaryProblem, feedba
     <div className="two-col"><div className="detail-stack problem-main-column">
       <section className="card"><div className="card-head"><h2>Problem intelligence</h2><span className="badge brand"><Sparkles size={12}/> AI summary · {evidenceConfidence}%</span></div><div className="card-body"><p className="summary">{primaryProblem.statement}</p><p className="subtle section-gap-sm">{primaryProblem.summary}</p><div className="grid cols-3 section-gap"><div><div className="metric-label">Affected revenue</div><strong>${Math.round(revenue / 1000)}k ARR</strong></div><div><div className="metric-label">Affected accounts</div><strong>{affectedAccounts.size} account{affectedAccounts.size === 1 ? "" : "s"}</strong></div><div><div className="metric-label">Evidence confidence</div><strong>{evidenceConfidence}%</strong></div></div></div></section>
 
-      <section className="card"><div className="card-head"><div><h2>Supporting evidence</h2><p className="subtle">Why these reports belong together</p></div><button type="button" className="btn" aria-expanded={showRationale} onClick={() => setShowRationale((value) => !value)}>{showRationale ? "Hide rationale" : "Review membership"}</button></div><div className="card-body">{showRationale && <div className="callout membership-rationale"><div className="callout-title">Cluster membership rationale</div><p className="subtle">These {evidence.length} signal{evidence.length === 1 ? "" : "s"} support the same reviewed problem statement: {primaryProblem.statement} The current evidence confidence is {evidenceConfidence}%.</p></div>}{evidence.map((item) => <article className="evidence" key={item.id}><div className="split"><div className="evidence-meta"><span className="badge">{item.source}</span><strong>{item.customer}</strong><span>{item.observedAt}</span></div><span className="badge brand">{Math.round(item.confidence * 100)}% match</span></div><blockquote className="quote">“{item.quote}”</blockquote><div className="evidence-meta evidence-environment"><LockKeyhole size={11}/> PII scan complete · {item.environment}</div></article>)}</div></section>
+      <section className="card"><div className="card-head"><div><h2>Supporting evidence</h2></div><button type="button" className="btn" aria-expanded={showRationale} onClick={() => setShowRationale((value) => !value)}>{showRationale ? "Hide rationale" : "Review membership"}</button></div><div className="card-body">{showRationale && <div className="callout membership-rationale"><div className="callout-title">Cluster membership rationale</div><p className="subtle">These {evidence.length} signal{evidence.length === 1 ? "" : "s"} support the same reviewed problem statement: {primaryProblem.statement} The current evidence confidence is {evidenceConfidence}%.</p></div>}{evidence.map((item) => <article className="evidence" key={item.id}><div className="split"><div className="evidence-meta"><span className="badge">{item.source}</span><strong>{item.customer}</strong><span>{item.observedAt}</span></div><span className="badge brand">{Math.round(item.confidence * 100)}% match</span></div><blockquote className="quote">“{item.quote}”</blockquote><div className="evidence-meta evidence-environment"><LockKeyhole size={11}/> PII scan complete · {item.environment}</div></article>)}</div></section>
 
     </div>
 
@@ -86,7 +86,6 @@ export function ProblemHistory({ audit }: { audit: DemoState["audit"] }) {
           <History size={17} aria-hidden="true" />
           <span>
             <strong>History</strong>
-            <small>Automated transitions, approvals, and prompt revisions</small>
           </span>
         </span>
         <span className="problem-audit-summary-meta">
@@ -96,10 +95,6 @@ export function ProblemHistory({ audit }: { audit: DemoState["audit"] }) {
       </summary>
       <div className="card-body problem-audit-body">
         <div className="problem-audit-intro">
-          <p>
-            This system record explains who or what changed the problem and when.
-            Use it for troubleshooting, review, or compliance—not for day-to-day prioritization.
-          </p>
           <button type="button" className="btn" onClick={exportAudit}>
             <Download size={13} aria-hidden="true" />
             Export CSV

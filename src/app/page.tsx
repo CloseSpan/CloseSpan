@@ -1,23 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  ArrowRight,
-  BadgeCheck,
-  Check,
-  ChevronRight,
-  CircleDollarSign,
-  GitBranch,
-  Menu,
-  Network,
-  ShieldCheck,
-  Sparkles,
-  TimerReset,
-  Users,
+  ArrowRight, ArrowUpRight, Check, ChevronDown, Circle, Command,
+  GitBranch, Inbox, Layers3, Menu, Search, Settings2, ShieldCheck,
 } from "lucide-react";
 import { CloseSpanLogo } from "@/components/closespan-logo";
-import { CloseSpan3DLogo } from "@/components/closespan-3d-logo";
-import { FitText } from "@/components/fit-text";
-import { MotionTextReveal } from "@/components/motion-text-reveal";
+import { LandingIntegrationLogo, type LandingIntegrationBrand } from "@/components/landing-integration-logo";
+import styles from "./landing-page.module.css";
 import {
   LANDING_FAQS,
   SITE_ALTERNATE_NAMES,
@@ -156,420 +145,229 @@ export const structuredData = {
 
 const workspaceLoginHref = "/login?callbackUrl=%2Foverview";
 
-const integrations = [
-  { name: "Intercom", href: "/integrations/intercom" },
-  { name: "Zendesk", href: "/integrations/zendesk" },
-  { name: "Slack" },
-  { name: "GitHub", href: "/integrations/github" },
-  { name: "Linear" },
-  { name: "Jira" },
-  { name: "Sentry" },
-  { name: "PostHog" },
+const integrations: { name: string; brand: LandingIntegrationBrand; href?: string }[] = [
+  { name: "Intercom", brand: "intercom", href: "/integrations/intercom" },
+  { name: "Zendesk", brand: "zendesk", href: "/integrations/zendesk" },
+  { name: "Slack", brand: "slack" },
+  { name: "GitHub", brand: "github", href: "/integrations/github" },
+  { name: "Linear", brand: "linear" },
+  { name: "Jira", brand: "jira" },
+  { name: "Sentry", brand: "sentry" },
+  { name: "PostHog", brand: "posthog" },
 ];
 
-const outcomes = [
-  {
-    icon: Network,
-    eyebrow: "Detect",
-    title: "See one problem instead of 30 disconnected tickets.",
-    text: "Group differently worded reports into a persistent problem with visible evidence, confidence, and release context.",
-    metric: "Example: 3 reports → 1 problem",
-  },
-  {
-    icon: CircleDollarSign,
-    eyebrow: "Prioritize",
-    title: "Rank by customer and revenue impact.",
-    text: "Replace vote counts with affected ARR, renewal risk, account tier, severity, SLA, frequency, and confidence.",
-    metric: "Example: $394k ARR surfaced",
-  },
-  {
-    icon: GitBranch,
-    eyebrow: "Resolve",
-    title: "Hand engineering evidence, not a vague summary.",
-    text: "Prepare reproducible evidence, likely ownership, release context, test ideas, and existing-work references for engineering review.",
-    metric: "Example: 4 evidence types linked",
-  },
+const workspaceProblems = [
+  { title: "Large CSV exports produce empty files", source: "3 reports", priority: "High", status: "Needs review", selected: true },
+  { title: "Undo after regenerating captions", source: "2 reports", priority: "Medium", status: "In progress" },
+  { title: "Additional actions in three-dot menu", source: "1 report", priority: "Low", status: "Prompt testing" },
+  { title: "Keep filters when switching views", source: "2 reports", priority: "Low", status: "Resolved" },
 ];
 
 const workflow = [
-  {
-    number: "01",
-    title: "Listen everywhere",
-    text: "Normalize and redact signals from support, calls, reviews, and team conversations.",
-  },
-  {
-    number: "02",
-    title: "Find the real problem",
-    text: "Cluster related reports and keep every membership decision inspectable.",
-  },
-  {
-    number: "03",
-    title: "Prepare the fix",
-    text: "Score impact, investigate likely causes, and route external actions through approval.",
-  },
-  {
-    number: "04",
-    title: "Prove it worked",
-    text: "Verify the release, close affected conversations, and watch complaint volume decline.",
-  },
+  { title: "Connect your sources", text: "Bring customer feedback and repository context into one workspace." },
+  { title: "Let the agent investigate", text: "Group related reports, identify impact, and prepare a testable prompt." },
+  { title: "Test and approve", text: "Confirm the result. Keep meaningful external actions under your control." },
+  { title: "Close the loop", text: "Track release evidence and follow up with the customers who reported it." },
 ];
 
 export default function LandingPage() {
   return (
-    <div className="landing">
+    <div className={styles.page}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
         }}
       />
-      <a className="skip-link" href="#landing-content">
-        Skip to content
-      </a>
-
-      <div className="landing-header">
-        <header className="landing-nav">
-          <Link className="landing-brand" href="/" aria-label="CloseSpan home">
-            <CloseSpan3DLogo className="landing-3d-logo" priority size="md" />
+      <a className={styles.skipLink} href="#landing-content">Skip to content</a>
+      <header className={styles.header}>
+        <div className={styles.navigation}>
+          <Link className={styles.brand} href="/" aria-label="CloseSpan home">
+            <CloseSpanLogo size="sm" />
           </Link>
-          <nav aria-label="Landing navigation">
+          <nav className={styles.desktopNav} aria-label="Landing navigation">
             <Link href="/customer-feedback-operations">Product</Link>
             <Link href="/guides/customer-feedback-to-fix-workflow">How it works</Link>
             <Link href="/connectors">Connectors</Link>
             <Link href="/resources">Resources</Link>
-            <Link href="/about">About</Link>
-            <Link href="/requests">Requests</Link>
           </nav>
-          <div className="landing-actions">
-            <Link className="btn landing-secondary" href="/login">
-              Sign in
-            </Link>
-            <Link className="btn primary" href={workspaceLoginHref}>
+          <div className={styles.headerActions}>
+            <Link className={styles.signIn} href="/login">Sign in</Link>
+            <Link className={styles.primaryButton} href={workspaceLoginHref}>
               Get started <ArrowRight aria-hidden="true" size={14} />
             </Link>
-            <details className="landing-mobile-menu">
-              <summary aria-label="Open navigation">
-                <Menu aria-hidden="true" size={18} />
-              </summary>
+            <details className={styles.mobileMenu}>
+              <summary aria-label="Open navigation"><Menu aria-hidden="true" size={20} /></summary>
               <nav aria-label="Mobile navigation">
                 <Link href="/customer-feedback-operations">Product</Link>
                 <Link href="/guides/customer-feedback-to-fix-workflow">How it works</Link>
                 <Link href="/connectors">Connectors</Link>
                 <Link href="/resources">Resources</Link>
-                <Link href="/security">Security</Link>
                 <Link href="/about">About</Link>
                 <Link href="/requests">Requests</Link>
+                <Link href="/security">Security</Link>
                 <Link href="/login">Sign in</Link>
               </nav>
             </details>
           </div>
-        </header>
-      </div>
+        </div>
+      </header>
 
       <main id="landing-content">
-        <div className="landing-top">
-        <section className="landing-hero">
-          <div className="hero-copy">
-            <MotionTextReveal
-              highlight="product improvements."
-              text="Turn customer feedback into product improvements."
-            />
-            <p>
-              Connect support signals to revenue impact and engineering context,
-              then move every fix through approval and customer follow-up.
-            </p>
-            <div className="hero-actions">
-              <Link className="btn primary large" href={workspaceLoginHref}>
-                Get started with CloseSpan
-                <ArrowRight aria-hidden="true" size={16} />
-              </Link>
-              <Link className="btn large landing-secondary" href="/customer-feedback-operations">
-                Explore the workflow
-              </Link>
-            </div>
-            <div className="hero-proof" aria-label="Product safeguards">
-              <span>
-                <Check aria-hidden="true" size={14} /> Human approval by default
-              </span>
-              <span>
-                <Check aria-hidden="true" size={14} /> Evidence stays inspectable
-              </span>
-              <span>
-                <Check aria-hidden="true" size={14} /> Google sign-in required
-              </span>
-            </div>
+        <section className={styles.hero} aria-labelledby="hero-heading">
+          <h1 id="hero-heading">Great products start<br className={styles.desktopBreak} /> with listening.</h1>
+          <p>Turn customer feedback into tested product improvements.<br className={styles.desktopBreak} /> Your agent does the work. You make the decisions.</p>
+          <div className={styles.heroActions}>
+            <Link className={styles.primaryButton} href={workspaceLoginHref}>
+              Get started <ArrowRight aria-hidden="true" size={15} />
+            </Link>
+            <Link className={styles.secondaryButton} href="#workflow">
+              See how it works <ChevronDown aria-hidden="true" size={15} />
+            </Link>
           </div>
-
-          <ProductPreview />
+          <span className={styles.heroNote}>Free to use. Human approval by default.</span>
         </section>
 
-        <div className="hero-product-proof" aria-label="Illustrative product workspace example">
-          <span>Illustrative workspace example</span>
-          <div>
-            <strong>5</strong>
-            <small>feedback signals</small>
-          </div>
-          <div>
-            <strong>4</strong>
-            <small>tracked problems</small>
-          </div>
-          <div>
-            <strong>$1.32m</strong>
-            <small>affected ARR modeled</small>
-          </div>
-          <div>
-            <strong>100%</strong>
-            <small>actions governed</small>
-          </div>
-        </div>
-        </div>
+        <section className={styles.previewSection} aria-label="Illustrative CloseSpan workspace">
+          <ProductPreview />
+          <p className={styles.demoCaption}>Illustrative workspace · Sample problems and data</p>
+        </section>
 
-        <section className="landing-trustbar" aria-label="Designed to connect with">
-          <span>Designed to work above your existing stack</span>
-          {integrations.map((item) => (
-            item.href ? (
-              <Link className="landing-trustbar-link" href={item.href} key={item.name}>
-                {item.name}
+        <section className={styles.integrations} aria-label="Connector catalog">
+          <p>Your tools. One connected workflow.</p>
+          <div className={styles.integrationNames}>
+            {integrations.map((item) => item.href ? (
+              <Link className={styles.integrationName} href={item.href} key={item.name}>
+                <LandingIntegrationLogo brand={item.brand} className={styles.integrationLogo} />
+                <span>{item.name}</span>
               </Link>
             ) : (
-              <strong key={item.name}>{item.name}</strong>
-            )
-          ))}
-        </section>
-
-        <section className="landing-section" id="product">
-          <div className="section-intro">
-            <span>What is CloseSpan?</span>
-            <FitText as="h2" maxFontSize={42} maxLines={3} minFontSize={28}>
-              AI customer feedback intelligence that finishes the job.
-            </FitText>
-            <p>
-              CloseSpan gives B2B SaaS product and operations teams one
-              feedback-to-fix workspace. Every customer signal stays connected
-              to the problem it revealed, its business impact, the decision
-              your team made, and the outcome your customer experienced.
-            </p>
-            <Link className="text-link" href="/customer-feedback-operations">
-              Explore customer feedback operations
-              <ChevronRight aria-hidden="true" size={15} />
-            </Link>
-          </div>
-          <div className="outcome-grid">
-            {outcomes.map(({ icon: Icon, eyebrow, title, text, metric }) => (
-              <article key={title}>
-                <div className="outcome-card-top">
-                  <div className="outcome-icon">
-                    <Icon aria-hidden="true" size={20} />
-                  </div>
-                  <span>{eyebrow}</span>
-                </div>
-                <FitText as="h3" maxFontSize={19} maxLines={2} minFontSize={14}>
-                  {title}
-                </FitText>
-                <p>{text}</p>
-                <div className="outcome-metric">{metric}</div>
-              </article>
+              <span className={styles.integrationName} key={item.name}>
+                <LandingIntegrationLogo brand={item.brand} className={styles.integrationLogo} />
+                <span>{item.name}</span>
+              </span>
             ))}
           </div>
+          <Link className={styles.quietLink} href="/connectors">
+            Explore connectors and capabilities <ArrowUpRight size={13} aria-hidden="true" />
+          </Link>
         </section>
 
-        <section className="signal-story" aria-label="From noise to resolution">
-          <div className="signal-story-copy">
-            <span className="section-label">The must-win moment</span>
-            <FitText as="h2" maxFontSize={42} maxLines={3} minFontSize={28}>
-              A release ships. Complaints spike. Every team sees only a fragment.
-            </FitText>
-            <p>
-              CloseSpan gives product, engineering, support, and success one
-              shared source of truth before a recurring defect becomes a lost
-              renewal.
-            </p>
-            <Link className="text-link" href="/support-ticket-analysis">
-              Learn how recurring support issues are analyzed
-              <ChevronRight aria-hidden="true" size={15} />
-            </Link>
+        <section className={styles.productSection} id="product" aria-labelledby="product-title">
+          <div className={styles.sectionHeading}>
+            <h2 id="product-title">Less noise.<br />A clearer next step.</h2>
+            <div>
+              <p>Different words. Different channels. Often the same problem. CloseSpan connects the evidence so your team can focus on what matters.</p>
+              <Link className={styles.textLink} href="/customer-feedback-operations">
+                Explore the product <ArrowUpRight size={16} aria-hidden="true" />
+              </Link>
+            </div>
           </div>
-          <div className="signal-story-flow">
-            <div className="signal-source-list">
-              {["Intercom · export is blank", "Zendesk · zero-byte CSV", "Slack · large export failed"].map(
-                (item, index) => (
-                  <div key={item}>
-                    <span>{index + 1}</span>
-                    <strong>{item}</strong>
-                  </div>
-                ),
-              )}
-            </div>
-            <div className="signal-connector" aria-hidden="true">
-              <span />
-              <Network size={19} />
-              <span />
-            </div>
-            <div className="signal-result-card">
-              <small>Persistent problem · 92% confidence</small>
-              <FitText as="strong" maxLines={2} minFontSize={12}>
-                Large CSV exports produce empty files
-              </FitText>
-              <div>
-                <span>$394k ARR</span>
-                <span>High severity</span>
+          <div className={styles.evidenceLayout}>
+            <div className={styles.evidencePanel}>
+              <div className={styles.panelHeading}><Inbox size={16} aria-hidden="true" /><span>Customer signals</span><span className={styles.panelMeta}>Example</span></div>
+              <div className={styles.signal}>
+                <span className={styles.sourceAvatar}><LandingIntegrationLogo brand="intercom" /></span>
+                <div><strong>Intercom</strong><p>“The export finishes, but the file is empty.”</p></div>
+              </div>
+              <div className={styles.signal}>
+                <span className={styles.sourceAvatar}><LandingIntegrationLogo brand="zendesk" /></span>
+                <div><strong>Zendesk</strong><p>“Our CSV download has zero rows.”</p></div>
+              </div>
+              <div className={styles.signal}>
+                <span className={styles.sourceAvatar}><LandingIntegrationLogo brand="slack" /></span>
+                <div><strong>Slack</strong><p>“Large exports stopped working after the release.”</p></div>
+              </div>
+              <div className={styles.clusterResult}>
+                <Layers3 size={18} aria-hidden="true" />
+                <div><span>One connected problem</span><strong>Large CSV exports produce empty files</strong></div>
+                <Check size={17} aria-hidden="true" />
               </div>
             </div>
+            <div className={styles.featureCopy}>
+              <article>
+                <h3>Understand the problem</h3>
+                <p>Keep related reports, customer context, and evidence together.</p>
+                <Link href="/support-ticket-analysis">See how signals are analyzed <ArrowUpRight size={14} aria-hidden="true" /></Link>
+              </article>
+              <article>
+                <h3>Prioritize the right work</h3>
+                <p>Consider customer impact, affected revenue, severity, and confidence—not just vote counts.</p>
+              </article>
+              <article>
+                <h3>Give engineering a head start</h3>
+                <p>Turn the investigation into a reviewable prompt with testable acceptance criteria.</p>
+              </article>
+            </div>
           </div>
         </section>
 
-        <section className="workflow-section" id="workflow">
-          <div className="section-intro">
-            <span>Signal → resolution</span>
-            <FitText as="h2" maxFontSize={42} maxLines={2} minFontSize={28}>
-              One continuous, governed workflow.
-            </FitText>
-            <p>
-              Automate the repetitive coordination while keeping meaningful
-              decisions in human hands.
-            </p>
+        <section className={styles.workflowSection} id="workflow" aria-labelledby="workflow-title">
+          <div className={styles.sectionHeading}>
+            <h2 id="workflow-title">From the first report<br />to the final follow-up.</h2>
+            <div>
+              <p>One agent-led workflow. Your team steps in to test the result and approve the actions that matter.</p>
+              <Link className={styles.textLink} href="/guides/customer-feedback-to-fix-workflow">
+                See the full workflow <ArrowUpRight size={16} aria-hidden="true" />
+              </Link>
+            </div>
           </div>
-          <div className="workflow-track">
-            {workflow.map((item) => (
-              <article className="workflow-step" key={item.number}>
-                <span>{item.number}</span>
-                <FitText as="h3" maxFontSize={17} maxLines={2} minFontSize={14}>
-                  {item.title}
-                </FitText>
+          <ol className={styles.workflowSteps}>
+            {workflow.map((item, index) => (
+              <li key={item.title}>
+                <span className={styles.stepNumber}>{index + 1}</span>
+                <h3>{item.title}</h3>
                 <p>{item.text}</p>
-              </article>
+              </li>
             ))}
-          </div>
-          <div className="workflow-summary">
-            <article>
-              <TimerReset aria-hidden="true" size={22} />
-              <div>
-                <strong>Detect earlier</strong>
-                <p>Surface emerging clusters and release-linked complaint spikes.</p>
-              </div>
-            </article>
-            <article>
-              <Users aria-hidden="true" size={22} />
-              <div>
-                <strong>Decide together</strong>
-                <p>Give every team the same customer and technical evidence.</p>
-              </div>
-            </article>
-            <article>
-              <BadgeCheck aria-hidden="true" size={22} />
-              <div>
-                <strong>Prove the outcome</strong>
-                <p>Verify the release and close every affected conversation.</p>
-              </div>
-            </article>
-          </div>
-          <div className="section-resource-link">
-            <Link className="text-link" href="/guides/customer-feedback-to-fix-workflow">
-              Read the complete feedback-to-fix workflow
-              <ChevronRight aria-hidden="true" size={15} />
-            </Link>
-          </div>
+          </ol>
         </section>
 
-        <section className="trust-section" id="trust">
-          <div>
-            <span className="section-label">Trust by design</span>
-            <FitText as="h2" maxFontSize={42} maxLines={2} minFontSize={28}>
-              AI recommendations you can inspect and refuse.
-            </FitText>
-            <p>
-              Customer content is evidence, never agent instruction. Confidence,
-              assumptions, affected systems, shared data, and reversibility stay
-              visible before every meaningful action.
-            </p>
+        <section className={styles.trustSection} id="trust" aria-labelledby="trust-title">
+          <div className={styles.trustCopy}>
+            <h2 id="trust-title">Built for your work.<br />Under your control.</h2>
+            <p>AI recommendations are not permission. Review the evidence and approve, reject, or revise meaningful external actions.</p>
             <ul>
-              <li>
-                <Check aria-hidden="true" size={15} /> Configurable human approval
-              </li>
-              <li>
-                <Check aria-hidden="true" size={15} /> Email, phone, and secret redaction
-              </li>
-              <li>
-                <Check aria-hidden="true" size={15} /> Tenant-scoped audit events
-              </li>
-              <li>
-                <Check aria-hidden="true" size={15} /> Idempotent workflow actions
-              </li>
+              <li><Check size={15} aria-hidden="true" /> Human approval by default</li>
+              <li><Check size={15} aria-hidden="true" /> Sensitive-data redaction</li>
+              <li><Check size={15} aria-hidden="true" /> Tenant-scoped audit history</li>
             </ul>
-            <Link className="text-link" href="/security">
-              Review the security and data boundaries
-              <ChevronRight aria-hidden="true" size={15} />
-            </Link>
+            <Link className={styles.textLink} href="/security">Explore security <ArrowUpRight size={16} aria-hidden="true" /></Link>
           </div>
           <ApprovalPreview />
         </section>
 
-        <section className="faq-section" id="faq" aria-labelledby="faq-title">
-          <div className="section-intro">
-            <span>CloseSpan FAQ</span>
-            <FitText
-              as="h2"
-              id="faq-title"
-              maxFontSize={42}
-              maxLines={2}
-              minFontSize={28}
-            >
-              Customer feedback operations, explained.
-            </FitText>
-            <p>
-              Clear answers about how CloseSpan connects customer evidence to
-              prioritized product problems and governed engineering work.
-            </p>
-          </div>
-          <div className="faq-list">
+        <section className={styles.faqSection} id="faq" aria-labelledby="faq-title">
+          <h2 id="faq-title">A few things<br />you might ask.</h2>
+          <div className={styles.faqList}>
             {LANDING_FAQS.map(({ question, answer }) => (
-              <details key={question}>
-                <summary>{question}</summary>
-                <p>{answer}</p>
-              </details>
+              <article key={question}><h3>{question}</h3><p>{answer}</p></article>
             ))}
           </div>
         </section>
 
-        <section className="landing-cta">
-          <div>
-            <span>Start with evidence</span>
-            <FitText as="h2" maxFontSize={45} maxLines={3} minFontSize={28}>
-              See one customer defect move from signal to verified resolution.
-            </FitText>
-            <p>
-              Sign in with Google to create a private workspace and start using
-              the complete feedback-to-fix workflow.
-            </p>
-          </div>
-          <div className="landing-cta-actions">
-            <Link className="btn primary large" href={workspaceLoginHref}>
-              Get started <ArrowRight aria-hidden="true" size={16} />
-            </Link>
-            <Link className="btn large" href="/security">
-              Review security
-            </Link>
-          </div>
+        <section className={styles.finalCta}>
+          <h2>Make every piece<br />of feedback count.</h2>
+          <p>Start your feedback-to-fix workspace.</p>
+          <Link className={styles.primaryButton} href={workspaceLoginHref}>Get started <ArrowRight size={15} aria-hidden="true" /></Link>
         </section>
       </main>
 
-      <footer className="landing-footer">
-        <div className="landing-footer-meta">
-          <Link className="landing-brand" href="/" aria-label="CloseSpan home">
-            <CloseSpan3DLogo size="sm" />
-          </Link>
-          <p>Customer-reported problem to verified fix.</p>
+      <footer className={styles.footer}>
+        <div className={styles.footerBrand}>
+          <Link className={styles.brand} href="/" aria-label="CloseSpan home"><CloseSpanLogo size="sm" /></Link>
+          <p>From customer feedback to verified fix.</p>
         </div>
-        <nav className="landing-footer-links" aria-label="Footer navigation">
+        <nav className={styles.footerLinks} aria-label="Footer navigation">
           <Link href="/customer-feedback-operations">Product</Link>
           <Link href="/connectors">Connectors</Link>
           <Link href="/resources">Resources</Link>
           <Link href="/about">About</Link>
+          <Link href="/requests">Requests</Link>
+          <Link href="/contact">Contact</Link>
           <Link href="/security">Security</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
-          <Link href="/requests">Requests</Link>
-          <Link href="/contact">Contact</Link>
           <Link href="/login">Sign in</Link>
         </nav>
       </footer>
@@ -579,76 +377,51 @@ export default function LandingPage() {
 
 function ProductPreview() {
   return (
-    <div className="hero-product" aria-label="CloseSpan problem workspace preview">
-      <div className="preview-chrome">
-        <div className="preview-dots" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
-        <span>Example problem workspace · CS-142</span>
-        <span className="preview-status">Needs review</span>
-      </div>
-      <div className="preview-body">
-        <aside className="preview-sidebar" aria-label="Preview navigation">
-          <CloseSpanLogo variant="mark" tone="inverse" size="xs" />
-          {[1, 2, 3, 4, 5, 6].map((item) => (
-            <i key={item} />
-          ))}
+    <div className={styles.previewScroll} role="region" aria-label="Sample product workspace preview" tabIndex={0}>
+      <div className={styles.productPreview}>
+        <aside className={styles.previewSidebar} aria-label="Illustrative workspace navigation">
+          <div className={styles.previewBrand}><CloseSpanLogo size="xs" /><ChevronDown size={12} aria-hidden="true" /></div>
+          <div className={styles.previewSearch}><Search size={13} aria-hidden="true" /><span>Search anything</span><Command size={11} aria-hidden="true" /></div>
+          <div className={styles.previewNav}>
+            <span><Circle size={14} aria-hidden="true" />Overview</span>
+            <span className={styles.previewNavActive}><Layers3 size={14} aria-hidden="true" />Product problems</span>
+            <span><ShieldCheck size={14} aria-hidden="true" />Approvals<span className={styles.count}>1</span></span>
+            <span><GitBranch size={14} aria-hidden="true" />Agent activity</span>
+          </div>
+          <div className={styles.previewSidebarFooter}><span className={styles.workspaceAvatar}>C</span><span>Example workspace</span><Settings2 size={13} aria-hidden="true" /></div>
         </aside>
-        <div className="preview-content">
-          <div className="preview-title-row">
-            <div>
-              <div className="preview-eyebrow">HIGH-IMPACT PROBLEM</div>
-              <h2>Large CSV exports produce empty files</h2>
-              <p>3 corroborating reports after release 4.18.2</p>
+        <div className={styles.previewMain}>
+          <div className={styles.previewTopbar}><span><Layers3 size={14} aria-hidden="true" /> Product problems</span><span className={styles.exampleBadge}>Illustrative demo</span></div>
+          <div className={styles.previewWorkspace}>
+            <div className={styles.problemList}>
+              <div className={styles.problemListHeader}><h2>Product problems</h2><span>4 problems</span></div>
+              <div className={styles.previewTabs}><span className={styles.selectedTab}>All problems</span><span>Needs attention <small>1</small></span></div>
+              <div className={styles.problemTableHeading}><span>Problem</span><span>Status</span></div>
+              {workspaceProblems.map((problem) => (
+                <div key={problem.title} className={problem.selected ? styles.problemSelected : styles.problemRow}>
+                  <span className={styles.problemIcon}><Circle size={12} aria-hidden="true" /></span>
+                  <div><strong>{problem.title}</strong><span>{problem.source} <span aria-hidden="true">·</span> {problem.priority} priority</span></div>
+                  <span className={problem.selected ? styles.reviewStatus : styles.rowStatus}>{problem.status}</span>
+                </div>
+              ))}
+              <div className={styles.listFootnote}><Check size={12} aria-hidden="true" /><span>Customer evidence stays connected to every problem.</span></div>
             </div>
-            <span>92% confidence</span>
-          </div>
-          <div className="preview-metrics">
-            <div>
-              <small>Affected revenue</small>
-              <strong>$394k ARR</strong>
-            </div>
-            <div>
-              <small>Accounts</small>
-              <strong>3 enterprise</strong>
-            </div>
-            <div>
-              <small>Priority score</small>
-              <strong>79 / 100</strong>
-            </div>
-          </div>
-          <div className="preview-grid">
-            <section>
-              <div className="preview-section-title">Supporting evidence</div>
-              {["Intercom · Northstar Labs", "Zendesk · Acme Health", "Slack · Atlas Cloud"].map(
-                (item, index) => (
-                  <div className="preview-evidence" key={item}>
-                    <span>{96 - index * 4}%</span>
-                    <div>
-                      <strong>{item}</strong>
-                      <i />
-                    </div>
-                  </div>
-                ),
-              )}
-            </section>
-            <section>
-              <div className="preview-section-title">Recommended next step</div>
-              <div className="preview-recommendation">
-                <Sparkles aria-hidden="true" size={14} />
-                <strong>Investigate export stream finalization</strong>
-                <p>2 suspected files · 3 evidence gaps</p>
+            <aside className={styles.problemDetail} aria-label="Sample selected problem">
+              <div className={styles.detailHeader}><span>Problem overview</span><ArrowUpRight size={14} aria-hidden="true" /></div>
+              <span className={styles.reviewStatus}>Needs review</span>
+              <h3>Large CSV exports produce empty files</h3>
+              <p>3 corroborating reports after release 4.18.2.</p>
+              <dl className={styles.detailProperties}>
+                <div><dt>Impact</dt><dd>$394k ARR</dd></div>
+                <div><dt>Accounts</dt><dd>3 enterprise</dd></div>
+                <div><dt>Signal match</dt><dd>92%</dd></div>
+              </dl>
+              <div className={styles.agentUpdate}>
+                <span className={styles.agentMark}><Command size={14} aria-hidden="true" /></span>
+                <div><strong>CloseSpan agent</strong><p>Evidence grouped. Ready for investigation and prompt preparation.</p></div>
               </div>
-              <div className="preview-approval">
-                <BadgeCheck aria-hidden="true" size={15} />
-                <span>
-                  <strong>Human approval required</strong>
-                  <small>GitHub issue · Low risk</small>
-                </span>
-              </div>
-            </section>
+              <Link className={styles.previewCta} href={workspaceLoginHref}>Explore your workspace <ArrowRight size={13} aria-hidden="true" /></Link>
+            </aside>
           </div>
         </div>
       </div>
@@ -658,40 +431,22 @@ function ProductPreview() {
 
 function ApprovalPreview() {
   return (
-    <div className="trust-card">
-      <div className="trust-card-head">
-        <ShieldCheck aria-hidden="true" size={20} />
-        <div>
-          <strong>Example proposed action</strong>
-          <small>Simulated GitHub issue in analytics-api</small>
+    <div className={styles.approvalPreview} aria-label="Illustrative approval request">
+      <div className={styles.approvalHeader}><ShieldCheck size={18} aria-hidden="true" /><span>Action approval</span><span className={styles.panelMeta}>Example</span></div>
+      <div className={styles.approvalBody}>
+        <span className={styles.reviewStatus}>Awaiting your decision</span>
+        <h3>Create an issue for empty CSV exports</h3>
+        <p>Proposed GitHub issue · analytics-api</p>
+        <dl>
+          <div><dt>Evidence</dt><dd>3 corroborating reports</dd></div>
+          <div><dt>Data shared</dt><dd>Redacted quotes and environment details</dd></div>
+          <div><dt>Reversible</dt><dd>Issue can be edited or closed</dd></div>
+        </dl>
+        <div className={styles.approvalActions}>
+          <span className={styles.simulatedSecondary}>Reject</span>
+          <span className={styles.simulatedPrimary}>Approve action <Check size={13} aria-hidden="true" /></span>
         </div>
-        <span>Low risk</span>
-      </div>
-      <dl>
-        <div>
-          <dt>Reason</dt>
-          <dd>3 corroborating reports affecting $394k ARR</dd>
-        </div>
-        <div>
-          <dt>Confidence</dt>
-          <dd>68% · hypothesis, not confirmed cause</dd>
-        </div>
-        <div>
-          <dt>Data shared</dt>
-          <dd>Redacted quotes and environment metadata</dd>
-        </div>
-        <div>
-          <dt>Reversible</dt>
-          <dd>Yes · issue can be edited or closed</dd>
-        </div>
-      </dl>
-      <div className="trust-card-actions">
-        <button type="button" disabled>
-          Reject
-        </button>
-        <button type="button" disabled>
-          Approve simulated action
-        </button>
+        <p className={styles.approvalNote}>Illustrative approval. No action will be taken.</p>
       </div>
     </div>
   );

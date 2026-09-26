@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import process from "node:process";
 import pg from "pg";
+import { provisionPresentationWorkflow, presentationGuideSteps } from "./presentation-demo-data.mjs";
 
 function argument(name) {
   const index = process.argv.indexOf(`--${name}`);
@@ -24,10 +25,11 @@ const ownerEmail = (
   ""
 ).trim().toLowerCase();
 
-if (!["full", "minimal"].includes(demoProfile)) {
-  throw new Error("Demo profile must be either full or minimal");
+if (!["full", "minimal", "presentation"].includes(demoProfile)) {
+  throw new Error("Demo profile must be full, minimal, or presentation");
 }
 
+const isPresentationDemo = demoProfile === "presentation";
 const isMinimalDemo = demoProfile === "minimal";
 const minimalAccountIds = new Set([
   "acct_demo_acme",
@@ -289,7 +291,8 @@ const feedbackSpecs = allFeedbackSpecs.filter(([problemId, , accountId]) => {
 });
 
 const feedback = feedbackSpecs.map((spec, index) => {
-  const [problemId, source, accountId, type, severity, weeksAgo, dayOffset, environment, quote] = spec;
+  const [problemId, originalSource, accountId, type, severity, weeksAgo, dayOffset, environment, quote] = spec;
+  const source = isPresentationDemo && [5, 18].includes(index) ? "Discord" : originalSource;
   const account = accountById.get(accountId);
   if (!account) throw new Error(`Unknown account ${accountId}`);
   const observedAt = eventDate(weeksAgo, dayOffset, index);
@@ -427,7 +430,7 @@ const minimalGuideSteps = [
   { id: "governance", title: "Finish with trust and control", description: "Close with the policies that keep customer evidence, AI recommendations, and external actions accountable.", path: "/settings", actionLabel: "Open governance", talkingPoints: ["The demo has one owner and no live customer connections", "Agent actions remain recommendation-only", "The walkthrough resets cleanly for the next presentation"] },
 ];
 
-const guideSteps = isMinimalDemo ? minimalGuideSteps : fullGuideSteps;
+const guideSteps = isPresentationDemo ? presentationGuideSteps : isMinimalDemo ? minimalGuideSteps : fullGuideSteps;
 
 if (previewOnly) {
   console.log(JSON.stringify({
@@ -438,7 +441,8 @@ if (previewOnly) {
     problems: problems.length,
     investigations: investigations.length,
     pendingApprovals: 1,
-    integrations: integrations.length,
+    ...(isPresentationDemo ? { readOnly: true, requirementReviews: 2, sampleRuns: 5, liveConnections: 0, modelBudget: 0 } : {}),
+    integrations: integrations.length + (isPresentationDemo ? 1 : 0),
     guideSteps: guideSteps.length,
   }, null, 2));
   process.exit(0);
@@ -473,6 +477,9 @@ try {
       [orgId],
     );
     const existingOrganization = existing.rows[0];
+    if (isPresentationDemo && (!createOrganization || existingOrganization)) {
+      throw new Error("Presentation demos must use --create with a new organization id; existing workspaces are never replaced.");
+    }
     if (!existingOrganization && !createOrganization) {
       throw new Error(`Organization ${orgId} does not exist`);
     }
@@ -663,6 +670,7 @@ try {
       );
     }
 
+    if (!isPresentationDemo) {
     await client.query(
       `INSERT INTO approval_requests(
          id,org_id,problem_id,recommendation_id,action,reason,confidence,systems,
@@ -832,14 +840,15 @@ try {
        )`,
       [orgId, promptId, promptHash, baseSha, verificationId],
     );
+    }
 
-    for (const item of feedback.filter((candidate) => candidate.problemId === "prob_demo_export")) {
+    for (const item of feedback.filter((candidate) => candidate.problemId === (isPresentationDemo ? "prob_demo_notifications" : "prob_demo_export"))) {
       await client.query(
         `INSERT INTO customer_notifications(
            id,org_id,problem_id,customer_name,status
-         ) VALUES($1,$2,'prob_demo_export',$3,'Drafted')
+         ) VALUES($1,$2,$3,$4,'Drafted')
          ON CONFLICT (org_id,problem_id,customer_name) DO NOTHING`,
-        [randomUUID(), orgId, item.customer],
+        [randomUUID(), orgId, item.problemId, item.customer],
       );
     }
 
@@ -920,13 +929,19 @@ try {
       );
     }
 
+    const presentation = isPresentationDemo
+      ? await provisionPresentationWorkflow(client, { orgId, memberId, problems, feedback, now })
+      : null;
+
     await client.query(
       `INSERT INTO workspace_demo_guides(org_id,title,description,steps,enabled)
        VALUES($1,'From fragmented feedback to verified resolution',
          $2,$3::jsonb,true)`,
       [
         orgId,
-        isMinimalDemo
+        isPresentationDemo
+          ? "Read-only sample data. No live AI, GitHub, Tenki, messages, or deployments."
+          : isMinimalDemo
           ? "A focused 12-step product story with data at every stop."
           : "A repeatable 12-step product story for an Operations Manager presenting CloseSpan.",
         JSON.stringify(guideSteps),
@@ -966,6 +981,7 @@ try {
       ownerEmail,
       profile: demoProfile,
       ...counts,
+      ...(presentation ? { presentation } : {}),
       guideSteps: guideSteps.length,
     });
   } catch (error) {

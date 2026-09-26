@@ -1,0 +1,482 @@
+@import "./icon-colors.css";
+
+/*
+ * THESIS: CloseSpan's feedback-to-fix workflow in an Attio-inspired visual world.
+ * OWN-WORLD: Geist, white and charcoal, hairline boundaries, compact controls.
+ * STORY: Understand the problem, review the result, choose the next action.
+ * FIRST VIEWPORT: Clean 232px sidebar, 60px toolbar, readable task-first content.
+ * FORM: User-pinned Attio reference overrides direction seed e9037f83.
+ * FINISH: Design review and DESIGN.md document the built system, not an intent.
+ *
+ * This final layer replaces legacy neumorphic materials without changing any
+ * feature's state, permissions, responsive navigation, or scroll ownership.
+ */
+
+:root {
+  --field-height: 40px;
+  --field-radius: 12px;
+  --field-border: #e4e5e8;
+  --field-border-hover: #caced4;
+  --field-focus-border: #737780;
+  --field-focus-surface: #f4f4f5;
+  --field-shadow: 0 1px 2px rgba(28, 29, 31, 0.06), 0 2px 6px rgba(28, 29, 31, 0.04);
+}
+:root[data-theme="dark"] {
+  --field-border: #44464c;
+  --field-border-hover: #666970;
+  --field-focus-border: #9699a0;
+  --field-focus-surface: #2a2b2e;
+  --field-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+html { font-synthesis: none; }
+body { letter-spacing: -0.008em; }
+button, input, textarea, select { caret-color: var(--text-strong); }
+h1, h2, h3, h4 { text-wrap: balance; }
+td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
+
+/* The old image component remains an API-compatible, flat wordmark. */
+.closespan-3d-logo,
+.shell-immersive .immersive-brand .closespan-3d-logo--sm {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: auto;
+  line-height: 1;
+  overflow: visible;
+  filter: none;
+  transform: none;
+}
+:root[data-theme] .closespan-logo :is(.closespan-logo__syntax, .closespan-logo__name, .closespan-logo__close, .closespan-logo__span) {
+  color: var(--text-strong);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+  filter: none;
+}
+.closespan-3d-logo .closespan-logo { font-size: 23px; font-weight: 650; letter-spacing: -0.04em; }
+.closespan-3d-logo--lg .closespan-logo { font-size: 30px; }
+:root[data-theme] .app-shell .brand .closespan-logo__name { display: inline-flex; }
+
+/* Flat structural rails. Border overrides intentionally outrank the legacy
+ * borderless theme; forced-colors has its own explicit treatment below. */
+:root[data-theme] :is(.app-shell .sidebar, .app-shell .topbar, .immersive-topbar, .feature-requests-header) {
+  box-shadow: none;
+  border: 0 !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+}
+:root[data-theme] .app-shell .sidebar {
+  padding: 20px 12px 14px;
+  background: var(--surface-muted);
+  border-bottom: 0 !important;
+  border-right: 1px solid var(--border-subtle) !important;
+}
+:root[data-theme] .app-shell .sidebar .brand {
+  min-height: 40px;
+  margin: 0 8px 24px;
+  padding: 0;
+}
+:root[data-theme] .app-shell .sidebar > .nav { padding-inline: 0; }
+:root[data-theme] :is(.app-shell .topbar, .immersive-topbar) {
+  height: 60px;
+  min-height: 60px;
+  padding-inline: 28px;
+  background: var(--surface);
+}
+:root[data-theme] .app-shell :is(.crumb, .workspace-breadcrumb) { color: var(--text-muted); font-size: 13px; font-weight: 500; }
+:root[data-theme] .app-shell .content { padding: 30px 32px 48px; }
+:root[data-theme] .app-shell :is(.page-head, .page-title-row) { margin-bottom: 24px; gap: 20px; }
+:root[data-theme] .app-shell :is(.page-head h1, .page-title h1) { font-size: 28px; line-height: 1.2; font-weight: 550; letter-spacing: -0.03em; }
+:root[data-theme] .app-shell :is(.card-head h2, .card-body > h2) { font-size: 17px; font-weight: 550; letter-spacing: -0.02em; }
+:root[data-theme] .app-shell h3 { font-weight: 550; }
+
+/* Navigation remains fully expanded; active state is a quiet tonal row. */
+:root[data-theme] .app-shell :is(.nav a, .settings-nav a, .mobile-menu-panel nav a) {
+  min-height: 36px;
+  padding: 8px 10px;
+  margin: 2px 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: transparent;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 500;
+  gap: 10px;
+  transform: none;
+}
+:root[data-theme] .app-shell :is(.nav a, .settings-nav a, .mobile-menu-panel nav a):hover {
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+  box-shadow: none;
+  transform: none;
+}
+:root[data-theme] .app-shell :is(.nav a.active, .settings-nav a.active, .mobile-menu-panel nav a.active) {
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+  box-shadow: none;
+  font-weight: 600;
+}
+/* Personal accents color selection, never permission or result semantics. */
+:root[data-theme][data-accent]:not([data-accent="neutral"]) .app-shell :is(.nav a.active, .settings-nav a.active, .mobile-menu-panel nav a.active) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+:root[data-theme] .app-shell :is(.nav a svg, .settings-nav a svg) { width: 17px; height: 17px; stroke-width: 1.6; }
+:root[data-theme] .app-shell .nav-section-label { padding: 8px 10px; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-weight: 500; }
+:root[data-theme] .app-shell .nav-group + .nav-group { margin-top: 16px; }
+:root[data-theme] .app-shell .nav-link-indicator { display: none; }
+:root[data-theme] .app-shell .sidebar .organization-switcher-trigger {
+  min-height: 54px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  background: var(--surface);
+}
+:root[data-theme] :is(.organization-trigger-copy small, .organization-avatar, .avatar) { color: var(--text-muted); }
+:root[data-theme] :is(.avatar, .organization-avatar, .brandmark, .provider-monogram, .provider-icon, .integration-provider-icon, .github-connection-icon) {
+  box-shadow: none;
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+  border-radius: var(--radius-md);
+}
+:root[data-theme] .app-shell .user-menu-trigger { box-shadow: none; background: transparent; }
+:root[data-theme] .app-shell .top-actions { gap: 10px; }
+
+/* Containers use one thin boundary, never a raised/recessed pair. */
+:root[data-theme] :is(
+  .card, .problem-card, .integration-summary-card, .integration, .provider-option,
+  .follow-card, .board-col, .setup-card, .setup-progress-card, .public-source-card,
+  .pipedream-account-row, .integration-suggestion-board, .integration-copilot-connector,
+  .feedback-analysis-card, .feedback-journey, .feature-request-review-queue,
+  .feature-request-row, .login-card, .waitlist-card, .delphi-product-card,
+  .human-review-card, .human-review-story, .human-review-result, .prompt-viewer
+) {
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: none;
+}
+:root[data-theme] :is(.problem-card, .integration, .provider-option, .feature-request-row):hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong) !important;
+  box-shadow: none;
+  transform: none;
+}
+:root[data-theme] :is(.card-head, .feedback-drawer-head, .integration-drawer-head, .guided-demo-head, .feature-request-dialog > header, .feature-request-review-queue > header) {
+  border: 0 !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  padding: 18px 20px;
+  box-shadow: none;
+  background: transparent;
+}
+:root[data-theme] .app-shell .card-body { padding: 20px; }
+:root[data-theme] :is(.metric, .fact, .callout, .filter-panel, .empty-state, .chart-empty-state, .code-path, .code-block, .credential-value) {
+  box-shadow: none;
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  border: 1px solid var(--border-subtle) !important;
+}
+:root[data-theme] .metric { padding: 18px 20px; background: var(--surface); }
+:root[data-theme] .metric-value { font-size: 28px; font-weight: 550; letter-spacing: -0.03em; }
+:root[data-theme] :is(.callout.warning, .setup-alert, .toast.warning) { color: var(--warning); background: var(--warning-soft); border-color: transparent !important; }
+:root[data-theme] :is(.callout.success, .toast.success) { color: var(--success); background: var(--success-soft); border-color: transparent !important; }
+:root[data-theme] :is(.callout.error, .toast.error, .login-alert) { color: var(--danger); background: var(--danger-soft); border-color: transparent !important; }
+:root[data-theme] .callout.warning :is(p, strong, .callout-title) { color: var(--warning); }
+:root[data-theme] .callout.success :is(p, strong, .callout-title) { color: var(--success); }
+
+/* Every control shares the same compact silhouette. Destructive and semantic
+ * actions retain their color so styling cannot disguise the consequence. */
+:root[data-theme] :is(
+  .btn, .icon-btn, .icon-button, .custom-select-trigger, .settings-select-trigger,
+  .guided-demo-trigger, .feature-request-new, .feature-request-primary,
+  .feature-request-secondary, .login-google, .delphi-chip,
+  .integration-copilot-replies button, .integration-suggestion-row-action,
+  .organization-create-action, .organization-create-submit, .organization-rename-submit
+) {
+  min-height: var(--control-height);
+  border: 1px solid var(--control-border) !important;
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  background: var(--surface);
+  background-image: none;
+  color: var(--text-strong);
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  transform: none;
+  text-shadow: none;
+}
+:root[data-theme] :is(.btn, .icon-btn, .icon-button, .custom-select-trigger, .settings-select-trigger, .login-google, .feature-request-new, .feature-request-secondary):hover:not(:disabled) {
+  border-color: var(--border-strong) !important;
+  background: var(--surface-hover);
+  box-shadow: none;
+  transform: none;
+}
+:root[data-theme] :is(.btn, .icon-btn, .icon-button, .custom-select-trigger):active:not(:disabled) { background: var(--surface-pressed); transform: translateY(1px); }
+:root[data-theme] :is(.btn.primary, .feature-request-primary, .feature-request-new, .organization-create-submit, .organization-rename-submit, .delphi-send, .integration-copilot-primary-action, .prompt-testing-send) {
+  border-color: var(--accent-fill) !important;
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: none;
+}
+:root[data-theme] :is(.btn.primary, .feature-request-primary, .feature-request-new, .organization-create-submit, .organization-rename-submit, .delphi-send, .integration-copilot-primary-action, .prompt-testing-send):hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+  border-color: var(--accent-fill-hover) !important;
+  color: var(--text-on-accent);
+  box-shadow: none;
+}
+:root[data-theme] :is(.btn.primary, .feature-request-primary, .feature-request-new, .organization-create-submit, .organization-rename-submit, .delphi-send, .integration-copilot-primary-action, .prompt-testing-send):active:not(:disabled) {
+  background: var(--accent-fill-active);
+  border-color: var(--accent-fill-active) !important;
+  color: var(--text-on-accent);
+}
+:root[data-theme] .btn.danger { color: var(--danger); background: var(--danger-soft); border-color: transparent !important; }
+:root[data-theme] .btn.success { color: var(--success); background: var(--success-soft); border-color: transparent !important; }
+:root[data-theme] .btn.danger:is(:hover, :active):not(:disabled) { color: var(--danger); background: var(--danger-soft); border-color: var(--danger) !important; }
+:root[data-theme] .btn.success:is(:hover, :active):not(:disabled) { color: var(--success); background: var(--success-soft); border-color: var(--success) !important; }
+:root[data-theme] :is(.icon-btn, .icon-button) { width: 36px; height: 36px; min-width: 36px; padding: 8px; }
+:root[data-theme] .custom-select-trigger { width: 100%; text-align: left; justify-content: space-between; }
+:root[data-theme] :is(.btn, .icon-btn, .icon-button, .custom-select-trigger, .login-google):disabled {
+  box-shadow: none !important;
+  background: var(--surface-disabled);
+  color: var(--text-muted);
+  border-color: var(--border-subtle) !important;
+  opacity: 0.65;
+  transform: none;
+}
+
+/* User-pinned field reference: round white controls, a hairline edge, and a
+ * shallow downward shadow. Exclusions stay in :where so states can override
+ * the base. Composite fields own their boundary, never their nested inputs. */
+:root[data-theme] :is(.app-shell, .shell-immersive, .login-page, .feature-requests-page, .organization-create-panel, .problem-column-filter-popover) :is(
+  input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"], [type="color"], .neumorphic-composite-field)),
+  textarea:where(:not(.neumorphic-composite-field)), select
+):where(:not(.searchbox *, .secret-input *, .delphi-composer *, .integration-copilot-composer *, .prompt-testing-composer *, .feedback-reply-composer *, [data-field-shell] *)) {
+  min-height: var(--field-height);
+  padding: 9px 12px;
+  border: 1px solid var(--field-state-border, var(--field-border)) !important;
+  border-radius: var(--field-radius);
+  background: var(--field-state-surface, var(--surface));
+  color: var(--text-strong);
+  box-shadow: var(--field-state-shadow, var(--field-shadow)) !important;
+  /* These local roles let disabled/invalid/forced-color states win without
+   * reproducing the base selector's element exclusions. */
+}
+:root[data-theme] :is(
+  .searchbox, .secret-input, .delphi-composer, .integration-copilot-composer,
+  .prompt-testing-composer, .feedback-reply-composer, button.custom-select-trigger,
+  .settings-select-trigger, .search-action, [data-field-shell]
+) {
+  min-height: var(--field-height);
+  border: 1px solid var(--field-state-border, var(--field-border)) !important;
+  border-radius: var(--field-radius);
+  background: var(--field-state-surface, var(--surface));
+  color: var(--text-strong);
+  box-shadow: var(--field-state-shadow, var(--field-shadow)) !important;
+  transform: none;
+}
+:root[data-theme] :is(.app-shell, .shell-immersive, .login-page, .feature-requests-page, .organization-create-panel, .problem-column-filter-popover) :is(input, textarea, select):where(:hover),
+:root[data-theme] :is(.searchbox, .secret-input, .delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer, [data-field-shell], .custom-select-trigger, .settings-select-trigger, .search-action):hover {
+  --field-state-border: var(--field-border-hover);
+}
+/* Keep dropdown and search hover/press neutral; no legacy accent or lift. */
+:root[data-theme] :is(.custom-select-trigger, .settings-select-trigger, .search-action):is(:hover, :active):not(:disabled) {
+  border-color: var(--field-state-border, var(--field-border)) !important;
+  background: var(--surface);
+  color: var(--text-strong);
+  transform: none;
+}
+:root[data-theme] :is(.searchbox, .secret-input, .delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer, [data-field-shell]) :is(input, textarea):where(:not([type="hidden"])) {
+  min-width: 0;
+  min-height: var(--field-height);
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+:root[data-theme] :is(input, textarea, select, .custom-select-trigger):disabled {
+  --field-state-surface: var(--surface-disabled);
+  --field-state-border: var(--border-subtle);
+  --field-state-shadow: none;
+  color: var(--text-muted);
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+/* A disabled send button must not make an editable composer look disabled. */
+:root[data-theme] :is(.searchbox, .secret-input, .delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer, [data-field-shell]):has(:is(input, textarea):disabled):not(:has(:is(input, textarea):enabled)) {
+  --field-state-surface: var(--surface-disabled);
+  --field-state-border: var(--border-subtle);
+  --field-state-shadow: none;
+  color: var(--text-muted);
+}
+:root[data-theme] :is(input, textarea, select, .custom-select-trigger)[aria-invalid="true"],
+:root[data-theme] :is(.searchbox, .secret-input, .delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer, [data-field-shell]):has([aria-invalid="true"]) {
+  --field-state-border: var(--danger);
+  --field-invalid-border: var(--danger);
+}
+:root[data-theme] :is(input, textarea)::placeholder { color: var(--text-muted); opacity: 1; }
+:root[data-theme] .app-shell .searchbox { padding: 0 12px; border-radius: var(--field-radius); }
+:root[data-theme] .problem-column-filter-affix input { padding-inline-end: 36px; }
+:root[data-theme] .app-shell .custom-retention-control { padding: 0; background: transparent; box-shadow: none; }
+:root[data-theme] :is(.field > label, .field-label, .toggle-row strong) { color: var(--text-strong); font-size: 13px; font-weight: 500; }
+:root[data-theme] .toggle-row { padding-block: 16px; border-bottom: 1px solid var(--border-subtle); }
+:root[data-theme] .toggle-row input[type="checkbox"] { width: 36px; min-width: 36px; flex-basis: 36px; height: 20px; min-height: 20px; border-radius: 99px; background: var(--border-strong); box-shadow: none; }
+:root[data-theme] .toggle-row input[type="checkbox"]::before { width: 14px; height: 14px; top: 3px; left: 3px; background: #fff; box-shadow: none; transform: none; }
+:root[data-theme] .toggle-row input[type="checkbox"]:checked { background: var(--accent-fill); }
+:root[data-theme] .toggle-row input[type="checkbox"]:checked::before { transform: translateX(16px); background: var(--text-on-accent); }
+:root[data-theme] .app-shell .weight-row input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; margin-top: -6px; background: var(--accent-fill); box-shadow: none; }
+:root[data-theme] .app-shell .weight-row input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: var(--accent-fill); box-shadow: none; }
+:root[data-theme] .app-shell .weight-row input[type="range"]::-webkit-slider-runnable-track { height: 4px; background: var(--border-subtle); box-shadow: none; }
+:root[data-theme] .app-shell .weight-row input[type="range"]::-moz-range-track { height: 4px; background: var(--border-subtle); box-shadow: none; }
+
+/* Dense, scannable records and subtle selected rows. */
+:root[data-theme] .app-shell .table-wrap { border: 1px solid var(--border-subtle) !important; border-radius: var(--radius-lg); box-shadow: none; background: var(--surface); }
+:root[data-theme] .app-shell table { background: var(--surface); border-collapse: collapse; box-shadow: none; }
+:root[data-theme] .app-shell th { padding: 12px 16px; color: var(--text-muted); background: var(--surface-muted); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; border-bottom: 1px solid var(--border-subtle) !important; }
+:root[data-theme] .app-shell td { padding: 16px; border-bottom: 1px solid var(--border-subtle) !important; font-size: 13px; }
+:root[data-theme] .app-shell tbody tr:last-child td { border-bottom: 0 !important; }
+:root[data-theme] .app-shell tbody tr:hover { background: var(--table-row-hover); }
+:root[data-theme] .app-shell :is(.queue-item, .rank-row) { padding: 16px 18px; border-bottom: 1px solid var(--border-subtle) !important; border-radius: 0; box-shadow: none; }
+:root[data-theme] .app-shell .queue-item.selected { background: var(--surface-pressed); box-shadow: none; }
+:root[data-theme] .app-shell :is(.rank-title, .queue-item strong, .feedback-signal-title) { color: var(--text-strong); font-weight: 550; }
+:root[data-theme] :is(.badge, .feature-request-count) { padding: 3px 7px; border-radius: var(--radius-xs); font-size: 11px; font-weight: 500; box-shadow: none; background: var(--surface-pressed); color: var(--text-muted); }
+:root[data-theme] .badge.success { color: var(--success); background: var(--success-soft); }
+:root[data-theme] .badge.brand { color: var(--info); background: var(--info-soft); }
+:root[data-theme] :is(.badge.high, .badge.critical) { color: var(--danger); background: var(--danger-soft); }
+:root[data-theme] .badge.medium { color: var(--warning); background: var(--warning-soft); }
+:root[data-theme] :is(.segmented, .tabs, .integration-view-tabs, .prompt-view-switcher) { background: var(--surface-muted); border-radius: var(--radius-md); padding: 3px; box-shadow: none; }
+:root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button) { border-radius: var(--radius-sm); padding: 7px 12px; font-size: 13px; color: var(--text-muted); box-shadow: none; }
+:root[data-theme] :is(.segmented button.active, .tabs button.active, .integration-view-tabs button.active, .prompt-view-switcher button.is-active) { background: var(--surface); color: var(--text-strong); box-shadow: none; }
+
+/* Overlays have real elevation; their contents remain flat. */
+:root[data-theme] :is(.user-menu-panel, .organization-switcher-menu, .custom-select-menu, .custom-select-options, .mobile-menu-panel, .guided-demo-panel, .feedback-drawer, .integration-drawer, .feature-request-dialog, .organization-create-panel) {
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg);
+  background: var(--surface) !important;
+  color: var(--text);
+  box-shadow: var(--shadow-overlay) !important;
+}
+:root[data-theme] :is(.custom-select-option, .organization-option, .user-menu-panel a, .user-menu-panel button) { border-radius: var(--radius-sm); box-shadow: none; font-size: 13px; }
+:root[data-theme] :is(.feedback-drawer-footer, .guided-demo-footer) { border-top: 1px solid var(--border-subtle) !important; box-shadow: none; }
+
+/* Onboarding, prompt conversations, and authentication share the same system. */
+:root[data-theme] :is(.delphi-glow, .login-glow) { display: none; }
+:root[data-theme] :is(.login-page, .waitlist-page, .shell-immersive, .delphi-shell) { background: var(--bg); background-image: none; }
+:root[data-theme] :is(.login-card, .waitlist-card) { padding: 32px; }
+:root[data-theme] .login-card h1 { font-size: 30px; font-weight: 550; letter-spacing: -0.03em; }
+:root[data-theme] .login-google { width: 100%; min-height: 44px; }
+:root[data-theme] .login-trust { border-top: 1px solid var(--border-subtle) !important; box-shadow: none; }
+:root[data-theme] :is(.integration-copilot-bubble, .delphi-bubble, .prompt-testing-message, .delphi-company-confirmation, .delphi-sync, .delphi-source, .delphi-product-card, .onboarding-next-step) { border-radius: var(--radius-lg); box-shadow: none; }
+:root[data-theme] :is(.integration-copilot-bubble, .delphi-bubble, .prompt-testing-message.is-assistant) { background: var(--surface-muted); border: 1px solid var(--border-subtle); }
+:root[data-theme] :is(.integration-copilot-message.user, .prompt-testing-message.is-user) { border-radius: var(--radius-lg); background: var(--surface-pressed); color: var(--text-strong); box-shadow: none; }
+:root[data-theme] .integration-copilot-message.user::after { display: none; }
+:root[data-theme] .prompt-testing-message.is-user :is(p, .prompt-testing-message-author) { color: var(--text-strong); }
+:root[data-theme] .feature-requests-header { margin-top: 0; border-radius: 0; }
+:root[data-theme] .feature-requests-page .feature-requests-intro h1 { font-size: clamp(32px, 4vw, 48px); font-weight: 550; }
+:root[data-theme] .feature-requests-page .feature-request-row { border-radius: var(--radius-md); padding: 20px; }
+:root[data-theme] .feature-requests-page .feature-request-votes { border-radius: var(--radius-sm); box-shadow: none; background: var(--surface-muted); }
+
+/* Links and actions retain a keyboard outline. Fields use their existing
+ * boundary plus a neutral fill: no second ring or nested input highlight. */
+:root[data-theme] :is(button, a, summary, [tabindex], input, textarea, select):focus-visible {
+  outline: 2px solid var(--focus-ring) !important;
+  outline-offset: 3px;
+  box-shadow: none;
+}
+:root[data-theme] :is(
+  input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"], [type="color"], .neumorphic-composite-field)),
+  textarea:where(:not(.neumorphic-composite-field)), select,
+  .custom-select-trigger, .settings-select-trigger, .search-action
+):where(:not(.searchbox *, .secret-input *, .delphi-composer *, .integration-copilot-composer *, .prompt-testing-composer *, .feedback-reply-composer *, [data-field-shell] *)):is(:focus, :focus-visible):not(:disabled),
+:root[data-theme] :is(.searchbox, .secret-input, .delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer, [data-field-shell]):has(:is(input, textarea):enabled:focus) {
+  border-color: var(--field-invalid-border, var(--field-focus-border)) !important;
+  background: var(--field-focus-surface) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+:root[data-theme] :is(.searchbox, .secret-input, .delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer, [data-field-shell]) :is(input, textarea):is(:focus, :focus-visible) {
+  outline: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+:root[data-theme] .searchbox:focus-within > svg { color: var(--icon-blue); transform: none; }
+/* The repository row must not outline its already-visible checkbox as well. */
+:root[data-theme] .onboarding-github-repository:focus-within { outline: none; }
+:root[data-theme] :is(.content, .workspace-route-stage):focus-visible { outline: 0 !important; }
+
+/* Keep the sidebar visible at tablet widths, and confine document scrolling
+ * to the existing main panel. Touch controls receive a larger target. */
+@media (min-width: 721px) {
+  :root[data-theme] .app-shell { grid-template-columns: 232px minmax(0, 1fr); }
+  :root[data-theme] .app-shell .sidebar { width: 232px; }
+  :root[data-theme] .app-shell .nav a::after { display: none; }
+}
+@media (max-width: 1050px) and (min-width: 721px) {
+  :root[data-theme] .app-shell { grid-template-columns: 212px minmax(0, 1fr); }
+  :root[data-theme] .app-shell .sidebar { width: 212px; }
+  :root[data-theme] .app-shell .nav a span { display: inline; }
+  :root[data-theme] .app-shell .nav a { justify-content: flex-start; }
+  :root[data-theme] .app-shell .sidebar .brand { justify-content: flex-start; }
+  :root[data-theme] .app-shell .sidebar .organization-switcher-trigger { grid-template-columns: 30px minmax(0, 1fr) 16px; gap: 8px; justify-content: stretch; }
+  :root[data-theme] .app-shell .sidebar .organization-switcher-control.rename-enabled .organization-switcher-trigger { grid-template-columns: 30px minmax(0, 1fr) 24px 16px; gap: 5px; }
+  :root[data-theme] .app-shell .sidebar .organization-trigger-copy { display: grid; }
+  :root[data-theme] .app-shell .sidebar .organization-switcher-trigger > svg { display: block; }
+  :root[data-theme] .app-shell .sidebar .organization-rename-trigger { display: grid; }
+  :root[data-theme] .app-shell .sidebar .organization-avatar { width: 30px; height: 30px; }
+  :root[data-theme] .app-shell .content { padding-inline: 24px; }
+}
+@media (max-width: 720px) {
+  :root { --control-height: 44px; --control-height-lg: 44px; --field-height: 44px; }
+  :root[data-theme] .app-shell .content { padding: 24px 16px 40px; }
+  :root[data-theme] :is(.app-shell .topbar, .immersive-topbar) { padding-inline: 16px; }
+  :root[data-theme] .app-shell :is(.page-head h1, .page-title h1) { font-size: 25px; }
+  :root[data-theme] .app-shell :is(.card-head, .card-body) { padding: 16px; }
+  :root[data-theme] .app-shell :is(.nav a, .settings-nav a, .mobile-menu-panel nav a) { min-height: 44px; }
+  :root[data-theme] :is(.login-card, .waitlist-card) { padding: 24px; }
+  :root[data-theme] :is(.icon-btn, .icon-button) { width: 44px; height: 44px; min-width: 44px; }
+}
+.review-inbox { margin-bottom: 24px; }
+.review-inbox-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 16px; align-items: center; gap: 16px; padding: 18px 20px; color: var(--text-strong); text-decoration: none; min-height: 64px; }
+.review-inbox-row + .review-inbox-row { border-top: 1px solid var(--border-subtle); }
+.review-inbox-row:hover { background: var(--surface-muted); }
+.review-inbox-row strong { overflow-wrap: anywhere; font-weight: 550; }
+.settings-tools-page { max-width: 900px; margin: 32px auto; }
+.settings-tools-group { margin-top: 32px; }
+.settings-tools-group h2 { font-size: 15px; font-weight: 550; margin: 0 0 12px; }
+.settings-tools-group nav { border-top: 1px solid var(--border-subtle); }
+.settings-tool-link { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 48px; padding: 12px 0; border-bottom: 1px solid var(--border-subtle); color: var(--text); text-decoration: none; }
+.settings-tool-link:hover { color: var(--text-strong); background: var(--surface-muted); }
+@media (max-width: 720px) {
+  .review-inbox-row { grid-template-columns: minmax(0, 1fr) 16px; padding: 16px; gap: 10px; }
+  .review-inbox-row .badge { grid-row: 2; justify-self: start; }
+  .review-inbox-row > svg { grid-column: 2; grid-row: 1 / 3; }
+  .settings-tools-page { margin: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme] *, :root[data-theme] *::before, :root[data-theme] *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+@media (forced-colors: active) {
+  :root[data-theme] * { --field-state-border: CanvasText; --field-state-shadow: none; }
+  :root[data-theme] { --focus-ring: Highlight; }
+  :root[data-theme] :is(.btn, .icon-btn, .icon-button, input, textarea, select, .custom-select-trigger, .card, .badge, .sidebar, .topbar) { border: 1px solid CanvasText !important; box-shadow: none !important; }
+  :root[data-theme] :is(button, a, summary, input, textarea, select):focus-visible { outline: 2px solid Highlight !important; }
+  :root[data-theme] :is(input, textarea, select, .custom-select-trigger, .settings-select-trigger, .search-action):where(:not(.searchbox *, .secret-input *, .delphi-composer *, .integration-copilot-composer *, .prompt-testing-composer *, .feedback-reply-composer *, [data-field-shell] *)):is(:focus, :focus-visible):not(:disabled),
+  :root[data-theme] :is(.searchbox, .secret-input, .delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer, [data-field-shell]):has(:is(input, textarea):enabled:focus) {
+    border-color: CanvasText !important;
+    background: Canvas !important;
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+  :root[data-theme] :is(.searchbox, .secret-input, .delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer, [data-field-shell]) :is(input, textarea):is(:focus, :focus-visible) {
+    border: 0 !important;
+    outline: none !important;
+    background: transparent !important;
+  }
+}

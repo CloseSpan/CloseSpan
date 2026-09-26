@@ -1,9 +1,11 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
+import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import {
   type ColorTheme,
+  DEFAULT_COLOR_THEME,
   nextColorTheme,
 } from "@/lib/color-theme";
 import {
@@ -20,7 +22,7 @@ function subscribeToTheme(onStoreChange: () => void) {
 }
 
 function serverTheme(): ColorTheme {
-  return "light";
+  return DEFAULT_COLOR_THEME;
 }
 
 export function ThemeToggle() {
@@ -35,10 +37,9 @@ export function ThemeToggle() {
 
   return (
     <div className="theme-control">
-      <span className="theme-control-copy">
+      <Link className="theme-control-copy" href="/settings/appearance">
         <strong>Appearance</strong>
-        <small>Light and dark</small>
-      </span>
+      </Link>
       <button
         type="button"
         className="theme-toggle"

@@ -454,7 +454,8 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("Create suggested prompt");
     expect(markup).toContain("Create the suggested implementation prompt");
     expect(markup).not.toContain("Invalid input: expected object, received null");
-    expect(markup).toContain("leaves the saved result ready for review");
+    expect(markup).toContain("<h2>Prompt review</h2>");
+    expect(markup).not.toContain("leaves the saved result ready for review");
     expect(markup).not.toContain("Repository execution context");
     expect(markup).toContain("Suggested prompt required");
     expect(markup).toMatch(/<button[^>]*class="prompt-testing-send"[^>]*disabled=""/s);
@@ -517,7 +518,8 @@ describe("EngineeringTicketPanel prompt evaluation", () => {
     expect(markup).toContain("English");
     expect(markup).toContain(".prompt");
     expect(markup).toContain("# Correct large exports");
-    expect(markup).toContain("This is the exact prompt CloseSpan will discuss with you below");
+    expect(markup).not.toContain("This is the exact prompt CloseSpan will discuss with you below");
+    expect(markup).not.toContain("Press Enter to send");
     expect(markup).toContain("Agent-created prompt queued for Prompt Testing");
     expect(markup).toContain("will not restart the check when you revisit this page");
   });

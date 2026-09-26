@@ -45,7 +45,8 @@ vi.mock("@/lib/integration-repository", () => ({
 }));
 
 import { NextRequest } from "next/server";
-import { createGithubInstallStateToken, GITHUB_INSTALL_STATE_COOKIE } from "@/lib/github-installation-state";
+import { createGithubInstallStateToken, GITHUB_INSTALL_STATE_COOKIE, verifyGithubInstallCompletionToken } from "@/lib/github-installation-state";
+import { HttpError } from "@/lib/request-security";
 import { GET } from "./route";
 
 const secret = "github-callback-test-secret-with-at-least-32-characters";
@@ -72,6 +73,7 @@ function request(
   includeCookie = true,
   returnTo: "/integrations" | "/onboarding" = "/integrations",
   includeQueryState = false,
+  popup = false,
 ) {
   const expiresAt = new Date(Date.now() + 60_000);
   const token = createGithubInstallStateToken(
@@ -79,6 +81,7 @@ function request(
     expiresAt,
     returnTo,
     secret,
+    popup ? { channel: attemptId } : undefined,
   );
   const url = new URL(
     "https://closespan.com/api/integrations/github/callback?installation_id=150109806&setup_action=install",
@@ -152,6 +155,34 @@ describe("GitHub installation callback", () => {
     expect(location.pathname).toBe("/onboarding");
     expect(location.searchParams.get("github")).toBe("connected");
     expect(location.searchParams.has("focus")).toBe(false);
+  });
+
+  it("returns a signed popup completion only when popup mode was signed into state", async () => {
+    const response = await GET(request(true, "/onboarding", true, true));
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.pathname).toBe("/github/connection-result");
+    expect(verifyGithubInstallCompletionToken(location.searchParams.get("receipt") ?? "")).toMatchObject({ channel: attemptId, status: "connected" });
+    expect(repository.requireAttempt).toHaveBeenCalledWith(attemptId, "org-1", "admin-1");
+    expect(repository.connect).toHaveBeenCalled();
+  });
+
+  it("does not trust a callback query flag to enable popup mode", async () => {
+    const original = request(false, "/onboarding", true);
+    const url = new URL(original.url);
+    url.searchParams.set("popup", "true");
+    url.searchParams.set("popupChannel", attemptId);
+    const response = await GET(new NextRequest(url));
+    expect(new URL(response.headers.get("location") ?? "").pathname).toBe("/onboarding");
+  });
+
+  it("publishes a signed failure without connecting when popup authorization fails", async () => {
+    security.adminRead.mockRejectedValueOnce(new HttpError(401, "Sign in required"));
+    const response = await GET(request(true, "/onboarding", true, true));
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.pathname).toBe("/github/connection-result");
+    expect(verifyGithubInstallCompletionToken(location.searchParams.get("receipt") ?? "")).toMatchObject({ channel: attemptId, status: "error", reason: "authentication_required" });
+    expect(repository.connect).not.toHaveBeenCalled();
+    expect(github.verify).not.toHaveBeenCalled();
   });
 
   it("limits automatic metadata detection to two repositories at a time", async () => {

@@ -10,7 +10,7 @@ export default async function NotificationsPage() {
   const notifications = await listPromptReviewNotifications(user.orgId, user.id);
   return (
     <>
-      <PageTitle title="Notifications" description="Prompt drafts assigned to you for product-manager review." />
+      <PageTitle title="Notifications"  />
       <PromptReviewNotifications orgId={user.orgId} initialNotifications={notifications} />
     </>
   );

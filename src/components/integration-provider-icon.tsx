@@ -13,6 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { LandingIntegrationLogo } from "./landing-integration-logo";
 
 const providerIcons: Record<
   string,
@@ -56,12 +57,7 @@ const brandMarks: Partial<Record<string, ReactNode>> = {
     </svg>
   ),
   int_slack: (
-    <svg viewBox="0 0 24 24" role="img" aria-label="Slack">
-      <rect x="3" y="9.5" width="8" height="5" rx="2.5" fill="#36C5F0" />
-      <rect x="9.5" y="3" width="5" height="8" rx="2.5" fill="#2EB67D" />
-      <rect x="13" y="9.5" width="8" height="5" rx="2.5" fill="#ECB22E" />
-      <rect x="9.5" y="13" width="5" height="8" rx="2.5" fill="#E01E5A" />
-    </svg>
+    <LandingIntegrationLogo brand="slack" />
   ),
   int_discord: (
     <svg viewBox="0 0 24 24" role="img" aria-label="Discord">
@@ -80,31 +76,20 @@ const brandMarks: Partial<Record<string, ReactNode>> = {
     </svg>
   ),
   int_jira: (
-    <svg viewBox="0 0 24 24" role="img" aria-label="Jira">
-      <path d="M12 2 22 12 12 22 2 12 12 2Z" fill="#2684FF" />
-      <path d="m12 7.2 4.8 4.8-4.8 4.8L7.2 12 12 7.2Z" fill="#fff" opacity=".95" />
-      <path d="m12 9.8 2.2 2.2-2.2 2.2L9.8 12 12 9.8Z" fill="#0052CC" />
-    </svg>
+    <LandingIntegrationLogo brand="jira" />
   ),
   int_intercom: (
-    <svg viewBox="0 0 24 24" role="img" aria-label="Intercom">
-      <rect x="3" y="3" width="18" height="18" rx="4" fill="#286EFA" />
-      <path d="M7 8v6M10.3 7v8M13.7 7v8M17 8v6M7 17c3.2 2 6.8 2 10 0" fill="none" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
+    <LandingIntegrationLogo brand="intercom" />
   ),
   int_zendesk: (
-    <svg viewBox="0 0 24 24" role="img" aria-label="Zendesk">
-      <path d="M4 4h8v8H4l8-8ZM12 12h8v8h-8l8-8Z" fill="#03363D" />
-      <path d="M4 20h8c0-4.4-3.6-8-8-8v8ZM20 4h-8c0 4.4 3.6 8 8 8V4Z" fill="#78A300" />
-    </svg>
+    <LandingIntegrationLogo brand="zendesk" />
   ),
   int_posthog: (
-    <svg viewBox="0 0 24 24" role="img" aria-label="PostHog">
-      <circle cx="12" cy="12" r="9" fill="#F9BD2B" />
-      <path d="M7 14c2.8-1.9 7.2-1.9 10 0M8 8l2 2M16 8l-2 2" fill="none" stroke="#111827" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="9" cy="12" r="1" fill="#111827" /><circle cx="15" cy="12" r="1" fill="#111827" />
-    </svg>
+    <LandingIntegrationLogo brand="posthog" />
   ),
+  int_github: <LandingIntegrationLogo brand="github" />,
+  int_linear: <LandingIntegrationLogo brand="linear" />,
+  int_sentry: <LandingIntegrationLogo brand="sentry" />,
 };
 
 export function IntegrationProviderIcon({

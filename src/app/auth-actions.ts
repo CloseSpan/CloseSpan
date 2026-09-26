@@ -5,7 +5,8 @@ import {
   ACTIVE_ORGANIZATION_COOKIE,
   LEGACY_ACTIVE_ORGANIZATION_COOKIE,
 } from "@/lib/auth-user";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { isAppHostname } from "@/lib/app-domain-routing";
 
 function safeRedirect(value: FormDataEntryValue | null): string {
   if (
@@ -28,5 +29,9 @@ export async function signOutCurrentUser(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(ACTIVE_ORGANIZATION_COOKIE);
   cookieStore.delete(LEGACY_ACTIVE_ORGANIZATION_COOKIE);
-  await signOut({ redirectTo: "/" });
+  const host = (await headers()).get("host")?.split(":")[0] ?? "";
+  const redirectTo = process.env.CLOSESPAN_APP_DOMAIN_ENABLED === "true" && isAppHostname(host)
+    ? "/login"
+    : "/";
+  await signOut({ redirectTo });
 }

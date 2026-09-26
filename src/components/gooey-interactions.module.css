@@ -1,0 +1,17 @@
+.overlay {
+  position: fixed;
+  z-index: 2147483000;
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+  contain: strict;
+  isolation: isolate;
+  opacity: 0.08;
+}
+
+.liquid { pointer-events: none; }
+
+/* The native controls retain their own hover, checked, disabled and focus states. */
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  .overlay { display: none; }
+}

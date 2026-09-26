@@ -7,8 +7,8 @@ import { getAiPublicConfiguration, type AiPublicConfiguration } from "./ai-confi
 import { integrationCatalog } from "./integration-catalog";
 import { getIntegrationExperience } from "./integration-ui";
 import { workspacePersistenceMode } from "./workspace-persistence";
-import { defaultPromptDraftPolicy, type PromptDraftPolicy } from "./prompt-draft-policy";
-import { getMemoryWorkspacePolicy } from "./workspace-settings-repository";
+import { defaultPromptDraftPolicy, PROMPT_DRAFT_MINIMUM_REPORTS, resolvePromptDraftReviewer, type PromptDraftPolicy } from "./prompt-draft-policy";
+import { getMemoryWorkspacePolicy, readPromptDraftPolicy } from "./workspace-settings-repository";
 import { normalizeAutonomyLevel, type AutonomyLevel } from "./autonomy-policy";
 import {
   DEFAULT_PROMPT_EVALUATION_MODE,
@@ -74,7 +74,7 @@ export function createDefaultWorkspaceSettings(
     planPrice: "Managed externally",
     ai,
     members,
-    promptDraftPolicy: structuredClone(defaultPromptDraftPolicy),
+    promptDraftPolicy: { ...defaultPromptDraftPolicy, reviewerId: resolvePromptDraftReviewer(null, members) },
     promptEvaluationMode: DEFAULT_PROMPT_EVALUATION_MODE,
   };
 }
@@ -110,7 +110,7 @@ async function memoryData(orgId: string): Promise<WorkspaceData> {
   return { orgId, feedback: seedFeedback, primaryProblem: seedProblem, recommendation: seedRecommendation, analytics, integrations: memoryIntegrations,
     investigationQueue: [{id:"inv_sso",problemId:"prob_sso",title:"SAML role mapping",status:"Running"},{id:"inv_filters",problemId:"prob_filters",title:"Saved filter regression",status:"Queued"},{id:"inv_invites",problemId:"prob_invites",title:"Invite confirmation",status:"Needs context"}],
     customers: [...new Map(seedFeedback.map((item,index) => [item.customer,{id:item.id,name:item.customer,tier:item.accountTier,arr:item.arr,arrSource:"demo",customerSince:2021+index,customerSinceKnown:true,signals:1,openProblems:item.problemId?1:0,churnRisk:index<2?"Elevated":"Low",origin:"demo" as const,sourceNames:[]}])).values()],
-    settings: { autonomyLevel:savedPolicy?.autonomyLevel ?? "Execute with approval",piiRedaction:savedPolicy?.piiRedaction ?? true,retentionDays:savedPolicy?.retentionDays ?? 365,priorityWeights:savedPolicy?.priorityWeights ?? Object.fromEntries(seedProblem.impactFactors.map((factor) => [factor.key,factor.weight])),monthlyModelBudget:500,usedModelCost:128,hardStop:true,planName:"Sandbox",planPrice:"$0",ai:{...ai,promptVersion:"v1",lastRunStatus:null,lastRunAt:null},members:[{id:"user_avery",name:"Avery Chen",email:"avery@example.com",role:"Admin",team:"Product"}],promptDraftPolicy:savedPolicy?.promptDraftPolicy ?? structuredClone(defaultPromptDraftPolicy),promptEvaluationMode:savedPolicy?.promptEvaluationMode ?? DEFAULT_PROMPT_EVALUATION_MODE } };
+    settings: { autonomyLevel:savedPolicy?.autonomyLevel ?? "Execute with approval",piiRedaction:savedPolicy?.piiRedaction ?? true,retentionDays:savedPolicy?.retentionDays ?? 365,priorityWeights:savedPolicy?.priorityWeights ?? Object.fromEntries(seedProblem.impactFactors.map((factor) => [factor.key,factor.weight])),monthlyModelBudget:500,usedModelCost:128,hardStop:true,planName:"Sandbox",planPrice:"$0",ai:{...ai,promptVersion:"v1",lastRunStatus:null,lastRunAt:null},members:[{id:"user_avery",name:"Avery Chen",email:"avery@example.com",role:"Admin",team:"Product"}],promptDraftPolicy:await readPromptDraftPolicy(orgId),promptEvaluationMode:savedPolicy?.promptEvaluationMode ?? DEFAULT_PROMPT_EVALUATION_MODE } };
 }
 
 interface PrimaryProblemRow {
@@ -306,11 +306,11 @@ export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
           mode: settingsRow.prompt_draft_mode,
           bugReports: settingsRow.prompt_draft_bug_reports,
           featureRequests: settingsRow.prompt_draft_feature_requests,
-          minimumEvidence: settingsRow.prompt_draft_min_evidence,
+          minimumEvidence: PROMPT_DRAFT_MINIMUM_REPORTS,
           minimumConfidence: settingsRow.prompt_draft_min_confidence,
           inAppNotifications: settingsRow.prompt_draft_notify_in_app,
           emailNotifications: settingsRow.prompt_draft_notify_email,
-          reviewerId: settingsRow.prompt_draft_reviewer_id,
+          reviewerId: resolvePromptDraftReviewer(settingsRow.prompt_draft_reviewer_id, members),
         },
         promptEvaluationMode: normalizePromptEvaluationMode(
           settingsRow.prompt_evaluation_mode,

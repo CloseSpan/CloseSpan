@@ -3,11 +3,14 @@ import { z } from "zod";
 import { databasePool, transaction } from "./db";
 import {
   defaultPromptDraftPolicy,
+  PROMPT_DRAFT_MINIMUM_REPORTS,
   sanitizePromptDraftPolicy,
   type PromptDraftPolicy,
 } from "./prompt-draft-policy";
 import { workspacePersistenceMode } from "./workspace-persistence";
 import {
+  autonomyCapabilities,
+  automaticCodingBudgetAllowsExecution,
   autonomyLevels,
   normalizeAutonomyLevel,
   type AutonomyLevel,
@@ -56,7 +59,7 @@ export function sanitizeWorkspacePolicy(input: unknown): WorkspacePolicyInput {
   const promptDraftPolicy = sanitizePromptDraftPolicy(parsed.promptDraftPolicy);
   return {
     ...parsed,
-    promptDraftPolicy: parsed.autonomyLevel === "Full autonomy"
+    promptDraftPolicy: autonomyCapabilities(parsed.autonomyLevel).automaticallyAuthorizeExecution
       ? { ...promptDraftPolicy, mode: "automatic" }
       : promptDraftPolicy,
   };
@@ -73,6 +76,19 @@ export async function readAutonomyLevel(orgId: string): Promise<AutonomyLevel> {
     [orgId],
   );
   return normalizeAutonomyLevel(result.rows[0]?.autonomy_level);
+}
+
+export async function automaticCodingBudgetAvailable(orgId: string): Promise<boolean> {
+  if (workspacePersistenceMode(orgId) !== "postgres") return false;
+  const result = await databasePool().query<{
+    monthly_model_budget: number;
+    used_model_cost: number;
+    hard_stop: boolean;
+  }>(
+    "SELECT monthly_model_budget,used_model_cost,hard_stop FROM workspace_settings WHERE org_id=$1",
+    [orgId],
+  );
+  return automaticCodingBudgetAllowsExecution(result.rows[0]);
 }
 
 export async function readPromptEvaluationMode(
@@ -95,6 +111,15 @@ export function getMemoryWorkspacePolicy(orgId: string): WorkspacePolicyInput | 
   return policy ? structuredClone(policy) : null;
 }
 
+async function defaultPromptReviewer(orgId: string): Promise<string | null> {
+  if (workspacePersistenceMode(orgId) === "memory") return "user_avery";
+  const result = await databasePool().query<{ id: string }>(
+    "SELECT id FROM workspace_members WHERE org_id=$1 AND role='Admin' ORDER BY id LIMIT 1",
+    [orgId],
+  );
+  return result.rows[0]?.id ?? null;
+}
+
 export async function updateWorkspacePolicy(
   orgId: string,
   input: unknown,
@@ -111,10 +136,32 @@ export async function updateWorkspacePolicy(
     }
   }
   if (workspacePersistenceMode(orgId) === "memory") {
+    policy.promptDraftPolicy.reviewerId ??= await defaultPromptReviewer(orgId);
     memoryPolicies.set(orgId, structuredClone(policy));
     return policy;
   }
   await transaction(async (client) => {
+    // Record the explicit opt-in boundary without changing old prompts or approvals.
+    if (autonomyCapabilities(policy.autonomyLevel).automaticallyAuthorizeExecution) {
+      const previous = await client.query<{ autonomy_level: string }>(
+        "SELECT autonomy_level FROM workspace_settings WHERE org_id=$1 FOR UPDATE",
+        [orgId],
+      );
+      if (previous.rows[0]?.autonomy_level !== policy.autonomyLevel) {
+        await client.query(
+          `INSERT INTO audit_events(id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id)
+           VALUES($1,$2,$3,$4,'Enabled automatic coding with human merge','WorkspaceSettings',$2,$5)`,
+          [randomUUID(), orgId, actor.actorId, actor.actorName, `${actor.traceId}_automatic_coding_enabled`],
+        );
+      }
+    }
+    if (!policy.promptDraftPolicy.reviewerId) {
+      const admin = await client.query<{ id: string }>(
+        "SELECT id FROM workspace_members WHERE org_id=$1 AND role='Admin' ORDER BY id LIMIT 1",
+        [orgId],
+      );
+      policy.promptDraftPolicy.reviewerId = admin.rows[0]?.id ?? null;
+    }
     if (policy.promptDraftPolicy.reviewerId) {
       const reviewer = await client.query(
         "SELECT 1 FROM workspace_members WHERE org_id=$1 AND id=$2",
@@ -168,8 +215,12 @@ export async function updateWorkspacePolicy(
 }
 
 export async function readPromptDraftPolicy(orgId: string): Promise<PromptDraftPolicy> {
-  if (workspacePersistenceMode(orgId) === "memory")
-    return getMemoryWorkspacePolicy(orgId)?.promptDraftPolicy ?? structuredClone(defaultPromptDraftPolicy);
+  if (workspacePersistenceMode(orgId) === "memory") {
+    const policy = getMemoryWorkspacePolicy(orgId)?.promptDraftPolicy ?? structuredClone(defaultPromptDraftPolicy);
+    policy.minimumEvidence = PROMPT_DRAFT_MINIMUM_REPORTS;
+    policy.reviewerId ??= await defaultPromptReviewer(orgId);
+    return policy;
+  }
   const result = await databasePool().query<{
     prompt_draft_mode: PromptDraftPolicy["mode"];
     prompt_draft_bug_reports: boolean;
@@ -187,16 +238,16 @@ export async function readPromptDraftPolicy(orgId: string): Promise<PromptDraftP
     [orgId],
   );
   const row = result.rows[0];
-  if (!row) return structuredClone(defaultPromptDraftPolicy);
+  if (!row) return { ...defaultPromptDraftPolicy, reviewerId: await defaultPromptReviewer(orgId) };
   return {
     mode: row.prompt_draft_mode,
     bugReports: row.prompt_draft_bug_reports,
     featureRequests: row.prompt_draft_feature_requests,
-    minimumEvidence: row.prompt_draft_min_evidence,
+    minimumEvidence: PROMPT_DRAFT_MINIMUM_REPORTS,
     minimumConfidence: row.prompt_draft_min_confidence,
     inAppNotifications: row.prompt_draft_notify_in_app,
     emailNotifications: row.prompt_draft_notify_email,
-    reviewerId: row.prompt_draft_reviewer_id,
+    reviewerId: row.prompt_draft_reviewer_id ?? await defaultPromptReviewer(orgId),
   };
 }
 

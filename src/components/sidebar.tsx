@@ -2,25 +2,22 @@
 
 import {
   BadgeCheck,
+  Blocks,
   Bot,
-  CircleGauge,
+  CircleDot,
+  Gauge,
   GitPullRequest,
   Inbox,
   ListChecks,
-  Minus,
-  Network,
-  Plus,
+  Settings,
   Users,
 } from "lucide-react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import type { CSSProperties } from "react";
 import {
   useEffect,
-  useId,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import {
   WORKSPACE_NAVIGATION,
@@ -38,15 +35,17 @@ import {
 } from "./organization-switcher";
 import { SettingsNavigation } from "./settings-navigation";
 
-const navigationIcons: Record<WorkspaceNavigationId, typeof CircleGauge> = {
-  overview: CircleGauge,
+const navigationIcons: Record<WorkspaceNavigationId, typeof CircleDot> = {
+  overview: Gauge,
+  customers: Users,
   feedback: Inbox,
-  problems: Network,
+  problems: CircleDot,
   pdd: ListChecks,
   approvals: BadgeCheck,
   "agent-runs": Bot,
   "follow-up": GitPullRequest,
-  customers: Users,
+  integrations: Blocks,
+  settings: Settings,
 };
 
 function NavigationPendingIndicator() {
@@ -56,61 +55,9 @@ function NavigationPendingIndicator() {
   ) : null;
 }
 
-const WORKFLOW_EXPANDED_STORAGE_KEY = "closespan.sidebar.workflow-expanded.v2";
-const WORKFLOW_EXPANDED_EVENT = "closespan:workflow-expanded-change";
-let workflowExpandedFallback = true;
-
-function subscribeToWorkflowPreference(onChange: () => void): () => void {
-  window.addEventListener("storage", onChange);
-  window.addEventListener(WORKFLOW_EXPANDED_EVENT, onChange);
-  return () => {
-    window.removeEventListener("storage", onChange);
-    window.removeEventListener(WORKFLOW_EXPANDED_EVENT, onChange);
-  };
-}
-
-function readWorkflowPreference(): boolean {
-  try {
-    const stored = window.localStorage.getItem(WORKFLOW_EXPANDED_STORAGE_KEY);
-    return stored === null ? workflowExpandedFallback : stored !== "false";
-  } catch {
-    return workflowExpandedFallback;
-  }
-}
-
-function storeWorkflowPreference(expanded: boolean): void {
-  workflowExpandedFallback = expanded;
-  try {
-    window.localStorage.setItem(
-      WORKFLOW_EXPANDED_STORAGE_KEY,
-      String(expanded),
-    );
-  } catch {
-    // The collapse control remains usable when persistence is unavailable.
-  }
-  window.dispatchEvent(new Event(WORKFLOW_EXPANDED_EVENT));
-}
-
-function NavigationLinks({
-  collapsibleWorkflow = false,
-  pendingApprovalCount = 0,
-}: {
-  collapsibleWorkflow?: boolean;
-  pendingApprovalCount?: number;
-}) {
+function NavigationLinks({ pendingApprovalCount = 0 }: { pendingApprovalCount?: number }) {
   const pathname = usePathname();
-  const workflowContentId = useId();
-  const [visiblePendingApprovalCount, setVisiblePendingApprovalCount] = useState(
-    pendingApprovalCount,
-  );
-  const storedWorkflowExpanded = useSyncExternalStore(
-    subscribeToWorkflowPreference,
-    readWorkflowPreference,
-    () => true,
-  );
-  const workflowExpanded = collapsibleWorkflow
-    ? storedWorkflowExpanded
-    : true;
+  const [visiblePendingApprovalCount, setVisiblePendingApprovalCount] = useState(pendingApprovalCount);
 
   useEffect(() => {
     const handleCountChange = (event: Event) => {
@@ -122,127 +69,47 @@ function NavigationLinks({
     return () => window.removeEventListener(PENDING_APPROVAL_COUNT_EVENT, handleCountChange);
   }, []);
 
-  function toggleWorkflow(): void {
-    storeWorkflowPreference(!workflowExpanded);
-  }
-
   return (
     <>
       {WORKSPACE_NAVIGATION_GROUPS.map((group) => {
-        const items = WORKSPACE_NAVIGATION.filter(
-          (item) => item.group === group.id,
-        );
+        const items = WORKSPACE_NAVIGATION.filter((item) => item.group === group.id);
         const hasActiveRoute = items.some(
           ({ href }) => pathname === href || pathname.startsWith(`${href}/`),
         );
-        const collapsible = collapsibleWorkflow && group.id === "workflow";
-        const collapsed = collapsible && !workflowExpanded;
         return (
           <div
             className={`nav-group nav-group-${group.id}${hasActiveRoute ? " has-active-route" : ""}`}
             role="group"
             aria-label={group.label ?? "Workspace"}
-            data-collapsed={collapsed || undefined}
-            data-state={collapsed ? "collapsed" : "expanded"}
+            data-state="expanded"
             key={group.id}
           >
-            {collapsible ? (
-              <button
-                type="button"
-                className="nav-section-toggle"
-                aria-expanded={workflowExpanded}
-                aria-controls={workflowContentId}
-                onClick={toggleWorkflow}
-              >
-                <span>{group.label}</span>
-                <i className="nav-active-indicator" aria-hidden="true" />
-                <span className="nav-section-symbol" aria-hidden="true">
-                  <Plus className="nav-section-symbol-plus" size={14} />
-                  <Minus className="nav-section-symbol-minus" size={14} />
-                </span>
-              </button>
-            ) : group.label ? (
-              <span className="nav-section-label" aria-hidden="true">
-                {group.label}
-              </span>
-            ) : null}
-            {collapsible ? (
-              <div
-                className="nav-group-collapse"
-                id={workflowContentId}
-                data-open={collapsed ? "false" : "true"}
-                aria-hidden={collapsed}
-                inert={collapsed}
-              >
-                <div className="nav-group-items">
-                  {items.map(({ id, label, href }, index) => {
-                    const Icon = navigationIcons[id];
-                    const active =
-                      pathname === href || pathname.startsWith(`${href}/`);
-                    const pendingCount = id === "approvals" ? visiblePendingApprovalCount : 0;
-                    return (
-                      <Link
-                        href={href}
-                        prefetch={false}
-                        className={active ? "active" : ""}
-                        aria-current={active ? "page" : undefined}
-                        aria-label={pendingCount > 0 ? `${label}, ${pendingCount} pending` : label}
-                        data-nav-label={label}
-                        style={{
-                          "--nav-enter-delay": `${index * 34}ms`,
-                          "--nav-exit-delay": `${(items.length - index - 1) * 18}ms`,
-                        } as CSSProperties}
-                        key={label}
-                      >
-                        <Icon aria-hidden="true" />
-                        <span>{label}</span>
-                        <span className="nav-link-meta" aria-hidden="true">
-                          {pendingCount > 0 && (
-                            <span className="nav-pending-approval-count">
-                              {pendingCount > 99 ? "99+" : pendingCount}
-                            </span>
-                          )}
-                          <NavigationPendingIndicator />
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="nav-group-collapse" data-open="true">
-                <div className="nav-group-items">
-                  {items.map(({ id, label, href }) => {
-                    const Icon = navigationIcons[id];
-                    const active =
-                      pathname === href || pathname.startsWith(`${href}/`);
-                    const pendingCount = id === "approvals" ? visiblePendingApprovalCount : 0;
-                    return (
-                      <Link
-                        href={href}
-                        prefetch={false}
-                        className={active ? "active" : ""}
-                        aria-current={active ? "page" : undefined}
-                        aria-label={pendingCount > 0 ? `${label}, ${pendingCount} pending` : label}
-                        data-nav-label={label}
-                        key={label}
-                      >
-                        <Icon aria-hidden="true" />
-                        <span>{label}</span>
-                        <span className="nav-link-meta" aria-hidden="true">
-                          {pendingCount > 0 && (
-                            <span className="nav-pending-approval-count">
-                              {pendingCount > 99 ? "99+" : pendingCount}
-                            </span>
-                          )}
-                          <NavigationPendingIndicator />
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {group.label && <span className="nav-section-label" aria-hidden="true">{group.label}</span>}
+            <div className="nav-group-items">
+              {items.map(({ id, label, href }) => {
+                const Icon = navigationIcons[id];
+                const active = pathname === href || pathname.startsWith(`${href}/`);
+                const pendingCount = id === "approvals" ? visiblePendingApprovalCount : 0;
+                return (
+                  <Link
+                    href={href}
+                    prefetch={false}
+                    className={active ? "active" : ""}
+                    aria-current={active ? "page" : undefined}
+                    aria-label={pendingCount > 0 ? `${label}, ${pendingCount} pending` : label}
+                    data-nav-label={label}
+                    key={label}
+                  >
+                    <Icon aria-hidden="true" />
+                    <span>{label}</span>
+                    <span className="nav-link-meta" aria-hidden="true">
+                      {pendingCount > 0 && <span className="nav-pending-approval-count">{pendingCount > 99 ? "99+" : pendingCount}</span>}
+                      <NavigationPendingIndicator />
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         );
       })}
@@ -283,7 +150,6 @@ export function Sidebar({
         <nav className="nav" aria-label="Primary navigation">
           <NavigationLinks
             key={pendingApprovalCount}
-            collapsibleWorkflow
             pendingApprovalCount={pendingApprovalCount}
           />
         </nav>

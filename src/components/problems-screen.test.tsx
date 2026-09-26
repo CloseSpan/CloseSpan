@@ -1,9 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { calculateOverviewAnalytics } from "@/lib/overview-analytics";
+import { calculateOverviewAnalytics, createEmptyOverviewAnalytics } from "@/lib/overview-analytics";
 import { ProblemLifecycleBoard, ProblemsScreen } from "./screens";
 
 describe("ProblemsScreen", () => {
+  it("gives an empty issue list a clear next action", () => {
+    const markup = renderToStaticMarkup(<ProblemsScreen analytics={createEmptyOverviewAnalytics()} />);
+    expect(markup).toContain("<h1>Issues</h1>");
+    expect(markup).toContain("No issues yet");
+    expect(markup).toContain('href="/feedback"');
+    expect(markup).toContain("Open feedback inbox");
+    expect(markup).not.toContain("placeholder clusters");
+  });
   it("offers inventory, classification, and lifecycle board views", () => {
     const markup = renderToStaticMarkup(
       <ProblemsScreen
@@ -13,14 +21,14 @@ describe("ProblemsScreen", () => {
       />,
     );
 
-    expect(markup).toContain('aria-label="Product problem view"');
+    expect(markup).toContain('aria-label="Issue view"');
     expect(markup).toContain('id="problem-view-tab-problems"');
     expect(markup).toContain('id="problem-view-tab-classification"');
     expect(markup).toContain('id="problem-view-tab-board"');
-    expect(markup).toContain(">Inventory<");
+    expect(markup).toContain(">List<");
     expect(markup).toContain(">Classification<");
     expect(markup).toContain(">Board<");
-    expect(markup).toContain("Problem inventory");
+    expect(markup).toContain("All issues");
     expect(markup).not.toContain('aria-label="Prioritization view"');
   });
 

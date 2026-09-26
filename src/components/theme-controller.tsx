@@ -3,41 +3,42 @@
 import { useEffect } from "react";
 import {
   applyColorTheme,
-  readStoredTheme,
-  resolveColorTheme,
+  applyColorThemePreference,
+  resolveColorThemePreference,
+  syncAppearanceFromStorage,
 } from "@/lib/color-theme-client";
-import { COLOR_THEME_STORAGE_KEY, isColorTheme } from "@/lib/color-theme";
 
 export function ThemeController() {
   useEffect(() => {
-    const colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
-
-    applyColorTheme(resolveColorTheme(), {
+    applyColorThemePreference(resolveColorThemePreference(), {
       animate: false,
       notify: true,
     });
 
-    const followSystemTheme = (event: MediaQueryListEvent) => {
-      if (readStoredTheme()) return;
-      applyColorTheme(event.matches ? "dark" : "light", { persist: false });
-    };
+    window.addEventListener("storage", syncAppearanceFromStorage);
 
-    const syncStoredTheme = (event: StorageEvent) => {
-      if (event.key !== COLOR_THEME_STORAGE_KEY) return;
-      const nextTheme = isColorTheme(event.newValue)
-        ? event.newValue
-        : colorScheme.matches
-          ? "dark"
-          : "light";
-      applyColorTheme(nextTheme, { persist: false });
+    const syncSystemTheme = (event: MediaQueryListEvent) => {
+      if (resolveColorThemePreference() === "system") {
+        applyColorTheme(event.matches ? "dark" : "light", { persist: false });
+      }
     };
-
-    colorScheme.addEventListener("change", followSystemTheme);
-    window.addEventListener("storage", syncStoredTheme);
+    let removeSystemListener = () => {};
+    try {
+      const media = window.matchMedia("(prefers-color-scheme: dark)");
+      if (typeof media.addEventListener === "function") {
+        media.addEventListener("change", syncSystemTheme);
+        removeSystemListener = () => media.removeEventListener("change", syncSystemTheme);
+      } else if (typeof media.addListener === "function") {
+        media.addListener(syncSystemTheme);
+        removeSystemListener = () => media.removeListener(syncSystemTheme);
+      }
+    } catch {
+      // Explicit themes and the light fallback work without media-query access.
+    }
 
     return () => {
-      colorScheme.removeEventListener("change", followSystemTheme);
-      window.removeEventListener("storage", syncStoredTheme);
+      window.removeEventListener("storage", syncAppearanceFromStorage);
+      removeSystemListener();
     };
   }, []);
 

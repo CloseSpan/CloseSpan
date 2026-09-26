@@ -80,6 +80,7 @@ export default async function Page({
     <>
       {showGithubConnection && (
         <GithubConnectionPanel
+          key={JSON.stringify([user.orgId, githubInstallations.map((installation) => [installation.installationId, installation.active, installation.lastSyncedAt]), githubRepositories.map((repository) => [repository.repository, repository.workspaceSelected, repository.active])])}
           orgId={user.orgId}
           installations={githubInstallations}
           repositories={githubRepositories}

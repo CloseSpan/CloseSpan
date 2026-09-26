@@ -18,11 +18,13 @@ import { CreateosSandboxCheck } from "./createos-sandbox-check";
 import { TenkiSandboxCheck } from "./tenki-sandbox-check";
 import { ExecutionProfileSettings } from "./execution-profile-settings";
 import {
+  autonomyCapabilities,
   autonomyDescription,
   autonomyLevels,
   type AutonomyLevel,
 } from "@/lib/autonomy-policy";
 import type { PromptEvaluationMode } from "@/lib/prompt-evaluation-policy";
+import { PROMPT_DRAFT_MINIMUM_REPORTS, resolvePromptDraftReviewer } from "@/lib/prompt-draft-policy";
 import { useWorkspaceChrome } from "./workspace-chrome";
 
 export function SettingsScreen({
@@ -46,8 +48,8 @@ export function SettingsScreen({
     settings.priorityWeights,
   );
   const [autonomy, setAutonomy] = useState(settings.autonomyLevel);
-  const [fullAutonomyConfirmed, setFullAutonomyConfirmed] = useState(
-    settings.autonomyLevel === "Full autonomy",
+  const [automaticCodingConfirmed, setAutomaticCodingConfirmed] = useState(
+    autonomyCapabilities(settings.autonomyLevel).automaticallyAuthorizeExecution,
   );
   const initialRetention = initialRetentionSelection(settings.retentionDays);
   const [retention, setRetention] = useState(initialRetention.option);
@@ -59,7 +61,7 @@ export function SettingsScreen({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
   const [promptDraftPolicy, setPromptDraftPolicy] = useState(
-    settings.promptDraftPolicy,
+    () => ({ ...settings.promptDraftPolicy, minimumEvidence: PROMPT_DRAFT_MINIMUM_REPORTS, reviewerId: resolvePromptDraftReviewer(settings.promptDraftPolicy.reviewerId, settings.members) }),
   );
   const [promptEvaluationMode, setPromptEvaluationMode] = useState(
     settings.promptEvaluationMode,
@@ -78,8 +80,8 @@ export function SettingsScreen({
         ? "Prioritization weights must total 100%."
         : !retentionValid
           ? "Enter a valid feedback-retention period."
-          : autonomy === "Full autonomy" && !fullAutonomyConfirmed
-            ? "Confirm the full-autonomy execution policy before saving."
+          : autonomyCapabilities(autonomy).automaticallyAuthorizeExecution && !automaticCodingConfirmed
+            ? "Confirm automatic coding within approved repositories and workspace budget checks before saving."
           : promptEvaluationMode === "pdd_local" && !localEvaluationReady
             ? "Configure a workspace AI provider before selecting local Prompt Driven evaluation."
           : undefined;
@@ -168,22 +170,17 @@ export function SettingsScreen({
   return (
     <>
       <PageTitle
-        title="Settings & governance"
-        description="Define permissions, data controls, model policies, and spending boundaries."
+        title="Settings"
       />
       {saved && (
         <p className="toast success" role="status">
-          Workspace policy saved. New grouped reports will follow these prompt-drafting rules.
+          Policy saved.
         </p>
       )}
       {saveError && <p className="toast error" role="alert">{saveError}</p>}
       {!isAdmin && (
         <div className="callout settings-read-only" role="status">
           <div className="callout-title">Read-only settings</div>
-          <p className="subtle">
-            You can review workspace policy, but only an admin can change it or
-            update provider credentials.
-          </p>
         </div>
       )}
       <div className="settings-layout">
@@ -191,8 +188,7 @@ export function SettingsScreen({
           <section className="card" id="agent">
             <div className="card-head">
               <div>
-                <h2>Agent autonomy</h2>
-                <p className="subtle">Default policy for all agent workflows</p>
+                <h2>Automation</h2>
               </div>
             </div>
             <div className="card-body">
@@ -201,74 +197,48 @@ export function SettingsScreen({
                 <CustomSelect
                   ariaLabel="Autonomy level"
                   value={autonomy}
-                  options={[...autonomyLevels]}
+                  options={autonomyLevels.filter((level) => level !== "Full autonomy" || settings.autonomyLevel === "Full autonomy")}
                   disabled={!isAdmin}
                   onValueChange={(value) => {
                     setAutonomy(value as AutonomyLevel);
-                    if (value === "Full autonomy") {
-                      setFullAutonomyConfirmed(false);
+                    if (autonomyCapabilities(value as AutonomyLevel).automaticallyAuthorizeExecution) {
+                      setAutomaticCodingConfirmed(false);
                       setPromptDraftPolicy((current) => ({ ...current, mode: "automatic" }));
                     } else {
-                      setFullAutonomyConfirmed(true);
+                      setAutomaticCodingConfirmed(true);
                     }
                     setSaved(false);
                   }}
                 />
-                <span className="subtle">
-                  {autonomyDescription(autonomy as AutonomyLevel)}
-                </span>
               </div>
-              {autonomy === "Full autonomy" ? (
-                <div className="callout warning section-gap-sm">
-                  <div className="callout-title">End-to-end execution enabled</div>
-                  <p className="subtle">
-                    CloseSpan will automatically authorize immutable agent and final-execution records,
-                    then use the configured repository, Tenki profile, deployment path, rollback plan,
-                    and production verification checks. Scope, secrets, paths, commands, and SHA locks remain enforced.
-                  </p>
+              <p className="subtle">{autonomyDescription(autonomy)}</p>
+              {autonomyCapabilities(autonomy).automaticallyAuthorizeExecution ? (
+                <div className="callout section-gap-sm">
+                  <div className="callout-title">Agent codes automatically. You approve merges.</div>
                   <label className="toggle-row section-gap-xs">
                     <div>
-                      <strong>I understand this permits automatic merge or deployment</strong>
-                      <p className="subtle">Required once when switching this workspace to Full autonomy.</p>
+                      <strong>I authorize automatic coding in approved repositories with workspace budget checks</strong>
+                      {autonomy === "Automatic coding, human merge" ? <p className="subtle">New work can start after this policy is saved. Existing pending work keeps its approval requirement.</p> : null}
+                      <p className="subtle">Budget checks use recorded usage. Provider and in-flight costs may be missing; this is not a guaranteed billing cap.</p>
                     </div>
                     <input
                       type="checkbox"
-                      checked={fullAutonomyConfirmed}
+                      checked={automaticCodingConfirmed}
                       disabled={!isAdmin}
                       onChange={(event) => {
-                        setFullAutonomyConfirmed(event.target.checked);
+                        setAutomaticCodingConfirmed(event.target.checked);
                         setSaved(false);
                       }}
                     />
                   </label>
                 </div>
-              ) : (
-                <div className="callout section-gap-sm">
-                  <div className="callout-title">Execution boundary</div>
-                  <p className="subtle">
-                    {autonomy === "Execute with approval"
-                      ? "A human must approve the immutable Tenki run and the commit-locked merge or deployment."
-                      : "Tenki agent runs, pull-request merge, and production deployment are blocked at this level."}
-                  </p>
-                </div>
-              )}
-              <TenkiSandboxCheck
-                orgId={orgId}
-                configured={tenkiConfigured}
-                isAdmin={userRole === "Admin"}
-              />
-              <CreateosSandboxCheck
-                orgId={orgId}
-                configured={createosConfigured}
-                isAdmin={userRole === "Admin"}
-              />
+              ) : null}
             </div>
           </section>
           <section className="card" id="prompt-drafts">
             <div className="card-head">
               <div>
-                <h2>Implementation prompt drafting</h2>
-                <p className="subtle">Choose when the agent creates a reviewable .prompt artifact from grouped feedback.</p>
+                <h2>Prompt drafting</h2>
               </div>
               <span className={`badge ${promptDraftPolicy.mode === "automatic" ? "brand" : ""}`}>
                 {promptDraftPolicy.mode === "automatic" ? "Automatic drafts" : "Manual"}
@@ -291,27 +261,18 @@ export function SettingsScreen({
                   }}
                 />
               </div>
-              <div className="callout section-gap-sm">
-                <div className="callout-title">Drafts cannot execute code</div>
-                <p className="subtle">
-                  {autonomy === "Full autonomy"
-                    ? "Full autonomy evaluates and revises the prompt, generates the Prompt Testing contract, and advances the immutable workflow automatically."
-                    : "A product manager reviews the Prompt Testing result before any isolated Tenki run. Execution follows the autonomy boundary above."}
-                </p>
-              </div>
               <label className="toggle-row section-gap-sm">
-                <div><strong>Bug and incident reports</strong><p className="subtle">Draft a suggested fix after the evidence threshold is met.</p></div>
+                <div><strong>Bug reports</strong></div>
                 <input type="checkbox" checked={promptDraftPolicy.bugReports} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, bugReports: event.target.checked })); setSaved(false); }} />
               </label>
               <label className="toggle-row">
-                <div><strong>Feature requests</strong><p className="subtle">Draft a product-change prompt from a grouped request.</p></div>
+                <div><strong>Feature requests</strong></div>
                 <input type="checkbox" checked={promptDraftPolicy.featureRequests} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, featureRequests: event.target.checked })); setSaved(false); }} />
               </label>
-              <label className="weight-row">
+              <div className="toggle-row">
                 <span>Minimum reports</span>
-                <input type="range" min="1" max="20" value={promptDraftPolicy.minimumEvidence} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, minimumEvidence: Number(event.target.value) })); setSaved(false); }} />
                 <strong>{promptDraftPolicy.minimumEvidence}</strong>
-              </label>
+              </div>
               <label className="weight-row">
                 <span>Confidence</span>
                 <input type="range" min="50" max="100" step="5" value={Math.round(promptDraftPolicy.minimumConfidence * 100)} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, minimumConfidence: Number(event.target.value) / 100 })); setSaved(false); }} />
@@ -324,24 +285,24 @@ export function SettingsScreen({
                   disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"}
                   value={promptDraftPolicy.reviewerId ?? ""}
                   options={[
-                    { label: "Unassigned", value: "" },
+                    ...(!resolvePromptDraftReviewer(null, settings.members) ? [{ label: "Unassigned", value: "" }] : []),
                     ...settings.members.map((member) => ({ label: `${member.name} · ${member.role}`, value: member.id })),
                   ]}
                   onValueChange={(reviewerId) => { setPromptDraftPolicy((value) => ({ ...value, reviewerId: reviewerId || null })); setSaved(false); }}
                 />
               </div>
               <label className="toggle-row section-gap-sm">
-                <div><strong>In-app notification</strong><p className="subtle">Add the prompt to the reviewer&apos;s CloseSpan notification inbox.</p></div>
+                <div><strong>In-app notification</strong></div>
                 <input type="checkbox" checked={promptDraftPolicy.inAppNotifications} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, inAppNotifications: event.target.checked })); setSaved(false); }} />
               </label>
               <label className="toggle-row">
-                <div><strong>Email alert</strong><p className="subtle">Email the assigned reviewer when the prompt draft is ready.</p></div>
+                <div><strong>Email alert</strong></div>
                 <input type="checkbox" checked={promptDraftPolicy.emailNotifications} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, emailNotifications: event.target.checked })); setSaved(false); }} />
               </label>
               {promptDraftPolicy.emailNotifications && !promptEmailConfigured && (
                 <div className="callout warning" role="status">
                   <div className="callout-title">Email delivery needs configuration</div>
-                  <p className="subtle">The preference will be saved and alerts will remain safely queued until Cloudflare Email Service credentials and a verified sender are configured.</p>
+                  <p className="subtle">Configure email delivery to send queued alerts.</p>
                 </div>
               )}
             </div>
@@ -350,9 +311,6 @@ export function SettingsScreen({
             <div className="card-head">
               <div>
                 <h2>Prompt evaluation</h2>
-                <p className="subtle">
-                  Choose where Prompt Driven evaluates new immutable .prompt revisions.
-                </p>
               </div>
               <span className="badge brand">Organization policy</span>
             </div>
@@ -376,13 +334,6 @@ export function SettingsScreen({
                     setSaved(false);
                   }}
                 />
-                <span className="subtle">
-                  {promptEvaluationMode === "pdd_cloud"
-                    ? "Prompt Testing Cloud creates the contract and evaluates the immutable revision. Your workspace AI credential is never sent to Prompt Testing Cloud."
-                    : promptEvaluationMode === "pdd_local"
-                      ? `${settings.ai.providerLabel} ${settings.ai.model} powers this workspace's isolated pdd --local job. The credential is held only for that evaluation and is not stored by the runner.`
-                      : "Prompt Testing Cloud runs first without your workspace credential. If Cloud is unavailable, the same immutable revision retries once through an isolated local CLI job using the workspace AI provider."}
-                </span>
               </div>
               <div
                 className={`callout section-gap-sm ${localEvaluationReady ? "" : "warning"}`}
@@ -393,31 +344,29 @@ export function SettingsScreen({
                     ? `Local engine ready · ${settings.ai.providerLabel}`
                     : "Local engine needs an AI provider"}
                 </div>
-                <p className="subtle">
-                  {localEvaluationReady
-                    ? `${settings.ai.model} is available for local Prompt Driven evaluations and Cloud fallback.`
-                    : "Add a workspace model and credential under AI provider. Prompt Testing Cloud remains available, but local mode and local fallback cannot run without it."}
-                </p>
-              </div>
-              <div className="callout section-gap-sm">
-                <div className="callout-title">Applies to new evaluations</div>
-                <p className="subtle">
-                  Running and completed evaluations remain bound to the engine that started them.
-                  Repository execution and Tenki verification keep their existing approval boundaries.
-                </p>
+                {!localEvaluationReady && <p className="subtle">Add an AI provider to enable local evaluation.</p>}
               </div>
             </div>
           </section>
           <section className="card" id="execution">
             <div className="card-head">
               <div>
-                <h2>Repository execution environments</h2>
-                <p className="subtle">Detect, review, and version the exact environment used by Prompt Testing and both Tenki VMs. Advanced staging credentials are managed here when a running application requires them.</p>
+                <h2>Execution environments</h2>
               </div>
               <span className="badge brand">Approval-bound</span>
             </div>
             <div className="card-body">
               <ExecutionProfileSettings orgId={orgId} isAdmin={isAdmin} />
+              <TenkiSandboxCheck
+                orgId={orgId}
+                configured={tenkiConfigured}
+                isAdmin={isAdmin}
+              />
+              <CreateosSandboxCheck
+                orgId={orgId}
+                configured={createosConfigured}
+                isAdmin={isAdmin}
+              />
             </div>
           </section>
           <OrchestrationProviderSettings
@@ -464,9 +413,6 @@ export function SettingsScreen({
               <label className="toggle-row">
                 <div>
                   <strong>PII redaction</strong>
-                  <p className="subtle">
-                    Redact sensitive values before model processing
-                  </p>
                 </div>
                 <input
                   type="checkbox"

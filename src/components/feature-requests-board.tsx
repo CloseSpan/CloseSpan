@@ -28,6 +28,7 @@ import type {
   PublicFeatureRequest,
 } from "@/lib/feature-request-repository";
 import { TURNSTILE_ACTIONS } from "@/lib/turnstile-config";
+import { SITE_URL } from "@/lib/site";
 
 const groups: Array<{
   status: FeatureRequestStatus;
@@ -79,12 +80,14 @@ export function FeatureRequestsBoard({
   initialRequests,
   initialPendingRequests = [],
   canModerate = false,
+  moderationOnly = false,
   initialError,
   turnstileSiteKey,
 }: {
   initialRequests: PublicFeatureRequest[];
   initialPendingRequests?: FeatureRequestSubmission[];
   canModerate?: boolean;
+  moderationOnly?: boolean;
   initialError?: string;
   turnstileSiteKey: string;
 }) {
@@ -123,6 +126,7 @@ export function FeatureRequestsBoard({
   const lastTypingSoundAt = useRef(0);
 
   useEffect(() => {
+    if (moderationOnly) return;
     let active = true;
     try {
       const stored = window.sessionStorage.getItem(RECENT_SUBMISSIONS_KEY);
@@ -151,7 +155,7 @@ export function FeatureRequestsBoard({
       window.sessionStorage.removeItem(RECENT_SUBMISSIONS_KEY);
     }
     return () => void (active = false);
-  }, []);
+  }, [moderationOnly]);
 
   useEffect(() => {
     let preferenceFrame = 0;
@@ -363,6 +367,7 @@ export function FeatureRequestsBoard({
   }
 
   function openRequestDialog() {
+    if (moderationOnly) return;
     playButtonClickSound();
     dialogTrigger.current = document.activeElement as HTMLElement | null;
     setRequestTurnstileToken(null);
@@ -427,7 +432,7 @@ export function FeatureRequestsBoard({
     requestId: string,
     direction: "up" | "down",
   ) {
-    if (pendingVotes.has(requestId)) return;
+    if (moderationOnly || pendingVotes.has(requestId)) return;
     const turnstileToken = voteTurnstileTokenRef.current;
     if (!turnstileToken) {
       setNotice({
@@ -502,7 +507,7 @@ export function FeatureRequestsBoard({
 
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting) return;
+    if (moderationOnly || submitting) return;
     setSubmitting(true);
     setNotice(null);
     const form = event.currentTarget;
@@ -575,7 +580,7 @@ export function FeatureRequestsBoard({
     requestId: string,
     decision: "publish" | "reject",
   ) {
-    if (pendingModerations.has(requestId)) return;
+    if (!canModerate || pendingModerations.has(requestId)) return;
     setPendingModerations((current) => new Set(current).add(requestId));
     setNotice(null);
     try {
@@ -652,21 +657,31 @@ export function FeatureRequestsBoard({
     requests.length > 0 ||
     recentSubmissions.length > 0 ||
     (canModerate && pendingRequests.length > 0);
+  const ContentContainer = moderationOnly ? "section" : "main";
 
   return (
     <>
-      <main className="feature-requests-main" id="requests-content">
+      <ContentContainer
+        className={moderationOnly
+          ? "feature-requests-page feature-requests-main feature-requests-moderation"
+          : "feature-requests-main"}
+        id="requests-content"
+      >
         <div className="feature-requests-intro">
           <div className="feature-requests-intro-copy">
-            <FitText as="h1" maxLines={1} minFontSize={30} maxFontSize={56}>
-              Feature requests
+            <FitText as="h1" maxLines={1} minFontSize={30} maxFontSize={moderationOnly ? 36 : 56}>
+              {moderationOnly ? "Review feature requests" : "Feature requests"}
             </FitText>
-            <p>
-              Explore the CloseSpan roadmap, suggest an improvement, and support
-              the requests that would help your team most.
-            </p>
+            {!moderationOnly && <p>
+              Explore the CloseSpan roadmap, suggest an improvement, and support the requests that would help your team most.
+            </p>}
+            {moderationOnly && (
+              <a className="text-link" href={`${SITE_URL}/requests`}>
+                View public roadmap
+              </a>
+            )}
           </div>
-          {hasAnyRequests && (
+          {!moderationOnly && hasAnyRequests && (
             <button
               className="feature-request-new"
               type="button"
@@ -699,7 +714,7 @@ export function FeatureRequestsBoard({
           </div>
         )}
 
-        {requests.some((request) => request.votingOpen) && (
+        {!moderationOnly && requests.some((request) => request.votingOpen) && (
           <TurnstileWidget
             siteKey={turnstileSiteKey}
             action={TURNSTILE_ACTIONS.featureRequestVote}
@@ -715,7 +730,7 @@ export function FeatureRequestsBoard({
           >
             <header>
               <div>
-                <span>Moderator view</span>
+                {!moderationOnly && <span>Moderator view</span>}
                 <h2 id="feature-request-review-heading">
                   Request review
                 </h2>
@@ -788,7 +803,7 @@ export function FeatureRequestsBoard({
           </section>
         )}
 
-        {!canModerate && recentSubmissions.length > 0 && (
+        {!moderationOnly && !canModerate && recentSubmissions.length > 0 && (
           <section
             className="feature-request-submission-queue"
             aria-labelledby="feature-request-submission-heading"
@@ -818,7 +833,15 @@ export function FeatureRequestsBoard({
           </section>
         )}
 
-        {!hasAnyRequests ? (
+        {moderationOnly ? (
+          canModerate && pendingRequests.length === 0 && !initialError ? (
+            <section className="feature-request-empty">
+              <span aria-hidden="true"><CheckCircle2 size={24} /></span>
+              <h2>No requests to review</h2>
+              <p>New community submissions will appear here for review.</p>
+            </section>
+          ) : null
+        ) : !hasAnyRequests ? (
           <section className="feature-request-empty">
             <span aria-hidden="true">
               <ListTodo size={24} />
@@ -946,7 +969,7 @@ export function FeatureRequestsBoard({
           </div>
         ) : null}
 
-        {visibleGroups.length > 0 && (
+        {!moderationOnly && visibleGroups.length > 0 && (
           <FitText
             as="p"
             className="feature-request-vote-note"
@@ -959,9 +982,9 @@ export function FeatureRequestsBoard({
             fingerprint; your raw IP address is not stored.
           </FitText>
         )}
-      </main>
+      </ContentContainer>
 
-      {dialogOpen && (
+      {!moderationOnly && dialogOpen && (
         <div
           className={`feature-request-dialog-backdrop${
             dialogClosing ? " is-closing" : ""

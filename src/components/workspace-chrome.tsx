@@ -70,11 +70,15 @@ export function WorkspacePrimaryActionControl() {
   const settingsRoute =
     pathname === "/settings" || pathname.startsWith("/settings/");
 
+  // Personal appearance applies immediately and does not save workspace policy.
+  if (pathname === "/settings/appearance" || pathname === "/settings/technical") return null;
+
   if (!settingsRoute) {
+    if (pathname === "/problems") return null;
     return (
-      <Link className="btn search-action" href="/feedback" prefetch={false}>
+      <Link className="btn search-action" href="/problems" prefetch={false}>
         <Search size={15} />
-        <span>Search feedback</span>
+        <span>Search issues</span>
       </Link>
     );
   }
