@@ -19,6 +19,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { NavigationIcon } from "./navigation-icon";
 
 export const SETTINGS_SECTIONS = [
   ["agent", "Automation"],
@@ -62,6 +63,7 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
   const isTechnical = pathname === "/settings/technical";
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("agent");
+  const isMoreSettings = isTechnical || (isWorkspaceSettings && !["agent", "data", "members", "usage"].includes(activeSection));
 
   useEffect(() => {
     if (!isWorkspaceSettings) return;
@@ -96,7 +98,7 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
           title="Appearance"
           prefetch={false}
         >
-          <Palette aria-hidden="true" size={17} />
+          <NavigationIcon icon={Palette} active={isAppearance} />
           <span>Appearance</span>
         </Link>
       </div>
@@ -120,15 +122,15 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
               }}
               key={id}
             >
-              <Icon aria-hidden="true" size={17} />
+              <NavigationIcon icon={Icon} active={active} />
               <span>{label}</span>
             </a>
           );
         })}
         <Link href="/settings/technical" prefetch={false}
-          className={isTechnical || (isWorkspaceSettings && !["agent", "data", "members", "usage"].includes(activeSection)) ? "active" : undefined}
+          className={isMoreSettings ? "active" : undefined}
           aria-current={isTechnical ? "page" : undefined}>
-          <Settings2 size={17} aria-hidden="true" /><span>More settings</span>
+          <NavigationIcon icon={Settings2} active={isMoreSettings} /><span>More settings</span>
         </Link>
       </div>
     </nav>

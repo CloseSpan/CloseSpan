@@ -61,6 +61,13 @@ describe("shared product visual system", () => {
     });
   });
 
+  it("lets the shared icon palette color desktop, settings, and mobile navigation", () => {
+    const navigation = productSource.slice(productSource.indexOf("/* Navigation glyphs"), productSource.indexOf(":root[data-theme] .app-shell .nav-section-label"));
+    expect(navigation).toContain(":is(.nav a, .settings-nav a, .mobile-menu-panel nav a) svg.lucide");
+    expect(navigation).toContain("stroke-width: 1.8;");
+    expect(navigation).not.toMatch(/\bcolor\s*:/);
+  });
+
   it("gives shared fields the approved rounded, lightly elevated treatment", () => {
     expect(productSource).toContain("--field-radius: 12px;");
     expect(productSource).toContain("--field-height: 40px;");
@@ -93,6 +100,17 @@ describe("shared product visual system", () => {
     expect(trigger).toContain("border: 0 !important;");
     expect(trigger).toContain("background: transparent;");
     expect(trigger).toContain("box-shadow: none;");
+  });
+
+  it("separates shared connector sections and actions with one responsive spacing rhythm", () => {
+    const drawer = productSource.slice(productSource.indexOf("/* Separate connector information"), productSource.indexOf(":root[data-theme] :is(.custom-select-option,"));
+    expect(drawer).toContain(".integration-drawer-content {");
+    expect(drawer).toContain("display: grid;");
+    expect(drawer).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(drawer).toContain("gap: var(--space-4);");
+    expect(drawer).toContain("margin-block-start: var(--space-4);");
+    expect(drawer).toContain(".integration-drawer-content > .integration-drawer-summary {\n  margin: 0;");
+    expect(drawer).toContain(".integration-drawer-content > .integration-drawer-actions {\n  padding-block-start: 0;");
   });
 
   it.each([":root", ':root[data-theme="dark"]'])("keeps workspace panels distinct and readable in %s", (selector) => {

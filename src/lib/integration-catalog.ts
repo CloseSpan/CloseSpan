@@ -146,9 +146,19 @@ export const integrationCatalog: readonly IntegrationCatalogEntry[] = [
     feedbackSource: true,
     agentKeywords: ["posthog", "analytics", "session replay"],
   },
+  {
+    id: "int_retell",
+    provider: "Retell AI",
+    category: "Feedback",
+    displayOrder: 14,
+    connectionMethod: "settings",
+    feedbackSource: true,
+    agentKeywords: ["retell", "voice calls", "call transcripts"],
+  },
 ];
 
 const availableIntegrationIds = new Set<string>([
+  "int_retell",
   "int_webhook",
   "int_github",
   "int_discord",
@@ -156,6 +166,7 @@ const availableIntegrationIds = new Set<string>([
 ]);
 
 const integrationCapabilities: Readonly<Record<string, IntegrationCapabilities>> = {
+  int_retell: { connect: true, feedbackImport: "webhook", approvedActions: false },
   int_webhook: {
     connect: true,
     feedbackImport: "webhook",

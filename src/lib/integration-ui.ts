@@ -20,6 +20,12 @@ export interface IntegrationExperience {
 }
 
 const experiences: Record<string, IntegrationExperience> = {
+  int_retell: {
+    filter: "Feedback",
+    summary: "Turn customer calls into product feedback.",
+    importedData: ["Redacted transcript excerpts", "Call summaries", "Call timestamp"],
+    requestedPermissions: ["Read calls only; CloseSpan never places calls or edits agents"],
+  },
   int_webhook: {
     filter: "Feedback",
     summary: "Send feedback from your product or any unsupported system.",

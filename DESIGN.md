@@ -164,9 +164,13 @@ The issue inventory uses one compact desktop toolbar: title with result count un
 
 The List/Board switch has a single visible outline and a deeper neutral track so it remains distinct from the shaded toolbar. Its selected pill uses the main surface color without a shadow in either theme.
 
-Interface icons use the shared `icon-colors.css` palette without recoloring labels or surfaces: blue for navigation and general actions, violet for agents and code, teal for people, connections and settings, green for checks, amber for attention, and red for destructive or error states. Dark mode uses brighter equivalents. Error/warning/success containers override an icon's usual category; solid actions, disabled controls and forced-colors mode retain readable foregrounds. Company marks use their brand colors, shared across the landing page, examples and integration screens. This is a color refinement, not a change to layout or workflow.
+Sidebar and mobile navigation keep the reference's 18px outline glyphs with 1.8px strokes: grid, people, inbox, circle-dot, flask, circle-check, robot, rounded follow-up connection, grid-plus, and gear. Navigation, settings, and other interface icons use the shared `icon-colors.css` palette without recoloring labels or surfaces: blue for general actions and grids, violet for agents, code and follow-up, teal for people, connections and settings, green for checks and testing, amber for attention, and red for destructive or error states. Dark mode uses brighter equivalents. Navigation icons retain their category colors on active and hover states. Error/warning/success containers override an icon's usual category; solid actions, disabled controls and forced-colors mode retain readable foregrounds. Company marks keep their brand colors. This refinement does not change layout or workflow.
 
 **The State Meaning Rule.** Preserve semantic status and destructive-action colors when applying the neutral visual system.
+
+Active navigation uses filled versions of the same colored icons; inactive navigation remains outlined. Inner checkmarks, dots, eyes and other identifying marks stay visible using the selected row's surface as a cutout. Apply this consistently to desktop, mobile and settings navigation, without filling icons on hover alone.
+
+The topbar notification bell is a disclosure button, not a page link. It opens a compact, theme-aware dropdown with up to five review requests, unread indicators, and a persistent “View all” link to `/notifications`. Empty states retain that link. Opening previews never marks notifications read; Escape restores focus to the bell, and outside interaction dismisses the panel. On mobile, the panel fits within 16px viewport gutters.
 
 ### Personal appearance
 

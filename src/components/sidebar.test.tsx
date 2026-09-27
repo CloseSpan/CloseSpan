@@ -33,4 +33,28 @@ describe("Always-expanded workspace navigation", () => {
     expect(markup.match(/data-nav-label=/g)).toHaveLength(WORKSPACE_NAVIGATION.length);
     expect(markup).toContain('aria-current="page"');
   });
+
+  it.each(["desktop", "mobile"])("uses the reference icon shapes in %s navigation", (mode) => {
+    const markup = renderToStaticMarkup(mode === "desktop"
+      ? <Sidebar {...props} demoMode={false} />
+      : <MobileNavigation {...props} />);
+    const icons = {
+      overview: "layout-grid",
+      customers: "users",
+      feedback: "inbox",
+      problems: "circle-dot",
+      pdd: "flask-conical",
+      approvals: "circle-check",
+      "agent-runs": "bot",
+      "follow-up": "follow-up",
+      integrations: "grid2x2-plus",
+      settings: "settings",
+    };
+    for (const item of WORKSPACE_NAVIGATION) {
+      const link = markup.split(`data-nav-label="${item.label}"`)[1]?.split("</a>")[0];
+      expect(link).toContain(`lucide-${icons[item.id]}`);
+      expect(link).toContain('aria-hidden="true"');
+      expect(link).toContain(`data-icon-variant="${item.id === "problems" ? "filled" : "outline"}"`);
+    }
+  });
 });

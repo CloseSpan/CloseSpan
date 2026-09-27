@@ -90,6 +90,12 @@ describe("inferConnectorsFromText", () => {
     expect(connectors[0]?.integrationId).toBe("int_webhook");
   });
 
+  it("recognizes Retell as a native feedback source without changing the default fallback", () => {
+    const connectors = inferConnectorsFromText("We use Retell for customer voice calls");
+    expect(connectors).toContainEqual(expect.objectContaining({ integrationId: "int_retell", connectionMethod: "settings" }));
+    expect(isFeedbackSourceIntegration("int_retell")).toBe(true);
+  });
+
   it("recommends Pipedream catalog entries with a live setup path", () => {
     const connectors = inferConnectorsFromText("We use Jira for project planning");
     expect(connectors.map((connector) => connector.integrationId)).toEqual([

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, Mail } from "lucide-react";
 import { useState } from "react";
 import type { PromptReviewNotificationView } from "@/lib/prompt-review-notification-repository";
@@ -12,6 +13,7 @@ export function PromptReviewNotifications({
   orgId: string;
   initialNotifications: PromptReviewNotificationView[];
 }) {
+  const router = useRouter();
   const [notifications, setNotifications] = useState(initialNotifications);
   const [busyId, setBusyId] = useState<string>();
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export function PromptReviewNotifications({
             : item,
         ),
       );
+      router.refresh();
     } catch (markReadError) {
       setError(
         markReadError instanceof Error

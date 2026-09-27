@@ -1311,12 +1311,12 @@ export async function syncSlackIntake(orgId: string): Promise<{
   }
 }
 
-async function pendingSlackFeedback(orgId: string): Promise<string[]> {
+async function pendingSlackFeedback(orgId: string, source: "community" | "retell"): Promise<string[]> {
   const result = await databasePool().query<{ id: string }>(
     `SELECT feedback.id
        FROM feedback_items feedback
       WHERE feedback.org_id=$1
-        AND feedback.integration_id IN ('int_slack','int_discord')
+        AND feedback.integration_id = ANY($2::text[])
         AND NOT EXISTS (
           SELECT 1 FROM ai_feedback_analyses analysis
           JOIN model_runs run ON run.org_id=analysis.org_id
@@ -1325,16 +1325,16 @@ async function pendingSlackFeedback(orgId: string): Promise<string[]> {
             AND analysis.feedback_id=feedback.id
         )
       ORDER BY feedback.created_at,feedback.id LIMIT 25`,
-    [orgId],
+    [orgId, source === "retell" ? ["int_retell"] : ["int_slack", "int_discord"]],
   );
   return result.rows.map((row) => row.id);
 }
 
-export async function analyzeAndClusterSlackSignals(orgId: string): Promise<{
+export async function analyzeAndClusterSlackSignals(orgId: string, source: "community" | "retell" = "community"): Promise<{
   analyzed: number;
   clustered: number;
 }> {
-  const feedbackIds = await pendingSlackFeedback(orgId);
+  const feedbackIds = await pendingSlackFeedback(orgId, source);
   if (feedbackIds.length === 0) return { analyzed: 0, clustered: 0 };
   const configuration = await getAiRuntimeConfiguration(orgId);
   if (!configuration.configured || !configuration.apiKey)
@@ -1370,8 +1370,8 @@ export async function analyzeAndClusterSlackSignals(orgId: string): Promise<{
     const context = {
       orgId,
       organizationName: "CloseSpan workspace",
-      actorId: "agent_slack_intake",
-      actorName: "Slack intake agent",
+      actorId: source === "retell" ? "agent_retell_intake" : "agent_slack_intake",
+      actorName: source === "retell" ? "Retell intake agent" : "Slack intake agent",
       actorEmail: "automation@closespan.com",
       role: "Admin",
       idempotencyKey: `slack-analysis-${batchKey}`,
@@ -1420,7 +1420,7 @@ export async function analyzeAndClusterSlackSignals(orgId: string): Promise<{
             summary: item.redactedSummary,
           });
         }
-        await enqueueSlackNotification({
+        if (source !== "retell") await enqueueSlackNotification({
           orgId,
           problemId: result.problem.id,
           eventType: "problem_detected",

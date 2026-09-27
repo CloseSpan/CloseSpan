@@ -29,7 +29,7 @@ svg.lucide:is(
   .lucide-bot, .lucide-brain-circuit, .lucide-sparkles, .lucide-command,
   .lucide-cpu, .lucide-file-pen-line, .lucide-file-code2, .lucide-palette,
   .lucide-git-branch, .lucide-git-pull-request, .lucide-git-merge,
-  .lucide-workflow, .lucide-moon
+  .lucide-workflow, .lucide-follow-up, .lucide-moon
 ) { --icon-kind: var(--icon-violet); }
 
 svg.lucide:is(

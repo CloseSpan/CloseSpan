@@ -1,14 +1,14 @@
 "use client";
 
 import {
-  BadgeCheck,
-  Blocks,
   Bot,
+  CircleCheck,
   CircleDot,
-  Gauge,
-  GitPullRequest,
+  createLucideIcon,
+  FlaskConical,
+  Grid2X2Plus,
   Inbox,
-  ListChecks,
+  LayoutGrid,
   Settings,
   Users,
 } from "lucide-react";
@@ -34,17 +34,25 @@ import {
   type OrganizationSwitcherItem,
 } from "./organization-switcher";
 import { SettingsNavigation } from "./settings-navigation";
+import { NavigationIcon } from "./navigation-icon";
+
+// The reference uses one rounded connection, not a branching pull-request glyph.
+const FollowUpIcon = createLucideIcon("FollowUp", [
+  ["circle", { cx: "6", cy: "5", r: "3", key: "start" }],
+  ["path", { d: "M6 8v7a4 4 0 0 0 4 4h5", key: "connection" }],
+  ["circle", { cx: "18", cy: "19", r: "3", key: "end" }],
+]);
 
 const navigationIcons: Record<WorkspaceNavigationId, typeof CircleDot> = {
-  overview: Gauge,
+  overview: LayoutGrid,
   customers: Users,
   feedback: Inbox,
   problems: CircleDot,
-  pdd: ListChecks,
-  approvals: BadgeCheck,
+  pdd: FlaskConical,
+  approvals: CircleCheck,
   "agent-runs": Bot,
-  "follow-up": GitPullRequest,
-  integrations: Blocks,
+  "follow-up": FollowUpIcon,
+  integrations: Grid2X2Plus,
   settings: Settings,
 };
 
@@ -100,7 +108,7 @@ function NavigationLinks({ pendingApprovalCount = 0 }: { pendingApprovalCount?: 
                     data-nav-label={label}
                     key={label}
                   >
-                    <Icon aria-hidden="true" />
+                    <NavigationIcon icon={Icon} active={active} />
                     <span>{label}</span>
                     <span className="nav-link-meta" aria-hidden="true">
                       {pendingCount > 0 && <span className="nav-pending-approval-count">{pendingCount > 99 ? "99+" : pendingCount}</span>}

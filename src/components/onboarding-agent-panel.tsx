@@ -1702,6 +1702,10 @@ export function OnboardingAgentPanel({
                           recordPipedreamConnection(connector, integrationId)
                         }
                       />
+                    ) : connector.integrationId === "int_retell" ? (
+                      <Link className="btn" href="/integrations?focus=int_retell&view=connections">
+                        Connect Retell
+                      </Link>
                     ) : action?.type === "oauth_connect" &&
                       action.integrationId === "int_discord" ? (
                       <button

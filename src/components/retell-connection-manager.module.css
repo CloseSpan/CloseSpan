@@ -1,0 +1,16 @@
+.root { display: grid; gap: 16px; min-width: 0; width: 100%; color: var(--text); }
+.fields { display: grid; gap: 10px; min-width: 0; }
+.fields label { font-size: 13px; font-weight: 550; color: var(--text-strong); }
+.root .input { width: 100%; min-width: 0; min-height: 42px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text); background: var(--surface); font: inherit; font-size: 13px; box-shadow: none; }
+.root .input:focus-visible { border-color: var(--field-focus-border); outline: 2px solid var(--field-focus-border); outline-offset: -1px; }
+.input::placeholder { color: var(--text-muted); }
+.fields button { justify-self: start; }
+.hint { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.message { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.details { border-top: 1px solid var(--border-subtle); padding-top: 16px; min-width: 0; }
+.details summary { cursor: pointer; font-size: 13px; font-weight: 550; color: var(--text-strong); }
+.details[open] summary { margin-bottom: 14px; }
+.details summary:focus-visible { outline: 2px solid var(--field-focus-border); outline-offset: 4px; }
+.disconnect { justify-self: start; }
+.error { color: var(--danger, #b42318); margin: 0; font-size: 13px; line-height: 1.5; }

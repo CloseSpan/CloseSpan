@@ -13,6 +13,7 @@ const sourceIntegrations: Record<string, string> = {
   Intercom: "int_intercom",
   Slack: "int_slack",
   Zendesk: "int_zendesk",
+  "Retell AI": "int_retell",
 };
 
 function sourceIcon(source: string) {

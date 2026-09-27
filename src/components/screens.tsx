@@ -58,6 +58,7 @@ import {
 import { IntegrationSyncStatus } from "./integration-sync-status";
 import { PipedreamAccountManager } from "./pipedream-account-manager";
 import { DiscordConnectionManager } from "./discord-connection-manager";
+import { RetellConnectionManager } from "./retell-connection-manager";
 import { IntegrationProviderIcon } from "./integration-provider-icon";
 import { IntegrationCopilot } from "./integration-copilot";
 import { IntegrationSuggestionsView } from "./integration-suggestions-view";
@@ -4692,18 +4693,18 @@ export function IntegrationsScreen({
                 onViewDetails={() => setIntegrationDrawerMode("details")}
               />
             ) : (
-              <>
+              <div className="integration-drawer-content">
                 <p className="integration-drawer-summary">{selectedRow.experience.summary}</p>
                 <section className="integration-drawer-section">
                   <h3>Data CloseSpan will use</h3>
                   <ul>{selectedRow.experience.importedData.map((value) => <li key={value}><Check size={14} aria-hidden="true" />{value}</li>)}</ul>
                 </section>
                 <section className="integration-drawer-section">
-                  <h3>Permissions requested</h3>
+                  <h3>{selectedRow.item.id === "int_retell" ? "Access used" : "Permissions requested"}</h3>
                   <ul>{selectedRow.experience.requestedPermissions.map((value) => <li key={value}><ShieldCheck size={14} aria-hidden="true" />{value}</li>)}</ul>
-                  <p>CloseSpan requests least-privilege access. Agent actions still require your approval.</p>
+                  <p>{selectedRow.item.id === "int_retell" ? "Only call-reading operations are enabled. Your API key’s permissions remain managed in Retell." : "CloseSpan requests least-privilege access. Agent actions still require your approval."}</p>
                 </section>
-                {selectedRow.connected && selectedRow.item.permissions.length > 0 && (
+                {selectedRow.connected && selectedRow.item.id !== "int_retell" && selectedRow.item.permissions.length > 0 && (
                   <section className="integration-drawer-section"><h3>Currently granted</h3><p>{selectedRow.item.permissions.join(", ")}</p></section>
                 )}
                 <div className="integration-drawer-actions">
@@ -4784,6 +4785,12 @@ export function IntegrationsScreen({
                     updateConnectionState(selectedRow.item.id, nextState)
                   }
                 />
+              ) : selectedRow.item.id === "int_retell" ? (
+                <RetellConnectionManager
+                  orgId={orgId}
+                  onConnectionStateChange={(nextState) => updateConnectionState(selectedRow.item.id, nextState)}
+                  onImportComplete={(completedAt) => setLastSyncOverrides((previous) => ({ ...previous, int_retell: completedAt }))}
+                />
               ) : isPipedreamConnectorId(selectedRow.item.id) ? (
                 <PipedreamAccountManager
                   orgId={orgId}
@@ -4825,7 +4832,7 @@ export function IntegrationsScreen({
                     <button type="button" className="btn" onClick={() => void copyWebhookValue("secret", webhookCredentials.signingSecret)}><Copy size={13} />{webhookCopied === "secret" ? "Copied" : "Copy secret"}</button>
                   </div>
                 )}
-              </>
+              </div>
             )}
           </motion.aside>
         </motion.div>

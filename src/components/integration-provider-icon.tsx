@@ -5,6 +5,7 @@ import {
   Github,
   Headset,
   MessageSquareMore,
+  AudioLines,
   PanelsTopLeft,
   Play,
   PlugZap,
@@ -20,6 +21,7 @@ const providerIcons: Record<
   { icon: LucideIcon; tone: string }
 > = {
   int_webhook: { icon: Webhook, tone: "webhook" },
+  int_retell: { icon: AudioLines, tone: "default" },
   int_zendesk: { icon: Headset, tone: "zendesk" },
   int_intercom: { icon: MessageSquareMore, tone: "intercom" },
   int_slack: { icon: Slack, tone: "slack" },

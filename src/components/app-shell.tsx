@@ -1,5 +1,4 @@
 import {
-  Bell,
   LogOut,
   UserRound,
 } from "lucide-react";
@@ -22,7 +21,8 @@ import {
   WorkspacePrimaryActionControl,
 } from "./workspace-chrome";
 import { BackgroundPromptTestProvider } from "./background-prompt-tests";
-import { unreadPromptReviewNotificationCount } from "@/lib/prompt-review-notification-repository";
+import { listPromptReviewNotifications, unreadPromptReviewNotificationCount } from "@/lib/prompt-review-notification-repository";
+import { NotificationMenu } from "./notification-menu";
 import { isCloseSpanPlatformAdmin } from "@/lib/workspace-access-policy";
 import { pendingActionApprovalCount } from "@/lib/engineering-workflow-repository";
 import { isFeatureRequestModerator } from "@/lib/feature-request-security";
@@ -88,7 +88,7 @@ export async function AppShell({
   children: React.ReactNode;
   immersive?: boolean;
 }) {
-  const [demoGuide, unreadNotifications, pendingApprovals, issueReviews, autonomy] = await Promise.all([
+  const [demoGuide, unreadNotifications, pendingApprovals, issueReviews, autonomy, notifications] = await Promise.all([
     getWorkspaceDemoGuide(user.orgId),
     unreadPromptReviewNotificationCount(user.orgId, user.id),
     pendingActionApprovalCount(user.orgId),
@@ -97,6 +97,7 @@ export async function AppShell({
       throw error;
     }),
     readAutonomyLevel(user.orgId),
+    immersive ? Promise.resolve([]) : listPromptReviewNotifications(user.orgId, user.id),
   ]);
   const reviewCount = pendingApprovals + issueReviews.filter((review) => demoGuide || review.needsHelp || autonomyCapabilities(autonomy).preparePrompt).length;
   const durableWorkspace = workspacePersistenceMode(user.orgId) === "postgres";
@@ -173,19 +174,11 @@ export async function AppShell({
               <WorkspaceBreadcrumb />
               <div className="top-actions">
                 <WorkspacePrimaryActionControl />
-                <Link
-                  className="btn icon-btn notification-button"
-                  href="/notifications"
-                  prefetch={false}
-                  aria-label={`Open notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}
-                >
-                  <Bell size={15} />
-                  {unreadNotifications > 0 && (
-                    <span className="notification-count">
-                      {Math.min(unreadNotifications, 99)}
-                    </span>
-                  )}
-                </Link>
+                <NotificationMenu
+                  key={user.orgId}
+                  unreadCount={unreadNotifications}
+                  notifications={notifications.slice(0, 5).map(({ id, problemId, title, status, createdAt }) => ({ id, problemId, title, status, createdAt }))}
+                />
                 <AccountMenu
                   user={user}
                   showPlatformAdmin={showPlatformAdmin}

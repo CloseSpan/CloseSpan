@@ -130,6 +130,7 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   transform: none;
 }
 :root[data-theme] .app-shell :is(.nav a.active, .settings-nav a.active, .mobile-menu-panel nav a.active) {
+  --navigation-icon-cutout: var(--surface-pressed);
   background: var(--surface-pressed);
   color: var(--text-strong);
   box-shadow: none;
@@ -137,10 +138,37 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 }
 /* Personal accents color selection, never permission or result semantics. */
 :root[data-theme][data-accent]:not([data-accent="neutral"]) .app-shell :is(.nav a.active, .settings-nav a.active, .mobile-menu-panel nav a.active) {
+  --navigation-icon-cutout: var(--accent-soft);
   background: var(--accent-soft);
   color: var(--accent);
 }
-:root[data-theme] .app-shell :is(.nav a svg, .settings-nav a svg) { width: 17px; height: 17px; stroke-width: 1.6; }
+/* Navigation glyphs share consistent geometry; icon-colors.css owns their theme-aware colors. */
+:root[data-theme] .app-shell :is(.nav a, .settings-nav a, .mobile-menu-panel nav a) svg.lucide {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  stroke-width: 1.8;
+}
+/* Filled navigation silhouettes preserve internal marks instead of flooding every open path. */
+.navigation-icon[data-icon-variant="filled"] :is(circle, rect),
+.navigation-icon[data-icon-variant="filled"]:is(.lucide-users, .lucide-flask-conical, .lucide-shield-check) > path:first-child,
+.navigation-icon[data-icon-variant="filled"]:is(.lucide-inbox, .lucide-settings) > path:not(.navigation-icon-detail),
+.navigation-icon[data-icon-variant="filled"]:is(.lucide-palette, .lucide-gauge) > path {
+  fill: currentColor;
+}
+.navigation-icon[data-icon-variant="filled"].lucide-grid2x2-plus > path:first-child { display: none; }
+.navigation-icon[data-icon-variant="filled"] .navigation-icon-detail {
+  fill: none;
+  stroke: var(--navigation-icon-cutout, var(--surface-pressed));
+}
+.navigation-icon[data-icon-variant="filled"] .navigation-icon-cutout,
+.navigation-icon[data-icon-variant="filled"] .navigation-icon-cutout circle {
+  fill: var(--navigation-icon-cutout, var(--surface-pressed));
+  stroke: var(--navigation-icon-cutout, var(--surface-pressed));
+}
+@media (forced-colors: active) {
+  .navigation-icon[data-icon-variant="filled"] { --navigation-icon-cutout: Canvas; }
+}
 :root[data-theme] .app-shell .nav-section-label { padding: 8px 10px; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-weight: 500; }
 :root[data-theme] .app-shell .nav-group + .nav-group { margin-top: 16px; }
 :root[data-theme] .app-shell .nav-link-indicator { display: none; }
@@ -672,6 +700,20 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   background: var(--surface) !important;
   color: var(--text);
   box-shadow: var(--shadow-overlay) !important;
+}
+/* Separate connector information and actions without changing their surfaces.
+ * The shared stack also handles optional permission and credential sections. */
+:root[data-theme] .integration-drawer-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  margin-block-start: var(--space-4);
+}
+:root[data-theme] .integration-drawer-content > .integration-drawer-summary {
+  margin: 0;
+}
+:root[data-theme] .integration-drawer-content > .integration-drawer-actions {
+  padding-block-start: 0;
 }
 :root[data-theme] :is(.custom-select-option, .organization-option, .user-menu-panel a, .user-menu-panel button) { border-radius: var(--radius-sm); box-shadow: none; font-size: 13px; }
 /* Brand marks identify the source; only the selected option renders a check. */

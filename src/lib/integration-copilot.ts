@@ -72,6 +72,7 @@ function modeFor(
 }
 
 function capabilityLine(integrationId: string): string {
+  if (integrationId === "int_retell") return "Retell AI imports recent calls on demand and receives signed post-call events. CloseSpan only reads call data; it cannot place calls or edit agents.";
   const provider = connectorById.get(integrationId)?.provider ?? "This source";
   const capability = getIntegrationCapabilities(integrationId);
   if (capability.feedbackImport === "manual")

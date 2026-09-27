@@ -36,6 +36,10 @@ export default async function Page({
   const requestedFocus = Array.isArray(params.focus)
     ? params.focus[0]
     : params.focus;
+  // Show newly available connectors before a workspace has persisted its catalog row.
+  const integrations = data.integrations.some((item) => item.id === "int_retell")
+    ? data.integrations
+    : [...data.integrations, { id: "int_retell", name: "Retell AI", category: "Feedback", state: "Not connected", lastSync: null, dataScope: "Call transcripts and summaries", permissions: ["calls:read"] }];
   const focusedIntegrationId =
     requestedFocus && focusableIntegrationIds.has(requestedFocus)
       ? requestedFocus
@@ -90,7 +94,7 @@ export default async function Page({
         />
       )}
       <IntegrationsScreen
-        integrations={data.integrations}
+        integrations={integrations}
         githubRepositories={githubRepositories}
         orgId={user.orgId}
         focusedIntegrationId={focusedIntegrationId}

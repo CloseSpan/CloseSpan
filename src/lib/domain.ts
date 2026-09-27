@@ -1,4 +1,4 @@
-export type Source = "Intercom" | "Zendesk" | "Slack" | "Email" | "Survey";
+export type Source = "Intercom" | "Zendesk" | "Slack" | "Email" | "Survey" | "Retell AI";
 export type FeedbackType = "Bug" | "Feature request" | "Usability" | "Question" | "Incident";
 export type Severity = "Critical" | "High" | "Medium" | "Low";
 export type Stage =
