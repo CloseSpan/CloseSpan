@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const authState = vi.hoisted(() => ({
   session: null as null | {
@@ -7,6 +7,9 @@ const authState = vi.hoisted(() => ({
   activeOrganizationId: null as string | null,
   memberships: vi.fn(),
   ensureMemberships: vi.fn(),
+  demoWorkspace: vi.fn(),
+  demoSessionId: null as string | null,
+  demoReturnOrgId: null as string | null,
 }));
 
 vi.mock("@/auth", () => ({
@@ -15,11 +18,12 @@ vi.mock("@/auth", () => ({
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => ({
-    get: vi.fn((name: string) =>
-      name === "closespan_active_org" && authState.activeOrganizationId
-        ? { value: authState.activeOrganizationId }
-        : undefined,
-    ),
+    get: vi.fn((name: string) => {
+      const value = name === "closespan_active_org" ? authState.activeOrganizationId
+        : name === "closespan_demo_org" ? authState.demoSessionId
+          : name === "closespan_demo_return_org" ? authState.demoReturnOrgId : null;
+      return value ? { value } : undefined;
+    }),
   })),
 }));
 vi.mock("./db", () => ({
@@ -37,6 +41,7 @@ vi.mock("./organization-repository", async (importOriginal) => {
     listOrganizationMemberships: authState.memberships,
   };
 });
+vi.mock("./onboarding-entry", async (original) => ({ ...await original<typeof import("./onboarding-entry")>(), getOnboardingDemoWorkspace: authState.demoWorkspace }));
 
 import {
   resolveWorkspaceAccess,
@@ -44,6 +49,7 @@ import {
   workspaceUserFromMemberships,
 } from "./auth-user";
 import type { OrganizationMembership } from "./organization-repository";
+import { demoSessionCookieValue } from "./onboarding-entry";
 
 const memberships: OrganizationMembership[] = [
   {
@@ -63,6 +69,66 @@ const memberships: OrganizationMembership[] = [
     role: "Contributor",
   },
 ];
+
+describe("onboarding demo visitor access", () => {
+  beforeEach(() => {
+    vi.stubEnv("APP_MODE", "production");
+    vi.stubEnv("DEMO_MEMORY_ORG_ID", "");
+    authState.session = { user: { email: "new@example.com", name: "New User" } };
+    authState.memberships.mockReset().mockResolvedValue(memberships);
+    authState.ensureMemberships.mockReset();
+    authState.demoWorkspace.mockReset().mockResolvedValue({ id: "org_demo", name: "CloseSpan Demo" });
+    authState.activeOrganizationId = "org_demo";
+    authState.demoSessionId = demoSessionCookieValue("new@example.com", "org_demo");
+    authState.demoReturnOrgId = "org_acme";
+  });
+  afterEach(() => {
+    authState.demoSessionId = null;
+    authState.demoReturnOrgId = null;
+    vi.unstubAllEnvs();
+  });
+  it("grants temporary Viewer access without adding a stored membership", async () => {
+    expect(await resolveWorkspaceAccess()).toMatchObject({ status: "granted", user: {
+      orgId: "org_demo", role: "Viewer", demoSession: { returnOrgId: "org_acme", returnOrganizationName: "Acme" },
+    } });
+    expect(authState.ensureMemberships).not.toHaveBeenCalled();
+  });
+  it("still creates the new user's private workspace before entering demo", async () => {
+    authState.memberships.mockResolvedValue([]);
+    authState.ensureMemberships.mockResolvedValue(memberships.slice(0, 1));
+    expect(await resolveWorkspaceAccess()).toMatchObject({ status: "granted", user: { orgId: "org_demo", role: "Viewer" } });
+    expect(authState.ensureMemberships).toHaveBeenCalledWith("new@example.com", "New User");
+  });
+  it("does not grant access to a live tenant named in forged cookies", async () => {
+    authState.activeOrganizationId = "org_private_other";
+    authState.demoSessionId = demoSessionCookieValue("new@example.com", "org_private_other");
+    expect(await resolveWorkspaceAccess()).toMatchObject({ status: "granted", user: { orgId: "org_acme", role: "Admin" } });
+  });
+  it("does not accept a forged return organization", async () => {
+    authState.demoReturnOrgId = "org_private_other";
+    expect(await resolveWorkspaceAccess()).toMatchObject({ status: "granted", user: { demoSession: { returnOrgId: "org_acme" } } });
+  });
+  it("does not carry another account's demo preference into a new sign-in", async () => {
+    authState.demoSessionId = demoSessionCookieValue("someone@example.com", "org_demo");
+    expect(await resolveWorkspaceAccess()).toMatchObject({ status: "granted", user: { orgId: "org_acme" } });
+    expect(authState.demoWorkspace).not.toHaveBeenCalled();
+  });
+  it("does not expose the demo before explicit entry", async () => {
+    authState.demoSessionId = null;
+    const access = await resolveWorkspaceAccess();
+    expect(access).toMatchObject({ status: "granted", user: { orgId: "org_acme" } });
+    expect(authState.demoWorkspace).not.toHaveBeenCalled();
+    if (access.status === "granted") expect(access.user.organizations).not.toContainEqual(expect.objectContaining({ id: "org_demo" }));
+  });
+  it("revokes virtual demo access when the presentation is no longer available", async () => {
+    authState.demoWorkspace.mockResolvedValue(null);
+    expect(await resolveWorkspaceAccess()).toMatchObject({ status: "granted", user: { orgId: "org_acme" } });
+  });
+  it("also restricts an existing demo admin to Viewer during an explicit demo session", async () => {
+    authState.memberships.mockResolvedValue([...memberships, { ...memberships[0], organizationId: "org_demo", role: "Admin" }]);
+    expect(await resolveWorkspaceAccess()).toMatchObject({ status: "granted", user: { orgId: "org_demo", role: "Viewer" } });
+  });
+});
 
 describe("workspace organization selection", () => {
   it("selects a validated active organization from multiple memberships", () => {

@@ -1,9 +1,18 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ACCENT_COLORS } from "@/lib/color-theme";
-import { AppearanceSettings } from "./appearance-settings";
+import { AppearanceOptions, AppearanceSettings } from "./appearance-settings";
 
 describe("personal appearance settings", () => {
+  it("reuses the live controls in onboarding with only light and dark choices", () => {
+    const html = renderToStaticMarkup(<AppearanceOptions includeSystem={false} />);
+    expect(html).toMatch(/name="appearance-theme"[^>]*checked=""[^>]*value="light"/);
+    expect(html).toContain('value="dark"');
+    expect(html).not.toContain('value="system"');
+    expect(html).toContain('data-compact="true"');
+    expect(html.match(/type="radio"/g)).toHaveLength(2 + ACCENT_COLORS.length);
+    expect(html).not.toContain("<h1");
+  });
   it("offers accessible light, dark, and system theme radios", () => {
     const html = renderToStaticMarkup(<AppearanceSettings />);
     expect(html).toContain('<h1 id="appearance-title">Appearance</h1>');

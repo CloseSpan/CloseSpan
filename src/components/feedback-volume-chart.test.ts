@@ -85,6 +85,28 @@ describe("feedback volume chart", () => {
     expect(normalizeChartBarHeight(3, 3)).toBe(100);
   });
 
+  it("shows company logos for branded sources and simple icons for other channels", () => {
+    const markup = renderToStaticMarkup(createElement(FeedbackVolumeChart, {
+      analytics: {
+        ...analytics,
+        feedbackSeries: Object.fromEntries(
+          ["Discord", "Email", "Intercom", "Slack", "Survey", "Zendesk", "All sources"].map((source) => [source, [1]]),
+        ),
+      },
+    }));
+
+    for (const brand of ["intercom", "slack", "zendesk"]) {
+      expect(markup).toContain(`data-brand="${brand}"`);
+    }
+    expect(markup).toContain('aria-label="Discord"');
+    expect(markup).toContain('fill="#5865F2"');
+    expect(markup).toContain("lucide-mail");
+    expect(markup).toContain("lucide-clipboard-list");
+    expect(markup).toContain("lucide-layers");
+    expect(markup.match(/lucide-check\b/g)).toHaveLength(1);
+    expect(markup).not.toContain('src="http');
+  });
+
   it("shows a useful empty state when every visible week has zero feedback", () => {
     const emptyAnalytics: OverviewAnalytics = {
       ...analytics,

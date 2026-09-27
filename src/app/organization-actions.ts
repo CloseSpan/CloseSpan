@@ -19,6 +19,7 @@ import {
 import { workspacePersistenceMode } from "@/lib/workspace-persistence";
 import { addDefaultHttpsScheme } from "@/lib/product-url";
 import { revokeGithubInstallationsForDeletedOrganization } from "@/lib/github-installation-repository";
+import { DEMO_RETURN_COOKIE, DEMO_SESSION_COOKIE } from "@/lib/onboarding-entry";
 
 export interface OrganizationActionState {
   error: string | null;
@@ -83,6 +84,8 @@ async function activateOrganization(organizationId: string): Promise<void> {
     activeOrganizationCookieOptions(),
   );
   cookieStore.delete(LEGACY_ACTIVE_ORGANIZATION_COOKIE);
+  cookieStore.delete(DEMO_RETURN_COOKIE);
+  cookieStore.delete(DEMO_SESSION_COOKIE);
   revalidatePath("/", "layout");
 }
 
@@ -100,6 +103,9 @@ export async function switchOrganizationAction(
     (candidate) => candidate.id === organizationId.data,
   );
   if (!organization) throw new Error("Organization access is not available");
+
+  // The virtual demo membership is valid only for this read-only session.
+  if (user.demoSession && organization.id === user.orgId) redirect("/overview");
 
   await activateOrganization(organization.id);
   redirect("/overview");

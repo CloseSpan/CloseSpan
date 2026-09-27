@@ -1416,7 +1416,7 @@ textarea {
   transition: transform var(--duration-normal) var(--ease-standard);
 }
 
-.custom-select-trigger[aria-expanded="true"] svg {
+.custom-select-trigger[aria-expanded="true"] > svg:last-child {
   color: var(--accent);
   transform: rotate(180deg);
 }
@@ -1510,7 +1510,7 @@ textarea {
   width: 100%;
   min-height: var(--control-height);
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 16px;
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-3);
@@ -1525,7 +1525,28 @@ textarea {
   text-align: left;
 }
 
-.custom-select-option svg { color: transparent; }
+.custom-select-option-label {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.custom-select-option-label > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.custom-select-option-icon,
+.custom-select-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.custom-select-option-icon { width: 18px; height: 18px; }
+.custom-select-indicator { width: 16px; height: 16px; }
 
 .custom-select-option:hover,
 .custom-select-option[data-highlighted="true"] {
@@ -1560,8 +1581,6 @@ textarea {
   box-shadow: var(--shadow-inset-sm);
   font-weight: var(--weight-semibold);
 }
-
-.custom-select-option[aria-selected="true"] svg { color: var(--accent); }
 
 /* Every product dropdown uses the same listbox surface. Context only controls
  * width and composition; menu, focus, selected, and keyboard states remain

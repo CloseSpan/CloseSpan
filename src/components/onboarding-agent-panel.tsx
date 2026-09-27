@@ -1951,90 +1951,49 @@ export function OnboardingAgentPanel({
 
         </div>
 
-        <AnimatePresence initial={false}>
-          {showComposer && supportFlow.step !== "review" && (
-            <motion.form
-              key="onboarding-composer"
-              className="delphi-composer"
-              onSubmit={onSubmit}
-              layout="position"
-              initial={
-                prefersReducedMotion
-                  ? false
-                  : {
-                      opacity: 0,
-                      y: 18,
-                      scaleY: 0.88,
-                      filter: "blur(8px)",
-                      clipPath: "inset(0 0 42% 0 round 18px)",
-                    }
+        {showComposer && supportFlow.step !== "review" && (
+          <form className="delphi-composer" onSubmit={onSubmit}>
+            <input
+              className="neumorphic-composite-field"
+              ref={inputRef}
+              type={supportFlow.step === "email" ? "email" : "text"}
+              value={draft}
+              aria-label={composerLabel}
+              placeholder={composerPlaceholder}
+              maxLength={
+                supportFlow.step === "message"
+                  ? 5_000
+                  : supportFlow.step === "subject"
+                    ? 160
+                    : undefined
               }
-              animate={{
-                opacity: 1,
-                y: 0,
-                scaleY: 1,
-                filter: "blur(0px)",
-                clipPath: "inset(0 0 0% 0 round 18px)",
-              }}
-              exit={
-                prefersReducedMotion
+              onChange={(event) => setDraft(event.target.value)}
+              disabled={busy === "chat" || busy === "support"}
+            />
+            <motion.button
+              className="delphi-send"
+              type="submit"
+              disabled={
+                !composerHasRequiredValue ||
+                busy === "chat" ||
+                busy === "support"
+              }
+              aria-label={
+                busy === "support" ? "Sending support message" : "Send message"
+              }
+              whileTap={
+                prefersReducedMotion ||
+                !composerHasRequiredValue ||
+                busy === "chat" ||
+                busy === "support"
                   ? undefined
-                  : {
-                      opacity: 0,
-                      y: 8,
-                      scaleY: 0.96,
-                      filter: "blur(4px)",
-                      clipPath: "inset(0 0 28% 0 round 18px)",
-                    }
+                  : { scale: 0.94 }
               }
-              transition={{
-                duration: prefersReducedMotion ? 0 : 0.58,
-                delay: prefersReducedMotion ? 0 : 0.14,
-                ease: [0.16, 1, 0.3, 1],
-              }}
             >
-              <input
-                className="neumorphic-composite-field"
-                ref={inputRef}
-                type={supportFlow.step === "email" ? "email" : "text"}
-                value={draft}
-                aria-label={composerLabel}
-                placeholder={composerPlaceholder}
-                maxLength={
-                  supportFlow.step === "message"
-                    ? 5_000
-                    : supportFlow.step === "subject"
-                      ? 160
-                      : undefined
-                }
-                onChange={(event) => setDraft(event.target.value)}
-                disabled={busy === "chat" || busy === "support"}
-              />
-              <motion.button
-                className="delphi-send"
-                type="submit"
-                disabled={
-                  !composerHasRequiredValue ||
-                  busy === "chat" ||
-                  busy === "support"
-                }
-                aria-label={
-                  busy === "support" ? "Sending support message" : "Send message"
-                }
-                whileTap={
-                  prefersReducedMotion ||
-                  !composerHasRequiredValue ||
-                  busy === "chat" ||
-                  busy === "support"
-                    ? undefined
-                    : { scale: 0.94 }
-                }
-              >
-                <ArrowUp size={18} aria-hidden="true" />
-              </motion.button>
-            </motion.form>
-          )}
-        </AnimatePresence>
+              <ArrowUp size={18} aria-hidden="true" />
+            </motion.button>
+          </form>
+        )}
       </motion.div>
     </motion.section>
   );

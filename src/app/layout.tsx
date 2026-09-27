@@ -9,7 +9,6 @@ import {
 } from "@/lib/site";
 import { COLOR_THEME_BOOTSTRAP_SCRIPT, DEFAULT_COLOR_THEME } from "@/lib/color-theme";
 import { ThemeController } from "@/components/theme-controller";
-import { GooeyInteractions } from "@/components/gooey-interactions";
 import "./globals.css";
 import "./neumorphic-theme.css";
 import "./product-theme.css";
@@ -92,7 +91,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body>
         <ThemeController />
-        <GooeyInteractions />
         {children}
         <Analytics />
       </body>

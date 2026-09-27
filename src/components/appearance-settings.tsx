@@ -15,6 +15,7 @@ import {
   applyAccentColor,
   applyColorThemePreference,
   resolveAccentColor,
+  resolveColorTheme,
   resolveColorThemePreference,
   THEME_CHANGE_EVENT,
 } from "@/lib/color-theme-client";
@@ -75,22 +76,17 @@ function ThemePreview({ theme, accent }: { theme: ColorThemePreference; accent: 
   );
 }
 
-export function AppearanceSettings() {
-  const theme = useSyncExternalStore<ColorThemePreference>(subscribe, resolveColorThemePreference, () => DEFAULT_COLOR_THEME);
+export function AppearanceOptions({ includeSystem = true }: { includeSystem?: boolean }) {
+  const theme = useSyncExternalStore<ColorThemePreference>(subscribe, includeSystem ? resolveColorThemePreference : resolveColorTheme, () => DEFAULT_COLOR_THEME);
   const accent = useSyncExternalStore<AccentColor>(subscribe, resolveAccentColor, () => DEFAULT_ACCENT_COLOR);
   const [announcement, setAnnouncement] = useState("");
 
   return (
-    <section className={styles.page} aria-labelledby="appearance-title">
-      <header className={styles.header}>
-        <h1 id="appearance-title">Appearance</h1>
-        <p>Saved on this browser.</p>
-      </header>
-
+    <div className={styles.controls}>
       <fieldset className={styles.themeFieldset}>
         <legend>Theme</legend>
-        <div className={styles.themes}>
-          {COLOR_THEME_PREFERENCES.map((value) => {
+        <div className={styles.themes} data-compact={!includeSystem || undefined}>
+          {COLOR_THEME_PREFERENCES.filter((value) => includeSystem || value !== "system").map((value) => {
             const { label, Icon } = themes[value];
             return (
               <label className={styles.themeOption} key={value}>
@@ -140,6 +136,18 @@ export function AppearanceSettings() {
         </div>
       </fieldset>
       <p className={styles.announcement} role="status" aria-live="polite">{announcement}</p>
+    </div>
+  );
+}
+
+export function AppearanceSettings() {
+  return (
+    <section className={styles.page} aria-labelledby="appearance-title">
+      <header className={styles.header}>
+        <h1 id="appearance-title">Appearance</h1>
+        <p>Saved on this browser.</p>
+      </header>
+      <AppearanceOptions />
     </section>
   );
 }

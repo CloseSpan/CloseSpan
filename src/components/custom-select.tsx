@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from "react";
 
+type CustomSelectOption = { label: string; value: string; icon?: ReactNode };
+
 type CustomSelectProps = {
   ariaLabel: string;
   className?: string;
@@ -19,7 +21,7 @@ type CustomSelectProps = {
   leadingIcon?: ReactNode;
   name?: string;
   onValueChange: (value: string) => void;
-  options: readonly (string | { label: string; value: string })[];
+  options: readonly (string | CustomSelectOption)[];
   value: string;
 };
 
@@ -34,7 +36,7 @@ export function CustomSelect({
   options,
   value,
 }: CustomSelectProps) {
-  const normalizedOptions = options.map((option) =>
+  const normalizedOptions: CustomSelectOption[] = options.map((option) =>
     typeof option === "string" ? { label: option, value: option } : option,
   );
   const selectedIndex = Math.max(
@@ -220,8 +222,13 @@ export function CustomSelect({
             onFocus={() => setHighlightedIndex(index)}
             onKeyDown={handleOptionKeyDown}
           >
-            <Check aria-hidden="true" size={15} />
-            <span>{option.label}</span>
+            <span className="custom-select-option-label">
+              {option.icon ? <span className="custom-select-option-icon" aria-hidden="true">{option.icon}</span> : null}
+              <span>{option.label}</span>
+            </span>
+            <span className="custom-select-indicator" aria-hidden="true">
+              {selected ? <Check size={15} /> : null}
+            </span>
           </button>
         );
       })}
@@ -244,7 +251,7 @@ export function CustomSelect({
         onKeyDown={handleTriggerKeyDown}
       >
         <span className="custom-select-value">
-          {leadingIcon}
+          {leadingIcon ?? (selectedOption?.icon ? <span className="custom-select-option-icon" aria-hidden="true">{selectedOption.icon}</span> : null)}
           <span>{selectedOption?.label ?? value}</span>
         </span>
         <ChevronDown aria-hidden="true" size={16} />

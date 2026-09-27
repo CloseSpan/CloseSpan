@@ -10,6 +10,7 @@ const themeSource = readFileSync(new URL("../app/neumorphic-theme.css", import.m
 const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
 const trustSource = readFileSync(new URL("../components/TrustPublicPage.module.css", import.meta.url), "utf8");
 const productSource = readFileSync(new URL("../app/product-theme.css", import.meta.url), "utf8");
+const onboardingSource = readFileSync(new URL("../components/onboarding-agent-panel.tsx", import.meta.url), "utf8");
 
 function tokensFor(selector: string, source = themeSource): Record<string, string> {
   const start = source.indexOf(`${selector} {`);
@@ -82,6 +83,88 @@ describe("shared product visual system", () => {
     expect(productSource).not.toContain('input:not([type="checkbox"]):not([type="radio"])');
   });
 
+  it("gives the compact workspace picker one themed boundary around both actions", () => {
+    const picker = productSource.slice(productSource.indexOf("/* The compact workspace picker"), productSource.indexOf(":root[data-theme] :is(.organization-trigger-copy"));
+    expect(picker).toContain(".organization-switcher.compact .organization-switcher-control {");
+    expect(picker).toContain("border: 1px solid var(--field-border);");
+    expect(picker).toContain("border-radius: var(--field-radius);");
+    expect(picker).toContain(":is(:hover, :has(details[open]))");
+    const trigger = picker.slice(picker.indexOf(".organization-switcher-trigger {"));
+    expect(trigger).toContain("border: 0 !important;");
+    expect(trigger).toContain("background: transparent;");
+    expect(trigger).toContain("box-shadow: none;");
+  });
+
+  it.each([":root", ':root[data-theme="dark"]'])("keeps workspace panels distinct and readable in %s", (selector) => {
+    const panels = tokensFor(selector, productSource);
+    const palette = tokensFor(selector);
+    expect(panels["--surface-panel"]).not.toBe(palette["--bg"]);
+    expect(contrast(palette["--text"], panels["--surface-panel"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette["--text-muted"], panels["--surface-panel"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(panels["--border-panel"], panels["--surface-panel"])).toBeGreaterThan(1.1);
+    const surfaces = productSource.slice(productSource.indexOf("/* Workspace panels"), productSource.indexOf(":root[data-theme] .metric-value"));
+    expect(surfaces).toContain(":root[data-theme] .app-shell :is(");
+    expect(surfaces).toContain("background: var(--surface-panel);");
+    expect(surfaces).not.toContain(".landing");
+  });
+
+  it("keeps the appearance thumb inside its track at both control sizes", () => {
+    const switchRules = productSource.slice(productSource.indexOf("/* A switch owns"), productSource.indexOf("/* Native selection"));
+    expect(switchRules).toContain("--theme-switch-size: 40px;");
+    expect(switchRules).toContain("height: var(--theme-switch-size);");
+    expect(switchRules).toContain("height: calc(var(--theme-switch-size) - 10px);");
+    expect(switchRules).toContain("border-radius: var(--radius-pill);");
+    expect(switchRules).toContain('theme-toggle[aria-checked="true"] .theme-toggle-thumb');
+    expect(switchRules).toContain("transform: translateX(var(--theme-switch-size));");
+    expect(productSource).toContain(".theme-toggle { --theme-switch-size: 44px; }");
+    // 1px track border + 4px inset + (size - 10px) thumb leaves 5px on either side.
+    for (const size of [40, 44]) {
+      expect(1 + 4 + (size - 10) + 5).toBe(size);
+    }
+  });
+
+  it("uses the theme foreground for checkbox marks rather than a white image", () => {
+    const selections = productSource.slice(productSource.indexOf("/* Native selection"), productSource.indexOf("/* Onboarding, prompt"));
+    expect(selections).toContain('input[type="checkbox"]:where(:not(.toggle-row input))');
+    expect(selections).toContain("color: var(--text-on-accent);");
+    expect(selections).toContain("background: currentColor;");
+    expect(selections).toContain("mask: url(");
+    expect(selections).toContain(":is(:checked, :indeterminate)::before { visibility: visible; }");
+    expect(selections).not.toContain("stroke='%23fff'");
+  });
+
+  it("distinguishes active tabs from transparent inactive choices", () => {
+    const tabs = productSource.slice(productSource.indexOf(":root[data-theme] :is(.segmented,"), productSource.indexOf("/* Overlays"));
+    expect(tabs).toContain("background: transparent;");
+    expect(tabs).toContain(':is(.active, .is-active, [aria-selected="true"], [aria-pressed="true"])');
+    expect(tabs).toContain("border-color: var(--border-strong) !important; background: var(--surface);");
+  });
+
+  it("keeps the onboarding composer border intact instead of masking its corners", () => {
+    const composer = onboardingSource.slice(onboardingSource.lastIndexOf('{showComposer &&'));
+    expect(composer).toContain('<form');
+    expect(composer).toContain('className="delphi-composer"');
+    expect(composer).not.toContain("clipPath");
+    expect(composer).not.toContain("filter:");
+    const controls = productSource.slice(productSource.indexOf("/* Chat composers"), productSource.indexOf(":root[data-theme] .app-shell .searchbox { padding"));
+    expect(controls).toContain("border: 1px solid var(--field-state-border, var(--field-border)) !important;");
+    expect(controls).toContain("border-radius: var(--field-radius);");
+    expect(controls).toContain("box-shadow: none !important;");
+    expect(controls).toContain("padding: 8px 8px 8px 16px;");
+  });
+
+  it("gives chat send buttons explicit active and disabled color pairs", () => {
+    const controls = productSource.slice(productSource.indexOf("/* Chat composers"), productSource.indexOf(":root[data-theme] .app-shell .searchbox { padding"));
+    expect(controls).toContain(".delphi-send, .integration-copilot-composer > button, .prompt-testing-send");
+    expect(controls).toContain("--icon-context-color: currentColor;");
+    expect(controls).toContain("background: var(--accent-fill);");
+    expect(controls).toContain("color: var(--text-on-accent);");
+    const disabled = controls.slice(controls.indexOf("):disabled {"));
+    expect(disabled).toContain("background: var(--surface-pressed);");
+    expect(disabled).toContain("color: var(--text-muted);");
+    expect(disabled).toContain("opacity: 1;");
+  });
+
   it.each([":root", ':root[data-theme="dark"]'])("uses a visible neutral field focus in %s", (selector) => {
     const fields = tokensFor(selector, productSource);
     const palette = tokensFor(selector);
@@ -140,6 +223,37 @@ describe("shared product visual system", () => {
       "./neumorphic-theme.css",
       "./product-theme.css",
     ]);
+  });
+
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("keeps both conversation roles readable in %s mode", (_, tokens) => {
+    expect(contrast(tokens["--text"], tokens["--surface-muted"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(tokens["--text-strong"], tokens["--surface-pressed"])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("pairs user message colors and removes legacy tails on every shared chat surface", () => {
+    const conversations = productSource.slice(productSource.indexOf("/* Pair each message surface"), productSource.indexOf("/* Controls respond to hover/press"));
+    expect(conversations).toContain(".delphi-bubble.user, .integration-copilot-message.user, .prompt-testing-message.is-user");
+    expect(conversations).toContain("background: var(--surface-pressed);");
+    expect(conversations).toContain("color: var(--text-strong);");
+    expect(conversations).toContain("{ color: inherit; }");
+    expect(conversations).toContain(".delphi-bubble, .integration-copilot-message)::before");
+    expect(conversations).toContain(".delphi-bubble, .integration-copilot-message)::after");
+    expect(conversations).toContain("content: none;");
+    expect(conversations).toContain("overflow-wrap: anywhere;");
+  });
+
+  it("does not mount flashing global interaction overlays, but retains hover, press, and focus states", () => {
+    expect(layoutSource).not.toContain("GooeyInteractions");
+    expect(productSource).toContain("transition: background-color 160ms ease-out");
+    expect(productSource).toContain(":hover:not(:disabled)");
+    expect(productSource).toContain(":active:not(:disabled)");
+    expect(productSource).toContain("outline: 2px solid var(--focus-ring)");
+    expect(productSource).toContain('button[data-ready="true"] svg { animation: none; }');
+    expect(productSource).toContain("-webkit-text-fill-color: currentColor;");
+    expect(productSource).not.toContain(".spin { animation: none");
   });
 
   it("loads the product typeface locally rather than fetching a remote font at build time", () => {

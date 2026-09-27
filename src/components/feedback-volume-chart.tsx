@@ -1,10 +1,27 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import { ClipboardList, Layers, Mail } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import type { OverviewAnalytics } from "@/lib/overview-analytics";
 import { CustomSelect } from "./custom-select";
+import { IntegrationProviderIcon } from "./integration-provider-icon";
+
+const sourceIntegrations: Record<string, string> = {
+  Discord: "int_discord",
+  Intercom: "int_intercom",
+  Slack: "int_slack",
+  Zendesk: "int_zendesk",
+};
+
+function sourceIcon(source: string) {
+  const integrationId = sourceIntegrations[source];
+  if (integrationId) return <IntegrationProviderIcon integrationId={integrationId} compact />;
+  if (source === "Email") return <Mail size={18} />;
+  if (source === "Survey" || source === "Surveys") return <ClipboardList size={18} />;
+  return <Layers size={18} />;
+}
 
 export function normalizeChartBarHeight(value: number, maximum: number): number {
   if (value <= 0 || maximum <= 0) return 0;
@@ -35,7 +52,7 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
         ariaLabel="Feedback source"
         className="chart-source"
         value={source}
-        options={Object.keys(series)}
+        options={Object.keys(series).map((source) => ({ value: source, label: source, icon: sourceIcon(source) }))}
         onValueChange={(nextSource) => {
           setSource(nextSource);
           setActiveWeek(null);

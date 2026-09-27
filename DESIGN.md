@@ -6,6 +6,8 @@ colors:
   accent-hover: "#36383c"
   bg: "#ffffff"
   surface-muted: "#f7f7f8"
+  surface-panel: "#f6f6f7"
+  border-panel: "#e1e2e5"
   surface-pressed: "#f0f0f2"
   text: "#404247"
   text-muted: "#62656b"
@@ -110,7 +112,7 @@ components:
     rounded: "{rounded.xs}"
     padding: "3px 7px"
   card:
-    backgroundColor: "{colors.bg}"
+    backgroundColor: "{colors.surface-panel}"
     rounded: "{rounded.lg}"
 ---
 
@@ -150,6 +152,8 @@ Success green, warning amber, danger red, and informational blue each pair with 
 
 The sidecar's derived tonal ramps are swatch-panel aids, not additional application color tokens.
 
+Workspace panels use `surface-panel` (#f6f6f7 in light, #202124 in dark) and a single `border-panel` boundary (#e1e2e5 / #3b3d42). This makes overview metrics, attention queues, charts, approval panels, and integration cards distinct from the page canvas without restoring neumorphic shadows. Fields, table bodies, and overlays retain `surface`. The landing page's local palette is unchanged.
+
 Interface icons use the shared `icon-colors.css` palette without recoloring labels or surfaces: blue for navigation and general actions, violet for agents and code, teal for people, connections and settings, green for checks, amber for attention, and red for destructive or error states. Dark mode uses brighter equivalents. Error/warning/success containers override an icon's usual category; solid actions, disabled controls and forced-colors mode retain readable foregrounds. Company marks use their brand colors, shared across the landing page, examples and integration screens. This is a color refinement, not a change to layout or workflow.
 
 **The State Meaning Rule.** Preserve semantic status and destructive-action colors when applying the neutral visual system.
@@ -159,6 +163,8 @@ Interface icons use the shared `icon-colors.css` palette without recoloring labe
 `/settings/appearance` is available to every signed-in workspace member. Theme cards offer Light, Dark, and System; System follows operating-system changes while the app is open. Eight named accent choices—Neutral, Blue, Cyan, Amber, Orange, Pink, Purple, and Green—change interactive accents, links, focus rings, and selected navigation without changing success, warning, danger, or other status colors. Neutral restores the base palette. Each theme preview uses its own light or dark palette regardless of the active application theme.
 
 Preferences apply immediately and persist in this browser through the shared local-storage and cookie model, including before the first paint. They are personal presentation choices, not workspace policy or cross-device account settings. Do not show a Save policy action here. Native radio groups, visible focus, named swatches, and 44px accent targets support keyboard and touch use. The page keeps the pinned three-card layout on narrow screens without horizontal overflow.
+
+The account-menu quick switch owns its pill geometry: an 80×40px track on desktop and 88×44px on mobile, with a thumb inset by 5px. Shared menu-button rules must not override its radius. Tabs use transparent inactive choices and a bounded surface for the selected choice. Checkbox marks follow `text-on-accent`, including dark mode and forced colors, rather than using a fixed white image.
 
 ## Typography
 

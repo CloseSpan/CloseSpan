@@ -29,6 +29,7 @@ import { isFeatureRequestModerator } from "@/lib/feature-request-security";
 import { listProblemReviewInbox } from "@/lib/problem-prompt-review-repository";
 import { readAutonomyLevel } from "@/lib/workspace-settings-repository";
 import { autonomyCapabilities } from "@/lib/autonomy-policy";
+import { DemoWorkspaceBanner } from "./onboarding-welcome";
 
 function initials(name: string): string {
   return (
@@ -192,6 +193,7 @@ export async function AppShell({
                 />
               </div>
             </header>
+            {user.demoSession && <DemoWorkspaceBanner />}
             <div className="content" id="main-content" tabIndex={-1}>
               <WorkspaceRouteTransition>{children}</WorkspaceRouteTransition>
             </div>

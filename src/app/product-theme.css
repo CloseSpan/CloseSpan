@@ -13,6 +13,8 @@
  */
 
 :root {
+  --surface-panel: #f6f6f7;
+  --border-panel: #e1e2e5;
   --field-height: 40px;
   --field-radius: 12px;
   --field-border: #e4e5e8;
@@ -22,6 +24,8 @@
   --field-shadow: 0 1px 2px rgba(28, 29, 31, 0.06), 0 2px 6px rgba(28, 29, 31, 0.04);
 }
 :root[data-theme="dark"] {
+  --surface-panel: #202124;
+  --border-panel: #3b3d42;
   --field-border: #44464c;
   --field-border-hover: #666970;
   --field-focus-border: #9699a0;
@@ -136,6 +140,23 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   box-shadow: none;
   background: var(--surface);
 }
+/* The compact workspace picker is one control, including its rename action. */
+:root[data-theme] .organization-switcher.compact .organization-switcher-control {
+  border: 1px solid var(--field-border);
+  border-radius: var(--field-radius);
+  background: var(--surface);
+  box-shadow: none;
+  transition: border-color 160ms ease-out, background-color 160ms ease-out;
+}
+:root[data-theme] .organization-switcher.compact .organization-switcher-control:is(:hover, :has(details[open])) {
+  border-color: var(--field-border-hover);
+  background: var(--surface-muted);
+}
+:root[data-theme] .organization-switcher.compact .organization-switcher-trigger {
+  border: 0 !important;
+  background: transparent;
+  box-shadow: none;
+}
 :root[data-theme] :is(.organization-trigger-copy small, .organization-avatar, .avatar) { color: var(--text-muted); }
 :root[data-theme] :is(.avatar, .organization-avatar, .brandmark, .provider-monogram, .provider-icon, .integration-provider-icon, .github-connection-icon) {
   box-shadow: none;
@@ -181,6 +202,29 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   border: 1px solid var(--border-subtle) !important;
 }
 :root[data-theme] .metric { padding: 18px 20px; background: var(--surface); }
+/* Workspace panels sit on the white canvas with a quiet gray fill. Inputs and
+ * overlays keep the brighter surface; the public landing palette is unchanged. */
+:root[data-theme] .app-shell :is(
+  .card, .metric, .problem-card, .integration-summary-card, .integration,
+  .provider-option, .follow-card, .board-col, .setup-card, .setup-progress-card,
+  .integration-suggestions-agent, .integration-suggestion-board,
+  .integration-copilot-connector, .human-review-card, .human-review-story,
+  .human-review-result, .prompt-viewer
+) {
+  border: 1px solid var(--border-panel) !important;
+  background: var(--surface-panel);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+:root[data-theme] .app-shell .card.table-wrap { background: var(--surface); }
+:root[data-theme] .app-shell :is(.problem-card, .integration, .provider-option):hover {
+  background: var(--surface-pressed);
+  border-color: var(--border-strong) !important;
+}
+:root[data-theme] .app-shell .provider-option.selected {
+  background: var(--surface-pressed);
+  border-color: var(--field-focus-border) !important;
+}
 :root[data-theme] .metric-value { font-size: 28px; font-weight: 550; letter-spacing: -0.03em; }
 :root[data-theme] :is(.callout.warning, .setup-alert, .toast.warning) { color: var(--warning); background: var(--warning-soft); border-color: transparent !important; }
 :root[data-theme] :is(.callout.success, .toast.success) { color: var(--success); background: var(--success-soft); border-color: transparent !important; }
@@ -210,6 +254,7 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   line-height: 1.4;
   transform: none;
   text-shadow: none;
+  transition: background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out;
 }
 :root[data-theme] :is(.btn, .icon-btn, .icon-button, .custom-select-trigger, .settings-select-trigger, .login-google, .feature-request-new, .feature-request-secondary):hover:not(:disabled) {
   border-color: var(--border-strong) !important;
@@ -321,15 +366,57 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   --field-invalid-border: var(--danger);
 }
 :root[data-theme] :is(input, textarea)::placeholder { color: var(--text-muted); opacity: 1; }
+
+/* Chat composers have one complete outline, never an inset shadow or a clipped
+ * corner. Keep input focus on that boundary and send-button focus independent. */
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer) {
+  border: 1px solid var(--field-state-border, var(--field-border)) !important;
+  border-radius: var(--field-radius);
+  background: var(--field-state-surface, var(--surface));
+  box-shadow: none !important;
+}
+:root[data-theme] .shell-immersive .delphi-composer { min-height: 60px; padding: 8px 8px 8px 16px; }
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-send, .integration-copilot-composer > button, .prompt-testing-send) {
+  --icon-context-color: currentColor;
+  width: var(--field-height);
+  height: var(--field-height);
+  min-width: var(--field-height);
+  min-height: var(--field-height);
+  padding: 0;
+  border: 0 !important;
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: none;
+  filter: none;
+  transition: background-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out;
+}
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-send, .integration-copilot-composer > button, .prompt-testing-send):hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+  color: var(--text-on-accent);
+  box-shadow: none;
+}
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-send, .integration-copilot-composer > button, .prompt-testing-send):active:not(:disabled) {
+  background: var(--accent-fill-active);
+  color: var(--text-on-accent);
+  box-shadow: none;
+}
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-send, .integration-copilot-composer > button, .prompt-testing-send):disabled {
+  background: var(--surface-pressed);
+  color: var(--text-muted);
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+  cursor: not-allowed;
+}
 :root[data-theme] .app-shell .searchbox { padding: 0 12px; border-radius: var(--field-radius); }
 :root[data-theme] .problem-column-filter-affix input { padding-inline-end: 36px; }
 :root[data-theme] .app-shell .custom-retention-control { padding: 0; background: transparent; box-shadow: none; }
 :root[data-theme] :is(.field > label, .field-label, .toggle-row strong) { color: var(--text-strong); font-size: 13px; font-weight: 500; }
 :root[data-theme] .toggle-row { padding-block: 16px; border-bottom: 1px solid var(--border-subtle); }
-:root[data-theme] .toggle-row input[type="checkbox"] { width: 36px; min-width: 36px; flex-basis: 36px; height: 20px; min-height: 20px; border-radius: 99px; background: var(--border-strong); box-shadow: none; }
-:root[data-theme] .toggle-row input[type="checkbox"]::before { width: 14px; height: 14px; top: 3px; left: 3px; background: #fff; box-shadow: none; transform: none; }
-:root[data-theme] .toggle-row input[type="checkbox"]:checked { background: var(--accent-fill); }
-:root[data-theme] .toggle-row input[type="checkbox"]:checked::before { transform: translateX(16px); background: var(--text-on-accent); }
+:root[data-theme] .toggle-row input[type="checkbox"] { width: 44px; min-width: 44px; flex-basis: 44px; height: 26px; min-height: 26px; border: 1px solid var(--field-border-hover) !important; border-radius: var(--radius-pill); background: var(--surface-pressed); box-shadow: none; }
+:root[data-theme] .toggle-row input[type="checkbox"]::before { width: 18px; height: 18px; top: 3px; left: 3px; background: var(--text-muted); box-shadow: none; transform: none; }
+:root[data-theme] .toggle-row input[type="checkbox"]:checked { background: var(--accent-fill); border-color: var(--accent-fill) !important; }
+:root[data-theme] .toggle-row input[type="checkbox"]:checked::before { transform: translateX(18px); background: var(--text-on-accent); }
 :root[data-theme] .app-shell .weight-row input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; margin-top: -6px; background: var(--accent-fill); box-shadow: none; }
 :root[data-theme] .app-shell .weight-row input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: var(--accent-fill); box-shadow: none; }
 :root[data-theme] .app-shell .weight-row input[type="range"]::-webkit-slider-runnable-track { height: 4px; background: var(--border-subtle); box-shadow: none; }
@@ -350,9 +437,10 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 :root[data-theme] .badge.brand { color: var(--info); background: var(--info-soft); }
 :root[data-theme] :is(.badge.high, .badge.critical) { color: var(--danger); background: var(--danger-soft); }
 :root[data-theme] .badge.medium { color: var(--warning); background: var(--warning-soft); }
-:root[data-theme] :is(.segmented, .tabs, .integration-view-tabs, .prompt-view-switcher) { background: var(--surface-muted); border-radius: var(--radius-md); padding: 3px; box-shadow: none; }
-:root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button) { border-radius: var(--radius-sm); padding: 7px 12px; font-size: 13px; color: var(--text-muted); box-shadow: none; }
-:root[data-theme] :is(.segmented button.active, .tabs button.active, .integration-view-tabs button.active, .prompt-view-switcher button.is-active) { background: var(--surface); color: var(--text-strong); box-shadow: none; }
+:root[data-theme] :is(.segmented, .tabs, .integration-view-tabs, .prompt-view-switcher) { background: var(--surface-pressed); border-radius: var(--radius-md); padding: 4px; gap: 4px; box-shadow: none; }
+:root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button) { min-height: var(--control-height); border: 1px solid transparent !important; border-radius: var(--radius-sm); padding: 7px 12px; font-size: 13px; background: transparent; color: var(--text-muted); box-shadow: none; transform: none; }
+:root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button):hover:not(:disabled) { background: var(--surface-hover); color: var(--text-strong); box-shadow: none; transform: none; }
+:root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button):is(.active, .is-active, [aria-selected="true"], [aria-pressed="true"]) { border-color: var(--border-strong) !important; background: var(--surface); color: var(--text-strong); font-weight: 550; box-shadow: none; }
 
 /* Overlays have real elevation; their contents remain flat. */
 :root[data-theme] :is(.user-menu-panel, .organization-switcher-menu, .custom-select-menu, .custom-select-options, .mobile-menu-panel, .guided-demo-panel, .feedback-drawer, .integration-drawer, .feature-request-dialog, .organization-create-panel) {
@@ -363,7 +451,89 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   box-shadow: var(--shadow-overlay) !important;
 }
 :root[data-theme] :is(.custom-select-option, .organization-option, .user-menu-panel a, .user-menu-panel button) { border-radius: var(--radius-sm); box-shadow: none; font-size: 13px; }
+/* Brand marks identify the source; only the selected option renders a check. */
+:root[data-theme] .custom-select-indicator svg { color: var(--text-strong); }
+:root[data-theme] .custom-select-option-icon .integration-provider-icon {
+  width: 18px;
+  height: 18px;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+:root[data-theme] .custom-select-option-icon :is(.integration-brand-mark, svg) {
+  width: 18px;
+  height: 18px;
+}
 :root[data-theme] :is(.feedback-drawer-footer, .guided-demo-footer) { border-top: 1px solid var(--border-subtle) !important; box-shadow: none; }
+
+/* A switch owns its geometry; menu-button resets must not square the track or
+ * leave a fixed-size thumb hanging outside a shorter control. */
+:root[data-theme] .user-menu-panel .theme-control { gap: 12px; min-height: 56px; padding-block: 8px; box-shadow: none; }
+:root[data-theme] .user-menu-panel .theme-toggle {
+  --theme-switch-size: 40px;
+  box-sizing: border-box;
+  flex: 0 0 calc(var(--theme-switch-size) * 2);
+  width: calc(var(--theme-switch-size) * 2);
+  min-width: calc(var(--theme-switch-size) * 2);
+  height: var(--theme-switch-size);
+  min-height: var(--theme-switch-size);
+  padding: 0;
+  gap: 0;
+  border: 1px solid var(--field-border-hover) !important;
+  border-radius: var(--radius-pill);
+  background: var(--surface-pressed);
+  box-shadow: none;
+  transform: none;
+  transition: border-color 160ms ease-out, background-color 160ms ease-out;
+}
+:root[data-theme] .user-menu-panel .theme-toggle:is(:hover, :active) {
+  border-color: var(--field-focus-border) !important;
+  background: var(--surface-pressed);
+  box-shadow: none;
+  transform: none;
+}
+:root[data-theme] .theme-toggle-thumb {
+  top: 4px;
+  left: 4px;
+  width: calc(var(--theme-switch-size) - 10px);
+  height: calc(var(--theme-switch-size) - 10px);
+  background: var(--surface);
+  box-shadow: none;
+  transform: translateX(0);
+  transition: transform 160ms ease-out, background-color 160ms ease-out;
+}
+:root[data-theme] .theme-toggle[aria-checked="true"] .theme-toggle-thumb { transform: translateX(var(--theme-switch-size)); }
+
+/* Native selection semantics, with a mask that follows the actual foreground.
+ * A hard-coded white SVG disappears on the dark theme's light accent fill. */
+:root[data-theme] :is(.app-shell, .shell-immersive, .organization-create-panel, .feature-requests-page) input[type="checkbox"]:where(:not(.toggle-row input)) {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 1px solid var(--field-focus-border) !important;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-on-accent);
+  box-shadow: none;
+}
+:root[data-theme] :is(.app-shell, .shell-immersive, .organization-create-panel, .feature-requests-page) input[type="checkbox"]:where(:not(.toggle-row input))::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.5 8 3 3 6-7' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  visibility: hidden;
+}
+:root[data-theme] :is(.app-shell, .shell-immersive, .organization-create-panel, .feature-requests-page) input[type="checkbox"]:where(:not(.toggle-row input)):is(:checked, :indeterminate) {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill) !important;
+}
+:root[data-theme] :is(.app-shell, .shell-immersive, .organization-create-panel, .feature-requests-page) input[type="checkbox"]:where(:not(.toggle-row input)):is(:checked, :indeterminate)::before { visibility: visible; }
+:root[data-theme] :is(.app-shell, .shell-immersive, .organization-create-panel, .feature-requests-page) input[type="checkbox"]:where(:not(.toggle-row input)):indeterminate::before { mask: none; width: 10px; height: 2px; border-radius: 1px; }
+:root[data-theme] :is(.app-shell, .shell-immersive, .organization-create-panel, .feature-requests-page) input[type="checkbox"]:where(:not(.toggle-row input)):hover:not(:disabled) { border-color: var(--text-strong) !important; }
 
 /* Onboarding, prompt conversations, and authentication share the same system. */
 :root[data-theme] :is(.delphi-glow, .login-glow) { display: none; }
@@ -372,11 +542,38 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 :root[data-theme] .login-card h1 { font-size: 30px; font-weight: 550; letter-spacing: -0.03em; }
 :root[data-theme] .login-google { width: 100%; min-height: 44px; }
 :root[data-theme] .login-trust { border-top: 1px solid var(--border-subtle) !important; box-shadow: none; }
-:root[data-theme] :is(.integration-copilot-bubble, .delphi-bubble, .prompt-testing-message, .delphi-company-confirmation, .delphi-sync, .delphi-source, .delphi-product-card, .onboarding-next-step) { border-radius: var(--radius-lg); box-shadow: none; }
-:root[data-theme] :is(.integration-copilot-bubble, .delphi-bubble, .prompt-testing-message.is-assistant) { background: var(--surface-muted); border: 1px solid var(--border-subtle); }
-:root[data-theme] :is(.integration-copilot-message.user, .prompt-testing-message.is-user) { border-radius: var(--radius-lg); background: var(--surface-pressed); color: var(--text-strong); box-shadow: none; }
-:root[data-theme] .integration-copilot-message.user::after { display: none; }
-:root[data-theme] .prompt-testing-message.is-user :is(p, .prompt-testing-message-author) { color: var(--text-strong); }
+:root[data-theme] :is(.delphi-company-confirmation, .delphi-sync, .delphi-source, .delphi-product-card, .onboarding-next-step) { border-radius: var(--radius-lg); box-shadow: none; }
+/* Pair each message surface with its foreground. Legacy accent text and tails
+ * must not survive when a conversation switches to a neutral surface. */
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-bubble, .integration-copilot-message, .prompt-testing-message) {
+  border-radius: var(--radius-lg);
+  border: 0;
+  background: var(--surface-muted);
+  color: var(--text);
+  box-shadow: none;
+  overflow-wrap: anywhere;
+}
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-bubble.user, .integration-copilot-message.user, .prompt-testing-message.is-user) {
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+}
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-bubble.user, .integration-copilot-message.user, .prompt-testing-message.is-user) :is(p, .prompt-testing-message-author) { color: inherit; }
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-bubble, .integration-copilot-message)::before,
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-bubble, .integration-copilot-message)::after {
+  content: none;
+  display: none;
+}
+:root[data-theme] :is(.shell-immersive, .app-shell) :is(.delphi-message-avatar, .integration-copilot-avatar) { box-shadow: none; }
+
+/* Controls respond to hover/press, not readiness flashes or shimmering labels.
+ * Loading spinners and progress indicators still communicate real work. */
+:root[data-theme] .app-shell .integration-copilot-composer > button[data-ready="true"],
+:root[data-theme] .app-shell .integration-copilot-composer > button[data-ready="true"] svg { animation: none; }
+:root[data-theme] .animated-status-text-label {
+  animation: none;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
 :root[data-theme] .feature-requests-header { margin-top: 0; border-radius: 0; }
 :root[data-theme] .feature-requests-page .feature-requests-intro h1 { font-size: clamp(32px, 4vw, 48px); font-weight: 550; }
 :root[data-theme] .feature-requests-page .feature-request-row { border-radius: var(--radius-md); padding: 20px; }
@@ -436,11 +633,13 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   :root { --control-height: 44px; --control-height-lg: 44px; --field-height: 44px; }
   :root[data-theme] .app-shell .content { padding: 24px 16px 40px; }
   :root[data-theme] :is(.app-shell .topbar, .immersive-topbar) { padding-inline: 16px; }
+  :root[data-theme] .shell-immersive .immersive-topbar { height: auto; padding-block: 12px; gap: 12px; }
   :root[data-theme] .app-shell :is(.page-head h1, .page-title h1) { font-size: 25px; }
   :root[data-theme] .app-shell :is(.card-head, .card-body) { padding: 16px; }
   :root[data-theme] .app-shell :is(.nav a, .settings-nav a, .mobile-menu-panel nav a) { min-height: 44px; }
   :root[data-theme] :is(.login-card, .waitlist-card) { padding: 24px; }
   :root[data-theme] :is(.icon-btn, .icon-button) { width: 44px; height: 44px; min-width: 44px; }
+  :root[data-theme] .user-menu-panel .theme-toggle { --theme-switch-size: 44px; }
 }
 .review-inbox { margin-bottom: 24px; }
 .review-inbox-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 16px; align-items: center; gap: 16px; padding: 18px 20px; color: var(--text-strong); text-decoration: none; min-height: 64px; }
@@ -465,6 +664,13 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 @media (forced-colors: active) {
   :root[data-theme] * { --field-state-border: CanvasText; --field-state-shadow: none; }
   :root[data-theme] { --focus-ring: Highlight; }
+  :root[data-theme] .user-menu-panel .theme-toggle { forced-color-adjust: none; background: Canvas !important; border-color: ButtonText !important; }
+  :root[data-theme] .theme-toggle-thumb { background: Highlight; }
+  :root[data-theme] .theme-toggle svg { color: ButtonText; }
+  :root[data-theme] .theme-toggle[aria-checked="false"] .theme-toggle-sun,
+  :root[data-theme] .theme-toggle[aria-checked="true"] .theme-toggle-moon { color: HighlightText; }
+  :root[data-theme] :is(.app-shell, .shell-immersive, .organization-create-panel, .feature-requests-page) input[type="checkbox"]:where(:not(.toggle-row input)) { forced-color-adjust: none; background: Canvas; border-color: ButtonText !important; }
+  :root[data-theme] :is(.app-shell, .shell-immersive, .organization-create-panel, .feature-requests-page) input[type="checkbox"]:where(:not(.toggle-row input)):is(:checked, :indeterminate) { background: Highlight; color: HighlightText; border-color: Highlight !important; }
   :root[data-theme] :is(.btn, .icon-btn, .icon-button, input, textarea, select, .custom-select-trigger, .card, .badge, .sidebar, .topbar) { border: 1px solid CanvasText !important; box-shadow: none !important; }
   :root[data-theme] :is(button, a, summary, input, textarea, select):focus-visible { outline: 2px solid Highlight !important; }
   :root[data-theme] :is(input, textarea, select, .custom-select-trigger, .settings-select-trigger, .search-action):where(:not(.searchbox *, .secret-input *, .delphi-composer *, .integration-copilot-composer *, .prompt-testing-composer *, .feedback-reply-composer *, [data-field-shell] *)):is(:focus, :focus-visible):not(:disabled),

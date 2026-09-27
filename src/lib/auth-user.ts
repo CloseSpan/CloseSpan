@@ -12,6 +12,7 @@ import {
 } from "./organization-repository";
 import { ORG_ID } from "./seed";
 import { isMemoryDemoOrganization } from "./workspace-persistence";
+import { DEMO_RETURN_COOKIE, DEMO_SESSION_COOKIE, demoSessionCookieValue, getOnboardingDemoWorkspace } from "./onboarding-entry";
 
 export const ACTIVE_ORGANIZATION_COOKIE = "closespan_active_org";
 export const LEGACY_ACTIVE_ORGANIZATION_COOKIE = "feelow_active_org";
@@ -40,6 +41,7 @@ export interface WorkspaceUser {
   email: string;
   role: string;
   organizations: Array<{ id: string; name: string; role: string }>;
+  demoSession?: { returnOrgId: string; returnOrganizationName: string };
 }
 
 export type WorkspaceAccess =
@@ -140,6 +142,8 @@ async function findWorkspaceMember(
   email: string,
   verifiedSessionName?: string | null,
   activeOrganizationId?: string | null,
+  demoSessionId?: string | null,
+  demoReturnOrgId?: string | null,
 ): Promise<WorkspaceUser | null> {
   const includeDemo = demoWorkspaceAvailable();
   let memberships: OrganizationMembership[] = [];
@@ -164,6 +168,32 @@ async function findWorkspaceMember(
       });
     }
   }
+  if (activeOrganizationId && demoSessionId === demoSessionCookieValue(email, activeOrganizationId)) {
+    const demo = await getOnboardingDemoWorkspace();
+    const returnMembership = selectOrganizationMembership(
+      memberships.filter((membership) => membership.organizationId !== demo?.id),
+      demoReturnOrgId,
+    );
+    if (demo?.id === activeOrganizationId && returnMembership) {
+      const visitor: OrganizationMembership = {
+        memberId: `demo_visitor_${createHash("sha256").update(email).digest("hex").slice(0, 24)}`,
+        organizationId: demo.id,
+        organizationName: demo.name,
+        displayName: verifiedSessionName?.trim() || email,
+        email,
+        role: "Viewer",
+      };
+      const user = workspaceUserFromMemberships(
+        [...memberships.filter((membership) => membership.organizationId !== demo.id), visitor],
+        email, verifiedSessionName, demo.id,
+      )!;
+      user.demoSession = {
+        returnOrgId: returnMembership.organizationId,
+        returnOrganizationName: returnMembership.organizationName,
+      };
+      return user;
+    }
+  }
   return workspaceUserFromMemberships(
     includeDemo
       ? withDemoOrganizationMembership(memberships, email, verifiedSessionName)
@@ -174,14 +204,15 @@ async function findWorkspaceMember(
   );
 }
 
-async function activeOrganizationIdFromCookie(): Promise<string | null> {
+async function workspaceSelectionFromCookie() {
   const { cookies } = await import("next/headers");
   const store = await cookies();
-  return (
-    store.get(ACTIVE_ORGANIZATION_COOKIE)?.value ??
-    store.get(LEGACY_ACTIVE_ORGANIZATION_COOKIE)?.value ??
-    null
-  );
+  return {
+    activeOrgId: store.get(ACTIVE_ORGANIZATION_COOKIE)?.value ??
+      store.get(LEGACY_ACTIVE_ORGANIZATION_COOKIE)?.value ?? null,
+    demoOrgId: store.get(DEMO_SESSION_COOKIE)?.value ?? null,
+    returnOrgId: store.get(DEMO_RETURN_COOKIE)?.value ?? null,
+  };
 }
 
 export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
@@ -193,8 +224,8 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
   if (!email) return { status: "unauthenticated" };
 
   try {
-    const activeOrganizationId = await activeOrganizationIdFromCookie();
-    const member = await findWorkspaceMember(email, name, activeOrganizationId);
+    const selection = await workspaceSelectionFromCookie();
+    const member = await findWorkspaceMember(email, name, selection.activeOrgId, selection.demoOrgId, selection.returnOrgId);
     if (member) return { status: "granted", user: member };
     if (demoWorkspaceAvailable()) {
       return { status: "granted", user: demoUser(email, name) };
