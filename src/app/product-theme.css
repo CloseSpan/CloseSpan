@@ -15,6 +15,12 @@
 :root {
   --surface-panel: #f6f6f7;
   --border-panel: #e1e2e5;
+  --surface-board: #f0f0f2;
+  --surface-board-column: #fdfdfd;
+  --border-board-column: #e1e2e5;
+  --surface-ticket: #ffffff;
+  --surface-ticket-hover: #fafafa;
+  --border-ticket: #d4d5d8;
   --field-height: 40px;
   --field-radius: 12px;
   --field-border: #e4e5e8;
@@ -26,6 +32,12 @@
 :root[data-theme="dark"] {
   --surface-panel: #202124;
   --border-panel: #3b3d42;
+  --surface-board: #191a1d;
+  --surface-board-column: #222326;
+  --border-board-column: #3b3d42;
+  --surface-ticket: #2c2e32;
+  --surface-ticket-hover: #34363b;
+  --border-ticket: #46494f;
   --field-border: #44464c;
   --field-border-hover: #666970;
   --field-focus-border: #9699a0;
@@ -224,6 +236,150 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 :root[data-theme] .app-shell .provider-option.selected {
   background: var(--surface-pressed);
   border-color: var(--field-focus-border) !important;
+}
+/* Light workspace hierarchy uses the live neutral palette, without blue-gray
+ * overrides. Keep inset separation local to the app, not public pages or dark mode. */
+:root[data-theme="light"] .app-shell {
+  --workspace-panel-header: var(--surface-panel);
+  --workspace-inset: var(--surface);
+  --workspace-inset-border: var(--border-panel);
+}
+:root[data-theme="light"] .app-shell .card > :is(.card-head, .investigation-detail-head) {
+  background: var(--workspace-panel-header);
+  border-bottom: 1px solid var(--border-panel) !important;
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+}
+:root[data-theme="light"] .app-shell .card :is(
+  .metric, .fact, .prompt-readiness-metric, .investigation-repository-evidence,
+  .investigation-readiness > div
+) {
+  background: var(--workspace-inset) !important;
+  border: 1px solid var(--workspace-inset-border) !important;
+  box-shadow: none;
+}
+:root[data-theme="light"] .app-shell .investigation-detail-body { padding-top: 20px; }
+:root[data-theme="light"] .app-shell .investigation-detail-section {
+  border-top: 1px solid var(--border-panel);
+  padding-top: 16px;
+}
+:root[data-theme="light"] .app-shell .investigation-metric-tooltip {
+  border: 1px solid var(--workspace-inset-border);
+  background: var(--workspace-inset);
+}
+:root[data-theme="light"] .app-shell .callout.warning {
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--warning-soft)) !important;
+}
+:root[data-theme="light"] .app-shell .callout.success {
+  border: 1px solid color-mix(in srgb, var(--success) 30%, var(--success-soft)) !important;
+}
+:root[data-theme="light"] .app-shell .callout.error {
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--danger-soft)) !important;
+}
+/* The board is a quiet canvas. Attio-inspired columns provide a light surface
+ * with fine outlines; issue titles lead each compact, individually bordered card. */
+:root[data-theme] .app-shell .problem-board-panel {
+  background: var(--surface-board);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+:root[data-theme] .app-shell .board .board-col {
+  padding: 10px;
+  border: 1px solid var(--border-board-column) !important;
+  background: var(--surface-board-column);
+  box-shadow: none;
+  transform: none;
+}
+:root[data-theme] .app-shell .board .board-col.is-drop-target {
+  background: var(--accent-soft);
+  outline: 2px dashed var(--accent-line);
+  outline-offset: -2px;
+}
+:root[data-theme] .app-shell .board .board-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 42px;
+  padding: 4px 6px 14px;
+  font-size: 13px;
+}
+:root[data-theme] .app-shell .board .board-stage-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--board-stage-color, var(--text-muted));
+}
+.board-col[data-stage="Detected"] { --board-stage-color: var(--icon-amber); }
+.board-col[data-stage="Needs review"] { --board-stage-color: var(--icon-violet); }
+.board-col[data-stage="Approved"] { --board-stage-color: var(--icon-teal); }
+.board-col[data-stage="Planned"] { --board-stage-color: var(--text-muted); }
+.board-col[data-stage="In progress"] { --board-stage-color: var(--icon-blue); }
+.board-col[data-stage="Release Ready"] { --board-stage-color: var(--icon-teal); }
+.board-col:is([data-stage="Released"], [data-stage="Verified"]) { --board-stage-color: var(--icon-green); }
+.board-col[data-stage="Closed"] { --board-stage-color: var(--text-muted); }
+:root[data-theme] .app-shell .board .board-stage-count {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--border-board-column);
+  border-radius: var(--radius-xs);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 17px;
+  font-variant-numeric: tabular-nums;
+}
+:root[data-theme] .app-shell .board .problem-card-shell {
+  /* Outrank the legacy dark-mode surface reset without changing other cards. */
+  background: var(--surface-ticket) !important;
+  border: 1px solid var(--border-ticket) !important;
+  padding: 14px;
+  margin-bottom: 10px;
+  box-shadow: none;
+  transition: background-color 160ms ease-out, border-color 160ms ease-out, opacity 160ms ease-out;
+}
+:root[data-theme] .app-shell .board .problem-card-title {
+  margin: 0 16px 12px 0;
+  color: var(--text-strong);
+  font-size: 14px;
+  line-height: 1.45;
+}
+:root[data-theme] .app-shell .board :is(.issue-card-area, .issue-card-reports) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+:root[data-theme] .app-shell .board :is(.issue-card-area, .issue-card-reports) svg { flex: 0 0 14px; margin-top: 2px; }
+:root[data-theme] .app-shell .board .ticket-badges { margin-top: 12px; padding-inline-end: 0; }
+:root[data-theme] .app-shell .board .problem-card-shell:hover {
+  background: var(--surface-ticket-hover) !important;
+  border-color: var(--field-border-hover) !important;
+}
+:root[data-theme] .app-shell .board .problem-card-shell:focus-within {
+  border-color: var(--field-focus-border) !important;
+}
+:root[data-theme] .app-shell .board .problem-card-drag-indicator { --icon-context-color: var(--text-muted); }
+:root[data-theme] .app-shell .board .problem-card-move-button {
+  margin-top: 12px;
+  border: 0;
+  border-top: 1px solid var(--border-ticket);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+:root[data-theme] .app-shell .board .problem-card-move-button:hover {
+  color: var(--text-strong);
+  background: var(--surface-pressed);
+}
+@media (forced-colors: active) {
+  :root[data-theme] .app-shell .board .board-col,
+  :root[data-theme] .app-shell .board .problem-card-shell { border-color: CanvasText !important; }
+  :root[data-theme] .app-shell .board .board-col.is-drop-target { outline-color: Highlight; }
 }
 :root[data-theme] .metric-value { font-size: 28px; font-weight: 550; letter-spacing: -0.03em; }
 :root[data-theme] :is(.callout.warning, .setup-alert, .toast.warning) { color: var(--warning); background: var(--warning-soft); border-color: transparent !important; }
@@ -437,6 +593,73 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 :root[data-theme] .badge.brand { color: var(--info); background: var(--info-soft); }
 :root[data-theme] :is(.badge.high, .badge.critical) { color: var(--danger); background: var(--danger-soft); }
 :root[data-theme] .badge.medium { color: var(--warning); background: var(--warning-soft); }
+/* One issue inventory: shared search, filters and grouping; two layouts. */
+:root[data-theme] .app-shell .issue-workspace { overflow: visible; }
+:root[data-theme] .app-shell .problem-table-head > div:first-child { flex: 0 1 auto; }
+:root[data-theme] .app-shell .issue-toolbar { position: relative; display: grid; grid-template-columns: minmax(144px, 1fr) minmax(0, 680px) minmax(144px, 1fr); align-items: center; gap: 16px; padding: 12px 20px; }
+:root[data-theme] .app-shell .issue-toolbar-title { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 0 0 auto; white-space: nowrap; }
+.issue-toolbar-title h2 { margin: 0; }
+.issue-toolbar-controls { display: flex; align-items: center; justify-content: center; gap: 12px; min-width: 0; }
+:root[data-theme] .app-shell .issue-toolbar .problem-view-tabs { width: 144px; margin-left: auto; justify-self: end; }
+.issue-search { display: flex; align-items: center; gap: 8px; flex: 1 1 180px; min-width: 120px; padding-inline: 12px; }
+.issue-toolbar .issue-filter-root, .issue-toolbar .issue-group-select, .issue-toolbar .issue-clear-filters { flex: 0 0 auto; }
+.issue-search > svg { flex-shrink: 0; }
+.issue-search input { width: 100%; padding: 8px 0; font-size: 13px; }
+.issue-filter-root { position: relative; }
+.issue-filter-count { font-size: 11px; padding: 0 5px; border-radius: 4px; background: var(--surface-pressed); }
+.issue-filter-panel { position: absolute; z-index: 1000; top: calc(100% + 8px); left: 0; width: 320px; padding: 16px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface); }
+.issue-filter-heading, .issue-filter-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.issue-filter-heading { margin-bottom: 16px; color: var(--text-strong); font-size: 13px; }
+.issue-filter-field { display: grid; grid-template-columns: 94px minmax(0, 1fr); align-items: center; gap: 8px; margin-block: 10px; font-size: 12px; }
+.issue-filter-field .custom-select { min-width: 0; }
+.issue-filter-field .custom-select-trigger { width: 100%; }
+.issue-filter-footer { margin-top: 16px; }
+.issue-result-count { color: var(--text-muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+:root[data-theme] .app-shell .issue-list-wrap { border: 0 !important; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+:root[data-theme] .app-shell .issue-workspace :is(.problem-board-panel, .issue-empty) { border-top: 0; }
+.issue-list-table { width: 100%; min-width: 640px; table-layout: fixed; }
+.issue-list-table th:first-child { width: 56%; }
+.issue-list-table th:nth-child(2) { width: 20%; }
+.issue-list-table th:nth-child(3) { width: 14%; }
+.issue-list-table th:last-child { width: 10%; }
+.issue-list-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; color: var(--text-strong); font-weight: 550; line-height: 1.5; }
+.issue-list-title:hover { text-decoration: underline; text-underline-offset: 3px; }
+.issue-taxonomy { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; color: var(--text-muted); font-size: 12px; }
+.issue-report-count { font-variant-numeric: tabular-nums; }
+:root[data-theme] .app-shell .issue-group-heading th { background: var(--surface-pressed); color: var(--text-strong); font-weight: 550; }
+.issue-group-heading span { display: inline-block; margin-left: 8px; color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.issue-empty { display: flex; min-height: 220px; flex-direction: column; align-items: center; justify-content: center; gap: 16px; border-top: 1px solid var(--border-subtle); }
+:root[data-theme] .app-shell .board { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 280px; gap: 16px; }
+:root[data-theme] .app-shell .board .board-head strong { overflow-wrap: anywhere; }
+.issue-card-stage { margin-top: 8px; }
+@media (max-width: 1150px) {
+  :root[data-theme] .app-shell .issue-toolbar { display: flex; flex-direction: row; flex-wrap: wrap; }
+  .issue-toolbar-controls { flex: 1 1 360px; }
+}
+@media (max-width: 720px) {
+  :root[data-theme] .app-shell .issue-toolbar { padding: 12px; gap: 8px; }
+  :root[data-theme] .app-shell .issue-toolbar-title { flex-basis: 100%; }
+  .issue-toolbar-controls { flex-basis: 100%; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+  .issue-toolbar .issue-search { flex-basis: 100%; max-width: none; }
+  :root[data-theme] .app-shell .issue-toolbar .problem-view-tabs { margin-left: 0; }
+  .issue-filter-root { position: static; }
+  .issue-filter-panel { position: fixed; top: auto; bottom: 72px; left: 16px; width: calc(100% - 32px); max-height: calc(100dvh - 88px); overflow-y: auto; }
+  .issue-list-table { min-width: 560px; }
+  .issue-list-table th:first-child { width: 48%; }
+  .issue-list-table th:nth-child(2) { width: 24%; }
+  .issue-list-table th:nth-child(3) { width: 16%; }
+  .issue-list-table th:last-child { width: 12%; }
+}
+/* The issue view switch needs its own visible boundary on the shaded toolbar. */
+:root[data-theme] .app-shell .problem-view-tabs {
+  border: 1px solid var(--field-border-hover) !important;
+  background: color-mix(in srgb, var(--border-panel) 45%, var(--surface-pressed));
+  box-shadow: none;
+}
+:root[data-theme] .app-shell .problem-view-switch-thumb {
+  background: var(--surface);
+  box-shadow: none;
+}
 :root[data-theme] :is(.segmented, .tabs, .integration-view-tabs, .prompt-view-switcher) { background: var(--surface-pressed); border-radius: var(--radius-md); padding: 4px; gap: 4px; box-shadow: none; }
 :root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button) { min-height: var(--control-height); border: 1px solid transparent !important; border-radius: var(--radius-sm); padding: 7px 12px; font-size: 13px; background: transparent; color: var(--text-muted); box-shadow: none; transform: none; }
 :root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button):hover:not(:disabled) { background: var(--surface-hover); color: var(--text-strong); box-shadow: none; transform: none; }

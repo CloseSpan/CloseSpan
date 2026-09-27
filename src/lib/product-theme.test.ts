@@ -108,6 +108,27 @@ describe("shared product visual system", () => {
     expect(surfaces).not.toContain(".landing");
   });
 
+  it("preserves the live neutral palette while separating light workspace inset content", () => {
+    const workspace = tokensFor(':root[data-theme="light"] .app-shell', productSource);
+    expect(tokensFor(":root", productSource)).toMatchObject({
+      "--surface-panel": "#f6f6f7",
+      "--border-panel": "#e1e2e5",
+      "--surface-board": "#f0f0f2",
+      "--border-ticket": "#d4d5d8",
+    });
+    expect(workspace).toEqual({
+      "--workspace-panel-header": "var(--surface-panel)",
+      "--workspace-inset": "var(--surface)",
+      "--workspace-inset-border": "var(--border-panel)",
+    });
+    const hierarchy = productSource.slice(productSource.indexOf("/* Light workspace hierarchy"), productSource.indexOf("/* The board is a quiet canvas"));
+    expect(hierarchy).toContain(".prompt-readiness-metric");
+    expect(hierarchy).toContain("background: var(--workspace-inset) !important;");
+    expect(hierarchy).toContain("background: var(--workspace-panel-header);");
+    expect(hierarchy).not.toContain('data-theme="dark"');
+    expect(hierarchy).not.toContain(".landing");
+  });
+
   it("keeps the appearance thumb inside its track at both control sizes", () => {
     const switchRules = productSource.slice(productSource.indexOf("/* A switch owns"), productSource.indexOf("/* Native selection"));
     expect(switchRules).toContain("--theme-switch-size: 40px;");
@@ -138,6 +159,24 @@ describe("shared product visual system", () => {
     expect(tabs).toContain("background: transparent;");
     expect(tabs).toContain(':is(.active, .is-active, [aria-selected="true"], [aria-pressed="true"])');
     expect(tabs).toContain("border-color: var(--border-strong) !important; background: var(--surface);");
+  });
+
+  it("outlines the issue view switch against its shaded toolbar in both themes", () => {
+    const switchRules = productSource.slice(productSource.indexOf("/* The issue view switch"), productSource.indexOf(":root[data-theme] :is(.segmented,"));
+    expect(switchRules).toContain(":root[data-theme] .app-shell .problem-view-tabs");
+    expect(switchRules).toContain("border: 1px solid var(--field-border-hover) !important;");
+    expect(switchRules).toContain("background: color-mix(in srgb, var(--border-panel) 45%, var(--surface-pressed));");
+    expect(switchRules).toContain(".problem-view-switch-thumb");
+    expect(switchRules).toContain("background: var(--surface);");
+    expect(switchRules).toContain("box-shadow: none;");
+  });
+
+  it("centers issue controls between equal sides and stacks the count below its title", () => {
+    const toolbar = productSource.slice(productSource.indexOf("/* One issue inventory"), productSource.indexOf("/* The issue view switch"));
+    expect(toolbar).toContain("grid-template-columns: minmax(144px, 1fr) minmax(0, 680px) minmax(144px, 1fr);");
+    expect(toolbar).toContain(".issue-toolbar-title { display: flex; flex-direction: column; align-items: flex-start;");
+    expect(toolbar).toContain(".issue-toolbar-controls { display: flex; align-items: center; justify-content: center;");
+    expect(toolbar).toContain("flex-wrap: wrap;");
   });
 
   it("keeps the onboarding composer border intact instead of masking its corners", () => {
@@ -205,6 +244,35 @@ describe("shared product visual system", () => {
       "--radius-lg": "12px",
       "--radius-xl": "16px",
     });
+  });
+
+  it.each([":root", ':root[data-theme="dark"]'])("separates board tickets from the canvas with readable text in %s", (selector) => {
+    const board = tokensFor(selector, productSource);
+    const text = tokensFor(selector);
+    expect(luminance(board["--surface-ticket"])).toBeGreaterThan(luminance(board["--surface-board"]));
+    expect(contrast(board["--surface-ticket"], board["--surface-board"])).toBeGreaterThan(1.1);
+    expect(contrast(board["--surface-board-column"], board["--surface-board"])).toBeGreaterThan(1.1);
+    for (const surface of ["--surface-ticket", "--surface-ticket-hover", "--surface-board"]) {
+      expect(contrast(text["--text-strong"], board[surface])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(text["--text-muted"], board[surface])).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("outlines each stage while keeping tickets distinct and interaction states visible", () => {
+    const board = productSource.slice(productSource.indexOf("/* The board is a quiet canvas"), productSource.indexOf(":root[data-theme] .metric-value"));
+    expect(board).toContain("background: var(--surface-ticket) !important;");
+    expect(board).toContain("border: 1px solid var(--border-ticket) !important;");
+    expect(board).toContain("background: transparent;");
+    const columns = board.slice(board.indexOf(".board .board-col {"), board.indexOf(".board .board-col.is-drop-target"));
+    expect(columns).toContain("border: 1px solid var(--border-board-column) !important;");
+    expect(columns).toContain("background: var(--surface-board-column);");
+    expect(board).toContain(".board-stage-dot");
+    expect(board).toContain('data-stage="In progress"');
+    expect(board).toContain(".board-stage-count");
+    expect(board).toContain(".problem-card-shell:focus-within");
+    expect(board).toContain("background: var(--surface-ticket-hover) !important;");
+    expect(board).toContain("outline: 2px dashed var(--accent-line);");
+    expect(board).toContain("border-color: CanvasText !important;");
   });
 
   it.each([

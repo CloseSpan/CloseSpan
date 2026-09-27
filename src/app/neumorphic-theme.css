@@ -5111,9 +5111,9 @@ pre.code-block {
 
 .problem-view-tabs {
   position: relative;
-  width: min(100%, 420px);
+  width: min(100%, 180px);
   display: inline-grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   flex: 0 0 auto;
   gap: 0;
   padding: var(--space-1);
@@ -5127,7 +5127,7 @@ pre.code-block {
   top: var(--space-1);
   bottom: var(--space-1);
   left: var(--space-1);
-  width: calc((100% - (var(--space-1) * 2)) / 3);
+  width: calc((100% - (var(--space-1) * 2)) / 2);
   border-radius: var(--radius-pill);
   background: var(--surface);
   box-shadow: var(--shadow-raised-sm);
@@ -5139,12 +5139,8 @@ pre.code-block {
   pointer-events: none;
 }
 
-.problem-view-tabs[data-view="classification"] .problem-view-switch-thumb {
-  transform: translateX(100%);
-}
-
 .problem-view-tabs[data-view="board"] .problem-view-switch-thumb {
-  transform: translateX(200%);
+  transform: translateX(100%);
 }
 
 .problem-view-tabs button {
