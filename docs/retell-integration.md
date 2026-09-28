@@ -8,6 +8,8 @@ An administrator in a live workspace can connect a Retell API key. The existing 
 
 “Import recent calls” checks the latest 25 calls via Retell’s `POST /v3/list-calls`. Only ended calls with post-call analysis and nonempty text are imported. This is not a full historical backfill. A specific older call can be imported by its Retell call ID.
 
+The Feedback inbox also includes connected Retell workspaces in its source selector. “Pull Retell AI” (or “All connected sources”) runs the same bounded, deduplicated call import and classification. Retell uses its native connection even when n8n handles other sources; the inbox never forwards the Retell key to an orchestration provider or starts a coding run from this import.
+
 For automatic intake, add the displayed URL to Retell’s webhook settings for `call_analyzed`. Use the Retell API key marked **webhook** for signature verification. The URL must be publicly reachable over HTTPS; Retell cannot deliver to localhost. No webhook is registered in Retell automatically.
 
 ## Data and processing

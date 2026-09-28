@@ -15,6 +15,7 @@ vi.mock("@/lib/connected-feedback-pull", () => ({
     "int_sentry",
     "int_posthog",
     "int_discord",
+    "int_retell",
   ],
   pullConnectedFeedbackSources: coordinator.pull,
   listConnectedFeedbackSources: coordinator.list,
@@ -119,6 +120,17 @@ describe("connected feedback pull route", () => {
       ["int_discord"],
       undefined,
     );
+  });
+
+  it("accepts Retell as a native inbox pull target", async () => {
+    const selected = request();
+    const response = await POST(new NextRequest(selected.url, {
+      method: "POST",
+      headers: selected.headers,
+      body: JSON.stringify({ integrationIds: ["int_retell"] }),
+    }));
+    expect(response.status).toBe(200);
+    expect(coordinator.pull).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org_northstar" }), ["int_retell"], undefined);
   });
 
   it("passes an account-level selection without bypassing orchestration", async () => {

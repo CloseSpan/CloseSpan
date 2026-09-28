@@ -27,6 +27,9 @@ import {
   triggerN8nFeedbackPull,
 } from "./n8n-client";
 import { getOrchestrationProviderRuntimeConfiguration } from "./orchestration-provider-repository";
+import { retellStatus, loadRetellConnection, ingestRetellCalls } from "./retell-repository";
+import { listRetellCalls } from "./retell-api";
+import { analyzeRetellFeedback } from "./retell-intake";
 
 export type ConnectedFeedbackPullStatus =
   | "succeeded"
@@ -36,6 +39,7 @@ export type ConnectedFeedbackPullStatus =
 export const CONNECTED_FEEDBACK_SOURCE_IDS = [
   ...PIPEDREAM_CONNECTOR_IDS,
   "int_discord",
+  "int_retell",
 ] as const;
 
 export type ConnectedFeedbackSourceId =
@@ -100,9 +104,11 @@ function connectedFeedbackConnections(
 export async function listConnectedFeedbackSources(
   orgId: string,
 ): Promise<ConnectedFeedbackSourceOption[]> {
-  const connected = connectedFeedbackConnections(
-    await listPipedreamConnections(orgId),
-  );
+  const [connections, retell] = await Promise.all([
+    listPipedreamConnections(orgId),
+    retellStatus(orgId),
+  ]);
+  const connected = connectedFeedbackConnections(connections);
   const counts = new Map<PipedreamConnectorId, number>();
   for (const connection of connected) {
     counts.set(
@@ -110,7 +116,7 @@ export async function listConnectedFeedbackSources(
       (counts.get(connection.integrationId) ?? 0) + 1,
     );
   }
-  return [...counts.entries()].map(([integrationId, accountCount]) => ({
+  const sources: ConnectedFeedbackSourceOption[] = [...counts.entries()].map(([integrationId, accountCount]) => ({
     integrationId,
     provider: providerName(integrationId),
     accountCount,
@@ -118,10 +124,17 @@ export async function listConnectedFeedbackSources(
       integrationId === "int_slack"
       || supportsManualFeedbackImport(integrationId),
   }));
+  if (retell.connected) sources.push({
+    integrationId: "int_retell",
+    provider: providerName("int_retell"),
+    accountCount: 1,
+    manualPullAvailable: true,
+  });
+  return sources;
 }
 
 function emptyResult(
-  connection: PipedreamConnection,
+  connection: Pick<ConnectedFeedbackPullResult, "integrationId" | "accountId" | "accountName">,
   status: ConnectedFeedbackPullStatus,
   message?: string,
 ): ConnectedFeedbackPullResult {
@@ -138,6 +151,26 @@ function emptyResult(
     clustered: 0,
     ...(message ? { message } : {}),
   };
+}
+
+async function pullRetell(orgId: string): Promise<ConnectedFeedbackPullResult> {
+  const source = { integrationId: "int_retell", accountId: "int_retell", accountName: "Retell AI" };
+  try {
+    const connection = await loadRetellConnection({ orgId });
+    if (!connection) return emptyResult(source, "failed", "Retell is no longer connected. Refresh and reconnect the source.");
+    const calls = await listRetellCalls(connection.apiKey);
+    const counts = await ingestRetellCalls(connection, calls);
+    const intelligence = await analyzeRetellFeedback(orgId);
+    return {
+      ...emptyResult(source, "succeeded"),
+      fetched: counts.checked,
+      created: counts.imported,
+      // Existing calls are deduplicated, never overwritten.
+      ...intelligence,
+    };
+  } catch {
+    return emptyResult(source, "failed", "Retell could not be pulled. Retry shortly or check the connection in Integrations.");
+  }
 }
 
 async function pullSlack(
@@ -204,7 +237,17 @@ export async function pullConnectedFeedbackSources(
   const orchestration = await getOrchestrationProviderRuntimeConfiguration(
     context.orgId,
   );
-  if (orchestration.activeProvider === "n8n") {
+  const selected = integrationIds?.length ? new Set(integrationIds) : null;
+  const selectedAccounts = accountIds?.length ? new Set(accountIds) : null;
+  const includeRetell = (!selected || selected.has("int_retell"))
+    && (!selectedAccounts || selectedAccounts.has("int_retell"));
+  const retellConnected = includeRetell && (await retellStatus(context.orgId)).connected;
+  const orchestratedIds = integrationIds?.filter((id) => id !== "int_retell");
+  const orchestratedAccounts = accountIds?.filter((id) => id !== "int_retell");
+  const includeOrchestrated = (!selected || Boolean(orchestratedIds?.length))
+    && (!selectedAccounts || Boolean(orchestratedAccounts?.length));
+
+  if (orchestration.activeProvider === "n8n" && includeOrchestrated) {
     if (
       !orchestration.n8n.configured
       || !orchestration.n8nApiKey
@@ -222,27 +265,29 @@ export async function pullConnectedFeedbackSources(
       actorId: context.actorId,
       actorName: context.actorName,
       traceId: context.traceId,
-      integrationIds,
-      accountIds,
+      // Native Retell credentials and intake stay in CloseSpan, not n8n.
+      integrationIds: orchestratedIds ?? CONNECTED_FEEDBACK_SOURCE_IDS.filter((id) => id !== "int_retell"),
+      accountIds: orchestratedAccounts,
     });
+    const results = retellConnected ? [await pullRetell(context.orgId)] : [];
     return {
-      results: [],
-      connectedSources: integrationIds?.length ?? 0,
-      succeeded: 0,
-      failed: 0,
+      results,
+      connectedSources: (orchestratedIds?.length ?? 0) + results.length,
+      succeeded: results.filter((result) => result.status === "succeeded").length,
+      failed: results.filter((result) => result.status === "failed").length,
       unsupported: 0,
       orchestrationProvider: "n8n",
       routed: true,
-      message: triggered.message,
+      message: [...results.map((result) => result.status === "succeeded"
+        ? `Retell AI: ${result.created} new, ${result.updated} updated.`
+        : result.message), triggered.message].filter(Boolean).join(" "),
       executionId: triggered.executionId,
       runUrl: triggered.runUrl,
     };
   }
 
-  const selected = integrationIds?.length ? new Set(integrationIds) : null;
-  const selectedAccounts = accountIds?.length ? new Set(accountIds) : null;
   const connected = connectedFeedbackConnections(
-    await listPipedreamConnections(context.orgId),
+    includeOrchestrated ? await listPipedreamConnections(context.orgId) : [],
   ).filter(
     (connection) =>
       (!selected || selected.has(connection.integrationId))
@@ -251,6 +296,10 @@ export async function pullConnectedFeedbackSources(
 
   const tasks: Array<Promise<ConnectedFeedbackPullResult>> = [];
   const represented = new Set<string>();
+  if (retellConnected) {
+    represented.add("int_retell");
+    tasks.push(pullRetell(context.orgId));
+  }
   for (const connection of connected) {
     if (connection.integrationId === "int_slack") {
       if (represented.has(connection.integrationId)) continue;
@@ -273,7 +322,8 @@ export async function pullConnectedFeedbackSources(
   }
 
   const results = await Promise.all(tasks);
-  if (results.some((result) => result.status === "succeeded" && result.clustered > 0)) {
+  // Retell intake classifies evidence only; it must not start engineering work.
+  if (results.some((result) => result.integrationId !== "int_retell" && result.status === "succeeded" && result.clustered > 0)) {
     // Manual pull is the recovery path when the scheduled coordinator is
     // unavailable. Complete the same investigation -> prompt handoff now so
     // a newly clustered problem does not remain permanently "Not ready".
@@ -285,7 +335,7 @@ export async function pullConnectedFeedbackSources(
     succeeded: results.filter((result) => result.status === "succeeded").length,
     failed: results.filter((result) => result.status === "failed").length,
     unsupported: results.filter((result) => result.status === "unsupported").length,
-    orchestrationProvider: "pipedream",
+    orchestrationProvider: orchestration.activeProvider,
     routed: false,
   };
 }

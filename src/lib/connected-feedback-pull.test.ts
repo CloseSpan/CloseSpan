@@ -13,7 +13,20 @@ const dependencies = vi.hoisted(() => ({
   runAutomation: vi.fn(),
   getOrchestration: vi.fn(),
   triggerN8n: vi.fn(),
+  retellStatus: vi.fn(),
+  loadRetell: vi.fn(),
+  listRetell: vi.fn(),
+  ingestRetell: vi.fn(),
+  analyzeRetell: vi.fn(),
 }));
+
+vi.mock("./retell-repository", () => ({
+  retellStatus: dependencies.retellStatus,
+  loadRetellConnection: dependencies.loadRetell,
+  ingestRetellCalls: dependencies.ingestRetell,
+}));
+vi.mock("./retell-api", () => ({ listRetellCalls: dependencies.listRetell }));
+vi.mock("./retell-intake", () => ({ analyzeRetellFeedback: dependencies.analyzeRetell }));
 
 vi.mock("./pipedream-repository", () => ({
   listPipedreamConnections: dependencies.listConnections,
@@ -46,6 +59,7 @@ vi.mock("./n8n-client", () => ({
 }));
 
 import {
+  CONNECTED_FEEDBACK_SOURCE_IDS,
   listConnectedFeedbackSources,
   pullConnectedFeedbackSources,
 } from "./connected-feedback-pull";
@@ -97,6 +111,106 @@ describe("connected feedback pull", () => {
       n8nSigningSecret: null,
     });
     dependencies.triggerN8n.mockReset();
+    dependencies.retellStatus.mockReset().mockResolvedValue({ connected: false });
+    dependencies.loadRetell.mockReset().mockResolvedValue({ orgId: "org_test", publicId: "retell_endpoint", apiKey: "private-test-key" });
+    dependencies.listRetell.mockReset().mockResolvedValue([{ call_id: "call_one" }]);
+    dependencies.ingestRetell.mockReset().mockResolvedValue({ checked: 3, imported: 1, existing: 1, skipped: 1 });
+    dependencies.analyzeRetell.mockReset().mockResolvedValue({ analyzed: 1, clustered: 1 });
+  });
+
+  it("recognizes a native Retell connection without any Pipedream accounts", async () => {
+    dependencies.retellStatus.mockResolvedValue({ connected: true });
+    expect(CONNECTED_FEEDBACK_SOURCE_IDS).toContain("int_retell");
+    await expect(listConnectedFeedbackSources("org_test")).resolves.toEqual([
+      { integrationId: "int_retell", provider: "Retell AI", accountCount: 1, manualPullAvailable: true },
+    ]);
+    expect(dependencies.retellStatus).toHaveBeenCalledWith("org_test");
+    expect(dependencies.loadRetell).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, ["int_retell"] as const])("pulls native Retell calls from the inbox with selection %j", async (selection) => {
+    dependencies.retellStatus.mockResolvedValue({ connected: true });
+    const result = await pullConnectedFeedbackSources(context, selection);
+    expect(result).toMatchObject({ connectedSources: 1, succeeded: 1, failed: 0, routed: false });
+    expect(result.results[0]).toMatchObject({ integrationId: "int_retell", fetched: 3, created: 1, updated: 0, analyzed: 1, clustered: 1 });
+    expect(dependencies.loadRetell).toHaveBeenCalledExactlyOnceWith({ orgId: "org_test" });
+    expect(dependencies.listRetell).toHaveBeenCalledExactlyOnceWith("private-test-key");
+    expect(dependencies.ingestRetell).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org_test" }), [{ call_id: "call_one" }]);
+    expect(dependencies.analyzeRetell).toHaveBeenCalledExactlyOnceWith("org_test");
+    expect(dependencies.runAutomation).not.toHaveBeenCalled();
+    expect(dependencies.deliverSlack).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain("private-test-key");
+  });
+
+  it("does not try to import disconnected Retell calls", async () => {
+    const result = await pullConnectedFeedbackSources(context, ["int_retell"]);
+    expect(result.connectedSources).toBe(0);
+    expect(dependencies.loadRetell).not.toHaveBeenCalled();
+    expect(dependencies.listRetell).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { sources: ["int_zendesk"] as const, accounts: undefined },
+    { sources: undefined, accounts: ["another_account"] },
+  ])("respects source and account selections without importing unselected Retell data: %j", async ({ sources, accounts }) => {
+    dependencies.retellStatus.mockResolvedValue({ connected: true });
+    await pullConnectedFeedbackSources(context, sources, accounts);
+    expect(dependencies.retellStatus).not.toHaveBeenCalled();
+    expect(dependencies.loadRetell).not.toHaveBeenCalled();
+  });
+
+  it("reports a disconnect between discovery and import without reading calls", async () => {
+    dependencies.retellStatus.mockResolvedValue({ connected: true });
+    dependencies.loadRetell.mockResolvedValue(null);
+    const result = await pullConnectedFeedbackSources(context, ["int_retell"]);
+    expect(result).toMatchObject({ connectedSources: 1, failed: 1 });
+    expect(result.results[0].message).toContain("no longer connected");
+    expect(dependencies.listRetell).not.toHaveBeenCalled();
+  });
+
+  it("isolates Retell failures without leaking credentials or blocking another source", async () => {
+    dependencies.retellStatus.mockResolvedValue({ connected: true });
+    dependencies.listRetell.mockRejectedValue(new Error("private-test-key"));
+    dependencies.listConnections.mockResolvedValue([connection("int_zendesk", "apn_zendesk")]);
+    dependencies.pullPipedream.mockResolvedValue({ fetched: 1, created: 1, updated: 0, accountName: "Support" });
+    const result = await pullConnectedFeedbackSources(context);
+    expect(result).toMatchObject({ connectedSources: 2, succeeded: 1, failed: 1 });
+    expect(result.results[0].message).toContain("Retell could not be pulled");
+    expect(JSON.stringify(result)).not.toContain("private-test-key");
+    expect(dependencies.ingestRetell).not.toHaveBeenCalled();
+    expect(dependencies.analyzeRetell).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { sources: ["int_retell"] as const, accounts: undefined },
+    { sources: undefined, accounts: ["int_retell"] },
+  ])("uses native Retell intake for an explicit selection even when n8n is not configured: %j", async ({ sources, accounts }) => {
+    dependencies.retellStatus.mockResolvedValue({ connected: true });
+    dependencies.getOrchestration.mockResolvedValue({ activeProvider: "n8n", n8n: { configured: false } });
+    const result = await pullConnectedFeedbackSources(context, sources, accounts);
+    expect(result).toMatchObject({ succeeded: 1, routed: false });
+    expect(dependencies.triggerN8n).not.toHaveBeenCalled();
+    expect(dependencies.listConnections).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, ["int_retell", "int_discord"] as const])("keeps Retell out of n8n routing while preserving mixed-source results: %j", async (selection) => {
+    dependencies.retellStatus.mockResolvedValue({ connected: true });
+    dependencies.getOrchestration.mockResolvedValue({
+      activeProvider: "n8n",
+      n8n: { configured: true, baseUrl: "https://example.app.n8n.cloud", triggerUrl: "https://example.app.n8n.cloud/webhook/closespan" },
+      n8nApiKey: "n8n_api_key", n8nSigningSecret: "signing_secret_value",
+    });
+    dependencies.triggerN8n.mockResolvedValue({ message: "Collection queued by n8n." });
+    const result = await pullConnectedFeedbackSources(context, selection);
+    expect(result).toMatchObject({ succeeded: 1, failed: 0, routed: true });
+    expect(result.message).toContain("Retell AI: 1 new, 0 updated.");
+    expect(result.message).toContain("Collection queued by n8n.");
+    const forwarded = dependencies.triggerN8n.mock.calls[0][0];
+    expect(forwarded.integrationIds).toContain("int_discord");
+    expect(forwarded.integrationIds).not.toContain("int_retell");
+    expect(JSON.stringify(forwarded)).not.toContain("private-test-key");
+    expect(dependencies.listConnections).not.toHaveBeenCalled();
+    expect(dependencies.runAutomation).not.toHaveBeenCalled();
   });
 
   it("pulls Slack through its native intake and intelligence pipeline", async () => {

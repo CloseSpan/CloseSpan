@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const result = parsed.data.callId ? await readRetellCall(connection.apiKey, parsed.data.callId) : null;
     const calls = result ? [result.call] : await listRetellCalls(connection.apiKey);
     const counts = await ingestRetellCalls(connection, calls);
-    after(() => analyzeRetellFeedback(context.orgId));
+    after(async () => { await analyzeRetellFeedback(context.orgId); });
     return NextResponse.json({ ...counts, completedAt: new Date().toISOString(), transport: result?.transport ?? "api" }, { headers: noStoreHeaders });
   } catch (error) {
     return errorResponse(error instanceof HttpError ? error : new HttpError(error instanceof SyntaxError ? 400 : 503, "Calls could not be imported. Check the connection and try again."));

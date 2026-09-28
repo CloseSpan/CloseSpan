@@ -852,7 +852,7 @@ export function FeedbackScreen({
       if (!response.ok) throw new Error(payload.error || "Feedback could not be pulled.");
       if (payload.routed) {
         setNotice({
-          kind: "success",
+          kind: payload.failed ? "error" : "success",
           text: payload.message || "n8n accepted the feedback collection request.",
         });
         router.refresh();

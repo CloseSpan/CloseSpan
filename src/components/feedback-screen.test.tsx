@@ -14,6 +14,24 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("FeedbackScreen focus", () => {
+  it("offers Pull Retell AI when the empty inbox has a native Retell connection", () => {
+    const markup = renderToStaticMarkup(
+      <FeedbackScreen
+        feedbackItems={[]}
+        orgId="org_test"
+        providerLabel="OpenAI"
+        connectedPullSources={[{
+          integrationId: "int_retell",
+          provider: "Retell AI",
+          accountCount: 1,
+          manualPullAvailable: true,
+        }]}
+      />,
+    );
+    expect(markup).toContain('aria-label="Pull Retell AI"');
+    expect(markup).not.toContain("Pull connected sources");
+  });
+
   it("prioritizes review status and removes explanatory metadata from the inbox", () => {
     const item = feedback[0];
     const markup = renderToStaticMarkup(

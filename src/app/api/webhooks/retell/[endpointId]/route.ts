@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const payload = z.object({ call: retellCallSchema }).safeParse(JSON.parse(body));
     if (!payload.success) throw new HttpError(400, "Invalid Retell call.");
     const counts = await ingestRetellCalls(connection, [payload.data.call]);
-    if (counts.imported) after(() => analyzeRetellFeedback(connection.orgId));
+    if (counts.imported) after(async () => { await analyzeRetellFeedback(connection.orgId); });
     return NextResponse.json(counts, { headers: noStoreHeaders });
   } catch (error) {
     return errorResponse(error instanceof HttpError ? error : new HttpError(error instanceof SyntaxError ? 400 : 503, "Retell event could not be processed."));
