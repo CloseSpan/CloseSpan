@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowUp, MessageSquare, FlaskConical } from "lucide-react";
 import type { IssueConversationProposal, IssueConversationView } from "@/lib/issue-conversation";
 import styles from "./issue-conversation.module.css";
+import { IssueVoice } from "./issue-voice";
+import { appendVoiceNotes } from "@/lib/issue-voice";
 
 export interface ScenarioCheck {
   verdict: "Passed" | "Needs revision";
@@ -26,10 +28,11 @@ export interface IssueConversationProps {
   sampleHasResult?: boolean;
   disabledReason?: string;
   reviewVersion?: number;
+  onVoiceActivityChange?: (active: boolean) => void;
 }
 
 /** One issue, one conversation. A scenario check never stands in for a runtime test. */
-export function IssueConversation({ problemId, initial, currentPromptHash, canDiscuss, canRevise, canTest, demo, initialCheck, sampleOutcome, sampleHasResult, disabledReason, reviewVersion }: IssueConversationProps) {
+export function IssueConversation({ problemId, initial, currentPromptHash, canDiscuss, canRevise, canTest, demo, initialCheck, sampleOutcome, sampleHasResult, disabledReason, reviewVersion, onVoiceActivityChange }: IssueConversationProps) {
   const router = useRouter();
   const [conversation, setConversation] = useState(initial);
   const [serverConversation, setServerConversation] = useState(initial);
@@ -183,6 +186,10 @@ export function IssueConversation({ problemId, initial, currentPromptHash, canDi
       </article>)}
       {conversation.pending && <p className={styles.muted}>CloseSpan is responding…</p>}
     </div>
+    {!readOnly && <IssueVoice problemId={problemId} disabled={sending} onActivityChange={onVoiceActivityChange} onNotes={(text) => {
+      const handoff = appendVoiceNotes(message, text);
+      setMode("discuss"); setMessage(handoff.draft); setNotice(handoff.notice); field.current?.focus();
+    }} />}
     {currentCheck && <section className={styles.check} aria-label="Scenario check result">
       <strong>{currentCheck.verdict === "Passed" ? "Scenario covered" : "Requirement needs changes"}</strong>
       <p>{currentCheck.summary}</p>

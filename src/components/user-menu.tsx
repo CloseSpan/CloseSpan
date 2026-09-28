@@ -124,6 +124,13 @@ export function UserMenu({
           className="user-menu-panel"
           data-state={phase}
           aria-hidden={phase === "closing"}
+          onClickCapture={(event) => {
+            // The shared shell survives navigation, including same-page links.
+            // Dismiss links here without closing on the inline theme switch.
+            if (event.target instanceof Element && event.target.closest("a[href]")) {
+              closeMenu();
+            }
+          }}
         >
           {children}
         </div>

@@ -148,9 +148,17 @@ function investigationCopy(row: InvestigationCandidateRow) {
   const summary = row.summary.trim().replace(/\s+/g, " ");
   const quotes = stringArray(row.feedback_quotes);
   const feedbackTypes = stringArray(row.feedback_types);
-  const isFeature = feedbackTypes.filter((type) => type === "Feature request").length
-    > feedbackTypes.filter((type) => type === "Bug" || type === "Incident").length;
-  const missingInformation = isFeature
+  const featureCount = feedbackTypes.filter((type) => type === "Feature request").length;
+  const defectCount = feedbackTypes.filter((type) => type === "Bug" || type === "Incident").length;
+  const usabilityCount = feedbackTypes.filter((type) => type === "Usability").length;
+  const isUsability = usabilityCount > Math.max(featureCount, defectCount);
+  const isFeature = !isUsability && featureCount > defectCount;
+  const missingInformation = isUsability
+    ? [
+        "The user's goal and the step where the workflow becomes difficult or unclear",
+        "A recording, transcript excerpt, or walkthrough showing expected and observed behavior",
+      ]
+    : isFeature
     ? [
         `Confirm the desired outcome and boundaries for “${title}”.`,
         "Define the acceptance criteria for the requested workflow.",
@@ -159,12 +167,14 @@ function investigationCopy(row: InvestigationCandidateRow) {
         "Exact reproduction steps and the expected result",
         "A failing trace, console error, or request identifier",
       ];
-  if (!isFeature && quotes.length < 2) {
+  if (!isFeature && !isUsability && quotes.length < 2) {
     missingInformation.push("A second independent customer report or internal reproduction");
   }
   return {
     title: `${row.product_area || "Product"} investigation`,
-    hypothesis: isFeature
+    hypothesis: isUsability
+      ? `${title} suggests friction in the user experience. The cause and whether an implementation change is needed are not yet confirmed.`
+      : isFeature
       ? `${title} reflects an unmet product need. The implementation scope is not yet confirmed.`
       : `${title} is consistent with a product defect, but the root cause is not yet confirmed.`,
     assumptions: isFeature
@@ -174,10 +184,17 @@ function investigationCopy(row: InvestigationCandidateRow) {
           "The linked customer evidence belongs to the same product behavior.",
         ],
     missingInformation,
-    proposedAction: isFeature
+    proposedAction: isUsability
+      ? `Walk through “${title}”, compare the observed experience with the user's goal, and identify what prevents a clear, successful outcome before proposing changes.`
+      : isFeature
       ? `Trace the current ${row.product_area || "product"} workflow, confirm the expected outcome, and identify the smallest repository-scoped change that satisfies it.`
       : `Reproduce “${title}”, trace the affected ${row.product_area || "product"} path, and confirm the failure before changing implementation code.`,
-    recommendedTests: isFeature
+    recommendedTests: isUsability
+      ? [
+          "Validate that the user can complete the reported task with the expected outcome",
+          "Check clarity, feedback, and the nearest unaffected workflow",
+        ]
+      : isFeature
       ? [
           "Add an acceptance test for the expected user outcome",
           "Verify the existing workflow remains backward compatible",
@@ -222,7 +239,7 @@ async function readInvestigationCandidate(
       WHERE problem.org_id=$1
         AND problem.stage <> 'Closed'
         AND ($2::text IS NULL OR problem.id=$2)
-        AND approved_analysis.classification IN ('Bug','Incident','Feature request')
+        AND approved_analysis.classification IN ('Bug','Incident','Feature request','Usability')
         AND NOT EXISTS (
           SELECT 1 FROM investigations existing
            WHERE existing.org_id=problem.org_id AND existing.problem_id=problem.id
@@ -233,6 +250,80 @@ async function readInvestigationCandidate(
     [orgId, problemId ?? null],
   );
   return result.rows[0] ?? null;
+}
+
+async function explainInvestigationIneligibility(
+  client: PoolClient,
+  orgId: string,
+  problemId: string,
+): Promise<AutomatedInvestigationResult> {
+  // Use the same approved, successful-analysis boundary as candidate selection.
+  // A linked report alone is not necessarily evidence eligible for investigation.
+  const result = await client.query<{
+    stage: string;
+    investigation_id: string | null;
+    linked_report_count: number;
+    analyzed_report_count: number;
+    pending_review_count: number;
+    approved_report_count: number;
+    eligible_report_count: number;
+  }>(
+    `SELECT problem.stage,
+            (SELECT existing.id::text FROM investigations existing
+              WHERE existing.org_id=problem.org_id AND existing.problem_id=problem.id
+              LIMIT 1) AS investigation_id,
+            count(feedback.id)::int AS linked_report_count,
+            count(latest_success.review_status)::int AS analyzed_report_count,
+            count(*) FILTER (WHERE latest_success.review_status='Proposed')::int AS pending_review_count,
+            count(approved_analysis.classification)::int AS approved_report_count,
+            count(*) FILTER (WHERE approved_analysis.classification IN ('Bug','Incident','Feature request','Usability'))::int AS eligible_report_count
+       FROM product_problems problem
+       LEFT JOIN feedback_cluster_memberships membership
+         ON membership.org_id=problem.org_id AND membership.problem_id=problem.id
+       LEFT JOIN feedback_items feedback
+         ON feedback.org_id=membership.org_id AND feedback.id=membership.feedback_id
+       LEFT JOIN LATERAL (
+         SELECT analysis.classification
+           FROM ai_feedback_analyses analysis
+           JOIN model_runs run ON run.org_id=analysis.org_id AND run.id=analysis.model_run_id
+          WHERE analysis.org_id=feedback.org_id AND analysis.feedback_id=feedback.id
+            AND analysis.review_status='Approved' AND run.status='Succeeded'
+          ORDER BY analysis.created_at DESC,analysis.id DESC LIMIT 1
+       ) approved_analysis ON true
+       LEFT JOIN LATERAL (
+         SELECT analysis.review_status
+           FROM ai_feedback_analyses analysis
+           JOIN model_runs run ON run.org_id=analysis.org_id AND run.id=analysis.model_run_id
+          WHERE analysis.org_id=feedback.org_id AND analysis.feedback_id=feedback.id
+            AND run.status='Succeeded'
+          ORDER BY analysis.created_at DESC,analysis.id DESC LIMIT 1
+       ) latest_success ON true
+      WHERE problem.org_id=$1 AND problem.id=$2
+      GROUP BY problem.org_id,problem.id`,
+    [orgId, problemId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new HttpError(404, "This issue was not found in the current workspace.");
+
+  let reason: string;
+  if (row.investigation_id) {
+    reason = "An investigation already exists for this issue. Refresh the page to view it.";
+  } else if (row.stage === "Closed") {
+    reason = "This issue is closed. Reopen it before starting an investigation.";
+  } else if (row.linked_report_count === 0) {
+    reason = "No customer reports are linked to this issue. Link a report from Feedback inbox before starting an investigation.";
+  } else if (row.analyzed_report_count === 0) {
+    reason = "The linked reports have no successful analysis. Complete or retry their analysis in Feedback inbox before starting an investigation.";
+  } else if (row.approved_report_count === 0) {
+    reason = row.pending_review_count > 0
+      ? "The linked reports are awaiting analysis review. Review and approve a relevant report in Feedback inbox before starting an investigation."
+      : "The linked reports have no approved analysis. Review the rejected reports or link another report in Feedback inbox before starting an investigation.";
+  } else if (row.eligible_report_count === 0) {
+    reason = "No linked report has an approved Bug, Incident, Feature request, or Usability classification. Review the report classifications in Feedback inbox before starting an investigation.";
+  } else {
+    reason = "The issue's evidence changed while eligibility was being checked. Refresh the page and try again.";
+  }
+  return { created: false, problemId, investigationId: row.investigation_id, confidence: null, reason };
 }
 
 async function createInvestigation(
@@ -273,7 +364,7 @@ async function createInvestigation(
       problemId: row.id,
       investigationId: null,
       confidence: null,
-      reason: "An investigation already exists for this problem.",
+      reason: "An investigation already exists for this issue. Refresh the page to view it.",
     };
   }
   await client.query(
@@ -312,12 +403,13 @@ async function createPostgresInvestigation(
     );
     const row = await readInvestigationCandidate(client, orgId, problemId);
     if (!row) {
+      if (problemId) return explainInvestigationIneligibility(client, orgId, problemId);
       return {
         created: false,
         problemId: problemId ?? null,
         investigationId: null,
         confidence: null,
-        reason: "No uninvestigated bug or feature request has linked evidence.",
+        reason: "No issues are ready for investigation. An open issue must have an approved Bug, Incident, Feature request, or Usability report with a successful analysis and no existing investigation.",
       };
     }
     return createInvestigation(client, orgId, row);

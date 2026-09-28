@@ -18,7 +18,7 @@ const stages: Stage[] = [
   "Closed",
 ];
 
-export function ProblemWorkspace({ initialState, problem: primaryProblem, feedbackItems: feedback }: { initialState: DemoState; problem: ProductProblem; feedbackItems: FeedbackItem[] }) {
+export function ProblemWorkspace({ initialState, problem: primaryProblem, feedbackItems: feedback, discussion }: { initialState: DemoState; problem: ProductProblem; feedbackItems: FeedbackItem[]; discussion?: React.ReactNode }) {
   const state = initialState;
   const [showRationale, setShowRationale] = useState(false);
   const impact = calculateImpact(primaryProblem.impactFactors);
@@ -43,6 +43,7 @@ export function ProblemWorkspace({ initialState, problem: primaryProblem, feedba
       <div><div className="eyebrow">Issue · {primaryProblem.id}</div><h1>{primaryProblem.title}</h1><p className="subtle">{evidence.length === 1 ? "1 customer report" : `${evidence.length} customer reports`}</p></div>
       <div className="top-actions"><span className={`badge ${primaryProblem.severity.toLowerCase()}`}>{primaryProblem.severity} severity</span><span className="badge brand">{state.problemStage}</span></div>
     </div>
+    {discussion}
 
     <section className="card pipeline-card" aria-label="System-managed problem lifecycle"><div className="card-head"><h2>Lifecycle</h2><span className="badge">Updated automatically</span></div><div className="card-body"><div className="pipeline">{stages.map((stage, index) => <div className={`stage ${index < activeIndex ? "done" : index === activeIndex ? "current" : ""}`} aria-current={index === activeIndex ? "step" : undefined} key={stage}><span className="stage-dot">{index < activeIndex ? <Check size={10}/> : index + 1}</span>{stage}</div>)}</div></div></section>
 

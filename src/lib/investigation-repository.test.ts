@@ -13,6 +13,7 @@ vi.mock("./workspace-persistence", () => ({
 
 import {
   createAutomatedInvestigationForProblem,
+  createNextAutomatedInvestigation,
   isCustomerVisibleInvestigationTitle,
   listWorkspaceInvestigations,
   mapInvestigationWorkspaceRow,
@@ -153,7 +154,7 @@ describe("investigation workspace repository", () => {
       confidence: 0.65,
     });
     expect(database.query).toHaveBeenCalledWith(
-      expect.stringContaining("approved_analysis.classification IN ('Bug','Incident','Feature request')"),
+      expect.stringContaining("approved_analysis.classification IN ('Bug','Incident','Feature request','Usability')"),
       ["org-1", "prob-1"],
     );
     expect(database.query).toHaveBeenCalledWith(
@@ -212,6 +213,82 @@ describe("investigation workspace repository", () => {
     ]);
     expect(String(parameters[7])).not.toContain("console error");
     expect(String(parameters[7])).not.toContain("second independent customer report");
+  });
+
+  it.each([false, true])("supports usability reports without claiming a confirmed defect (queue: %s)", async (queued) => {
+    database.query.mockImplementation(async (query: string) => {
+      if (query.includes("FROM product_problems problem")) return { rows: [{
+        id: "prob-usability", title: "Voice agent misunderstands caller questions",
+        statement: "Callers cannot get a relevant answer.", summary: "A confusing conversation.",
+        confidence: 0.8, product_area: "Usability", suspected_files: [], evidence_count: 1,
+        feedback_types: ["Usability"], feedback_quotes: ["It did not understand my question."],
+      }] };
+      if (query.includes("INSERT INTO investigations")) return { rows: [{ id: "inv-usability" }] };
+      return { rows: [] };
+    });
+
+    const result = queued
+      ? await createNextAutomatedInvestigation("org-1")
+      : await createAutomatedInvestigationForProblem("org-1", "prob-usability");
+    expect(result).toMatchObject({ created: true, problemId: "prob-usability" });
+    const [query, params] = database.query.mock.calls.find(([sql]) => String(sql).includes("FROM product_problems problem"))!;
+    expect(params).toEqual(["org-1", queued ? null : "prob-usability"]);
+    expect(query).toContain("'Usability'");
+    expect(query).toContain("analysis.review_status='Approved'");
+    expect(query).toContain("run.status='Succeeded'");
+    const parameters = database.query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO investigations"))![1];
+    expect(parameters[4]).toContain("friction in the user experience");
+    expect(parameters[4]).toContain("not yet confirmed");
+    expect(parameters[4]).not.toContain("product defect");
+    expect(parameters[7]).toContain("recording, transcript excerpt, or walkthrough");
+    expect(parameters[7]).not.toContain("console error");
+    expect(parameters[7]).not.toContain("second independent customer report");
+    expect(parameters[9]).toContain("complete the reported task");
+  });
+
+  const ineligible = {
+    stage: "Needs review", investigation_id: null, linked_report_count: 1,
+    analyzed_report_count: 1, pending_review_count: 0,
+    approved_report_count: 1, eligible_report_count: 0,
+  };
+
+  it.each([
+    [{ stage: "Closed" }, "This issue is closed. Reopen it"],
+    [{ investigation_id: "inv-existing" }, "An investigation already exists for this issue"],
+    [{ linked_report_count: 0, analyzed_report_count: 0, approved_report_count: 0 }, "No customer reports are linked to this issue"],
+    [{ analyzed_report_count: 0, approved_report_count: 0 }, "The linked reports have no successful analysis"],
+    [{ pending_review_count: 1, approved_report_count: 0 }, "The linked reports are awaiting analysis review"],
+    [{ approved_report_count: 0 }, "The linked reports have no approved analysis"],
+    [{}, "No linked report has an approved Bug, Incident, Feature request, or Usability classification"],
+    [{ eligible_report_count: 1 }, "The issue's evidence changed while eligibility was being checked"],
+  ])("explains ineligibility accurately for %j", async (changes, message) => {
+    database.query.mockImplementation(async (query: string) => ({
+      rows: query.includes("AS linked_report_count") ? [{ ...ineligible, ...changes }] : [],
+    }));
+    const result = await createAutomatedInvestigationForProblem("org-1", "prob-1");
+    expect(result).toMatchObject({ created: false, problemId: "prob-1", reason: expect.stringContaining(message) });
+    expect(result.investigationId).toBe("investigation_id" in changes ? changes.investigation_id : null);
+    expect(database.query).toHaveBeenCalledWith(expect.stringContaining("WHERE problem.org_id=$1 AND problem.id=$2"), ["org-1", "prob-1"]);
+    const [eligibilityQuery] = database.query.mock.calls.find(([sql]) => String(sql).includes("AS linked_report_count"))!;
+    expect(eligibilityQuery).toContain("analysis.review_status='Approved' AND run.status='Succeeded'");
+    expect(eligibilityQuery).toContain("membership.org_id=problem.org_id");
+    expect(eligibilityQuery).toContain("analysis.org_id=feedback.org_id");
+    expect(database.query.mock.calls.some(([sql]) => /INSERT|UPDATE/.test(String(sql)))).toBe(false);
+  });
+
+  it("does not reveal an absent or another workspace's issue", async () => {
+    database.query.mockResolvedValue({ rows: [] });
+    await expect(createAutomatedInvestigationForProblem("org-1", "prob-other"))
+      .rejects.toMatchObject({ status: 404, message: "This issue was not found in the current workspace." });
+    expect(database.query).toHaveBeenCalledWith(expect.stringContaining("WHERE problem.org_id=$1 AND problem.id=$2"), ["org-1", "prob-other"]);
+  });
+
+  it("describes an empty automation queue without claiming evidence is missing", async () => {
+    database.query.mockResolvedValue({ rows: [] });
+    const result = await createNextAutomatedInvestigation("org-1");
+    expect(result).toMatchObject({ created: false, problemId: null, reason: expect.stringContaining("No issues are ready for investigation") });
+    expect(result.reason).toContain("Usability");
+    expect(database.query.mock.calls.some(([sql]) => String(sql).includes("AS linked_report_count"))).toBe(false);
   });
 
   it("records a tenant-scoped current-issue verification with audit evidence", async () => {

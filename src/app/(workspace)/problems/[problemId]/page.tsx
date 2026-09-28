@@ -8,6 +8,9 @@ import { findState } from "@/lib/store";
 import { getWorkspaceData } from "@/lib/workspace-repository";
 import { getProductProblemEvidenceBundle } from "@/lib/problem-evidence-bundle";
 import { reconcileStaleIssueRuntimeVerifications } from "@/lib/issue-runtime-verification";
+import { readIssueConversation } from "@/lib/issue-conversation-repository";
+import { readPresentationDemo } from "@/lib/presentation-demo";
+import { ProblemDiscussion } from "@/components/problem-discussion";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +24,10 @@ export default async function Page({ params }: { params: Promise<{ problemId: st
   ]);
   const problem = data.analytics.problems.find((item) => item.id === problemId);
   if (!problem) notFound();
+  const [conversation, demo] = await Promise.all([readIssueConversation(user.orgId, problemId), readPresentationDemo(user.orgId)]);
+  const discussion = <ProblemDiscussion key={problemId} problemId={problemId} initial={conversation} currentPromptHash={null}
+    canDiscuss={["Admin", "Contributor"].includes(user.role)} canRevise={false} canTest={false} demo={demo}
+    disabledReason={process.env.APP_MODE === "demo" ? "Live conversation is off in demo mode." : undefined} />;
   const investigation = investigations.find((item) => item.problemId === problemId);
   const evidenceBundle = investigation
     ? await getProductProblemEvidenceBundle(user.orgId, problemId)
@@ -39,9 +46,9 @@ export default async function Page({ params }: { params: Promise<{ problemId: st
       const problemAudit = state.audit.filter((event) =>
         relatedAuditEntityIds.has(event.entityId) || event.traceId.includes(problemId),
       );
-      return <><ProblemWorkspace initialState={structuredClone(state)} problem={data.primaryProblem} feedbackItems={data.feedback}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)}/><ProblemHistory audit={structuredClone(problemAudit)}/></>;
+      return <><ProblemWorkspace initialState={structuredClone(state)} problem={data.primaryProblem} feedbackItems={data.feedback} discussion={discussion}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)}/><ProblemHistory audit={structuredClone(problemAudit)}/></>;
     }
   }
   const promptDraftReadiness = await readPromptDraftReadiness(user.orgId, problemId);
-  return <><GenericProblemScreen problem={problem} promptDraftReadiness={structuredClone(promptDraftReadiness)} investigation={structuredClone(investigation)}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)} showSummary={false}/></>;
+  return <><GenericProblemScreen problem={problem} promptDraftReadiness={structuredClone(promptDraftReadiness)} investigation={structuredClone(investigation)} discussion={discussion}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)} showSummary={false}/></>;
 }

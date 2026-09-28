@@ -5359,10 +5359,12 @@ export function GenericProblemScreen({
   problem,
   promptDraftReadiness,
   investigation,
+  discussion,
 }: {
   problem: OverviewAnalytics["problems"][number];
   promptDraftReadiness: PromptDraftReadiness;
   investigation?: InvestigationWorkspaceItem;
+  discussion?: React.ReactNode;
 }) {
   const signalConfidenceHelpId = useId();
   const promptThresholdHelpId = useId();
@@ -5410,6 +5412,7 @@ export function GenericProblemScreen({
           </span>
         </div>}
       />
+      {discussion}
       <section className="card prompt-readiness-card">
           <div className="card-head">
             <div>
