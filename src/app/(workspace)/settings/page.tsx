@@ -16,6 +16,7 @@ export default async function Page() {
   ]);
   return (
     <SettingsScreen
+      key={data.orgId}
       settings={data.settings}
       orgId={data.orgId}
       userRole={user.role}

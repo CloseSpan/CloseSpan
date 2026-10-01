@@ -26,6 +26,8 @@ import {
 import type { PromptEvaluationMode } from "@/lib/prompt-evaluation-policy";
 import { PROMPT_DRAFT_MINIMUM_REPORTS, resolvePromptDraftReviewer } from "@/lib/prompt-draft-policy";
 import { useWorkspaceChrome } from "./workspace-chrome";
+import { workspacePolicyDraftKey } from "@/lib/workspace-policy-draft";
+import type { WorkspacePolicyInput } from "@/lib/workspace-settings-repository";
 
 export function SettingsScreen({
   settings,
@@ -67,11 +69,24 @@ export function SettingsScreen({
     settings.promptEvaluationMode,
   );
   const { setPrimaryAction, clearPrimaryAction } = useWorkspaceChrome();
+  const policyDraft: WorkspacePolicyInput = {
+    autonomyLevel: autonomy,
+    piiRedaction: pii,
+    retentionDays: retentionDays(),
+    priorityWeights: weights,
+    promptDraftPolicy,
+    promptEvaluationMode,
+  };
+  const policyDraftKey = workspacePolicyDraftKey(policyDraft);
+  const [savedPolicyKey, setSavedPolicyKey] = useState(policyDraftKey);
+  const hasUnsavedChanges = policyDraftKey !== savedPolicyKey;
+  const saveInFlightRef = useRef(false);
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
   const retentionValid =
     retention !== CUSTOM_RETENTION_OPTION ||
     isValidCustomRetention(customRetention);
   const isAdmin = userRole === "Admin";
+  const policyInputsDisabled = !isAdmin || saving;
   const localEvaluationReady = settings.ai.configured;
   const saveDisabledReason =
     !isAdmin
@@ -82,9 +97,11 @@ export function SettingsScreen({
           ? "Enter a valid feedback-retention period."
           : autonomyCapabilities(autonomy).automaticallyAuthorizeExecution && !automaticCodingConfirmed
             ? "Confirm automatic coding within approved repositories and workspace budget checks before saving."
-          : promptEvaluationMode === "pdd_local" && !localEvaluationReady
-            ? "Configure a workspace AI provider before selecting local Prompt Driven evaluation."
-          : undefined;
+            : promptEvaluationMode === "pdd_local" && !localEvaluationReady
+              ? "Configure a workspace AI provider before selecting local Prompt Driven evaluation."
+              : !hasUnsavedChanges
+                ? "No unsaved changes."
+                : undefined;
   const labels: Record<string, string> = {
     frequency: "Frequency",
     severity: "Severity",
@@ -105,7 +122,8 @@ export function SettingsScreen({
   }
 
   async function savePolicy(): Promise<void> {
-    if (!isAdmin) return;
+    if (saveDisabledReason || saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
     setSaving(true);
     setSaved(false);
     setSaveError(undefined);
@@ -118,14 +136,7 @@ export function SettingsScreen({
           "idempotency-key": crypto.randomUUID(),
           "x-request-id": crypto.randomUUID(),
         },
-        body: JSON.stringify({
-          autonomyLevel: autonomy,
-          piiRedaction: pii,
-          retentionDays: retentionDays(),
-          priorityWeights: weights,
-          promptDraftPolicy,
-          promptEvaluationMode,
-        }),
+        body: JSON.stringify(policyDraft),
       });
       const payload = await response.json() as {
         error?: string;
@@ -139,10 +150,12 @@ export function SettingsScreen({
       if (payload.policy?.promptEvaluationMode) {
         setPromptEvaluationMode(payload.policy.promptEvaluationMode);
       }
+      setSavedPolicyKey(workspacePolicyDraftKey({ ...policyDraft, ...payload.policy }));
       setSaved(true);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Workspace policy could not be saved.");
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   }
@@ -198,7 +211,7 @@ export function SettingsScreen({
                   ariaLabel="Autonomy level"
                   value={autonomy}
                   options={autonomyLevels.filter((level) => level !== "Full autonomy" || settings.autonomyLevel === "Full autonomy")}
-                  disabled={!isAdmin}
+                  disabled={policyInputsDisabled}
                   onValueChange={(value) => {
                     setAutonomy(value as AutonomyLevel);
                     if (autonomyCapabilities(value as AutonomyLevel).automaticallyAuthorizeExecution) {
@@ -224,7 +237,7 @@ export function SettingsScreen({
                     <input
                       type="checkbox"
                       checked={automaticCodingConfirmed}
-                      disabled={!isAdmin}
+                      disabled={policyInputsDisabled}
                       onChange={(event) => {
                         setAutomaticCodingConfirmed(event.target.checked);
                         setSaved(false);
@@ -254,7 +267,7 @@ export function SettingsScreen({
                     { label: "Manual", value: "manual" },
                     { label: "Automatic draft", value: "automatic" },
                   ]}
-                  disabled={!isAdmin}
+                  disabled={policyInputsDisabled}
                   onValueChange={(mode) => {
                     setPromptDraftPolicy((value) => ({ ...value, mode: mode as "manual" | "automatic" }));
                     setSaved(false);
@@ -263,11 +276,11 @@ export function SettingsScreen({
               </div>
               <label className="toggle-row section-gap-sm">
                 <div><strong>Bug reports</strong></div>
-                <input type="checkbox" checked={promptDraftPolicy.bugReports} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, bugReports: event.target.checked })); setSaved(false); }} />
+                <input type="checkbox" checked={promptDraftPolicy.bugReports} disabled={policyInputsDisabled || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, bugReports: event.target.checked })); setSaved(false); }} />
               </label>
               <label className="toggle-row">
                 <div><strong>Feature requests</strong></div>
-                <input type="checkbox" checked={promptDraftPolicy.featureRequests} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, featureRequests: event.target.checked })); setSaved(false); }} />
+                <input type="checkbox" checked={promptDraftPolicy.featureRequests} disabled={policyInputsDisabled || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, featureRequests: event.target.checked })); setSaved(false); }} />
               </label>
               <div className="toggle-row">
                 <span>Minimum reports</span>
@@ -275,14 +288,14 @@ export function SettingsScreen({
               </div>
               <label className="weight-row">
                 <span>Confidence</span>
-                <input type="range" min="50" max="100" step="5" value={Math.round(promptDraftPolicy.minimumConfidence * 100)} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, minimumConfidence: Number(event.target.value) / 100 })); setSaved(false); }} />
+                <input type="range" min="50" max="100" step="5" value={Math.round(promptDraftPolicy.minimumConfidence * 100)} disabled={policyInputsDisabled || promptDraftPolicy.mode !== "automatic"} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, minimumConfidence: Number(event.target.value) / 100 })); setSaved(false); }} />
                 <strong>{Math.round(promptDraftPolicy.minimumConfidence * 100)}%</strong>
               </label>
               <div className="field section-gap-sm">
                 <span>Assigned reviewer</span>
                 <CustomSelect
                   ariaLabel="Prompt draft reviewer"
-                  disabled={!isAdmin || promptDraftPolicy.mode !== "automatic"}
+                  disabled={policyInputsDisabled || promptDraftPolicy.mode !== "automatic"}
                   value={promptDraftPolicy.reviewerId ?? ""}
                   options={[
                     ...(!resolvePromptDraftReviewer(null, settings.members) ? [{ label: "Unassigned", value: "" }] : []),
@@ -293,11 +306,11 @@ export function SettingsScreen({
               </div>
               <label className="toggle-row section-gap-sm">
                 <div><strong>In-app notification</strong></div>
-                <input type="checkbox" checked={promptDraftPolicy.inAppNotifications} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, inAppNotifications: event.target.checked })); setSaved(false); }} />
+                <input type="checkbox" checked={promptDraftPolicy.inAppNotifications} disabled={policyInputsDisabled || promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, inAppNotifications: event.target.checked })); setSaved(false); }} />
               </label>
               <label className="toggle-row">
                 <div><strong>Email alert</strong></div>
-                <input type="checkbox" checked={promptDraftPolicy.emailNotifications} disabled={!isAdmin || promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, emailNotifications: event.target.checked })); setSaved(false); }} />
+                <input type="checkbox" checked={promptDraftPolicy.emailNotifications} disabled={policyInputsDisabled || promptDraftPolicy.mode !== "automatic" || !promptDraftPolicy.reviewerId} onChange={(event) => { setPromptDraftPolicy((value) => ({ ...value, emailNotifications: event.target.checked })); setSaved(false); }} />
               </label>
               {promptDraftPolicy.emailNotifications && !promptEmailConfigured && (
                 <div className="callout warning" role="status">
@@ -328,7 +341,7 @@ export function SettingsScreen({
                       value: "pdd_cloud_with_local_fallback",
                     },
                   ]}
-                  disabled={!isAdmin}
+                  disabled={policyInputsDisabled}
                   onValueChange={(mode) => {
                     setPromptEvaluationMode(mode as PromptEvaluationMode);
                     setSaved(false);
@@ -391,7 +404,7 @@ export function SettingsScreen({
                     min="0"
                     max="40"
                     value={weight}
-                    disabled={!isAdmin}
+                    disabled={policyInputsDisabled}
                     onChange={(event) => {
                       setWeights((value) => ({
                         ...value,
@@ -417,7 +430,7 @@ export function SettingsScreen({
                 <input
                   type="checkbox"
                   checked={pii}
-                  disabled={!isAdmin}
+                  disabled={policyInputsDisabled}
                   onChange={(event) => {
                     setPii(event.target.checked);
                     setSaved(false);
@@ -432,7 +445,7 @@ export function SettingsScreen({
                   inlineMenu
                   value={retention}
                   options={["90 days", "365 days", CUSTOM_RETENTION_OPTION]}
-                  disabled={!isAdmin}
+                  disabled={policyInputsDisabled}
                   onValueChange={(value) => {
                     setRetention(value);
                     setSaved(false);
@@ -441,7 +454,7 @@ export function SettingsScreen({
                 <CustomRetentionInput
                   open={retention === CUSTOM_RETENTION_OPTION}
                   value={customRetention}
-                  disabled={!isAdmin}
+                  disabled={policyInputsDisabled}
                   onValueChange={(value) => {
                     setCustomRetention(value);
                     setSaved(false);

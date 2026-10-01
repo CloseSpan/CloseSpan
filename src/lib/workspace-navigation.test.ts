@@ -72,6 +72,7 @@ describe("workspace navigation", () => {
     expect(workspaceSection("/settings")).toBe("Settings");
     expect(workspaceSection("/settings#members")).toBe("Settings");
     expect(workspaceSection("/settings/appearance")).toBe("Appearance");
+    expect(workspaceSection("/settings/connections")).toBe("Connections");
     expect(workspaceSection("/settings/appearance?preview=dark")).toBe("Appearance");
     expect(workspaceSection("/integrations")).toBe("Integrations");
     expect(workspaceSection("/admin/users")).toBe("Active users");

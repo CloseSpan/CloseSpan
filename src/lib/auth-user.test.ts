@@ -10,7 +10,10 @@ const authState = vi.hoisted(() => ({
   demoWorkspace: vi.fn(),
   demoSessionId: null as string | null,
   demoReturnOrgId: null as string | null,
+  accountStatus: vi.fn(async () => "Active"),
 }));
+vi.mock("./platform-user-access", () => ({ readPlatformUserStatus: authState.accountStatus }));
+beforeEach(() => { authState.accountStatus.mockReset().mockResolvedValue("Active"); });
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => authState.session),
@@ -211,6 +214,14 @@ describe("production workspace access", () => {
     authState.ensureMemberships.mockReset();
   });
 
+  it.each(["Blocked", "Deleted"])("denies %s accounts before loading or recreating memberships", async (status) => {
+    authState.session = { user: { email: "member@example.com" } };
+    authState.accountStatus.mockResolvedValue(status);
+    await expect(resolveWorkspaceAccess()).resolves.toEqual({ status: "restricted", reason: status });
+    expect(authState.memberships).not.toHaveBeenCalled();
+    expect(authState.ensureMemberships).not.toHaveBeenCalled();
+  });
+
   it("grants every verified user access to an existing organization", async () => {
     authState.session = {
       user: { email: "sam@example.com", name: "Sam" },
@@ -357,6 +368,19 @@ describe("hybrid demo access", () => {
     authState.activeOrganizationId = null;
     authState.memberships.mockReset();
     authState.ensureMemberships.mockReset();
+  });
+
+  it("does not let blocked accounts fall back to the virtual demo", async () => {
+    authState.accountStatus.mockResolvedValue("Blocked");
+    await expect(resolveWorkspaceAccess()).resolves.toEqual({ status: "restricted", reason: "Blocked" });
+    expect(authState.memberships).not.toHaveBeenCalled();
+  });
+  it("fails closed when account-access storage is unavailable even in hybrid demo mode", async () => {
+    authState.accountStatus.mockRejectedValue(new Error("offline"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(resolveWorkspaceAccess()).resolves.toEqual({ status: "unavailable", email: "sam@example.com" });
+    expect(authState.memberships).not.toHaveBeenCalled();
+    log.mockRestore();
   });
 
   it("merges the memory demo with durable organizations", async () => {

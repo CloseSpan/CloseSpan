@@ -1,5 +1,6 @@
 import { databasePool, persistenceMode } from "./db";
 import { normalizeMembershipEmail } from "./organization-repository";
+import { ensurePlatformUserAccessSchema, type PlatformUserStatus } from "./platform-user-access";
 
 let activitySchemaPromise: Promise<void> | null = null;
 
@@ -9,6 +10,8 @@ export interface ActivePlatformUser {
   signInCount: number;
   firstJoinedAt: Date;
   lastSignedInAt: Date;
+  status: "Active" | "Blocked";
+  deleteRestriction?: string;
   organizations: Array<{
     id: string;
     name: string;
@@ -77,8 +80,8 @@ export async function recordPlatformUserSignIn(
 export async function listActivePlatformUsers(): Promise<ActivePlatformUser[]> {
   if (persistenceMode() !== "postgres") return [];
   await ensureActivitySchema();
-
-  const [memberships, activity] = await Promise.all([
+  await ensurePlatformUserAccessSchema();
+  const [memberships, activity, access] = await Promise.all([
     databasePool().query<{
       email: string;
       display_name: string;
@@ -106,15 +109,19 @@ export async function listActivePlatformUsers(): Promise<ActivePlatformUser[]> {
               first_signed_in_at,last_signed_in_at
          FROM platform_user_activity`,
     ),
+    databasePool().query<{ email: string; status: PlatformUserStatus }>("SELECT email,status FROM platform_user_access"),
   ]);
 
   const activityByEmail = new Map(
     activity.rows.map((row) => [normalizeMembershipEmail(row.email), row]),
   );
   const users = new Map<string, ActivePlatformUser>();
+  const statusByEmail = new Map(access.rows.map((row) => [row.email, row.status]));
 
   for (const membership of memberships.rows) {
     const email = normalizeMembershipEmail(membership.email);
+    const status = statusByEmail.get(email) ?? "Active";
+    if (status === "Deleted") continue;
     const signIn = activityByEmail.get(email);
     const joinedAt = new Date(membership.organization_created_at);
     const existing = users.get(email);
@@ -133,6 +140,7 @@ export async function listActivePlatformUsers(): Promise<ActivePlatformUser[]> {
 
     users.set(email, {
       email,
+      status,
       displayName:
         signIn?.display_name?.trim() || membership.display_name || email,
       signInCount: signIn?.sign_in_count ?? 0,
@@ -142,7 +150,14 @@ export async function listActivePlatformUsers(): Promise<ActivePlatformUser[]> {
     });
   }
 
-  return [...users.values()].sort(
+  const entries = [...users.values()];
+  for (const entry of entries) {
+    const soleAdmin = entry.organizations.find((org) => org.role === "Admin" && !entries.some((other) =>
+      other.email !== entry.email && other.status === "Active" && other.organizations.some((membership) => membership.id === org.id && membership.role === "Admin"),
+    ));
+    if (soleAdmin) entry.deleteRestriction = `Assign another active admin in ${soleAdmin.name} before deleting this user. You can block their access instead.`;
+  }
+  return entries.sort(
     (left, right) =>
       right.lastSignedInAt.getTime() - left.lastSignedInAt.getTime(),
   );

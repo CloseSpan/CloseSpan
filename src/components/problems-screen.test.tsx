@@ -4,6 +4,8 @@ import { calculateOverviewAnalytics, createEmptyOverviewAnalytics } from "@/lib/
 import { ProblemLifecycleBoard, ProblemsScreen } from "./screens";
 import { IssueList, IssueViewControls } from "./issue-list";
 import { EMPTY_ISSUE_FILTERS, filterIssues } from "@/lib/issue-views";
+import { ISSUE_BOARD_GROUPS } from "@/lib/issue-board";
+import { PRODUCT_PROBLEM_STAGES } from "@/lib/problem-stage-transition";
 
 describe("ProblemsScreen", () => {
   it("gives an empty issue list a clear next action", () => {
@@ -94,13 +96,45 @@ describe("ProblemsScreen", () => {
   it("leads board cards with the issue and labels each colored stage", () => {
     const issues = calculateOverviewAnalytics(new Date("2026-07-21T18:00:00.000Z")).problems;
     const board = renderToStaticMarkup(<ProblemLifecycleBoard problems={issues} />);
-    expect(board).toContain('data-stage="Detected"');
+    expect(board).toContain('data-stage="Open"');
     expect(board).toContain('class="board-stage-dot" aria-hidden="true"');
     expect(board).toContain('class="board-stage-count"');
     expect(board).toContain('class="issue-card-area"');
     expect(board).toContain('class="issue-card-reports"');
     expect(board.indexOf('class="problem-card-title"')).toBeLessThan(board.indexOf('class="ticket-badges"'));
     expect(board).toContain("Move stage");
+  });
+
+  it("shows all nine recorded stages in four compact, non-draggable summary columns", () => {
+    const base = calculateOverviewAnalytics().problems[0];
+    const problems = PRODUCT_PROBLEM_STAGES.map((stage, index) => ({ ...base, id: `stage-${index}`, stage }));
+    const markup = renderToStaticMarkup(<ProblemLifecycleBoard problems={problems} />);
+    expect(markup.match(/class="board-col"/g)).toHaveLength(4);
+    for (const group of ISSUE_BOARD_GROUPS) expect(markup).toContain(`data-stage="${group}"`);
+    expect(markup.match(/class="problem-card problem-card-shell"/g)).toHaveLength(9);
+    expect(markup.match(/class="badge issue-card-stage"/g)).toHaveLength(9);
+    expect(markup).not.toContain('draggable="true"');
+    expect(markup).not.toContain("problem-card-drag-indicator");
+    for (const stage of ["Approved", "Planned", "Released", "Verified"]) expect(markup).toContain(`>${stage}</span>`);
+  });
+
+  it("keeps a sparse inventory in List by default", () => {
+    const analytics = calculateOverviewAnalytics();
+    analytics.problems = analytics.problems.slice(0, 1);
+    const markup = renderToStaticMarkup(<ProblemsScreen analytics={analytics} />);
+    expect(markup).toContain('id="problem-view-tab-problems" type="button" role="tab" aria-controls="problem-view-panel-problems" aria-selected="true"');
+    expect(markup).not.toContain('class="board-col"');
+  });
+
+  it("uses actual pending decisions for Needs your review, not legacy intake labels", () => {
+    const base = calculateOverviewAnalytics().problems[0];
+    const markup = renderToStaticMarkup(<ProblemLifecycleBoard problems={[
+      { ...base, id: "intake", stage: "Needs review", title: "New report" },
+      { ...base, id: "pending", stage: "In progress", reviewState: "needed", title: "Approve this change" },
+    ]} />);
+    const reviewColumn = markup.split('aria-label="Needs your review"')[1].split("</section>")[0];
+    expect(reviewColumn).toContain("Approve this change");
+    expect(reviewColumn).not.toContain("New report");
   });
 
   it("shows one-word active work with a spinner on the matching board card", () => {
@@ -126,6 +160,6 @@ describe("ProblemsScreen", () => {
     expect(markup.match(/problem-card-work-status/g)).toHaveLength(1);
     expect(markup).toContain('class="problem-card-title"');
     expect(markup).toContain(`title="${problem.title}"`);
-    expect(markup).toContain("Release Ready");
+    expect(markup).toContain('data-stage="In progress"');
   });
 });

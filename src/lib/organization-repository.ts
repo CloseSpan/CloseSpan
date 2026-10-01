@@ -188,6 +188,10 @@ async function createOrganizationWithClient(
   const creatorName = requiredTrimmed(input.creator.name, "Creator name", 160);
   const creatorEmail = requiredTrimmed(input.creator.email, "Creator email", 320)
     .toLowerCase();
+  const normalizedCreatorEmail = normalizeMembershipEmail(creatorEmail);
+  await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [normalizedCreatorEmail]);
+  const access = await client.query<{ status: string }>("SELECT status FROM platform_user_access WHERE email=$1", [normalizedCreatorEmail]);
+  if (access.rows[0] && access.rows[0].status !== "Active") throw new Error("This account cannot create a workspace.");
   const productName =
     optionalTrimmed(input.productName, 160) ?? organizationName;
   const productUrl = optionalTrimmed(input.productUrl, 500);
@@ -279,6 +283,8 @@ export async function createOrganization(
   requiredTrimmed(input.creator.name, "Creator name", 160);
   requiredTrimmed(input.creator.email, "Creator email", 320);
 
+  const { ensurePlatformUserAccessSchema } = await import("./platform-user-access");
+  await ensurePlatformUserAccessSchema();
   return transaction((client) => createOrganizationWithClient(client, input));
 }
 
@@ -302,12 +308,16 @@ export async function ensureOrganizationMemberships(
     "CloseSpan user"
   ).slice(0, 160);
   const workspaceName = `${creatorName}'s workspace`.slice(0, 120);
+  const { ensurePlatformUserAccessSchema } = await import("./platform-user-access");
+  await ensurePlatformUserAccessSchema();
 
   return transaction(async (client) => {
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
       [normalizedEmail],
     );
+    const access = await client.query<{ status: string }>("SELECT status FROM platform_user_access WHERE email=$1", [normalizedEmail]);
+    if (access.rows[0] && access.rows[0].status !== "Active") throw new Error("This account cannot access a workspace.");
     const memberships = await queryOrganizationMemberships(
       client,
       normalizedEmail,

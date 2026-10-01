@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateOverviewAnalytics } from "./overview-analytics";
-import { PRODUCT_PROBLEM_STAGES } from "./problem-stage-transition";
+import { ISSUE_BOARD_GROUPS } from "./issue-board";
 import { activeIssueFilterCount, EMPTY_ISSUE_FILTERS, filterIssues, groupIssues, issueProductArea, type Issue } from "./issue-views";
 
 const base = calculateOverviewAnalytics(new Date("2026-07-21T18:00:00.000Z")).problems[0];
@@ -30,9 +30,9 @@ describe("shared issue view data", () => {
     expect(grouped.map((i) => i.id).sort()).toEqual(issues.map((i) => i.id).sort());
     expect(issues.map((i) => i.id)).toEqual(["csv", "usage", "pdf"]);
   });
-  it("uses lifecycle order and only adds empty stages when requested for the board", () => {
-    expect(groupIssues(issues, "stage").map((g) => g.key)).toEqual(["Detected", "Needs review", "In progress"]);
-    expect(groupIssues(issues, "stage", true).map((g) => g.key)).toEqual(PRODUCT_PROBLEM_STAGES);
+  it("uses four summary groups and only includes empty groups on the board", () => {
+    expect(groupIssues(issues, "stage").map((g) => g.key)).toEqual(["Open", "In progress"]);
+    expect(groupIssues(issues, "stage", true).map((g) => g.key)).toEqual(ISSUE_BOARD_GROUPS);
   });
   it("labels missing product areas consistently in filtering and grouping", () => {
     const missing = { ...issues[0], productArea: " " };

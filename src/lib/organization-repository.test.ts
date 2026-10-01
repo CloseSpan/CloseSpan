@@ -38,7 +38,7 @@ describe("organization repository", () => {
     database.mode = "postgres";
     database.workspaceMode = "postgres";
     database.client.query.mockReset().mockResolvedValue({ rows: [], rowCount: 1 });
-    database.pool.query.mockReset();
+    database.pool.query.mockReset().mockResolvedValue({ rows: [], rowCount: 0 });
     database.transaction.mockReset().mockImplementation(
       async (work: (client: typeof database.client) => Promise<unknown>) =>
         work(database.client),
@@ -210,6 +210,13 @@ describe("organization repository", () => {
     expect(database.client.query.mock.calls.some(([sql]) =>
       sqlIncludes(sql, "INSERT INTO organizations"),
     )).toBe(false);
+  });
+
+  it.each(["Blocked", "Deleted"])("refuses provisioning for %s accounts after acquiring the same account lock", async (status) => {
+    database.client.query.mockImplementation(async (sql: unknown) => ({ rows: String(sql).includes("SELECT status FROM platform_user_access") ? [{ status }] : [] }));
+    await expect(ensureOrganizationMemberships("person@example.com", "Person")).rejects.toThrow("cannot access a workspace");
+    await expect(createOrganization({ name: "New", creator: { name: "Person", email: "person@example.com" } })).rejects.toThrow("cannot create a workspace");
+    expect(database.client.query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO"))).toBe(false);
   });
 
   it("rejects an empty organization name before opening a transaction", async () => {

@@ -383,6 +383,35 @@ export async function createWebhookIntegration(
   };
 }
 
+export async function disconnectWebhookIntegration(orgId: string, actorId: string): Promise<void> {
+  requirePostgresWorkspace(orgId, "Webhook disconnection");
+  const client = await databasePool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `UPDATE integrations SET connection_state='Disconnected', permissions='[]'::jsonb, error_message=NULL
+        WHERE org_id=$1 AND id=$2 AND provider=$3`,
+      [orgId, "int_webhook", WEBHOOK_PROVIDER],
+    );
+    // Revoke the signing credential; imported feedback and its evidence remain.
+    await client.query(
+      `DELETE FROM integration_webhook_secrets WHERE org_id=$1 AND integration_id=$2`,
+      [orgId, "int_webhook"],
+    );
+    await client.query(
+      `INSERT INTO audit_events(id, org_id, actor_id, actor_name, action, entity_type, entity_id, trace_id)
+       VALUES ($1,$2,$3,'Workspace admin','Disconnected custom webhook integration','Integration',$4,$5)`,
+      [randomUUID(), orgId, actorId, "int_webhook", `disconnect_webhook_${randomUUID()}`],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function markGithubPendingSetup(
   orgId: string,
   actorId: string,

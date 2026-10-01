@@ -2,7 +2,9 @@ import { notFound } from "next/navigation";
 import { ActiveUsersAdminTable } from "@/components/active-users-admin-table";
 import { listActivePlatformUsers } from "@/lib/active-user-repository";
 import { requireWorkspaceUser } from "@/lib/auth-user";
-import { isCloseSpanPlatformAdmin } from "@/lib/workspace-access-policy";
+import { isCloseSpanPlatformAdmin, isPrivateBetaOwner } from "@/lib/workspace-access-policy";
+import { readPresentationDemo } from "@/lib/presentation-demo";
+import { persistenceMode } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +13,7 @@ export default async function AdminUsersPage() {
   if (!isCloseSpanPlatformAdmin(user)) notFound();
 
   const entries = await listActivePlatformUsers();
+  const canManage = persistenceMode() === "postgres" && !(await readPresentationDemo(user.orgId));
   const usersWithTrackedSignIns = entries.filter(
     (entry) => entry.signInCount > 0,
   ).length;
@@ -47,8 +50,11 @@ export default async function AdminUsersPage() {
       </div>
 
       <ActiveUsersAdminTable
+        orgId={user.orgId}
+        canManage={canManage}
         entries={entries.map((entry) => ({
           ...entry,
+          protected: entry.email === user.email || isPrivateBetaOwner(entry.email),
           firstJoinedAt: entry.firstJoinedAt.toISOString(),
           lastSignedInAt: entry.lastSignedInAt.toISOString(),
         }))}

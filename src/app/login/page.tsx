@@ -53,7 +53,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const workspaceUnavailable =
     access.status === "unavailable" ||
-    params.error === "WorkspaceUnavailable";
+    params.error === "WorkspaceUnavailable" || params.error === "AccountAccessUnavailable";
+  const accountRestricted = access.status === "restricted" ||
+    params.error === "AccountBlocked" || params.error === "AccountDeleted";
 
   return (
     <main className="login-page">
@@ -74,7 +76,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </p>
         </div>
 
-        {workspaceUnavailable && (
+        {accountRestricted && (
+          <div className="login-alert" role="alert">
+            <CircleAlert aria-hidden="true" size={17} />
+            <div>
+              <strong>Account access is disabled</strong>
+              <p>This CloseSpan account has been blocked or deleted. Contact the platform administrator if you need help.</p>
+            </div>
+          </div>
+        )}
+        {!accountRestricted && workspaceUnavailable && (
           <div className="login-alert" role="alert">
             <CircleAlert aria-hidden="true" size={17} />
             <div>
@@ -88,11 +99,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </div>
         )}
 
-        {access.status === "unavailable" ? (
+        {access.status === "unavailable" || access.status === "restricted" ? (
           <div className="login-denied-actions">
-            <Link className="btn primary login-request-access" href="/overview">
+            {!accountRestricted && <Link className="btn primary login-request-access" href="/overview">
               Try loading the workspace again
-            </Link>
+            </Link>}
             <form action={signOutCurrentUser}>
               <button className="btn login-google" type="submit">
                 Sign out and use another Google account

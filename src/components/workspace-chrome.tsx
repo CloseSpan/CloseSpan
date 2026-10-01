@@ -70,8 +70,8 @@ export function WorkspacePrimaryActionControl() {
   const settingsRoute =
     pathname === "/settings" || pathname.startsWith("/settings/");
 
-  // Personal appearance applies immediately and does not save workspace policy.
-  if (pathname === "/settings/appearance" || pathname === "/settings/technical") return null;
+  // Only the workspace-policy editor registers a Save policy action.
+  if (settingsRoute && pathname !== "/settings" && pathname !== "/settings/") return null;
 
   if (!settingsRoute) {
     if (pathname === "/problems") return null;
@@ -86,7 +86,7 @@ export function WorkspacePrimaryActionControl() {
   return (
     <button
       type="button"
-      className="btn primary workspace-primary-action"
+      className="btn workspace-primary-action"
       disabled={
         !primaryAction || primaryAction.disabled || primaryAction.pending
       }

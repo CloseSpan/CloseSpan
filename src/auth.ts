@@ -3,6 +3,7 @@ import Google from "next-auth/providers/google";
 import { recordPlatformUserSignIn } from "@/lib/active-user-repository";
 import { normalizeEmail } from "@/lib/auth-user";
 import { PUBLIC_DISCOVERY_PATHS } from "@/lib/site";
+import { readPlatformUserStatus } from "@/lib/platform-user-access";
 
 const PUBLIC_PAGES = new Set<string>([
   ...PUBLIC_DISCOVERY_PATHS,
@@ -41,6 +42,13 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         ? normalizeEmail(googleProfile.email)
         : "";
       if (!email || googleProfile?.email_verified !== true) return false;
+      try {
+        const status = await readPlatformUserStatus(email);
+        if (status !== "Active") return `/login?error=Account${status}`;
+      } catch {
+        // Access controls fail closed; analytics below remains best effort.
+        return "/login?error=AccountAccessUnavailable";
+      }
       try {
         await recordPlatformUserSignIn(
           email,

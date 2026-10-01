@@ -126,6 +126,7 @@ export function workspaceSection(pathname: string): string {
   ) {
     return "Appearance";
   }
+  if (normalized === "/settings/connections") return "Connections";
   if (normalized === "/settings" || normalized.startsWith("/settings/")) {
     return WORKSPACE_LABELS.settings;
   }

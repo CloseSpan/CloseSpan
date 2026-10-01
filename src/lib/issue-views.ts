@@ -1,5 +1,5 @@
 import type { OverviewAnalytics } from "./overview-analytics";
-import { PRODUCT_PROBLEM_STAGES } from "./problem-stage-transition";
+import { ISSUE_BOARD_GROUPS, issueBoardGroup } from "./issue-board";
 
 export type Issue = OverviewAnalytics["problems"][number];
 export type IssueGrouping = "none" | "productArea" | "type" | "stage";
@@ -39,10 +39,11 @@ export function groupIssues<T extends Issue>(
   if (grouping === "none") return [{ key: "All issues", issues }];
   const groups = new Map<string, T[]>();
   if (grouping === "stage") {
-    for (const stage of PRODUCT_PROBLEM_STAGES) groups.set(stage, []);
+    for (const group of ISSUE_BOARD_GROUPS) groups.set(group, []);
   }
   for (const issue of issues) {
-    const key = grouping === "productArea" ? issueProductArea(issue) : issue[grouping];
+    const key = grouping === "stage" ? issueBoardGroup(issue)
+      : grouping === "productArea" ? issueProductArea(issue) : issue[grouping];
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(issue);
   }

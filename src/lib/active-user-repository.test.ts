@@ -81,6 +81,8 @@ describe("active platform user repository", () => {
     expect(users).toEqual([
       {
         email: "samexample@gmail.com",
+        status: "Active",
+        deleteRestriction: "Assign another active admin in New workspace before deleting this user. You can block their access instead.",
         displayName: "Sam Operator",
         signInCount: 4,
         firstJoinedAt: new Date("2026-08-01T10:00:00Z"),
@@ -92,6 +94,8 @@ describe("active platform user repository", () => {
       },
       {
         email: "member@example.com",
+        status: "Active",
+        deleteRestriction: "Assign another active admin in Member workspace before deleting this user. You can block their access instead.",
         displayName: "Member",
         signInCount: 0,
         firstJoinedAt: new Date("2026-08-15T10:00:00Z"),
@@ -109,5 +113,14 @@ describe("active platform user repository", () => {
     await recordPlatformUserSignIn("member@example.com", "Member");
     await expect(listActivePlatformUsers()).resolves.toEqual([]);
     expect(database.pool.query).not.toHaveBeenCalled();
+  });
+  it("includes blocked accounts for unblocking but excludes deleted accounts", async () => {
+    const original = database.pool.query.getMockImplementation()!;
+    database.pool.query.mockImplementation(async (sql: unknown) => String(sql) === "SELECT email,status FROM platform_user_access"
+      ? { rows: [{ email: "samexample@gmail.com", status: "Blocked" }, { email: "member@example.com", status: "Deleted" }] }
+      : original(sql));
+    const users = await listActivePlatformUsers();
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject({ email: "samexample@gmail.com", status: "Blocked" });
   });
 });

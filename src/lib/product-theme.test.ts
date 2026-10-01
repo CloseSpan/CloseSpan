@@ -102,6 +102,48 @@ describe("shared product visual system", () => {
     expect(trigger).toContain("box-shadow: none;");
   });
 
+  it("keeps inline dropdowns flat without removing floating-menu elevation", () => {
+    const inline = productSource.match(/:root\[data-theme\] \.custom-select-inline-region > \.custom-select-menu \{([^}]+)\}/)?.[1];
+    expect(inline).toContain("box-shadow: none !important;");
+    const overlays = productSource.slice(productSource.indexOf("/* Overlays have real elevation"), productSource.indexOf("/* Inline options expand"));
+    expect(overlays).toContain(".custom-select-menu");
+    expect(overlays).toContain("border: 1px solid var(--border-subtle) !important;");
+    expect(overlays).toContain("box-shadow: var(--shadow-overlay) !important;");
+  });
+
+  it("gives the Prompt Testing queue a boundary, divided rows, and a flat readiness inset", () => {
+    const queue = productSource.slice(productSource.indexOf("/* Prompt Testing is a bounded list"), productSource.indexOf(":root[data-theme] .app-shell :is(.problem-card, .integration, .provider-option):hover"));
+    const block = (selector: string) => {
+      const start = queue.indexOf(`${selector} {`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      return queue.slice(start, queue.indexOf("}", start));
+    };
+    for (const selector of [".pdd-priority-workspace", ".pdd-priority-tracker"]) {
+      expect(block(selector)).toContain("border: 1px solid var(--border-panel) !important;");
+      expect(block(selector)).toContain("box-shadow: none;");
+    }
+    expect(block(".pdd-priority-head")).toContain("border-bottom: 1px solid var(--border-panel) !important;");
+    expect(block(".pdd-priority-head")).toContain("background: var(--surface-panel);");
+    expect(block(".pdd-priority-list > li + li")).toContain("border-top: 1px solid var(--border-panel) !important;");
+    expect(block(".pdd-priority-row:is(:hover, :focus-visible)")).toContain("box-shadow: none;");
+    expect(block(".pdd-priority-row:focus-visible")).toContain("outline-offset: -3px;");
+    expect(block(".pdd-priority-title h3")).toContain("white-space: normal;");
+    expect(queue).toContain("@media (max-width: 720px)");
+    expect(queue).toContain("grid-template-columns: auto minmax(0, 1fr);");
+  });
+
+  it("fits four summary columns without the old nine-column horizontal strip", () => {
+    const board = productSource.slice(productSource.indexOf("/* Summary columns are read-only"), productSource.indexOf(":root[data-theme] .app-shell .board .board-head strong"));
+    expect(board).toContain('board[data-grouping="stage"]');
+    expect(board).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
+    expect(board).toContain("grid-auto-flow: row;");
+    expect(board).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
+    expect(board).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(board).toContain("min-height: 148px;");
+    expect(board).toContain("mask-image: none;");
+    expect(board).toContain('[draggable="false"] { cursor: default; }');
+  });
+
   it("separates shared connector sections and actions with one responsive spacing rhythm", () => {
     const drawer = productSource.slice(productSource.indexOf("/* Separate connector information"), productSource.indexOf(":root[data-theme] :is(.custom-select-option,"));
     expect(drawer).toContain(".integration-drawer-content {");
@@ -145,6 +187,28 @@ describe("shared product visual system", () => {
     expect(hierarchy).toContain("background: var(--workspace-panel-header);");
     expect(hierarchy).not.toContain('data-theme="dark"');
     expect(hierarchy).not.toContain(".landing");
+  });
+
+  it("gives account actions visible neutral hover and keyboard focus without lift", () => {
+    const menu = productSource.slice(productSource.indexOf("/* Account actions"), productSource.indexOf("/* Brand marks"));
+    expect(menu).toContain(".user-menu-panel :is(.user-menu-navigation a, .theme-control-copy):is(:hover, :focus-visible)");
+    expect(menu).toContain("background: var(--surface-pressed);");
+    expect(menu).toContain("color: var(--text-strong);");
+    expect(menu).toContain('a:is(.active, [aria-current="page"]):is(:hover, :focus-visible)');
+    expect(menu).toContain("background: color-mix(in srgb, var(--surface-pressed) 60%, var(--border-subtle));");
+    expect(menu).toContain("form button:is(:hover, :focus-visible):not(:disabled)");
+    expect(menu).toContain("background: var(--danger-soft);");
+    expect(menu).toContain("transform: none;");
+    expect(menu).toContain("box-shadow: none;");
+    expect(menu).toContain("transition: background-color 160ms ease-out, color 160ms ease-out;");
+    expect(menu).not.toContain("svg");
+  });
+
+  it.each([":root", ':root[data-theme="dark"]'])("keeps account hover distinct and readable in %s", (selector) => {
+    const palette = tokensFor(selector);
+    expect(palette["--surface-pressed"]).not.toBe(palette["--surface"]);
+    expect(contrast(palette["--text-strong"], palette["--surface-pressed"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette["--danger"], palette["--danger-soft"])).toBeGreaterThanOrEqual(4.5);
   });
 
   it("keeps the appearance thumb inside its track at both control sizes", () => {

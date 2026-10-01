@@ -1,9 +1,18 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { PlatformUserActions } from "./platform-user-actions";
+
 export interface ActiveUsersAdminEntry {
   email: string;
   displayName: string;
   signInCount: number;
   firstJoinedAt: string;
   lastSignedInAt: string;
+  status: "Active" | "Blocked";
+  protected: boolean;
+  deleteRestriction?: string;
   organizations: Array<{
     id: string;
     name: string;
@@ -19,10 +28,18 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 
 export function ActiveUsersAdminTable({
   entries,
+  orgId,
+  canManage,
 }: {
   entries: ActiveUsersAdminEntry[];
+  orgId: string;
+  canManage: boolean;
 }) {
+  const router = useRouter();
+  const [notice, setNotice] = useState("");
   return (
+    <>
+    {notice && <p role="status">{notice}</p>}
     <section className="card table-wrap">
       <table>
         <caption className="sr-only">Active CloseSpan users</caption>
@@ -34,12 +51,14 @@ export function ActiveUsersAdminTable({
             <th>Sign-ins</th>
             <th>First joined</th>
             <th>Last signed in</th>
+            <th>Access</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {entries.length === 0 ? (
             <tr>
-              <td className="empty" colSpan={6}>
+              <td className="empty" colSpan={8}>
                 No active users yet.
               </td>
             </tr>
@@ -64,11 +83,16 @@ export function ActiveUsersAdminTable({
                 <td>{entry.signInCount || "—"}</td>
                 <td>{dateFormatter.format(new Date(entry.firstJoinedAt))}</td>
                 <td>{dateFormatter.format(new Date(entry.lastSignedInAt))}</td>
+                <td><span className={`badge ${entry.status === "Blocked" ? "warning" : "success"}`}>{entry.status}</span></td>
+                <td>{entry.protected ? <small>Protected account</small> : !canManage ? <small>Read-only workspace</small> :
+                  <PlatformUserActions key={`${entry.email}:${entry.status}`} email={entry.email} displayName={entry.displayName} status={entry.status} orgId={orgId} deleteRestriction={entry.deleteRestriction} onComplete={(message) => { setNotice(message); router.refresh(); }} />
+                }</td>
               </tr>
             ))
           )}
         </tbody>
       </table>
     </section>
+    </>
   );
 }

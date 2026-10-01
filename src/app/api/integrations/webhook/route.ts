@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createWebhookIntegration } from "@/lib/integration-repository";
+import { createWebhookIntegration, disconnectWebhookIntegration } from "@/lib/integration-repository";
 import {
   authorizeAdminMutation,
   errorResponse,
@@ -21,6 +21,16 @@ export async function POST(request: NextRequest) {
     if (message.includes("AI_CREDENTIAL_ENCRYPTION_KEY")) {
       return errorResponse(new HttpError(503, message));
     }
+    return errorResponse(error);
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const context = await authorizeAdminMutation(request);
+    await disconnectWebhookIntegration(context.orgId, context.actorId);
+    return NextResponse.json({ disconnected: true }, { headers: noStoreHeaders });
+  } catch (error) {
     return errorResponse(error);
   }
 }

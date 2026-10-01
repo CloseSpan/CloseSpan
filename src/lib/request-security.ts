@@ -74,6 +74,8 @@ async function authenticatedUser(request: NextRequest): Promise<WorkspaceUser> {
     throw new HttpError(401, "Authentication required");
   if (access.status === "unavailable")
     throw new HttpError(503, "The workspace is temporarily unavailable");
+  if (access.status === "restricted")
+    throw new HttpError(403, `This CloseSpan account is ${access.reason.toLowerCase()}. Contact the platform administrator.`);
   return access.user;
 }
 

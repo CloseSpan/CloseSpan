@@ -31,11 +31,13 @@ export function PipedreamAccountManager({
   integrationId,
   onConnectionStateChange,
   onImportComplete,
+  managementOnly = false,
 }: {
   orgId: string;
   integrationId: PipedreamConnectorId;
   onConnectionStateChange?: (state: IntegrationConnectionState) => void;
   onImportComplete?: (completedAt: string, processed: number) => void;
+  managementOnly?: boolean;
 }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,7 +165,7 @@ export function PipedreamAccountManager({
 
   return (
     <div className="pipedream-account-manager">
-      {integrationId === "int_slack" && slackIntake?.state === "Connected" && (
+      {!managementOnly && integrationId === "int_slack" && slackIntake?.state === "Connected" && (
         <SlackIntakeModeControl
           orgId={orgId}
           initialStatus={slackIntake}
@@ -185,7 +187,7 @@ export function PipedreamAccountManager({
                 <p className="subtle">{account.lastImportAt ? `Last pulled ${new Date(account.lastImportAt).toLocaleString()} · ${account.lastImportCount} processed` : account.state === "Connected" ? "Ready for the first pull" : "Reconnect required"}</p>
               </div>
               <div className="pipedream-account-actions">
-                {integrationId === "int_zendesk" && account.state === "Connected" && (
+                {!managementOnly && integrationId === "int_zendesk" && account.state === "Connected" && (
                   <button className="btn primary" type="button" disabled={pulling === account.accountId} onClick={() => void pull(account.accountId)}>
                     {pulling === account.accountId ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}
                     {pulling === account.accountId ? "Pulling..." : "Pull feedback now"}
@@ -193,7 +195,7 @@ export function PipedreamAccountManager({
                 )}
                 <button className="btn danger" type="button" disabled={removing === account.accountId} onClick={() => void remove(account.accountId)}>
                   {removing === account.accountId ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}
-                  Remove
+                  {managementOnly ? "Disconnect" : "Remove"}
                 </button>
               </div>
             </div>
@@ -212,7 +214,7 @@ export function PipedreamAccountManager({
       {integrationId === "int_slack" && slackSetupWarning && (
         <p className="integration-import failed" role="status">{slackSetupWarning}</p>
       )}
-      <PipedreamConnectButton
+      {!managementOnly && <PipedreamConnectButton
         orgId={orgId}
         integrationId={integrationId}
         initiallyConnected={accounts.length > 0}
@@ -221,7 +223,7 @@ export function PipedreamAccountManager({
           onConnectionStateChange?.("Connected");
           void refresh();
         }}
-      />
+      />}
       {pullNotice && <p className="integration-import succeeded" role="status"><Check size={13} />{pullNotice}</p>}
       {error && <p className="integration-import failed" role="status">{error}</p>}
     </div>

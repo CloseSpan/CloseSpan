@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { NavigationIcon } from "./navigation-icon";
 
 export const SETTINGS_SECTIONS = [
@@ -49,11 +49,31 @@ const settingsIcons: Record<SettingsSectionId, typeof Bot> = {
   usage: Gauge,
 };
 
-function sectionFromHash(hash: string): SettingsSectionId {
+export function sectionFromHash(hash: string): SettingsSectionId {
   const candidate = hash.replace(/^#/, "");
   return SETTINGS_SECTIONS.some(([id]) => id === candidate)
     ? (candidate as SettingsSectionId)
     : "agent";
+}
+
+export function readSettingsSection(): SettingsSectionId | null {
+  if (window.location.pathname !== "/settings" && window.location.pathname !== "/settings/") return null;
+  return sectionFromHash(window.location.hash);
+}
+
+export function subscribeSettingsSection(onChange: () => void): () => void {
+  window.addEventListener("hashchange", onChange);
+  window.addEventListener("popstate", onChange);
+  return () => {
+    window.removeEventListener("hashchange", onChange);
+    window.removeEventListener("popstate", onChange);
+  };
+}
+
+// URL fragments are absent from server requests. Don't guess Automation while
+// hydrating a deep link; the browser snapshot supplies the actual destination.
+function serverSettingsSection(): null {
+  return null;
 }
 
 export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
@@ -61,21 +81,13 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
   const isWorkspaceSettings = pathname === "/settings" || pathname === "/settings/";
   const isAppearance = pathname === "/settings/appearance" || pathname.startsWith("/settings/appearance/");
   const isTechnical = pathname === "/settings/technical";
-  const [activeSection, setActiveSection] =
-    useState<SettingsSectionId>("agent");
-  const isMoreSettings = isTechnical || (isWorkspaceSettings && !["agent", "data", "members", "usage"].includes(activeSection));
-
-  useEffect(() => {
-    if (!isWorkspaceSettings) return;
-
-    function syncSectionFromHash(): void {
-      setActiveSection(sectionFromHash(window.location.hash));
-    }
-
-    syncSectionFromHash();
-    window.addEventListener("hashchange", syncSectionFromHash);
-    return () => window.removeEventListener("hashchange", syncSectionFromHash);
-  }, [isWorkspaceSettings]);
+  const isConnections = pathname === "/settings/connections";
+  const activeSection = useSyncExternalStore(
+    subscribeSettingsSection,
+    readSettingsSection,
+    serverSettingsSection,
+  );
+  const isMoreSettings = isTechnical || (isWorkspaceSettings && activeSection !== null && !["agent", "data", "members", "usage"].includes(activeSection));
 
   return (
     <nav
@@ -106,7 +118,11 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
         Workspace
       </span>
       <div className="settings-sidebar-sections">
-        <Link href="/integrations" prefetch={false}><Cable size={17} aria-hidden="true" /><span>Connections</span></Link>
+        <Link href="/settings/connections" prefetch={false}
+          className={isConnections ? "active" : undefined}
+          aria-current={isConnections ? "page" : undefined}>
+          <NavigationIcon icon={Cable} active={isConnections} /><span>Connections</span>
+        </Link>
         {SETTINGS_SECTIONS.filter(([id]) => ["agent", "data", "members", "usage"].includes(id)).map(([id, label]) => {
           const Icon = settingsIcons[id];
           const active = isWorkspaceSettings && activeSection === id;
@@ -117,9 +133,6 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
               aria-current={active ? "location" : undefined}
               aria-label={label}
               title={label}
-              onClick={() => {
-                if (isWorkspaceSettings) setActiveSection(id);
-              }}
               key={id}
             >
               <NavigationIcon icon={Icon} active={active} />

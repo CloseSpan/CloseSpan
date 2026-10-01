@@ -257,6 +257,70 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   box-shadow: none;
 }
 :root[data-theme] .app-shell .card.table-wrap { background: var(--surface); }
+/* Prompt Testing is a bounded list, with flat rows and a quiet progress inset. */
+:root[data-theme] .app-shell .pdd-priority-workspace {
+  border: 1px solid var(--border-panel) !important;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: none;
+}
+:root[data-theme] .app-shell .pdd-priority-head {
+  align-items: center;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border-panel) !important;
+  background: var(--surface-panel);
+}
+:root[data-theme] .app-shell .pdd-priority-head h2 {
+  font-size: 17px;
+  font-weight: 550;
+}
+:root[data-theme] .app-shell .pdd-priority-list > li + li {
+  border-top: 1px solid var(--border-panel) !important;
+}
+:root[data-theme] .app-shell .pdd-priority-row {
+  gap: var(--space-4);
+  padding: 20px;
+  background: var(--surface);
+  box-shadow: none;
+  transition: background-color var(--duration-normal) var(--ease-standard);
+}
+:root[data-theme] .app-shell .pdd-priority-row:is(:hover, :focus-visible) {
+  background: var(--surface-hover);
+  box-shadow: none;
+}
+:root[data-theme] .app-shell .pdd-priority-row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -3px;
+}
+:root[data-theme] .app-shell .pdd-priority-title {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+:root[data-theme] .app-shell .pdd-priority-title h3 {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+:root[data-theme] .app-shell .pdd-priority-open { white-space: nowrap; }
+:root[data-theme] .app-shell .pdd-priority-tracker {
+  border: 1px solid var(--border-panel) !important;
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: none;
+}
+:root[data-theme] .app-shell .pdd-priority-empty { margin: 20px; }
+@media (max-width: 720px) {
+  :root[data-theme] .app-shell :is(.pdd-priority-head, .pdd-priority-row) { padding: 16px; }
+  :root[data-theme] .app-shell .pdd-priority-row-head {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-3);
+  }
+  :root[data-theme] .app-shell .pdd-priority-open { grid-column: 2; }
+  :root[data-theme] .app-shell .pdd-priority-empty { margin: 16px; }
+}
 :root[data-theme] .app-shell :is(.problem-card, .integration, .provider-option):hover {
   background: var(--surface-pressed);
   border-color: var(--border-strong) !important;
@@ -337,13 +401,9 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   border-radius: var(--radius-pill);
   background: var(--board-stage-color, var(--text-muted));
 }
-.board-col[data-stage="Detected"] { --board-stage-color: var(--icon-amber); }
-.board-col[data-stage="Needs review"] { --board-stage-color: var(--icon-violet); }
-.board-col[data-stage="Approved"] { --board-stage-color: var(--icon-teal); }
-.board-col[data-stage="Planned"] { --board-stage-color: var(--text-muted); }
+.board-col[data-stage="Open"] { --board-stage-color: var(--icon-amber); }
+.board-col[data-stage="Needs your review"] { --board-stage-color: var(--icon-violet); }
 .board-col[data-stage="In progress"] { --board-stage-color: var(--icon-blue); }
-.board-col[data-stage="Release Ready"] { --board-stage-color: var(--icon-teal); }
-.board-col:is([data-stage="Released"], [data-stage="Verified"]) { --board-stage-color: var(--icon-green); }
 .board-col[data-stage="Closed"] { --board-stage-color: var(--text-muted); }
 :root[data-theme] .app-shell .board .board-stage-count {
   flex: 0 0 auto;
@@ -658,6 +718,28 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 .issue-group-heading span { display: inline-block; margin-left: 8px; color: var(--text-muted); font-size: 11px; font-weight: 400; }
 .issue-empty { display: flex; min-height: 220px; flex-direction: column; align-items: center; justify-content: center; gap: 16px; border-top: 1px solid var(--border-subtle); }
 :root[data-theme] .app-shell .board { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 280px; gap: 16px; }
+/* Summary columns are read-only groupings, not lifecycle transition targets. */
+:root[data-theme] .app-shell .board[data-grouping="stage"] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-flow: row;
+  grid-auto-columns: auto;
+  align-items: start;
+  overflow: visible;
+  padding-bottom: 0;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+:root[data-theme] .app-shell .board .board-col { min-height: 148px; min-width: 0; }
+:root[data-theme] .app-shell .board .problem-card-shell[draggable="false"] { cursor: default; }
+:root[data-theme] .app-shell .board .problem-card-shell:last-child { margin-bottom: 0; }
+:root[data-theme] .app-shell .board .problem-card-title { margin-right: 0; -webkit-line-clamp: 3; }
+@media (max-width: 1200px) {
+  :root[data-theme] .app-shell .board[data-grouping="stage"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  :root[data-theme] .app-shell .board[data-grouping="stage"] { grid-template-columns: minmax(0, 1fr); }
+  :root[data-theme] .app-shell .board .board-col { min-height: 112px; }
+}
 :root[data-theme] .app-shell .board .board-head strong { overflow-wrap: anywhere; }
 .issue-card-stage { margin-top: 8px; }
 @media (max-width: 1150px) {
@@ -701,6 +783,11 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   color: var(--text);
   box-shadow: var(--shadow-overlay) !important;
 }
+/* Inline options expand the form; overlay shadows clip against their reveal
+ * container and leave a rectangular halo behind the rounded menu. */
+:root[data-theme] .custom-select-inline-region > .custom-select-menu {
+  box-shadow: none !important;
+}
 /* Separate connector information and actions without changing their surfaces.
  * The shared stack also handles optional permission and credential sections. */
 :root[data-theme] .integration-drawer-content {
@@ -709,6 +796,54 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   gap: var(--space-4);
   margin-block-start: var(--space-4);
 }
+
+.app-shell .settings-connections {
+  display: grid;
+  gap: 20px;
+}
+.app-shell .settings-connections > p { margin: 0; }
+.app-shell .settings-connections .integration-filterbar {
+  flex-wrap: wrap;
+  overflow: visible;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+.app-shell .settings-connections .integration-filterbar > :last-child { margin-right: 0; }
+.app-shell .settings-connections-empty { display: grid; justify-items: start; gap: 12px; padding: 24px; }
+.app-shell .settings-connections-empty :is(h2, p) { margin: 0; }
+.app-shell .settings-connection-disconnect { display: grid; gap: 12px; }
+.app-shell .settings-connection-disconnect > p { margin: 0; color: var(--text-muted); }
+.app-shell .settings-connection-disconnect-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.platform-user-actions { display: flex; gap: 8px; }
+:root[data-theme] .platform-user-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 24px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: normal;
+}
+.platform-user-dialog::backdrop { background: rgb(0 0 0 / 32%); }
+.platform-user-dialog form { display: grid; gap: 16px; }
+.platform-user-dialog :is(h2, p) { margin: 0; }
+.platform-user-dialog h2 { font-size: 20px; color: var(--text-strong); }
+.platform-user-identity { display: grid; gap: 4px; }
+.platform-user-identity span { color: var(--text-muted); }
+.platform-user-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.platform-user-dialog .platform-user-error { color: var(--danger); }
+.platform-user-dialog .field strong { display: inline; font-size: inherit; }
+@media (max-width: 720px) {
+  :root[data-theme] .platform-user-dialog,
+  :root[data-theme] .platform-user-dialog input { font-size: 16px; }
+}
 :root[data-theme] .integration-drawer-content > .integration-drawer-summary {
   margin: 0;
 }
@@ -716,6 +851,35 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   padding-block-start: 0;
 }
 :root[data-theme] :is(.custom-select-option, .organization-option, .user-menu-panel a, .user-menu-panel button) { border-radius: var(--radius-sm); box-shadow: none; font-size: 13px; }
+/* Account actions need a visible fill now that legacy raised hovers are flat. */
+:root[data-theme] .user-menu-panel :is(.user-menu-navigation a, .theme-control-copy, form button) {
+  cursor: pointer;
+  box-shadow: none;
+  transform: none;
+  transition: background-color 160ms ease-out, color 160ms ease-out;
+}
+:root[data-theme] .user-menu-panel :is(.user-menu-navigation a, .theme-control-copy):is(:hover, :focus-visible) {
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+}
+:root[data-theme] .user-menu-navigation a:is(.active, [aria-current="page"]) {
+  background: var(--surface-pressed);
+  color: var(--text-strong);
+}
+:root[data-theme] .user-menu-panel .user-menu-navigation a:is(.active, [aria-current="page"]):is(:hover, :focus-visible),
+:root[data-theme] .user-menu-panel :is(.user-menu-navigation a, .theme-control-copy):active {
+  background: color-mix(in srgb, var(--surface-pressed) 60%, var(--border-subtle));
+}
+:root[data-theme] .user-menu-panel .theme-control-copy {
+  align-content: center;
+  min-height: var(--control-height);
+  padding-inline: var(--space-2);
+  margin-inline-start: calc(-1 * var(--space-2));
+}
+:root[data-theme] .user-menu-panel form button:is(:hover, :focus-visible):not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
 /* Brand marks identify the source; only the selected option renders a check. */
 :root[data-theme] .custom-select-indicator svg { color: var(--text-strong); }
 :root[data-theme] .custom-select-option-icon .integration-provider-icon {

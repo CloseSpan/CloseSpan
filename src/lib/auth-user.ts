@@ -13,6 +13,7 @@ import {
 import { ORG_ID } from "./seed";
 import { isMemoryDemoOrganization } from "./workspace-persistence";
 import { DEMO_RETURN_COOKIE, DEMO_SESSION_COOKIE, demoSessionCookieValue, getOnboardingDemoWorkspace } from "./onboarding-entry";
+import { readPlatformUserStatus } from "./platform-user-access";
 
 export const ACTIVE_ORGANIZATION_COOKIE = "closespan_active_org";
 export const LEGACY_ACTIVE_ORGANIZATION_COOKIE = "feelow_active_org";
@@ -47,6 +48,7 @@ export interface WorkspaceUser {
 export type WorkspaceAccess =
   | { status: "granted"; user: WorkspaceUser }
   | { status: "unauthenticated" }
+  | { status: "restricted"; reason: "Blocked" | "Deleted" }
   | { status: "unavailable"; email: string };
 
 export type WorkspaceMemberIdentityRow = OrganizationMembership;
@@ -224,6 +226,10 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
   if (!email) return { status: "unauthenticated" };
 
   try {
+    // Re-check on every protected request, including existing JWT sessions and
+    // demo entry. A blocked account must never fall back to a demo membership.
+    const accountStatus = await readPlatformUserStatus(email);
+    if (accountStatus !== "Active") return { status: "restricted", reason: accountStatus };
     const selection = await workspaceSelectionFromCookie();
     const member = await findWorkspaceMember(email, name, selection.activeOrgId, selection.demoOrgId, selection.returnOrgId);
     if (member) return { status: "granted", user: member };
@@ -242,6 +248,7 @@ export async function resolveWorkspaceAccess(): Promise<WorkspaceAccess> {
 async function requireWorkspaceUserForRequest(): Promise<WorkspaceUser> {
   const access = await resolveWorkspaceAccess();
   if (access.status === "granted") return access.user;
+  if (access.status === "restricted") redirect(`/login?error=Account${access.reason}`);
   if (access.status === "unavailable")
     redirect("/login?error=WorkspaceUnavailable");
   redirect("/login");

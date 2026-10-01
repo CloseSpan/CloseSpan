@@ -30,7 +30,6 @@ import {
   ExternalLink,
   Filter,
   GitBranch,
-  GripVertical,
   Info,
   LoaderCircle,
   MessageSquare,
@@ -59,6 +58,7 @@ import { IntegrationSyncStatus } from "./integration-sync-status";
 import { PipedreamAccountManager } from "./pipedream-account-manager";
 import { DiscordConnectionManager } from "./discord-connection-manager";
 import { RetellConnectionManager } from "./retell-connection-manager";
+import { DisconnectIntegrationButton } from "./disconnect-integration-button";
 import { IntegrationProviderIcon } from "./integration-provider-icon";
 import { IntegrationCopilot } from "./integration-copilot";
 import { IntegrationSuggestionsView } from "./integration-suggestions-view";
@@ -1430,7 +1430,7 @@ function promptTaskStatus(
 
 export function ProblemLifecycleBoard({
   problems,
-  activeWork = [],
+  activeWork = problems.flatMap((problem) => problem.activeWork ? [problem.activeWork] : []),
   grouping = "stage",
   onStageChange,
 }: {
@@ -1446,8 +1446,6 @@ export function ProblemLifecycleBoard({
 
   const backgroundPromptTests = useOptionalBackgroundPromptTests();
   const [manualStages, setManualStages] = useState<Record<string, Stage>>({});
-  const [draggedProblemId, setDraggedProblemId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<Stage | null>(null);
   const [transitionRequest, setTransitionRequest] =
     useState<TransitionRequest | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1456,13 +1454,28 @@ export function ProblemLifecycleBoard({
   const dialogRef = useRef<HTMLDivElement>(null);
   const lastTriggerRef = useRef<HTMLElement | null>(null);
 
+  const activeWorkByProblem = useMemo(() => {
+    const values = new Map(activeWork.map((item) => [item.problemId, item]));
+    for (const task of backgroundPromptTests?.tasks ?? []) {
+      if (task.status === "running") {
+        values.set(task.problemId, {
+          problemId: task.problemId,
+          status: promptTaskStatus(task.phase),
+          startedAt: new Date(task.startedAt).toISOString(),
+        });
+      }
+    }
+    return values;
+  }, [activeWork, backgroundPromptTests?.tasks]);
+
   const boardProblems = useMemo(
     () =>
       problems.flatMap((problem) => {
         const stage = manualStages[problem.id] ?? problem.stage;
-        return isProductProblemStage(stage) ? [{ ...problem, stage }] : [];
+        return isProductProblemStage(stage)
+          ? [{ ...problem, stage, activeWork: activeWorkByProblem.get(problem.id) ?? null }] : [];
       }) as BoardProblem[],
-    [manualStages, problems],
+    [manualStages, problems, activeWorkByProblem],
   );
 
   const closeTransition = useCallback(() => {
@@ -1496,21 +1509,6 @@ export function ProblemLifecycleBoard({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [closeTransition, transitionRequest]);
 
-  const activeWorkByProblem = useMemo(() => {
-    const values = new Map(
-      activeWork.map((item) => [item.problemId, item.status]),
-    );
-    for (const task of backgroundPromptTests?.tasks ?? []) {
-      if (task.status === "running") {
-        values.set(task.problemId, promptTaskStatus(task.phase));
-      }
-    }
-    return values;
-  }, [activeWork, backgroundPromptTests?.tasks]);
-
-  const draggedProblem = draggedProblemId
-    ? boardProblems.find((problem) => problem.id === draggedProblemId)
-    : undefined;
   const preview = transitionRequest
     ? problemStageTransitionPreview(transitionRequest.toStage)
     : null;
@@ -1561,31 +1559,14 @@ export function ProblemLifecycleBoard({
   return (
     <>
       <p className="sr-only" aria-live="polite">{announcement}</p>
-      <div className="board" aria-label={`Issues by ${grouping === "productArea" ? "product area" : grouping}`}>
+      <div className="board" data-grouping={grouping} aria-label={`Issues by ${grouping === "productArea" ? "product area" : grouping}`}>
         {groupIssues(boardProblems, grouping, grouping === "stage").map(({ key, issues: stageProblems }) => {
-          const stage = grouping === "stage" && isProductProblemStage(key) ? key : null;
-          const isDropTarget = stage !== null && dropTarget === stage && draggedProblem?.stage !== stage;
           return (
             <section
-              className={`board-col${isDropTarget ? " is-drop-target" : ""}`}
+              className="board-col"
               key={key}
               aria-label={key}
-              data-stage={stage ?? undefined}
-              onDragOver={(event) => {
-                if (!stage || !draggedProblem || draggedProblem.stage === stage) return;
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-                setDropTarget(stage);
-              }}
-              onDragLeave={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-                  setDropTarget(null);
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDropTarget(null);
-                if (draggedProblem && stage) openTransition(draggedProblem, stage);
-              }}
+              data-stage={grouping === "stage" ? key : undefined}
             >
               <div className="board-head">
                 <span className="board-stage-dot" aria-hidden="true" />
@@ -1594,11 +1575,11 @@ export function ProblemLifecycleBoard({
               </div>
               {stageProblems.length === 0 ? (
                 <p className="problem-board-empty">
-                  {isDropTarget ? "Drop to review move" : "No issues"}
+                  No issues
                 </p>
               ) : (
                 stageProblems.map((problem) => {
-                  const workStatus = activeWorkByProblem.get(problem.id);
+                  const workStatus = problem.stage !== "Closed" ? problem.activeWork?.status : null;
                   const currentIndex = prioritizationStages.indexOf(problem.stage);
                   const suggestedStage =
                     currentIndex < prioritizationStages.length - 1
@@ -1606,22 +1587,10 @@ export function ProblemLifecycleBoard({
                       : prioritizationStages[currentIndex - 1];
                   return (
                     <article
-                      className={`problem-card problem-card-shell${draggedProblemId === problem.id ? " is-dragging" : ""}`}
-                      draggable={grouping === "stage"}
+                      className="problem-card problem-card-shell"
+                      draggable={false}
                       key={problem.id}
-                      onDragStart={(event) => {
-                        setDraggedProblemId(problem.id);
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData("text/plain", problem.id);
-                      }}
-                      onDragEnd={() => {
-                        setDraggedProblemId(null);
-                        setDropTarget(null);
-                      }}
                     >
-                      {grouping === "stage" && <span className="problem-card-drag-indicator" aria-hidden="true">
-                        <GripVertical size={15} />
-                      </span>}
                       <Link className="problem-card-link" href={`/problems/${problem.id}`}>
                         <h3 className="problem-card-title" title={problem.title}>
                           {problem.title}
@@ -1640,7 +1609,7 @@ export function ProblemLifecycleBoard({
                             {problem.severity}
                           </span>
                         </div>
-                        {grouping !== "stage" && <span className="badge issue-card-stage">{problem.stage}</span>}
+                        <span className="badge issue-card-stage">{problem.stage === "Needs review" ? "Reported" : problem.stage}</span>
                         {workStatus && (
                           <span className="problem-card-work-status" role="status" aria-label={`${workStatus} in progress`}>
                             <strong>{workStatus}</strong>
@@ -1733,15 +1702,20 @@ export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) 
   const [filters, setFilters] = useState<IssueFilters>({ ...EMPTY_ISSUE_FILTERS });
   const [grouping, setGrouping] = useState<IssueGrouping>("none");
   const [stageOverrides, setStageOverrides] = useState<Record<string, Stage>>({});
-  const issues = useMemo(() => analytics.problems.map((problem) => (
-    stageOverrides[problem.id] ? { ...problem, stage: stageOverrides[problem.id] } : problem
-  )), [analytics.problems, stageOverrides]);
-  const visibleIssues = useMemo(() => filterIssues(issues, filters), [issues, filters]);
   const [activeWork, setActiveWork] = useState<ProblemActiveWork[]>(() =>
     analytics.problems.flatMap((problem) =>
       problem.activeWork ? [problem.activeWork] : [],
     ),
   );
+  const issues = useMemo(() => {
+    const workByProblem = new Map(activeWork.map((work) => [work.problemId, work]));
+    return analytics.problems.map((problem) => ({
+      ...problem,
+      stage: stageOverrides[problem.id] ?? problem.stage,
+      activeWork: workByProblem.get(problem.id) ?? null,
+    }));
+  }, [analytics.problems, stageOverrides, activeWork]);
+  const visibleIssues = useMemo(() => filterIssues(issues, filters), [issues, filters]);
 
   useEffect(() => {
     if (tableView !== "board") return;
@@ -4006,7 +3980,13 @@ export function IntegrationsScreen({
   initialView,
   discordCallbackStatus = null,
   discordCallbackReason = null,
+  mode = "catalog",
+  githubInstalled = false,
+  canManageConnections = false,
 }: {
+  mode?: "catalog" | "settings";
+  githubInstalled?: boolean;
+  canManageConnections?: boolean;
   integrations: IntegrationView[];
   githubRepositories: GithubRepositoryAuthorization[];
   orgId: string;
@@ -4027,6 +4007,7 @@ export function IntegrationsScreen({
   discordCallbackReason?: string | null;
 }) {
   const router = useRouter();
+  const settingsConnections = mode === "settings";
   const reduceMotion = useReducedMotion();
   const focusedCardRef = useRef<HTMLElement | null>(null);
   const suggestionsTabRef = useRef<HTMLButtonElement | null>(null);
@@ -4034,6 +4015,7 @@ export function IntegrationsScreen({
   const integrationDrawerRef = useRef<HTMLElement | null>(null);
   const integrationDrawerCloseRef = useRef<HTMLButtonElement | null>(null);
   const integrationDrawerTriggerRef = useRef<HTMLElement | null>(null);
+  const connectionsSectionRef = useRef<HTMLElement | null>(null);
   const [connectedIds, setConnectedIds] = useState(() =>
     integrations
       .filter(
@@ -4085,6 +4067,7 @@ export function IntegrationsScreen({
     null,
   );
   const [activeFilter, setActiveFilter] = useState<IntegrationFilter>("All");
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
   >(focusedIntegrationId);
@@ -4128,7 +4111,7 @@ export function IntegrationsScreen({
         : observedConnectionState === "Connected";
     const connected =
       item.id === "int_github" && !demonstration
-        ? connectedGithubRepositories.length > 0
+        ? observedConnectionState === "Disconnected" ? false : connectedGithubRepositories.length > 0 || (settingsConnections && githubInstalled)
         : connectedFromIntegration;
     const available = isIntegrationAvailable(item.id);
     return {
@@ -4148,7 +4131,12 @@ export function IntegrationsScreen({
   const connectedConnectionCount = connectorRows.filter(
     (row) => row.connected,
   ).length;
-  const visibleRows = connectorRows.filter(
+  // An expired authorization still belongs here so its owner can disconnect it.
+  const managedConnections = connectorRows.filter((row) =>
+    row.connected || (row.observedConnectionState ?? row.item.state) === "Needs reconnect",
+  );
+  const filterRows = settingsConnections ? managedConnections : connectorRows;
+  const visibleRows = filterRows.filter(
     (row) => activeFilter === "All" || row.experience.filter === activeFilter,
   );
   const selectedRow = connectorRows.find(
@@ -4165,12 +4153,58 @@ export function IntegrationsScreen({
       !isFeedbackSourceIntegration(row.item.id),
   );
   const reconnectCount = connectorRows.filter(
-    (row) => row.observedConnectionState === "Needs reconnect",
+    (row) => (row.observedConnectionState ?? row.item.state) === "Needs reconnect",
   ).length;
-  const latestImport = connectorRows
+  const latestImport = filterRows
+    .filter((row) => !settingsConnections || isFeedbackSourceIntegration(row.item.id))
     .map((row) => row.item.lastSync)
     .filter((value): value is string => Boolean(value))
     .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+  const connectionOverview = (
+    <>
+      <section className="integration-summary" aria-label="Integration health summary">
+        <div className="integration-summary-card">
+          <span><Database size={17} aria-hidden="true" /></span>
+          <div><strong>{connectedFeedbackSources.length}</strong><small>Feedback sources</small></div>
+        </div>
+        <div className="integration-summary-card">
+          <span><GitBranch size={17} aria-hidden="true" /></span>
+          <div><strong>{connectedActionDestinations.length}</strong><small>Action destinations</small></div>
+        </div>
+        <div className="integration-summary-card">
+          <span><Activity size={17} aria-hidden="true" /></span>
+          <div>
+            <strong>{reconnectCount > 0 ? `${reconnectCount} needs attention` : connectedConnectionCount === 0 ? "No connections" : managedConnections.every((row) => row.demonstration) ? "Simulated" : "Healthy"}</strong>
+            <small>Synchronization health</small>
+          </div>
+        </div>
+        <div className="integration-summary-card">
+          <span><Clock3 size={17} aria-hidden="true" /></span>
+          <div>
+            <strong>{latestImport ? new Date(latestImport).toLocaleString() : "No imports yet"}</strong>
+            <small>Last successful import</small>
+          </div>
+        </div>
+      </section>
+      <div className="integration-filterbar" role="group" aria-label={settingsConnections ? "Filter connections" : "Filter integrations"}>
+        {(["All", "Feedback", "Engineering", "Analytics", "Support"] as const).map((filter) => {
+          const count = filterRows.filter((row) => filter === "All" || row.experience.filter === filter).length;
+          return (
+            <button
+              key={filter}
+              type="button"
+              className={activeFilter === filter ? "active" : ""}
+              aria-label={`${filter} ${settingsConnections ? "connections" : "integrations"}, ${count}`}
+              aria-pressed={activeFilter === filter}
+              onClick={() => setActiveFilter(filter)}
+            >
+              {filter}<span aria-hidden="true">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
   const pipedreamActivity: IntegrationSuggestionPipedreamActivity[] =
     integrationActivity.map((activity) => ({
       integrationId: activity.integrationId,
@@ -4207,6 +4241,11 @@ export function IntegrationsScreen({
     integrationId: string,
     nextState: IntegrationConnectionState,
   ): void {
+    if (settingsConnections && nextState === "Disconnected") {
+      setSelectedIntegrationId(null);
+      const name = integrations.find((item) => item.id === integrationId)?.name ?? "Connection";
+      setConnectionNotice(`${name} is disconnected. Previously imported feedback is kept.`);
+    }
     setConnectionStates((previous) => ({
       ...previous,
       [integrationId]: nextState,
@@ -4388,6 +4427,7 @@ export function IntegrationsScreen({
     const drawer = integrationDrawerRef.current;
     if (!drawer) return;
     const previouslyFocused = integrationDrawerTriggerRef.current;
+    const connectionsSection = connectionsSectionRef.current;
     const focusFrame = window.requestAnimationFrame(() => {
       (
         integrationDrawerCloseRef.current ??
@@ -4407,19 +4447,19 @@ export function IntegrationsScreen({
       window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleDrawerKeyDown);
       document.body.style.overflow = previousOverflow;
-      if (previouslyFocused?.isConnected) {
-        window.requestAnimationFrame(() => {
-          previouslyFocused.focus({ preventScroll: true });
-        });
-      }
+      window.requestAnimationFrame(() => {
+        const target = previouslyFocused?.isConnected ? previouslyFocused : connectionsSection;
+        target?.focus({ preventScroll: true });
+      });
     };
   }, [integrationDrawerOpen]);
 
   return (
     <>
       <PageTitle
-        title="Integrations"
+        title={settingsConnections ? "Connections" : "Integrations"}
         action={
+          settingsConnections ? undefined :
           <div
             className="integration-view-tabs"
             role="tablist"
@@ -4460,7 +4500,52 @@ export function IntegrationsScreen({
           </div>
         }
       />
-      {integrations.length === 0 ? (
+      {settingsConnections ? (
+        <section ref={connectionsSectionRef} className="settings-connections" aria-label="Workspace connections" tabIndex={-1}>
+          <p className="subtle">Connected tools in this workspace. View details to review access or disconnect.</p>
+          {connectionNotice && <p className="toast success" role="status">{connectionNotice}</p>}
+          {connectionOverview}
+          {managedConnections.length === 0 ? (
+            <div className="card settings-connections-empty">
+              <h2>No connected tools</h2>
+              <p>Tools you connect to this workspace will appear here.</p>
+              <Link className="btn" href="/integrations" prefetch={false}>Browse integrations</Link>
+            </div>
+          ) : visibleRows.length === 0 ? (
+            <div className="card settings-connections-empty" role="status">
+              <h2>No {activeFilter.toLowerCase()} connections</h2>
+              <p>Your connected tools in this category will appear here.</p>
+              <button className="btn" type="button" onClick={() => setActiveFilter("All")}>Show all connections</button>
+            </div>
+          ) : (
+            <div className="integration-group">
+              <div className="integration-group-heading"><div><h2>Connected</h2><p>Active tools in this workspace.</p></div><span>{visibleRows.length}</span></div>
+              <div className="integrations-grid">
+                {visibleRows.map(({ item, connected, experience, demonstration }) => (
+                  <article className="card integration" key={item.id} aria-labelledby={`connection-name-${item.id}`}>
+                    <div className="split">
+                      <IntegrationProviderIcon integrationId={item.id} className="provider-icon" />
+                      <span className={`badge ${demonstration ? "" : connected ? "success" : "warning"}`}>{demonstration ? "Demo connection" : connected ? "Connected" : "Needs reconnect"}</span>
+                    </div>
+                    <FitText as="h3" id={`connection-name-${item.id}`} minFontSize={13} maxLines={2}>{item.name}</FitText>
+                    <p className="integration-card-summary">{experience.summary}</p>
+                    <div className="integration-card-footer">
+                      <span>{demonstration
+                        ? "Simulated workspace connection"
+                        : !connected
+                          ? "Reconnect required"
+                          : item.lastSync
+                            ? `Synced ${new Date(item.lastSync).toLocaleDateString()}`
+                            : "Connected to this workspace"}</span>
+                      <button className="btn" type="button" aria-label={`View ${item.name} connection details`} onClick={() => openIntegrationDetails(item.id)}>View details</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      ) : integrations.length === 0 ? (
         <EmptyWorkspaceState
           title="No integrations are configured"
           description="No connector has completed authorization and a health check. Review governance settings before enabling an approved ingestion path."
@@ -4516,50 +4601,7 @@ export function IntegrationsScreen({
             tabIndex={0}
             hidden={activeView !== "connections"}
           >
-          <section className="integration-summary" aria-label="Integration health summary">
-            <div className="integration-summary-card">
-              <span><Database size={17} aria-hidden="true" /></span>
-              <div><strong>{connectedFeedbackSources.length}</strong><small>Feedback sources</small></div>
-            </div>
-            <div className="integration-summary-card">
-              <span><GitBranch size={17} aria-hidden="true" /></span>
-              <div><strong>{connectedActionDestinations.length}</strong><small>Action destinations</small></div>
-            </div>
-            <div className="integration-summary-card">
-              <span><Activity size={17} aria-hidden="true" /></span>
-              <div>
-                <strong>{reconnectCount > 0 ? `${reconnectCount} needs attention` : "Healthy"}</strong>
-                <small>Synchronization health</small>
-              </div>
-            </div>
-            <div className="integration-summary-card">
-              <span><Clock3 size={17} aria-hidden="true" /></span>
-              <div>
-                <strong>{latestImport ? new Date(latestImport).toLocaleString() : "No imports yet"}</strong>
-                <small>Last successful import</small>
-              </div>
-            </div>
-          </section>
-
-          <div className="integration-filterbar" role="group" aria-label="Filter integrations">
-            {(["All", "Feedback", "Engineering", "Analytics", "Support"] as const).map((filter) => {
-              const count = connectorRows.filter(
-                (row) => filter === "All" || row.experience.filter === filter,
-              ).length;
-              return (
-                <button
-                  key={filter}
-                  type="button"
-                  className={activeFilter === filter ? "active" : ""}
-                  aria-label={`${filter === "All" ? "All integrations" : `${filter} integrations`}, ${count}`}
-                  aria-pressed={activeFilter === filter}
-                  onClick={() => setActiveFilter(filter)}
-                >
-                  {filter}<span aria-hidden="true">{count}</span>
-                </button>
-              );
-            })}
-          </div>
+          {connectionOverview}
 
           {(["Connected", "Recommended", "Coming soon"] as IntegrationGroup[]).map((group) => {
             const rows = visibleRows.filter((row) => row.group === group);
@@ -4668,7 +4710,7 @@ export function IntegrationsScreen({
                 <h2 id="integration-drawer-title">
                   {integrationDrawerMode === "progress"
                     ? `${selectedRow.item.name} progress`
-                    : selectedRow.connected
+                    : selectedRow.connected || settingsConnections
                       ? selectedRow.item.name
                       : `Connect ${selectedRow.item.name}`}
                 </h2>
@@ -4695,6 +4737,11 @@ export function IntegrationsScreen({
             ) : (
               <div className="integration-drawer-content">
                 <p className="integration-drawer-summary">{selectedRow.experience.summary}</p>
+                {settingsConnections && <section className="integration-drawer-section">
+                  <h3>Connection details</h3>
+                  <p>{selectedRow.item.dataScope}</p>
+                  <p>{selectedRow.item.lastSync ? `Last synced ${new Date(selectedRow.item.lastSync).toLocaleString()}` : "No sync recorded yet."}</p>
+                </section>}
                 <section className="integration-drawer-section">
                   <h3>Data CloseSpan will use</h3>
                   <ul>{selectedRow.experience.importedData.map((value) => <li key={value}><Check size={14} aria-hidden="true" />{value}</li>)}</ul>
@@ -4713,6 +4760,8 @@ export function IntegrationsScreen({
                   <span className="badge success">Demo connection</span>
                   <p>This presentation account is simulated; no OAuth credential or external request is used.</p>
                 </div>
+              ) : settingsConnections && !canManageConnections ? (
+                <p className="subtle">Only workspace administrators can change or disconnect connections.</p>
               ) : !selectedRow.available ? (
                 <button className="btn" type="button" disabled>Coming soon</button>
               ) : selectedRow.item.id === "int_github" ? (
@@ -4758,7 +4807,9 @@ export function IntegrationsScreen({
                       </p>
                     </div>
                   )}
-                  <button
+                  {settingsConnections ? (
+                    <DisconnectIntegrationButton orgId={orgId} provider="GitHub" endpoint="/api/integrations/github" onDisconnected={() => updateConnectionState("int_github", "Disconnected")} />
+                  ) : <button
                     className="btn primary"
                     type="button"
                     disabled={githubBusy}
@@ -4769,13 +4820,20 @@ export function IntegrationsScreen({
                       : selectedRow.connected
                         ? "Manage repositories"
                         : "Select repositories"}
-                  </button>
+                  </button>}
                   {githubError && (
                     <div className="github-connection-message error" role="alert">
                       {githubError}
                     </div>
                   )}
                 </div>
+              ) : settingsConnections && (selectedRow.item.id === "int_discord" || selectedRow.item.id === "int_retell") ? (
+                <DisconnectIntegrationButton
+                  orgId={orgId}
+                  provider={selectedRow.item.name}
+                  endpoint={selectedRow.item.id === "int_retell" ? "/api/integrations/retell" : "/api/integrations/discord/status"}
+                  onDisconnected={() => updateConnectionState(selectedRow.item.id, "Disconnected")}
+                />
               ) : selectedRow.item.id === "int_discord" ? (
                 <DiscordConnectionManager
                   orgId={orgId}
@@ -4795,6 +4853,7 @@ export function IntegrationsScreen({
                 <PipedreamAccountManager
                   orgId={orgId}
                   integrationId={selectedRow.item.id}
+                  managementOnly={settingsConnections}
                   onConnectionStateChange={(nextState) =>
                     updateConnectionState(selectedRow.item.id, nextState)
                   }
@@ -4817,6 +4876,8 @@ export function IntegrationsScreen({
                     ]);
                   }}
                 />
+              ) : selectedRow.item.id === "int_webhook" && settingsConnections ? (
+                <DisconnectIntegrationButton orgId={orgId} provider="Custom webhook" endpoint="/api/integrations/webhook" onDisconnected={() => updateConnectionState("int_webhook", "Disconnected")} />
               ) : selectedRow.item.id === "int_webhook" && !selectedRow.connected ? (
                 <button className="btn primary" type="button" disabled={webhookBusy} onClick={() => void createWebhook()}>{webhookBusy ? "Creating endpoint..." : "Create webhook"}</button>
               ) : (
