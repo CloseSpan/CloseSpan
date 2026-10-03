@@ -11,7 +11,7 @@
   overflow: hidden;
   border: 1px solid var(--landing-line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--landing-bg);
 }
 
 .video {
@@ -32,8 +32,8 @@
   padding: 15px 23px;
   border: 1px solid #ffffff60;
   border-radius: 999px;
-  background: #242529;
-  color: #fff;
+  background: var(--landing-button);
+  color: var(--landing-button-text);
   box-shadow: 0 8px 32px #0003;
   font: inherit;
   font-size: 15px;
@@ -47,12 +47,13 @@
 .playButton small {
   display: block;
   margin-top: 2px;
-  color: #d4d5da;
+  color: inherit;
+  opacity: 0.8;
   font-size: 11px;
   font-weight: 400;
 }
 
-.playButton:hover { background: #3b3d43; box-shadow: 0 10px 36px #0004; }
+.playButton:hover { filter: brightness(1.12); box-shadow: 0 10px 36px #0004; }
 .playButton:focus-visible { outline: 3px solid #5d8be8; outline-offset: 4px; }
 .video:focus-visible { outline: 3px solid #5d8be8; outline-offset: -4px; }
 .error { padding: 12px 8px 0; color: var(--landing-muted); font-size: 13px; text-align: center; }
