@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  ArrowRight, ArrowUpRight, Check, ChevronDown, Circle, Command,
-  GitBranch, Inbox, Layers3, Menu, Search, Settings2, ShieldCheck,
+  ArrowRight, ArrowUpRight, Check, ChevronDown,
+  Inbox, Layers3, Menu, ShieldCheck,
 } from "lucide-react";
 import { CloseSpanLogo } from "@/components/closespan-logo";
+import { LandingProductVideo } from "@/components/landing-product-video";
 import { LandingIntegrationLogo, type LandingIntegrationBrand } from "@/components/landing-integration-logo";
 import styles from "./landing-page.module.css";
 import {
@@ -156,13 +157,6 @@ const integrations: { name: string; brand: LandingIntegrationBrand; href?: strin
   { name: "PostHog", brand: "posthog" },
 ];
 
-const workspaceProblems = [
-  { title: "Large CSV exports produce empty files", source: "3 reports", priority: "High", status: "Needs review", selected: true },
-  { title: "Undo after regenerating captions", source: "2 reports", priority: "Medium", status: "In progress" },
-  { title: "Additional actions in three-dot menu", source: "1 report", priority: "Low", status: "Prompt testing" },
-  { title: "Keep filters when switching views", source: "2 reports", priority: "Low", status: "Resolved" },
-];
-
 const workflow = [
   { title: "Connect your sources", text: "Bring customer feedback and repository context into one workspace." },
   { title: "Let the agent investigate", text: "Group related reports, identify impact, and prepare a testable prompt." },
@@ -228,9 +222,9 @@ export default function LandingPage() {
           <span className={styles.heroNote}>Free to use. Human approval by default.</span>
         </section>
 
-        <section className={styles.previewSection} aria-label="Illustrative CloseSpan workspace">
-          <ProductPreview />
-          <p className={styles.demoCaption}>Illustrative workspace · Sample problems and data</p>
+        <section id="product-demo" className={styles.previewSection} aria-label="CloseSpan product video">
+          <LandingProductVideo />
+          <p id="product-demo-caption" className={styles.demoCaption}>Illustrative workspace · Sample problems and data</p>
         </section>
 
         <section className={styles.integrations} aria-label="Connector catalog">
@@ -371,60 +365,6 @@ export default function LandingPage() {
           <Link href="/login">Sign in</Link>
         </nav>
       </footer>
-    </div>
-  );
-}
-
-function ProductPreview() {
-  return (
-    <div className={styles.previewScroll} role="region" aria-label="Sample product workspace preview" tabIndex={0}>
-      <div className={styles.productPreview}>
-        <aside className={styles.previewSidebar} aria-label="Illustrative workspace navigation">
-          <div className={styles.previewBrand}><CloseSpanLogo size="xs" /><ChevronDown size={12} aria-hidden="true" /></div>
-          <div className={styles.previewSearch}><Search size={13} aria-hidden="true" /><span>Search anything</span><Command size={11} aria-hidden="true" /></div>
-          <div className={styles.previewNav}>
-            <span><Circle size={14} aria-hidden="true" />Overview</span>
-            <span className={styles.previewNavActive}><Layers3 size={14} aria-hidden="true" />Product problems</span>
-            <span><ShieldCheck size={14} aria-hidden="true" />Approvals<span className={styles.count}>1</span></span>
-            <span><GitBranch size={14} aria-hidden="true" />Agent activity</span>
-          </div>
-          <div className={styles.previewSidebarFooter}><span className={styles.workspaceAvatar}>C</span><span>Example workspace</span><Settings2 size={13} aria-hidden="true" /></div>
-        </aside>
-        <div className={styles.previewMain}>
-          <div className={styles.previewTopbar}><span><Layers3 size={14} aria-hidden="true" /> Product problems</span><span className={styles.exampleBadge}>Illustrative demo</span></div>
-          <div className={styles.previewWorkspace}>
-            <div className={styles.problemList}>
-              <div className={styles.problemListHeader}><h2>Product problems</h2><span>4 problems</span></div>
-              <div className={styles.previewTabs}><span className={styles.selectedTab}>All problems</span><span>Needs attention <small>1</small></span></div>
-              <div className={styles.problemTableHeading}><span>Problem</span><span>Status</span></div>
-              {workspaceProblems.map((problem) => (
-                <div key={problem.title} className={problem.selected ? styles.problemSelected : styles.problemRow}>
-                  <span className={styles.problemIcon}><Circle size={12} aria-hidden="true" /></span>
-                  <div><strong>{problem.title}</strong><span>{problem.source} <span aria-hidden="true">·</span> {problem.priority} priority</span></div>
-                  <span className={problem.selected ? styles.reviewStatus : styles.rowStatus}>{problem.status}</span>
-                </div>
-              ))}
-              <div className={styles.listFootnote}><Check size={12} aria-hidden="true" /><span>Customer evidence stays connected to every problem.</span></div>
-            </div>
-            <aside className={styles.problemDetail} aria-label="Sample selected problem">
-              <div className={styles.detailHeader}><span>Problem overview</span><ArrowUpRight size={14} aria-hidden="true" /></div>
-              <span className={styles.reviewStatus}>Needs review</span>
-              <h3>Large CSV exports produce empty files</h3>
-              <p>3 corroborating reports after release 4.18.2.</p>
-              <dl className={styles.detailProperties}>
-                <div><dt>Impact</dt><dd>$394k ARR</dd></div>
-                <div><dt>Accounts</dt><dd>3 enterprise</dd></div>
-                <div><dt>Signal match</dt><dd>92%</dd></div>
-              </dl>
-              <div className={styles.agentUpdate}>
-                <span className={styles.agentMark}><Command size={14} aria-hidden="true" /></span>
-                <div><strong>CloseSpan agent</strong><p>Evidence grouped. Ready for investigation and prompt preparation.</p></div>
-              </div>
-              <Link className={styles.previewCta} href={workspaceLoginHref}>Explore your workspace <ArrowRight size={13} aria-hidden="true" /></Link>
-            </aside>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

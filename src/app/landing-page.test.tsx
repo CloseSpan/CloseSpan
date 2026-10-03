@@ -78,12 +78,12 @@ describe("customer-success landing page", () => {
   it("labels mock product views and keeps preview confirmation distinct from production", () => {
     const { visibleHtml } = renderLanding();
     expect(visibleHtml).toContain("Illustrative workspace · Sample problems and data");
-    expect(visibleHtml).toContain('aria-label="Illustrative CloseSpan workspace"');
-    expect(visibleHtml).toContain("Example workspace");
+    expect(visibleHtml).toContain('aria-label="CloseSpan product video"');
     expect(visibleHtml).toContain('aria-label="Illustrative approval request"');
     expect(visibleHtml).toContain("Illustrative approval. No action will be taken.");
     expect(visibleHtml).toContain("reviewing it does not authorize a merge or deployment.");
-    expect(visibleHtml).not.toMatch(/<button\b[^>]*>[\s\S]*?Approve action/);
+    const buttons = Array.from(visibleHtml.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g), ([, content]) => content);
+    expect(buttons.every((content) => !content.includes("Approve action"))).toBe(true);
   });
 
   it("server-renders the four workflow steps in order", () => {
@@ -100,14 +100,19 @@ describe("customer-success landing page", () => {
     expect(workflowHtml).toContain("Keep meaningful external actions under your control.");
   });
 
-  it("starts with customer evidence rather than a falsely confirmed test result", () => {
+  it("offers the approved demo with captions and defers the video download until playback", () => {
     const { visibleHtml } = renderLanding();
-    const selectedProblem = visibleHtml.match(/<aside\b[^>]*aria-label="Sample selected problem"[^>]*>([\s\S]*?)<\/aside>/)?.[1];
-    expect(selectedProblem).toBeDefined();
-    expect(selectedProblem).toContain("Needs review");
-    expect(selectedProblem).toContain("Large CSV exports produce empty files");
-    expect(selectedProblem).toContain("3 corroborating reports after release 4.18.2.");
-    expect(selectedProblem).toContain("Evidence grouped. Ready for investigation and prompt preparation.");
-    expect(selectedProblem).not.toMatch(/Tests passed|Verified fix|Deployed to production/);
+    const video = visibleHtml.match(/<video\b([^>]*)>([\s\S]*?)<\/video>/);
+    expect(video).not.toBeNull();
+    expect(video![1]).toContain('preload="none"');
+    expect(video![1]).toContain('controls=""');
+    expect(video![1]).toContain('playsInline=""');
+    expect(video![1]).toContain('poster="/media/closespan-demo-v11-poster.jpg"');
+    expect(video![1]).not.toMatch(/autoPlay|muted|loop/i);
+    expect(video![2]).toContain('src="/media/closespan-demo-v11.mp4"');
+    expect(video![2]).toContain('kind="captions"');
+    expect(video![2]).toContain('src="/media/closespan-demo-v11.en.vtt"');
+    expect(visibleHtml).toContain('aria-label="Play the CloseSpan demo with sound, 56 seconds"');
+    expect(visibleHtml).not.toContain('aria-label="Sample product workspace preview"');
   });
 });
