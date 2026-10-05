@@ -87,31 +87,12 @@ export function LandingProductVideo() {
     };
   }, [theme]);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !window.IntersectionObserver || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting || entry.intersectionRatio < 0.35) return;
-      observer.disconnect();
-      if (!video.paused || video.currentTime > 0) return;
-      // Muted playback can start without a user gesture. Leave the button
-      // available if the browser blocks autoplay, and never override a pause.
-      video.muted = true;
-      void video.play().catch(() => {});
-    }, { threshold: 0.35 });
-
-    observer.observe(video);
-    return () => observer.disconnect();
-  }, []);
-
   async function playDemo() {
     const video = videoRef.current;
     if (!video) return;
 
     setPlaybackError(false);
     try {
-      video.muted = false;
       await video.play();
       video.focus();
     } catch (error) {
@@ -132,7 +113,6 @@ export function LandingProductVideo() {
           poster={poster}
           preload="none"
           controls
-          muted
           playsInline
           tabIndex={0}
           onPlay={() => { setHasStarted(true); setPlaybackError(false); }}

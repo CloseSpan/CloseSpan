@@ -108,8 +108,7 @@ describe("customer-success landing page", () => {
     expect(video![1]).toContain('controls=""');
     expect(video![1]).toContain('playsInline=""');
     expect(video![1]).toContain('poster="/media/closespan-demo-v11-poster.jpg"');
-    expect(video![1]).toContain('muted=""');
-    expect(video![1]).not.toMatch(/autoPlay|loop/i);
+    expect(video![1]).not.toMatch(/autoPlay|muted|loop/i);
     expect(video![2]).toContain('src="/media/closespan-demo-v11.mp4"');
     expect(video![2]).toContain('kind="captions"');
     expect(video![2]).toContain('src="/media/closespan-demo-v11.en.vtt"');

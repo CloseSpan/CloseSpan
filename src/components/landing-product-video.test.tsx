@@ -54,7 +54,7 @@ describe("LandingProductVideo theme changes", () => {
       .mockReturnValueOnce(loadedTheme)
       .mockReturnValueOnce(pendingPlayback);
     const html = renderToStaticMarkup(<LandingProductVideo />);
-    cleanup = vi.mocked(useEffect).mock.calls.at(-2)![0]() as (() => void) | undefined;
+    cleanup = vi.mocked(useEffect).mock.calls.at(-1)![0]() as (() => void) | undefined;
     return html;
   }
 
