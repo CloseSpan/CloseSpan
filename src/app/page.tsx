@@ -1,3 +1,4 @@
+import { TenkiLogo } from "@/components/tenki-logo";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -229,10 +230,15 @@ export default function LandingPage() {
 
         <section className={styles.integrations} aria-label="Connector catalog">
           <p>Your tools. One connected workflow.</p>
-          <Link href="/integrations/github" aria-label="GitHub" className={styles.featuredIntegration}>
-            <LandingIntegrationLogo brand="github" className={styles.featuredIntegrationLogo} />
-            <span>GitHub</span>
-          </Link>
+          <div className={styles.featuredIntegrations}>
+            <Link href="/integrations/github" aria-label="GitHub" className={styles.featuredIntegration}>
+              <LandingIntegrationLogo brand="github" className={styles.featuredIntegrationLogo} />
+              <span>GitHub</span>
+            </Link>
+            <a href="https://tenki.cloud/" aria-label="Tenki" className={styles.featuredIntegration}>
+              <TenkiLogo className={styles.tenkiLogo} />
+            </a>
+          </div>
           <div className={styles.integrationStrip} role="region" aria-label="Selected connections" tabIndex={0}>
             <ul>
               {integrations.filter((item) => item.brand !== "github").map((item) => (

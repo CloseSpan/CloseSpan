@@ -36,7 +36,7 @@ describe("landing integration logos", () => {
     expect(new Set(brands.map((brand) => LANDING_BRAND_MARKS[brand].path)).size).toBe(8);
   });
 
-  it("features only the GitHub logo above the remaining tool names", () => {
+  it("features GitHub and Tenki above the remaining tool names", () => {
     const html = renderToStaticMarkup(<LandingPage />);
     const row = html.match(/<section[^>]+aria-label="Connector catalog"[^>]*>([\s\S]*?)<\/section>/)?.[1];
     expect(row).toBeDefined();
@@ -44,6 +44,8 @@ describe("landing integration logos", () => {
     for (const name of ["Intercom", "Zendesk", "Slack", "GitHub", "Linear", "Jira", "Sentry", "PostHog"]) {
       expect(row).toContain(`aria-label="${name}"`);
     }
+    expect(row).toContain('aria-label="Tenki"');
+    expect(row).toContain('href="https://tenki.cloud/"');
     expect(row).toContain('aria-label="Selected connections"');
     expect(row).toContain("Your tools. One connected workflow.");
     expect(row).toContain("Explore connectors and capabilities");
