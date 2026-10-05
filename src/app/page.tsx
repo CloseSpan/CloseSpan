@@ -4,9 +4,9 @@ import {
   ArrowRight, ArrowUpRight, Check, ChevronDown,
   Inbox, Layers3, Menu, ShieldCheck,
 } from "lucide-react";
+import { LandingIntegrationLogo, type LandingIntegrationBrand } from "@/components/landing-integration-logo";
 import { CloseSpanLogo } from "@/components/closespan-logo";
 import { LandingProductVideo } from "@/components/landing-product-video";
-import { LandingIntegrationLogo, type LandingIntegrationBrand } from "@/components/landing-integration-logo";
 import styles from "./landing-page.module.css";
 import {
   LANDING_FAQS,
@@ -146,15 +146,15 @@ export const structuredData = {
 
 const workspaceLoginHref = "/login?callbackUrl=%2Foverview";
 
-const integrations: { name: string; brand: LandingIntegrationBrand; href?: string }[] = [
-  { name: "Intercom", brand: "intercom", href: "/integrations/intercom" },
+const integrations: { name: string; brand: LandingIntegrationBrand; href: string }[] = [
+  { name: "Intercom", brand: "intercom", href: "/connectors" },
   { name: "Zendesk", brand: "zendesk", href: "/integrations/zendesk" },
-  { name: "Slack", brand: "slack" },
+  { name: "Slack", brand: "slack", href: "/connectors" },
   { name: "GitHub", brand: "github", href: "/integrations/github" },
-  { name: "Linear", brand: "linear" },
-  { name: "Jira", brand: "jira" },
-  { name: "Sentry", brand: "sentry" },
-  { name: "PostHog", brand: "posthog" },
+  { name: "Linear", brand: "linear", href: "/connectors" },
+  { name: "Jira", brand: "jira", href: "/connectors" },
+  { name: "Sentry", brand: "sentry", href: "/connectors" },
+  { name: "PostHog", brand: "posthog", href: "/connectors" },
 ];
 
 const workflow = [
@@ -229,18 +229,17 @@ export default function LandingPage() {
 
         <section className={styles.integrations} aria-label="Connector catalog">
           <p>Your tools. One connected workflow.</p>
-          <div className={styles.integrationNames}>
-            {integrations.map((item) => item.href ? (
-              <Link className={styles.integrationName} href={item.href} key={item.name}>
-                <LandingIntegrationLogo brand={item.brand} className={styles.integrationLogo} />
-                <span>{item.name}</span>
-              </Link>
-            ) : (
-              <span className={styles.integrationName} key={item.name}>
-                <LandingIntegrationLogo brand={item.brand} className={styles.integrationLogo} />
-                <span>{item.name}</span>
-              </span>
-            ))}
+          <div className={styles.integrationStrip} role="region" aria-label="Selected connections" tabIndex={0}>
+            <ul>
+              {integrations.map((item) => (
+                <li key={item.name}>
+                  <Link href={item.href} aria-label={item.name}>
+                    <LandingIntegrationLogo brand={item.brand} className={styles.integrationLogo} />
+                    <span>{item.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
           <Link className={styles.quietLink} href="/connectors">
             Explore connectors and capabilities <ArrowUpRight size={13} aria-hidden="true" />
@@ -261,15 +260,15 @@ export default function LandingPage() {
             <div className={styles.evidencePanel}>
               <div className={styles.panelHeading}><Inbox size={16} aria-hidden="true" /><span>Customer signals</span><span className={styles.panelMeta}>Example</span></div>
               <div className={styles.signal}>
-                <span className={styles.sourceAvatar}><LandingIntegrationLogo brand="intercom" /></span>
-                <div><strong>Intercom</strong><p>“The export finishes, but the file is empty.”</p></div>
+                <span className={styles.sourceAvatar}><Inbox size={16} aria-hidden="true" /></span>
+                <div><strong>Custom webhook</strong><p>“The export finishes, but the file is empty.”</p></div>
               </div>
               <div className={styles.signal}>
-                <span className={styles.sourceAvatar}><LandingIntegrationLogo brand="zendesk" /></span>
+                <span className={styles.sourceAvatar}><Inbox size={16} aria-hidden="true" /></span>
                 <div><strong>Zendesk</strong><p>“Our CSV download has zero rows.”</p></div>
               </div>
               <div className={styles.signal}>
-                <span className={styles.sourceAvatar}><LandingIntegrationLogo brand="slack" /></span>
+                <span className={styles.sourceAvatar}><Inbox size={16} aria-hidden="true" /></span>
                 <div><strong>Slack</strong><p>“Large exports stopped working after the release.”</p></div>
               </div>
               <div className={styles.clusterResult}>
@@ -365,6 +364,7 @@ export default function LandingPage() {
           <Link href="/login">Sign in</Link>
         </nav>
       </footer>
+      <p className={styles.trademarkNotice}>Product names and logos belong to their respective owners. Their use identifies integrations and does not imply endorsement of CloseSpan.</p>
     </div>
   );
 }

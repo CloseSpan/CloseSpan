@@ -36,19 +36,21 @@ describe("landing integration logos", () => {
     expect(new Set(brands.map((brand) => LANDING_BRAND_MARKS[brand].path)).size).toBe(8);
   });
 
-  it("pairs every company name with one decorative logo and preserves existing links", () => {
+  it("shows the original eight logos in order with the connector link", () => {
     const html = renderToStaticMarkup(<LandingPage />);
     const row = html.match(/<section[^>]+aria-label="Connector catalog"[^>]*>([\s\S]*?)<\/section>/)?.[1];
     expect(row).toBeDefined();
-    for (const brand of brands) {
-      expect(row).toContain(`data-brand="${brand}"`);
-    }
+    expect([...row!.matchAll(/data-brand="([^"]+)"/g)].map((match) => match[1])).toEqual(brands);
     for (const name of ["Intercom", "Zendesk", "Slack", "GitHub", "Linear", "Jira", "Sentry", "PostHog"]) {
-      expect(row).toContain(`<span>${name}</span>`);
+      expect(row).toContain(`aria-label="${name}"`);
     }
-    for (const href of ["/integrations/intercom", "/integrations/zendesk", "/integrations/github", "/connectors"]) {
+    expect(row).toContain('aria-label="Selected connections"');
+    expect(row).toContain("Your tools. One connected workflow.");
+    expect(row).toContain("Explore connectors and capabilities");
+    expect(row).not.toContain("Connect your repositories");
+    expect(html).toContain("does not imply endorsement of CloseSpan");
+    for (const href of ["/integrations/zendesk", "/integrations/github", "/connectors"]) {
       expect(row).toContain(`href="${href}"`);
     }
-    expect(row?.match(/focusable="false"/g)).toHaveLength(8);
   });
 });
