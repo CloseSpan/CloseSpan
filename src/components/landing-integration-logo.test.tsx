@@ -36,11 +36,11 @@ describe("landing integration logos", () => {
     expect(new Set(brands.map((brand) => LANDING_BRAND_MARKS[brand].path)).size).toBe(8);
   });
 
-  it("shows the original eight logos in order with the connector link", () => {
+  it("features only the GitHub logo above the remaining tool names", () => {
     const html = renderToStaticMarkup(<LandingPage />);
     const row = html.match(/<section[^>]+aria-label="Connector catalog"[^>]*>([\s\S]*?)<\/section>/)?.[1];
     expect(row).toBeDefined();
-    expect([...row!.matchAll(/data-brand="([^"]+)"/g)].map((match) => match[1])).toEqual(brands);
+    expect([...row!.matchAll(/data-brand="([^"]+)"/g)].map((match) => match[1])).toEqual(["github"]);
     for (const name of ["Intercom", "Zendesk", "Slack", "GitHub", "Linear", "Jira", "Sentry", "PostHog"]) {
       expect(row).toContain(`aria-label="${name}"`);
     }

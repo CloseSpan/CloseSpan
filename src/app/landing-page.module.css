@@ -315,13 +315,13 @@
 }
 
 
-.integrationStrip { max-width: 100%; margin: 28px auto 22px; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--landing-line) transparent; }
+.integrationStrip { max-width: 100%; margin: 8px auto 22px; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--landing-line) transparent; }
 .integrationStrip ul { list-style: none; display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 30px; width: max-content; min-width: 100%; padding: 12px 6px; box-sizing: border-box; }
 .integrationStrip li { flex: 0 0 auto; }
-.integrationStrip a { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; padding: 7px 0; font-size: 19px; font-weight: 550; text-underline-offset: 4px; }
-.integrationLogo { display: block; width: 24px; height: 24px; flex: 0 0 24px; }
-:global(html[data-theme="dark"]) .integrationLogo[data-brand="zendesk"],
-:global(html[data-theme="dark"]) .integrationLogo[data-brand="sentry"] { filter: brightness(0) invert(1); }
+.integrationStrip a { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; padding: 7px 0; font-size: 17px; font-weight: 500; text-underline-offset: 4px; }
+.featuredIntegration { display: inline-flex; align-items: center; gap: 11px; margin-top: 26px; padding: 8px; font-size: 26px; font-weight: 600; text-underline-offset: 5px; }
+.featuredIntegration:hover { text-decoration: underline; }
+.featuredIntegrationLogo { display: block; width: 32px; height: 32px; flex: 0 0 32px; }
 .integrationStrip a:hover { text-decoration: underline; }
 .integrationStrip:focus-visible { outline: 2px solid var(--landing-ink); outline-offset: 4px; }
 @media (max-width: 640px) {

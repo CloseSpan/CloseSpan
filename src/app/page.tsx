@@ -229,12 +229,15 @@ export default function LandingPage() {
 
         <section className={styles.integrations} aria-label="Connector catalog">
           <p>Your tools. One connected workflow.</p>
+          <Link href="/integrations/github" aria-label="GitHub" className={styles.featuredIntegration}>
+            <LandingIntegrationLogo brand="github" className={styles.featuredIntegrationLogo} />
+            <span>GitHub</span>
+          </Link>
           <div className={styles.integrationStrip} role="region" aria-label="Selected connections" tabIndex={0}>
             <ul>
-              {integrations.map((item) => (
+              {integrations.filter((item) => item.brand !== "github").map((item) => (
                 <li key={item.name}>
                   <Link href={item.href} aria-label={item.name}>
-                    <LandingIntegrationLogo brand={item.brand} className={styles.integrationLogo} />
                     <span>{item.name}</span>
                   </Link>
                 </li>
