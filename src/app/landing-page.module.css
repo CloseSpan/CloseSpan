@@ -320,7 +320,6 @@
 .integrationStrip li { flex: 0 0 auto; }
 .integrationStrip a { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; padding: 7px 0; font-size: 17px; font-weight: 500; text-underline-offset: 4px; }
 .featuredIntegrations { display: flex; justify-content: center; align-items: center; gap: 32px; margin-top: 26px; }
-.tenkiLogo { display: block; width: 135px; height: 36px; }
 .featuredIntegration { display: inline-flex; align-items: center; gap: 11px; padding: 8px; font-size: 26px; font-weight: 600; text-underline-offset: 5px; }
 .featuredIntegration:hover { text-decoration: underline; }
 .featuredIntegrationLogo { display: block; width: 32px; height: 32px; flex: 0 0 32px; }

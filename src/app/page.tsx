@@ -1,4 +1,3 @@
-import { TenkiLogo } from "@/components/tenki-logo";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -235,9 +234,6 @@ export default function LandingPage() {
               <LandingIntegrationLogo brand="github" className={styles.featuredIntegrationLogo} />
               <span>GitHub</span>
             </Link>
-            <a href="https://tenki.cloud/" aria-label="Tenki" className={styles.featuredIntegration}>
-              <TenkiLogo className={styles.tenkiLogo} />
-            </a>
           </div>
           <div className={styles.integrationStrip} role="region" aria-label="Selected connections" tabIndex={0}>
             <ul>
