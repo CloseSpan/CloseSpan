@@ -180,6 +180,7 @@ export interface AgentRunView {
 }
 
 export interface AgentRunSummaryView {
+  failedTestCount?: number;
   id: string;
   approvalId: string | null;
   problemId: string;
@@ -732,12 +733,14 @@ export async function listAgentRuns(
             run.independentVerification?.status ?? null,
           finalExecutionStatus: null,
           failureCode: run.failureCode ?? null,
+          failedTestCount: run.testResults.filter((test) => test.status === "failed").length,
           failureMessage: run.failureMessage ?? null,
           baseBranch: run.baseBranch,
           baseSha: run.baseSha,
         } satisfies AgentRunSummaryView;
       })
-      .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt));
+      .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt))
+      .slice(0, 100);
   }
 
   const result = await databasePool().query<{
@@ -806,6 +809,7 @@ export async function listAgentRuns(
       row.implementation_report?.independentVerification?.status ?? null,
     finalExecutionStatus: row.final_execution_status,
     failureCode: row.failure_code,
+    failedTestCount: row.implementation_report?.tests?.filter((test) => test.status === "failed").length ?? 0,
     failureMessage: row.failure_message,
     baseBranch: row.base_branch,
     baseSha: row.base_sha,

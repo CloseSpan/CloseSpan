@@ -1,3 +1,5 @@
+import { AgentRunFinding } from "@/components/agent-run-finding";
+import { readIssueRunFinding } from "@/lib/agent-run-findings-repository";
 import { notFound } from "next/navigation";
 import { ProblemHistory, ProblemWorkspace } from "@/components/problem-workspace";
 import { GenericProblemScreen, ProductProblemInvestigationPanel } from "@/components/screens";
@@ -25,6 +27,8 @@ export default async function Page({ params }: { params: Promise<{ problemId: st
   const problem = data.analytics.problems.find((item) => item.id === problemId);
   if (!problem) notFound();
   const [conversation, demo] = await Promise.all([readIssueConversation(user.orgId, problemId), readPresentationDemo(user.orgId)]);
+  const runFinding = await readIssueRunFinding(user.orgId, problemId);
+  const findingEvidence = runFinding ? <section className="card"><div className="card-body"><AgentRunFinding finding={runFinding} canCreate={false} storageReady={true} /></div></section> : null;
   const discussion = <ProblemDiscussion key={problemId} problemId={problemId} initial={conversation} currentPromptHash={null}
     canDiscuss={["Admin", "Contributor"].includes(user.role)} canRevise={false} canTest={false} demo={demo}
     disabledReason={process.env.APP_MODE === "demo" ? "Live conversation is off in demo mode." : undefined} />;
@@ -46,9 +50,9 @@ export default async function Page({ params }: { params: Promise<{ problemId: st
       const problemAudit = state.audit.filter((event) =>
         relatedAuditEntityIds.has(event.entityId) || event.traceId.includes(problemId),
       );
-      return <><ProblemWorkspace initialState={structuredClone(state)} problem={data.primaryProblem} feedbackItems={data.feedback} discussion={discussion}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)}/><ProblemHistory audit={structuredClone(problemAudit)}/></>;
+      return <>{findingEvidence}<ProblemWorkspace initialState={structuredClone(state)} problem={data.primaryProblem} feedbackItems={data.feedback} discussion={discussion}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)}/><ProblemHistory audit={structuredClone(problemAudit)}/></>;
     }
   }
   const promptDraftReadiness = await readPromptDraftReadiness(user.orgId, problemId);
-  return <><GenericProblemScreen problem={problem} promptDraftReadiness={structuredClone(promptDraftReadiness)} investigation={structuredClone(investigation)} discussion={discussion}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)} showSummary={false}/></>;
+  return <>{findingEvidence}<GenericProblemScreen problem={problem} promptDraftReadiness={structuredClone(promptDraftReadiness)} investigation={structuredClone(investigation)} discussion={discussion}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)} showSummary={false}/></>;
 }

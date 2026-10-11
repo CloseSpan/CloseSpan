@@ -3382,3 +3382,12 @@ html,body { background:var(--neu-canvas); }
   .app-shell .integration-filterbar button,
   .app-shell .integration-filterbar button>span { box-shadow:none; }
 }
+
+.agent-activity-filters{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.agent-activity-filters [aria-current="page"]{font-weight:650;text-decoration:underline;text-underline-offset:4px}
+.agent-finding{margin-top:8px;max-width:480px;white-space:normal;font-size:12px;font-weight:400}
+.agent-finding summary{cursor:pointer;line-height:1.5}
+.agent-finding summary:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+.agent-finding-body{padding:10px 0;display:grid;gap:10px;line-height:1.5}
+.agent-finding-links{display:flex;flex-wrap:wrap;gap:8px 14px}
+.agent-finding-body .btn{justify-self:start}

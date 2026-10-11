@@ -1,3 +1,6 @@
+import { AgentRunFinding } from "@/components/agent-run-finding";
+import { detectRunFindings } from "@/lib/agent-run-findings";
+import { readFindingIssueLinks } from "@/lib/agent-run-findings-repository";
 import { Bot, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { AgentRunDeleteButton } from "@/components/agent-run-delete-button";
@@ -19,9 +22,14 @@ const dateFormatter = new Intl.DateTimeFormat("en", {
   timeStyle: "short",
 });
 
-export default async function AgentRunsPage() {
+export default async function AgentRunsPage({ searchParams }: { searchParams?: Promise<{ attention?: string }> }) {
   const user = await requireWorkspaceUser();
   const runs = await listAgentRuns(user.orgId);
+  const findings = detectRunFindings(runs);
+  const issueLinks = await readFindingIssueLinks(user.orgId);
+  const attention = (await searchParams)?.attention === "1";
+  const attentionIds = new Set(findings.filter((finding) => !finding.resolved).flatMap((finding) => finding.runIds));
+  const visibleRuns = attention ? runs.filter((run) => attentionIds.has(run.id)) : runs;
 
   return (
     <>
@@ -33,7 +41,12 @@ export default async function AgentRunsPage() {
           </Link>
         }
       />
-      {runs.length === 0 ? (
+      {runs.length > 0 && <nav className="agent-activity-filters" aria-label="Run filters">
+        <Link className="btn" href="/agent-runs" aria-current={!attention ? "page" : undefined}>All runs ({runs.length})</Link>
+        <Link className="btn" href="/agent-runs?attention=1" aria-current={attention ? "page" : undefined}>Needs attention ({attentionIds.size})</Link>
+        <span className="subtle">Latest 100 runs · Findings update on refresh</span>
+      </nav>}
+      {attention && runs.length > 0 && visibleRuns.length === 0 ? <section className="card empty-state"><h2>No runs need attention</h2><p>No unresolved failures were detected in the recent run history.</p></section> : runs.length === 0 ? (
         <section className="card empty-state">
           <Bot aria-hidden="true" size={28} />
           <h2>No agent runs yet</h2>
@@ -61,7 +74,7 @@ export default async function AgentRunsPage() {
               </tr>
             </thead>
             <tbody>
-              {runs.map((run) => {
+              {visibleRuns.map((run) => {
                 const runStatus = agentRunStatusPresentation(run);
                 const verification = agentRunVerificationState(run);
                 return (
@@ -73,6 +86,9 @@ export default async function AgentRunsPage() {
                       >
                         <strong>{run.problemTitle}</strong>
                       </Link>
+                      {findings.filter((finding) => finding.runIds.includes(run.id)).map((finding) => (
+                        <AgentRunFinding key={finding.id} finding={finding} linkedIssue={issueLinks.links[finding.id]} canCreate={user.role === "Admin"} storageReady={issueLinks.ready} />
+                      ))}
                     </td>
                     <td>
                       <span className={runStatus.className}>
