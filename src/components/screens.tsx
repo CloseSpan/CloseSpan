@@ -4479,7 +4479,7 @@ export function IntegrationsScreen({
       <PageTitle
         title={settingsConnections ? "Connections" : "Integrations"}
         action={
-          settingsConnections ? undefined :
+          settingsConnections ? <Link className="btn" href="/integrations">Browse integrations</Link> :
           <div
             className="integration-view-tabs"
             role="tablist"

@@ -4,7 +4,8 @@ import { WORKSPACE_LABELS } from "@/lib/workspace-labels";
 
 const groups = [
   { title: "Workspace tools", items: [
-    [WORKSPACE_LABELS.feedback, "/feedback"], [WORKSPACE_LABELS.customers, "/customers"], [WORKSPACE_LABELS["follow-up"], "/follow-up"],
+    [WORKSPACE_LABELS.customers, "/customers"], [WORKSPACE_LABELS.pdd, "/pdd"],
+    [WORKSPACE_LABELS["follow-up"], "/follow-up"], [WORKSPACE_LABELS.integrations, "/integrations"],
   ] },
   { title: "Technical settings", items: [
     ["AI provider", "/settings#model"], ["Prompt policies", "/settings#prompt-drafts"],

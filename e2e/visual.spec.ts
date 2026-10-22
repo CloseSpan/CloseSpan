@@ -7,14 +7,13 @@ import { VISUAL_AUTH_SECRET, VISUAL_FIXED_NOW } from "../playwright.config";
 // changes. Run `npm run test:visual` to compare, or with `-- --update-snapshots`
 // after an intended visual change.
 const SCREENS = [
-  { name: "overview", path: "/overview" },
   { name: "customers", path: "/customers" },
   { name: "feedback", path: "/feedback" },
   { name: "issues-list", path: "/problems" },
   { name: "issues-board", path: "/problems?view=board" },
   { name: "issue-detail", path: "issue" },
   { name: "prompt-testing", path: "/pdd" },
-  { name: "approvals", path: "/approvals" },
+  { name: "needs-you", path: "/approvals" },
   { name: "agent-activity", path: "/agent-runs" },
   { name: "follow-up", path: "/follow-up" },
   { name: "integrations", path: "/integrations" },

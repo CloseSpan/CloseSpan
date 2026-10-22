@@ -232,7 +232,7 @@ describe("Approval Center", () => {
   it("keeps the reviewed-commit boundary and call to action without technical fact cards", () => {
     const markup = renderApprovals();
 
-    expect(markup).toContain("Action approvals");
+    expect(markup).toContain("Needs you");
     expect(markup).toContain("Merge PR #42");
     expect(markup).toContain("Approve and merge PR");
     expect(markup).toContain("Only the reviewed commit will be merged.");
@@ -419,7 +419,7 @@ describe("Approval Center", () => {
   it("uses a minimal empty state with an issues call to action", () => {
     const markup = renderApprovals([{ ...workflow, finalApproval: null, approval: null, run: null }]);
 
-    expect(markup).toContain("Action approvals");
+    expect(markup).toContain("Needs you");
     expect(markup).toContain("Nothing needs your review");
     expect(markup).toContain("View issues");
     expect(markup).toContain('href="/problems"');

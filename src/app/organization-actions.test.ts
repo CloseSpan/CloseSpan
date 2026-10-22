@@ -200,7 +200,7 @@ describe("deleteOrganizationAction", () => {
     );
     expect(cookieStore.delete).toHaveBeenCalledWith("legacy_org");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
-    expect(mocks.redirect).toHaveBeenCalledWith("/overview");
+    expect(mocks.redirect).toHaveBeenCalledWith("/problems");
   });
 
   it("requires the exact active organization name", async () => {

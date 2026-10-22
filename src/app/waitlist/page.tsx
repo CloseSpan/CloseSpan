@@ -8,5 +8,5 @@ export default async function WaitlistPage() {
   if (access.status === "unauthenticated") redirect("/login");
   if (access.status === "unavailable")
     redirect("/login?error=WorkspaceUnavailable");
-  redirect("/overview");
+  redirect("/problems");
 }

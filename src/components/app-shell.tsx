@@ -114,9 +114,9 @@ export async function AppShell({
           <header className="immersive-topbar">
             <Link
               className="immersive-brand"
-              href="/overview"
+              href="/problems"
               prefetch={false}
-              aria-label="CloseSpan overview"
+              aria-label="CloseSpan issues"
             >
               <CloseSpan3DLogo size="sm" />
             </Link>

@@ -26,12 +26,12 @@ export default function WorkspaceError({
       <div className="card-body detail-stack">
         <h1>This page could not load</h1>
         <p className="subtle">
-          Retry this page. If it still fails, return to the overview.
+          Retry this page. If it still fails, return to your issues.
         </p>
         <button className="btn primary" type="button" onClick={reset}>
           Retry page
         </button>
-        <Link className="text-link" href="/overview">Back to overview</Link>
+        <Link className="text-link" href="/problems">Back to issues</Link>
       </div>
     </section>
   );

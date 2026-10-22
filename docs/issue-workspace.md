@@ -16,9 +16,10 @@ The user operates as a domain expert, not a pipeline administrator. The main pro
 
 ## Information architecture
 
-- **Issues:** concise subject, report count, stage and priority. Opening a row opens the same issue workspace throughout its lifecycle.
-- **Needs your review:** a shortcut to decisions, not a second investigation interface.
-- **Settings:** integrations, personal appearance and administrator policy. Technical evidence and diagnostics remain secondary routes.
+- **Issues (home):** concise subject, report count, stage and priority. Opening a row opens the same issue workspace throughout its lifecycle.
+- **Needs you:** every decision waiting on a person (requirement reviews and action approvals), not a second investigation interface.
+- **Feedback:** incoming calls and tickets awaiting triage.
+- **Settings:** connections, personal appearance and administrator policy. Agent activity, customers, the integrations catalog and diagnostics remain secondary routes.
 
 The desktop issue workspace places the brief, expected outcomes and result on the left, with the persistent conversation beside them. Mobile uses the same content in a single column. No new collapsible sections, charts, global chat or pipeline controls are introduced.
 

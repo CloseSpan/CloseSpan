@@ -36,7 +36,7 @@ describe("onboarding entry actions", () => {
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
   it("enters the trusted demo and remembers the user's own workspace without marking it complete", async () => {
-    await expect(exploreDemoAction()).rejects.toThrow("redirect:/overview");
+    await expect(exploreDemoAction()).rejects.toThrow("redirect:/problems");
     expect(mocks.set).toHaveBeenCalledWith(DEMO_SESSION_COOKIE, demoSessionCookieValue(user.email, "org_demo"), expect.objectContaining({ httpOnly: true }));
     expect(mocks.set).toHaveBeenCalledWith(DEMO_RETURN_COOKIE, "org_private", expect.any(Object));
     expect(mocks.set).toHaveBeenCalledWith("active_org", "org_demo", expect.any(Object));

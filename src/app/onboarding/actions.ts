@@ -55,7 +55,7 @@ export async function exploreDemoAction(): Promise<OnboardingEntryState> {
   store.set(ACTIVE_ORGANIZATION_COOKIE, demo.id, options);
   store.delete(LEGACY_ACTIVE_ORGANIZATION_COOKIE);
   revalidatePath("/", "layout");
-  redirect("/overview");
+  redirect("/problems");
 }
 
 export async function continueOnboardingAction(): Promise<void> {

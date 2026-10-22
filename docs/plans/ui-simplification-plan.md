@@ -1,6 +1,6 @@
 # UI simplification plan
 
-Status: approved · Phase 0 in progress · 2026-10-21
+Status: approved · Phase 1 in progress · 2026-10-21
 
 Two streams: **simplify the sidebar and concepts** (what users see) and **consolidate CSS and shared components** (how it is built). They are planned together because simplifying first removes screens that would otherwise need restyling.
 

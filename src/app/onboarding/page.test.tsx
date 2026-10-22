@@ -52,7 +52,7 @@ describe("onboarding first screen", () => {
   });
   it("does not interrupt an already configured workspace", async () => {
     mocks.onboarding.mockResolvedValue({ ...defaultOnboardingState(), phase: "complete" });
-    await expect(OnboardingPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("redirect:/overview");
+    await expect(OnboardingPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("redirect:/problems");
   });
   it("lets an existing user explicitly revisit the choice", async () => {
     mocks.cookie.mockReturnValue({ value: "true" });

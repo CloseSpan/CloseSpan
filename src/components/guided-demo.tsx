@@ -87,7 +87,7 @@ export function GuidedDemo({
     setStepIndex(bounded);
     setNotice(null);
     window.localStorage.setItem(`${storageKey}:step`, String(bounded));
-    if (navigate) router.push(guide.steps[bounded]?.path ?? "/overview");
+    if (navigate) router.push(guide.steps[bounded]?.path ?? "/problems");
   }
 
   async function resetDemo() {

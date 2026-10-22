@@ -105,10 +105,10 @@ export async function switchOrganizationAction(
   if (!organization) throw new Error("Organization access is not available");
 
   // The virtual demo membership is valid only for this read-only session.
-  if (user.demoSession && organization.id === user.orgId) redirect("/overview");
+  if (user.demoSession && organization.id === user.orgId) redirect("/problems");
 
   await activateOrganization(organization.id);
-  redirect("/overview");
+  redirect("/problems");
 }
 
 export async function createOrganizationAction(
@@ -155,7 +155,7 @@ export async function createOrganizationAction(
   }
 
   await activateOrganization(created.organizationId);
-  redirect("/overview");
+  redirect("/problems");
 }
 
 export async function renameOrganizationAction(
@@ -257,5 +257,5 @@ export async function deleteOrganizationAction(
   }
 
   await activateOrganization(nextOrganization.id);
-  redirect("/overview");
+  redirect("/problems");
 }

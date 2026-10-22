@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   ArrowLeft,
   Bot,
   Cable,
@@ -94,7 +95,7 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
       className={`nav settings-sidebar-navigation${mobile ? " settings-mobile-navigation" : ""}`}
       aria-label="Settings sections"
     >
-      <Link className="settings-back-link" href="/overview" prefetch={false}>
+      <Link className="settings-back-link" href="/problems" prefetch={false}>
         <ArrowLeft aria-hidden="true" size={17} />
         <span>Back to workspace</span>
       </Link>
@@ -122,6 +123,9 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
           className={isConnections ? "active" : undefined}
           aria-current={isConnections ? "page" : undefined}>
           <NavigationIcon icon={Cable} active={isConnections} /><span>Connections</span>
+        </Link>
+        <Link href="/agent-runs" prefetch={false}>
+          <NavigationIcon icon={Activity} active={false} /><span>Agent activity</span>
         </Link>
         {SETTINGS_SECTIONS.filter(([id]) => ["agent", "data", "members", "usage"].includes(id)).map(([id, label]) => {
           const Icon = settingsIcons[id];

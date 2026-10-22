@@ -1,16 +1,10 @@
 "use client";
 
 import {
-  Bot,
   CircleCheck,
   CircleDot,
-  createLucideIcon,
-  FlaskConical,
-  Grid2X2Plus,
   Inbox,
-  LayoutGrid,
   Settings,
-  Users,
 } from "lucide-react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,6 +16,7 @@ import {
 import {
   WORKSPACE_NAVIGATION,
   WORKSPACE_NAVIGATION_GROUPS,
+  workspaceNavigationOwner,
   type WorkspaceNavigationId,
 } from "@/lib/workspace-navigation";
 import {
@@ -36,23 +31,10 @@ import {
 import { SettingsNavigation } from "./settings-navigation";
 import { NavigationIcon } from "./navigation-icon";
 
-// The reference uses one rounded connection, not a branching pull-request glyph.
-const FollowUpIcon = createLucideIcon("FollowUp", [
-  ["circle", { cx: "6", cy: "5", r: "3", key: "start" }],
-  ["path", { d: "M6 8v7a4 4 0 0 0 4 4h5", key: "connection" }],
-  ["circle", { cx: "18", cy: "19", r: "3", key: "end" }],
-]);
-
 const navigationIcons: Record<WorkspaceNavigationId, typeof CircleDot> = {
-  overview: LayoutGrid,
-  customers: Users,
-  feedback: Inbox,
   problems: CircleDot,
-  pdd: FlaskConical,
   approvals: CircleCheck,
-  "agent-runs": Bot,
-  "follow-up": FollowUpIcon,
-  integrations: Grid2X2Plus,
+  feedback: Inbox,
   settings: Settings,
 };
 
@@ -65,6 +47,7 @@ function NavigationPendingIndicator() {
 
 function NavigationLinks({ pendingApprovalCount = 0 }: { pendingApprovalCount?: number }) {
   const pathname = usePathname();
+  const activeId = workspaceNavigationOwner(pathname);
   const [visiblePendingApprovalCount, setVisiblePendingApprovalCount] = useState(pendingApprovalCount);
 
   useEffect(() => {
@@ -81,9 +64,7 @@ function NavigationLinks({ pendingApprovalCount = 0 }: { pendingApprovalCount?: 
     <>
       {WORKSPACE_NAVIGATION_GROUPS.map((group) => {
         const items = WORKSPACE_NAVIGATION.filter((item) => item.group === group.id);
-        const hasActiveRoute = items.some(
-          ({ href }) => pathname === href || pathname.startsWith(`${href}/`),
-        );
+        const hasActiveRoute = items.some(({ id }) => id === activeId);
         return (
           <div
             className={`nav-group nav-group-${group.id}${hasActiveRoute ? " has-active-route" : ""}`}
@@ -96,7 +77,7 @@ function NavigationLinks({ pendingApprovalCount = 0 }: { pendingApprovalCount?: 
             <div className="nav-group-items">
               {items.map(({ id, label, href }) => {
                 const Icon = navigationIcons[id];
-                const active = pathname === href || pathname.startsWith(`${href}/`);
+                const active = id === activeId;
                 const pendingCount = id === "approvals" ? visiblePendingApprovalCount : 0;
                 return (
                   <Link
@@ -146,9 +127,9 @@ export function Sidebar({
     <aside className="sidebar">
       <Link
         className="brand"
-        href="/overview"
+        href="/problems"
         prefetch={false}
-        aria-label="CloseSpan overview"
+        aria-label="CloseSpan issues"
       >
         <CloseSpan3DLogo size="sm" />
       </Link>

@@ -41,7 +41,7 @@ export function appDomainRedirect(
   if (!isAppHostname(url.hostname)) return null;
   if (path === "/" || path === "/requests") {
     const target = new URL(APP_ORIGIN);
-    target.pathname = path === "/" ? "/overview" : "/admin/requests";
+    target.pathname = path === "/" ? "/problems" : "/admin/requests";
     target.search = url.search;
     target.hash = url.hash;
     return target;

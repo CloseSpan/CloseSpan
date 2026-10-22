@@ -49,7 +49,7 @@ export default async function OnboardingPage({
 
   const welcomeRequested = params.step === "welcome";
   const appearanceRequested = params.step === "appearance";
-  if (!showOnboarding && !welcomeRequested && !appearanceRequested) redirect("/overview");
+  if (!showOnboarding && !welcomeRequested && !appearanceRequested) redirect("/problems");
   const store = await cookies();
   const showChoice =
     !returningFromGithub &&

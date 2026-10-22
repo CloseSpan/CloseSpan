@@ -37,7 +37,7 @@ function safeCallbackUrl(value: string | undefined): string {
       // Invalid callback values fall back to the workspace home.
     }
   }
-  return "/overview";
+  return "/problems";
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -101,7 +101,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
         {access.status === "unavailable" || access.status === "restricted" ? (
           <div className="login-denied-actions">
-            {!accountRestricted && <Link className="btn primary login-request-access" href="/overview">
+            {!accountRestricted && <Link className="btn primary login-request-access" href="/problems">
               Try loading the workspace again
             </Link>}
             <form action={signOutCurrentUser}>

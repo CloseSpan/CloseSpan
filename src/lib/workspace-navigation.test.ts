@@ -3,6 +3,7 @@ import { WORKSPACE_LABELS } from "./workspace-labels";
 import {
   WORKSPACE_NAVIGATION,
   workspaceRouteDirection,
+  workspaceNavigationOwner,
   workspaceRouteIndex,
   workspaceSection,
 } from "./workspace-navigation";
@@ -14,14 +15,21 @@ describe("workspace navigation", () => {
       expect(workspaceSection(item.href)).toBe(item.label);
     }
   });
-  it("restores the production tools alongside workspace settings", () => {
+  it("keeps the everyday sidebar to Issues, Needs you, Feedback and Settings", () => {
     expect(WORKSPACE_NAVIGATION.map(({ label, href }) => [label, href])).toEqual([
-      ["Overview", "/overview"], ["Customers", "/customers"],
-      ["Feedback inbox", "/feedback"], ["Issues", "/problems"],
-      ["Prompt Testing", "/pdd"], ["Action approvals", "/approvals"],
-      ["Agent activity", "/agent-runs"], ["Follow-up", "/follow-up"],
-      ["Integrations", "/integrations"], ["Settings", "/settings"],
+      ["Issues", "/problems"], ["Needs you", "/approvals"],
+      ["Feedback", "/feedback"], ["Settings", "/settings"],
     ]);
+  });
+  it("highlights the owning item for routes outside the sidebar", () => {
+    for (const [route, owner] of [
+      ["/pdd", "problems"], ["/pdd/problem_123", "problems"], ["/follow-up", "problems"],
+      ["/investigations/inv_1", "problems"], ["/agent-runs/run_123", "settings"],
+      ["/customers", "settings"], ["/integrations", "settings"],
+    ] as const) {
+      expect(workspaceNavigationOwner(route)).toBe(owner);
+    }
+    expect(workspaceNavigationOwner("/notifications")).toBeNull();
   });
   it("maps every sidebar route to its visual order", () => {
     WORKSPACE_NAVIGATION.forEach(({ href }, index) => {
@@ -34,8 +42,8 @@ describe("workspace navigation", () => {
       ["/problems/problem_123", "/problems"],
       ["/approvals/approval_123", "/approvals"],
       ["/settings/appearance", "/settings"],
-      ["/pdd/problem_123", "/pdd"],
-      ["/agent-runs/run_123", "/agent-runs"],
+      ["/pdd/problem_123", "/problems"],
+      ["/agent-runs/run_123", "/settings"],
     ]) {
       expect(workspaceRouteIndex(route)).toBe(workspaceRouteIndex(owner));
       expect(workspaceRouteIndex(route)).not.toBeNull();
@@ -52,7 +60,7 @@ describe("workspace navigation", () => {
     expect(workspaceRouteDirection("/problems/problem_123", "/problems")).toBe(
       "backward",
     );
-    expect(workspaceRouteDirection(null, "/overview")).toBe("none");
+    expect(workspaceRouteDirection(null, "/problems")).toBe("none");
   });
 
   it("ignores query strings and hashes", () => {

@@ -25,19 +25,6 @@ export const demoWorkspaceGuide: WorkspaceDemoGuide = {
     "A presentation-ready walkthrough of CloseSpan's feedback operations workflow.",
   steps: [
     {
-      id: "operating-picture",
-      title: "Start with the operating picture",
-      description:
-        "Show how one workspace turns fragmented signals into a view of volume, urgency, revenue, and resolution speed.",
-      path: "/overview",
-      actionLabel: "Open overview",
-      talkingPoints: [
-        "Eight weeks of feedback volume across four channels",
-        "Revenue and renewal risk determine what rises first",
-        "Every metric links back to customer evidence",
-      ],
-    },
-    {
       id: "raw-signals",
       title: "Inspect the customer evidence",
       description:
@@ -56,7 +43,7 @@ export const demoWorkspaceGuide: WorkspaceDemoGuide = {
       description:
         "Show how repeated reports become product problems with shared evidence, owners, and workflow stages.",
       path: "/problems",
-      actionLabel: "Open product problems",
+      actionLabel: "Open issues",
       talkingPoints: [
         "Related reports form evidence-backed clusters",
         "Stages separate detection, delivery, and verification",
@@ -95,7 +82,7 @@ export const demoWorkspaceGuide: WorkspaceDemoGuide = {
       description:
         "Review the proposed GitHub issue, shared data, reversibility, and confidence before approving it.",
       path: "/approvals",
-      actionLabel: "Review approval",
+      actionLabel: "Open Needs you",
       talkingPoints: [
         "No external action happens before approval",
         "The proposed issue uses redacted evidence",

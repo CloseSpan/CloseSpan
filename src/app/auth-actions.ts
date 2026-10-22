@@ -17,7 +17,7 @@ function safeRedirect(value: FormDataEntryValue | null): string {
   ) {
     return value;
   }
-  return "/overview";
+  return "/problems";
 }
 
 export async function signInWithGoogle(formData: FormData): Promise<void> {

@@ -644,7 +644,7 @@ export function OnboardingAgentPanel({
     setError(null);
     try {
       await onboardingActionFetch(orgId, "continue");
-      router.push("/overview");
+      router.push("/problems");
       router.refresh();
     } catch {
       setError(FRIENDLY_ERROR);
@@ -659,7 +659,7 @@ export function OnboardingAgentPanel({
     setError(null);
     try {
       await onboardingActionFetch(orgId, "continue");
-      router.push("/overview");
+      router.push("/problems");
       router.refresh();
     } catch {
       setError(FRIENDLY_ERROR);

@@ -29,7 +29,7 @@ describe("Always-expanded workspace navigation", () => {
     expect(markup).not.toContain('data-collapsed="true"');
     expect(markup).not.toContain('data-open="false"');
     expect(markup).not.toContain('inert=""');
-    expect(markup).toContain("Action approvals, 3 pending");
+    expect(markup).toContain("Needs you, 3 pending");
     expect(markup.match(/data-nav-label=/g)).toHaveLength(WORKSPACE_NAVIGATION.length);
     expect(markup).toContain('aria-current="page"');
   });

@@ -51,7 +51,7 @@ describe("app domain routing", () => {
 
   it("routes the app root and requests shortcut to their workspace destinations", () => {
     expect(redirect("https://app.closespan.com/?source=bookmark#summary")).toBe(
-      "https://app.closespan.com/overview?source=bookmark#summary",
+      "https://app.closespan.com/problems?source=bookmark#summary",
     );
     expect(redirect("https://app.closespan.com/requests/?status=open")).toBe(
       "https://app.closespan.com/admin/requests?status=open",
