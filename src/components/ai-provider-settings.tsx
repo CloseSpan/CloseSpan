@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { KeyRound, LockKeyhole, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { SettingsView } from "@/lib/workspace-repository";
@@ -255,9 +256,9 @@ export function AiProviderSettings({
           </p>
         )}
         <div className="ai-config-actions section-gap-sm">
-          <button
+          <Button
             type="button"
-            className="btn primary"
+            variant="primary"
             disabled={
               busy ||
               !isAdmin ||
@@ -268,7 +269,7 @@ export function AiProviderSettings({
             onClick={save}
           >
             {busy ? "Saving…" : "Save provider"}
-          </button>
+          </Button>
           {current.credentialStored && (
             <ConfirmActionButton
               disabled={busy || !isAdmin}

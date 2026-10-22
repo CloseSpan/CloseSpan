@@ -1,3 +1,4 @@
+import { StatusBadge } from "@/components/ui";
 import type { AgentImplementationReport } from "@/lib/agent-run-verification";
 
 type RuntimeInteraction = NonNullable<
@@ -20,9 +21,9 @@ export function RuntimeInteractionEvidence({
   return (
     <details className="callout">
       <summary>
-        <span className="badge">
+        <StatusBadge>
           {runtimeInteractionStageLabel(interaction.stage)}
-        </span>{" "}
+        </StatusBadge>{" "}
         <span className="runtime-tool-name">{interaction.tool}</span>{" "}
         {interaction.status}
       </summary>

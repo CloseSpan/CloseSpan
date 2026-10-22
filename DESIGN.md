@@ -188,6 +188,10 @@ The frontmatter's display role records the landing hero; headline and title reco
 
 ## Layout
 
+### Shared components
+
+Workspace screens use the primitives in `src/components/ui/` instead of raw class strings: `Button` and `ButtonLink` (variants primary, danger, success, warning; optional large), `StatusBadge` (tones neutral, success, warning, danger, info, so callers state meaning rather than colour), `SeverityBadge`, `EmptyState` (icon, title, one sentence, at most one action), `PageHeader` and `Card`. They render the existing theme classes, so adopting them is visually neutral. A ratchet test (`src/components/ui/adoption.test.ts`) fails if raw `btn`/`badge` class strings increase; lower its budget as call sites move over. Screens live one per file in `src/components/screens/`.
+
 ### Issue-centered workspace
 
 The everyday sidebar contains Issues, Needs you, Feedback and Settings, and Issues is the workspace home (`/overview` redirects there; the counts dashboard was retired). It remains expanded on desktop. Routes outside the sidebar highlight their owner: Prompt Testing and investigations belong to Issues; Customers, Agent activity and the Integrations catalog are reached from Settings.

@@ -1,7 +1,7 @@
 "use client";
 
+import { Button, ButtonLink } from "@/components/ui";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -1078,10 +1078,10 @@ export function OnboardingAgentPanel({
         {busy === "connect_github" && (
           <div className="delphi-soft-error" role="status">
             <p>Connecting in popup…</p>
-            <button type="button" className="btn" onClick={() => {
+            <Button type="button"  onClick={() => {
               githubPopupRef.current?.abort();
               setBusy(null);
-            }}>Cancel</button>
+            }}>Cancel</Button>
           </div>
         )}
         {error && (
@@ -1100,19 +1100,19 @@ export function OnboardingAgentPanel({
               <div className="onboarding-load-fallback" role="status">
                 <strong>Chat unavailable.</strong>
                 <div>
-                  <button
+                  <Button
                     type="button"
-                    className="btn primary"
+                    variant="primary"
                     onClick={() => {
                       setError(null);
                       setLoadVersion((current) => current + 1);
                     }}
                   >
                     Retry chat
-                  </button>
-                  <Link className="btn" href="/integrations">
+                  </Button>
+                  <ButtonLink href="/integrations">
                     Open integrations
-                  </Link>
+                  </ButtonLink>
                 </div>
               </div>
             ) : (
@@ -1228,9 +1228,9 @@ export function OnboardingAgentPanel({
                     : "Selected repositories are connected and being prepared."}
                 </p>
               </div>
-              <Link className="btn" href="/integrations?focus=int_github">
+              <ButtonLink href="/integrations?focus=int_github">
                 Manage repositories
-              </Link>
+              </ButtonLink>
             </motion.section>
           )}
           {state && showSourceStage && (
@@ -1395,16 +1395,16 @@ export function OnboardingAgentPanel({
               <p>{confirmedSiteDescription}</p>
             )}
             <div className="delphi-company-actions">
-              <button
-                className="btn"
+              <Button
+                
                 type="button"
                 disabled={Boolean(busy)}
                 onClick={() => void restartCompanyProfile()}
               >
                 Use another URL
-              </button>
-              <button
-                className="btn primary"
+              </Button>
+              <Button
+                variant="primary"
                 type="button"
                 disabled={Boolean(busy)}
                 onClick={() => void confirmCompanyProfile()}
@@ -1415,7 +1415,7 @@ export function OnboardingAgentPanel({
                   <Check size={14} aria-hidden="true" />
                 )}
                 {busy === "confirm_company" ? "Confirming..." : "Confirm company"}
-              </button>
+              </Button>
             </div>
             <AnimatePresence initial={false}>
               {busy === "confirm_company" && (
@@ -1703,35 +1703,35 @@ export function OnboardingAgentPanel({
                         }
                       />
                     ) : connector.integrationId === "int_retell" ? (
-                      <Link className="btn" href="/integrations?focus=int_retell&view=connections">
+                      <ButtonLink href="/integrations?focus=int_retell&view=connections">
                         Connect Retell
-                      </Link>
+                      </ButtonLink>
                     ) : action?.type === "oauth_connect" &&
                       action.integrationId === "int_discord" ? (
-                      <button
-                        className="btn primary"
+                      <Button
+                        variant="primary"
                         type="button"
                         disabled={busy === action.type}
                         onClick={() => void runAction(action)}
                       >
                         {busy === action.type ? "Opening..." : "Connect"}
-                      </button>
+                      </Button>
                     ) : action?.type === "oauth_connect" ? (
-                      <Link
-                        className="btn"
+                      <ButtonLink
+                        
                         href={`/integrations?focus=${action.integrationId}`}
                       >
                         Connect
-                      </Link>
+                      </ButtonLink>
                     ) : action ? (
-                      <button
-                        className="btn primary"
+                      <Button
+                        variant="primary"
                         type="button"
                         disabled={busy === action.type}
                         onClick={() => void runAction(action)}
                       >
                         {busy === action.type ? "Opening..." : "Connect"}
-                      </button>
+                      </Button>
                     ) : null}
                   </motion.article>
                 );
@@ -1873,24 +1873,24 @@ export function OnboardingAgentPanel({
               )}
             </AnimatePresence>
             <div className="delphi-support-review-actions">
-              <button
-                className="btn"
+              <Button
+                
                 type="button"
                 disabled={Boolean(busy)}
                 onClick={editSupportMessage}
               >
                 Edit message
-              </button>
-              <button
-                className="btn"
+              </Button>
+              <Button
+                
                 type="button"
                 disabled={Boolean(busy)}
                 onClick={cancelSupportFlow}
               >
                 Cancel
-              </button>
-              <button
-                className="btn primary"
+              </Button>
+              <Button
+                variant="primary"
                 type="button"
                 disabled={busy === "support"}
                 onClick={() => void sendReviewedSupportMessage()}
@@ -1905,7 +1905,7 @@ export function OnboardingAgentPanel({
                   : supportDeliveryError
                     ? "Try sending again"
                     : "Send to support"}
-              </button>
+              </Button>
             </div>
           </motion.section>
         )}
@@ -1923,14 +1923,14 @@ export function OnboardingAgentPanel({
                 <label>Webhook URL</label>
                 <div className="setup-copy-row">
                   <code>{webhookUrl}</code>
-                  <button
+                  <Button
                     type="button"
-                    className="btn"
+                    
                     onClick={() => copyValue("url", webhookUrl)}
                   >
                     <Copy size={14} />
                     {copied === "url" ? "Copied" : "Copy"}
-                  </button>
+                  </Button>
                 </div>
               </>
             )}
@@ -1939,14 +1939,14 @@ export function OnboardingAgentPanel({
                 <label>Signing secret (shown once)</label>
                 <div className="setup-copy-row">
                   <code>{webhookSecret}</code>
-                  <button
+                  <Button
                     type="button"
-                    className="btn"
+                    
                     onClick={() => copyValue("secret", webhookSecret)}
                   >
                     <Copy size={14} />
                     {copied === "secret" ? "Copied" : "Copy"}
-                  </button>
+                  </Button>
                 </div>
               </>
             )}

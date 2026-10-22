@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -41,7 +42,7 @@ export function AgentRunFinding({ finding, linkedIssue, canCreate, storageReady 
           <Link className="text-link" href={`/problems/${encodeURIComponent(finding.sourceProblemId)}`}>Source issue</Link>
           {linkedIssue && linkedIssue !== finding.sourceProblemId && <Link className="text-link" href={`/problems/${encodeURIComponent(linkedIssue)}`}>View linked issue</Link>}
         </div>
-        {!finding.resolved && canCreate && storageReady && <button type="button" className="btn" onClick={createIssue} disabled={busy}>{busy ? "Saving…" : linkedIssue ? "Update issue evidence" : "Add to issue"}</button>}
+        {!finding.resolved && canCreate && storageReady && <Button type="button"  onClick={createIssue} disabled={busy}>{busy ? "Saving…" : linkedIssue ? "Update issue evidence" : "Add to issue"}</Button>}
         {!finding.resolved && canCreate && !storageReady && <p className="subtle">Issue creation requires database setup.</p>}
         {error && <p role="alert">{error}</p>}
       </div>

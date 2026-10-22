@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BrainCircuit,
@@ -192,8 +193,8 @@ export function RepositoryContextProgress({ orgId }: { orgId: string }) {
       {failed.length > 0 && !active && (
         <div className="repository-context-actions">
           {failed.map((context) => (
-            <button
-              className="btn"
+            <Button
+              
               type="button"
               key={context.id}
               disabled={retrying === context.repository || !response?.providerConfigured}
@@ -205,7 +206,7 @@ export function RepositoryContextProgress({ orgId }: { orgId: string }) {
                 <RotateCcw size={14} aria-hidden="true" />
               )}
               Retry {shortRepository(context.repository)}
-            </button>
+            </Button>
           ))}
         </div>
       )}

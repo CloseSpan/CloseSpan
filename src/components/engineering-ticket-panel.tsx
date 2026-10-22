@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import {
   useEffect,
   useId,
@@ -1090,9 +1091,9 @@ export function EngineeringTicketPanel({
                 {workflow.prompt.evidenceBinding.repositoryContext.matchCount} cited source {workflow.prompt.evidenceBinding.repositoryContext.matchCount === 1 ? "match" : "matches"}
               </span>
               {workflow.prompt.evidenceBinding.runtimeVerification && (
-                <span className="badge success">
+                <StatusBadge tone="success">
                   Runtime {workflow.prompt.evidenceBinding.runtimeVerification.outcome.toLowerCase()}
-                </span>
+                </StatusBadge>
               )}
             </div>
           </section>
@@ -1116,15 +1117,15 @@ export function EngineeringTicketPanel({
                 </p>
               </div>
               {!promptComparison.applied && canApplyImprovedPrompt && (
-                <button
+                <Button
                   type="button"
-                  className="btn primary"
+                  variant="primary"
                   disabled={revisionBusy}
                   onClick={applyImprovedPrompt}
                 >
                   <CheckCircle2 size={14} />
                   {revisionBusy ? "Preparing approval…" : "Apply & prepare approval"}
-                </button>
+                </Button>
               )}
             </div>
 
@@ -1134,7 +1135,7 @@ export function EngineeringTicketPanel({
                   <div>
                     <h4>Tested prompt · Revision {promptComparison.tested.revision}</h4>
                   </div>
-                  <span className="badge">SHA {promptComparison.tested.contentHash.slice(0, 10)}</span>
+                  <StatusBadge>SHA {promptComparison.tested.contentHash.slice(0, 10)}</StatusBadge>
                 </div>
                 <PromptViewSwitcher
                   ariaLabel={`Tested prompt revision ${promptComparison.tested.revision}`}
@@ -1195,7 +1196,7 @@ export function EngineeringTicketPanel({
               <div>
                 <h3>{currentPromptLabel} · Revision {workflow.prompt.revision}</h3>
               </div>
-              <span className="badge brand">SHA {workflow.prompt.contentHash.slice(0, 10)}</span>
+              <StatusBadge tone="info">SHA {workflow.prompt.contentHash.slice(0, 10)}</StatusBadge>
             </div>
             <PromptViewSwitcher
               ariaLabel="Prompt currently under test"
@@ -1278,9 +1279,9 @@ export function EngineeringTicketPanel({
                     )}
                     {message.improved && (
                       <div className="prompt-testing-message-actions">
-                        <button
+                        <Button
                           type="button"
-                          className="btn primary"
+                          variant="primary"
                           disabled={revisionBusy || busy || message.applied}
                           onClick={() => applyConversationImprovement(message)}
                         >
@@ -1290,7 +1291,7 @@ export function EngineeringTicketPanel({
                             : revisionBusy
                               ? "Applying improvement…"
                               : "Apply improvement & run Prompt Test"}
-                        </button>
+                        </Button>
                       </div>
                     )}
                     <details className="pdd-evaluation-technical">
@@ -1425,15 +1426,15 @@ export function EngineeringTicketPanel({
             </ul>
             {!workflow.specification && (
               <div className="top-actions">
-                <button
+                <Button
                   type="button"
-                  className="btn primary"
+                  variant="primary"
                   disabled={draftBusy}
                   onClick={createSuggestedPrompt}
                 >
                   {draftBusy ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />}
                   {draftBusy ? "Creating suggested prompt…" : "Create suggested prompt"}
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -1521,9 +1522,9 @@ export function EngineeringTicketPanel({
                 </p>
               </div>
               <div className="workflow-callout-actions implementation-approval-actions">
-                <Link className="btn primary" href="/approvals">
+                <ButtonLink variant="primary" href="/approvals">
                   Review execution approval
-                </Link>
+                </ButtonLink>
               </div>
             </>
           )}

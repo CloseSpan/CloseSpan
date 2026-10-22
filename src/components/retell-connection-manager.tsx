@@ -1,7 +1,7 @@
 "use client";
 
+import { Button, ButtonLink } from "@/components/ui";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { Check, Copy, LoaderCircle, RefreshCw, Unplug } from "lucide-react";
 import type { IntegrationConnectionState } from "@/lib/integration-client";
 import styles from "./retell-connection-manager.module.css";
@@ -79,15 +79,15 @@ export function RetellConnectionManager({ orgId, onConnectionStateChange, onImpo
     <div className={styles.root} aria-busy={Boolean(busy)}>
       {busy === "load" && <p className={styles.message}><LoaderCircle className="spin" size={16} />Checking connection…</p>}
       {error && <p className={styles.error} role="alert">{error}</p>}
-      {!status && !busy && <button className="btn" type="button" onClick={() => { setError(null); setBusy("load"); setReload((value) => value + 1); }}>Try again</button>}
+      {!status && !busy && <Button type="button" onClick={() => { setError(null); setBusy("load"); setReload((value) => value + 1); }}>Try again</Button>}
       {status && <>
         {!status.canManage && <p className={styles.hint}>Connection changes are available to administrators in a live workspace.</p>}
         {!status.configured && <p className={styles.hint}>Secure credential storage must be enabled before connecting Retell.</p>}
         {status.connected ? <>
           <p className={styles.message}><Check size={16} /><strong>Connected</strong><span className={styles.hint}>{status.keyHint}</span></p>
           <div className={styles.actions}>
-            <button className="btn primary" type="button" disabled={disabled} onClick={() => void act("import")}><RefreshCw size={15} />{busy === "import" ? "Importing…" : "Import recent calls"}</button>
-            <Link href="/feedback" className="btn">View feedback</Link>
+            <Button variant="primary" type="button" disabled={disabled} onClick={() => void act("import")}><RefreshCw size={15} />{busy === "import" ? "Importing…" : "Import recent calls"}</Button>
+            <ButtonLink href="/feedback" >View feedback</ButtonLink>
           </div>
           <p className={styles.hint}>Checks the latest 25 calls. Only completed calls with analysis are imported.</p>
           {status.lastImportAt && <p className={styles.hint}>Last import {new Date(status.lastImportAt).toLocaleString()}</p>}
@@ -97,7 +97,7 @@ export function RetellConnectionManager({ orgId, onConnectionStateChange, onImpo
               <p className={styles.hint}>Add this URL to Retell’s webhook settings for <code>call_analyzed</code>. Connect with the API key marked “webhook” in Retell.</p>
               <label htmlFor={`${id}-webhook`}>Webhook URL</label>
               <input id={`${id}-webhook`} className={styles.input} readOnly value={status.webhookUrl ?? ""} />
-              <button className="btn" type="button" onClick={() => void copyUrl()}><Copy size={14} />{copied ? "Copied" : "Copy URL"}</button>
+              <Button type="button" onClick={() => void copyUrl()}><Copy size={14} />{copied ? "Copied" : "Copy URL"}</Button>
               {status.webhookUrl && /https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(status.webhookUrl) && <p className={styles.hint}>Retell cannot reach localhost. Automatic imports need a public HTTPS URL.</p>}
             </div>
           </details>
@@ -106,7 +106,7 @@ export function RetellConnectionManager({ orgId, onConnectionStateChange, onImpo
             <form className={styles.fields} onSubmit={(event) => { event.preventDefault(); void act("import", true); }}>
               <label htmlFor={`${id}-call`}>Retell call ID</label>
               <input id={`${id}-call`} className={styles.input} value={callId} onChange={(event) => setCallId(event.target.value)} placeholder="call_…" required disabled={disabled} maxLength={128} pattern="[A-Za-z0-9_\-]+" />
-              <button className="btn" disabled={disabled || !callId.trim()}>Import call</button>
+              <Button disabled={disabled || !callId.trim()}>Import call</Button>
             </form>
           </details>
           <ConfirmActionButton className={`btn ${styles.disconnect}`} disabled={disabled} prompt="Disconnect Retell?" confirmLabel="Confirm disconnect" onConfirm={() => void act("disconnect")}><Unplug size={14} />{busy === "disconnect" ? "Disconnecting…" : "Disconnect"}</ConfirmActionButton>
@@ -114,7 +114,7 @@ export function RetellConnectionManager({ orgId, onConnectionStateChange, onImpo
           <label htmlFor={`${id}-key`}>Retell API key</label>
           <input id={`${id}-key`} className={styles.input} type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} maxLength={512} required disabled={disabled} placeholder="Enter your API key" aria-describedby={`${id}-privacy`} />
           <p id={`${id}-privacy`} className={styles.hint}>Stored encrypted. CloseSpan reads calls only—no outbound calls or agent changes.</p>
-          <button className="btn primary" type="submit" disabled={disabled || !apiKey.trim()}>{busy === "connect" ? "Connecting…" : "Connect Retell"}</button>
+          <Button variant="primary" type="submit" disabled={disabled || !apiKey.trim()}>{busy === "connect" ? "Connecting…" : "Connect Retell"}</Button>
         </form>}
       </>}
       {notice && <p className={styles.hint} role="status">{notice}</p>}

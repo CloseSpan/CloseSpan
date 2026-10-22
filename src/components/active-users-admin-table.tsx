@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusBadge } from "@/components/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PlatformUserActions } from "./platform-user-actions";
@@ -76,9 +77,9 @@ export function ActiveUsersAdminTable({
                   )}
                 </td>
                 <td>
-                  <span className="badge brand">
+                  <StatusBadge tone="info">
                     {entry.organizations[0]?.role ?? "Member"}
-                  </span>
+                  </StatusBadge>
                 </td>
                 <td>{entry.signInCount || "—"}</td>
                 <td>{dateFormatter.format(new Date(entry.firstJoinedAt))}</td>

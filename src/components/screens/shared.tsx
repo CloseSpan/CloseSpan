@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { Info } from "lucide-react";
+import { EmptyState, PageHeader } from "@/components/ui";
 
 export const money = (value: number) =>
   Math.round(value) < 1000
@@ -78,25 +77,8 @@ export function containModalFocus(
   }
 }
 
-export function PageTitle({
-  eyebrow,
-  title,
-  action,
-}: {
-  eyebrow?: string;
-  title: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="page-head">
-      <div>
-        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-        <h1>{title}</h1>
-      </div>
-      {action}
-    </div>
-  );
-}
+/** Kept for existing callers; new screens use PageHeader from "@/components/ui". */
+export const PageTitle = PageHeader;
 
 export function EmptyWorkspaceState({
   title,
@@ -109,16 +91,7 @@ export function EmptyWorkspaceState({
   actionHref: string;
   actionLabel: string;
 }) {
-  return (
-    <section className="card empty-state">
-      <Info size={28} />
-      <h2>{title}</h2>
-      <p className="subtle">{description}</p>
-      <Link className="btn primary" href={actionHref}>
-        {actionLabel}
-      </Link>
-    </section>
-  );
+  return <EmptyState title={title} description={description} action={{ href: actionHref, label: actionLabel }} />;
 }
 
 export function investigationStatusLabel(status: string) {

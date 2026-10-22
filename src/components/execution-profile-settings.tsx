@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, StatusBadge } from "@/components/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Github } from "lucide-react";
 import { CustomSelect } from "@/components/custom-select";
@@ -402,13 +403,13 @@ function RuntimeSecretManager({
         <span className="runtime-secret-manager-heading">
           <span className="runtime-secret-manager-title-line">
             <strong id="runtime-secret-manager-title">Runtime environment secrets</strong>
-            <span className="badge">Advanced</span>
+            <StatusBadge>Advanced</StatusBadge>
           </span>
           <span className="subtle">Add staging credentials only when an authorized repository must run inside Tenki.</span>
         </span>
         <span className="runtime-secret-manager-status">
           <span className="subtle">{secrets.length} {secrets.length === 1 ? "secret" : "secrets"}</span>
-          <span className="badge success">Encrypted at rest</span>
+          <StatusBadge tone="success">Encrypted at rest</StatusBadge>
         </span>
       </summary>
 
@@ -486,9 +487,9 @@ function RuntimeSecretManager({
           </label>
         </fieldset>
         <div className="runtime-secret-form-actions">
-          <button type="submit" className="btn primary" disabled={busy || !environmentName || secretValue.length < 4 || (scopeType === "repository" && !selectedRepository)}>
+          <Button type="submit" variant="primary" disabled={busy || !environmentName || secretValue.length < 4 || (scopeType === "repository" && !selectedRepository)}>
             {busy ? "Encrypting…" : "Encrypt & store"}
-          </button>
+          </Button>
         </div>
         </form>
 
@@ -528,13 +529,13 @@ function RuntimeSecretManager({
                 </div>
                 <div className="runtime-secret-version">
                   {activeVersion
-                    ? <span className="badge success">Active · v{activeVersion.version}</span>
+                    ? <StatusBadge tone="success">Active · v{activeVersion.version}</StatusBadge>
                     : <span className="badge high">No active version</span>}
                   {revokedCount > 0 && <span className="subtle">{revokedCount} revoked</span>}
                 </div>
                 <div className="runtime-secret-actions">
                   <button type="button" className="btn secondary" disabled={busy} aria-expanded={editing && action.type === "rotate"} onClick={() => openAction(secret.id, "rotate")}>Rotate</button>
-                  <button type="button" className="btn danger" disabled={busy || !activeVersion} aria-expanded={editing && action.type === "revoke"} onClick={() => openAction(secret.id, "revoke")}>Revoke</button>
+                  <Button type="button" variant="danger" disabled={busy || !activeVersion} aria-expanded={editing && action.type === "revoke"} onClick={() => openAction(secret.id, "revoke")}>Revoke</Button>
                 </div>
               </div>
               {editing && action.type === "rotate" && (
@@ -545,7 +546,7 @@ function RuntimeSecretManager({
                   </label>
                   <div className="runtime-secret-inline-actions">
                     <button type="button" className="btn subtle" disabled={busy} onClick={() => setAction(undefined)}>Cancel</button>
-                    <button type="submit" className="btn primary" disabled={busy || rotateValue.length < 4}>{busy ? "Rotating…" : "Rotate value"}</button>
+                    <Button type="submit" variant="primary" disabled={busy || rotateValue.length < 4}>{busy ? "Rotating…" : "Rotate value"}</Button>
                   </div>
                 </form>
               )}
@@ -560,7 +561,7 @@ function RuntimeSecretManager({
                   </label>
                   <div className="runtime-secret-inline-actions">
                     <button type="button" className="btn subtle" disabled={busy} onClick={() => setAction(undefined)}>Keep active</button>
-                    <button type="submit" className="btn danger" disabled={busy}>{busy ? "Revoking…" : `Revoke v${activeVersion.version}`}</button>
+                    <Button type="submit" variant="danger" disabled={busy}>{busy ? "Revoking…" : `Revoke v${activeVersion.version}`}</Button>
                   </div>
                 </form>
               )}
@@ -1181,10 +1182,10 @@ function ProfileEditor({
           </label>
         </div>
         <div className="ai-config-actions">
-          <button type="button" className="btn primary" disabled={!isAdmin || busy} onClick={save}>
+          <Button type="button" variant="primary" disabled={!isAdmin || busy} onClick={save}>
             {busy ? "Saving version…" : "Save immutable version"}
-          </button>
-          {saved && <span className="badge success" role="status">Profile saved</span>}
+          </Button>
+          {saved && <StatusBadge tone="success" role="status">Profile saved</StatusBadge>}
           {error && <span className="subtle form-error" role="alert">{error}</span>}
         </div>
       </div>
@@ -1721,16 +1722,16 @@ export function ExecutionProfileSettings({
                     CloseSpan will recheck the exact pull request commit, allow only the reviewed implementation and runtime-verifier workflow files, and require every reported GitHub Actions run to pass. Your approval merges the setup pull request; CloseSpan never commits it directly to the default branch.
                   </p>
                   <div className="top-actions">
-                    <button
+                    <Button
                       type="button"
-                      className="btn primary"
+                      variant="primary"
                       disabled={!isAdmin || Boolean(busyRunnerMergeRepository) || Boolean(busyRunnerRepository)}
                       onClick={() => approveAndMergeRunnerWorkflow(repository.repository)}
                     >
                       {busyRunnerMergeRepository === repository.repository
                         ? "Verifying checks and merging…"
                         : "Approve and merge runner setup"}
-                    </button>
+                    </Button>
                     <a
                       className="btn secondary"
                       href={runnerWorkflowPulls[repository.repository].url}
@@ -1784,7 +1785,7 @@ export function ExecutionProfileSettings({
                         )}
                       </div>
                       <div className="top-actions">
-                        {assignment.activeProfile && <span className="badge success">Active</span>}
+                        {assignment.activeProfile && <StatusBadge tone="success">Active</StatusBadge>}
                         {assignment.activeProfile && (
                           <button type="button" className="btn secondary" disabled={!isAdmin || Boolean(busyDeactivation)} onClick={() => deactivate(assignment.repository, assignment.workspaceRoot)}>
                             {busyDeactivation === `${assignment.repository}:${assignment.workspaceRoot}` ? "Deactivating…" : "Deactivate"}

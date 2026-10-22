@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import { ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -172,13 +173,13 @@ export function IssuesScreen({ issues, presentationDemo = false }: { issues: Iss
   return <div className={styles.screen}>
     <header className={styles.header}>
       <h1>Issues</h1>
-      {presentationDemo && <span className="badge">Demo · sample data</span>}
+      {presentationDemo && <StatusBadge>Demo · sample data</StatusBadge>}
     </header>
 
     {issues.length === 0 ? <section className={styles.empty}>
       <h2>No issues yet</h2>
       <p>Issues appear here after imported feedback is reviewed.</p>
-      <Link className="btn" href="/feedback">View feedback</Link>
+      <ButtonLink href="/feedback">View feedback</ButtonLink>
     </section> : <>
       <div className={styles.queueFilters} role="group" aria-label="Filter issues">
         {ISSUE_QUEUE_FILTERS.map(({ value, label }) => <button
@@ -205,8 +206,8 @@ export function IssuesScreen({ issues, presentationDemo = false }: { issues: Iss
         <h2>{query.trim() ? "No matching issues" : emptyQueue.title}</h2>
         <p>{query.trim() ? "Try a different subject, status, or severity." : emptyQueue.detail}</p>
         {query.trim()
-          ? <button className="btn" type="button" onClick={() => setQuery("")}>Clear search</button>
-          : <button className="btn" type="button" onClick={() => setFilter("all")}>View all issues</button>}
+          ? <Button type="button" onClick={() => setQuery("")}>Clear search</Button>
+          : <Button type="button" onClick={() => setFilter("all")}>View all issues</Button>}
       </section>}
     </>}
   </div>;

@@ -1,3 +1,4 @@
+import { ButtonLink, StatusBadge } from "@/components/ui";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import type { AgentRunSummaryView, AgentRunView } from "@/lib/engineering-workflow-repository";
@@ -62,7 +63,7 @@ export function AgentRunSummary({ run, problemId, title, isAdmin, finalExecution
         </div>
         <span className={runStatus.className}>{runStatus.label}</span>
       </div>
-      {presentationDemo && <p className="subtle"><span className="badge">Demo · sample data</span> Read-only results. No live work is running.</p>}
+      {presentationDemo && <p className="subtle"><StatusBadge>Demo · sample data</StatusBadge> Read-only results. No live work is running.</p>}
       <AgentRunAutoRefresh active={refreshing} quiet />
       <section className="card run-summary-card" aria-labelledby="run-results-heading">
         <div className="card-head"><h2 id="run-results-heading">Results</h2></div>
@@ -85,7 +86,7 @@ export function AgentRunSummary({ run, problemId, title, isAdmin, finalExecution
           </dl>
           <div className="run-summary-actions">
             {run.pullRequestUrl && !presentationDemo ? <a className="btn primary" href={run.pullRequestUrl} target="_blank" rel="noreferrer">Open pull request <ExternalLink size={14} aria-hidden="true" /></a> : null}
-            {run.approvalId ? <Link className="btn" href={`/approvals?approval=${run.approvalId}`}>View decision</Link> : null}
+            {run.approvalId ? <ButtonLink href={`/approvals?approval=${run.approvalId}`}>View decision</ButtonLink> : null}
           </div>
         </div>
       </section>

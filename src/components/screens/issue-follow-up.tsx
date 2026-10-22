@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useState } from "react";
 import type { DemoState } from "@/lib/store";
 import type { FeedbackItem } from "@/lib/domain";
@@ -137,9 +138,9 @@ export function IssueFollowUp({
               </article>
             ))
           )}
-          <button
+          <Button
             type="button"
-            className="btn primary"
+            variant="primary"
             disabled={
               busy ||
               !verified ||
@@ -153,7 +154,7 @@ export function IssueFollowUp({
               : state.notifications === "Approved"
               ? "Drafts approved"
               : "Approve all drafts"}
-          </button>
+          </Button>
           {notice && (
             <p
               className={`toast ${notice.kind}`}

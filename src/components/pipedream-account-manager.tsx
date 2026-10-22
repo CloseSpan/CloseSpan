@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { Check, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { PipedreamConnectButton } from "@/components/pipedream-connect-button";
@@ -189,10 +190,10 @@ export function PipedreamAccountManager({
               </div>
               <div className="pipedream-account-actions">
                 {!managementOnly && integrationId === "int_zendesk" && account.state === "Connected" && (
-                  <button className="btn primary" type="button" disabled={pulling === account.accountId} onClick={() => void pull(account.accountId)}>
+                  <Button variant="primary" type="button" disabled={pulling === account.accountId} onClick={() => void pull(account.accountId)}>
                     {pulling === account.accountId ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}
                     {pulling === account.accountId ? "Pulling..." : "Pull feedback now"}
-                  </button>
+                  </Button>
                 )}
                 <ConfirmActionButton
                   disabled={removing === account.accountId}

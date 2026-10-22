@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -549,9 +550,9 @@ export function FeedbackScreen({
               {openFeedbackReportedAt?.date ? ` · Reported ${openFeedbackReportedAt.date}` : ""}
             </p>
           </div>
-          <span className="badge">
+          <StatusBadge>
             {openAnalysis?.classification ?? openFeedback.type}
-          </span>
+          </StatusBadge>
         </div>
 
         <div className="feedback-detail-page-layout">
@@ -669,9 +670,9 @@ export function FeedbackScreen({
 
         <footer className="feedback-detail-page-actions">
           {linkedProblemId ? (
-            <Link className="btn primary" href={`/problems/${linkedProblemId}#evidence`}>
+            <ButtonLink variant="primary" href={`/problems/${linkedProblemId}#evidence`}>
               Open {linkedProblemTitle} <ChevronRight size={14} />
-            </Link>
+            </ButtonLink>
           ) : openAnalysis?.reviewStatus === "Proposed" ? (
             <div className="feedback-detail-review">
               <div className="field">
@@ -703,17 +704,17 @@ export function FeedbackScreen({
                 />
               </div>
               <div className="feedback-detail-review-actions">
-                <button
+                <Button
                   type="button"
-                  className="btn"
+                  
                   disabled={reviewBusyId === openFeedback.id}
                   onClick={() => void reviewAnalysis(openFeedback.id, "reject")}
                 >
                   Reject proposal
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="btn primary"
+                  variant="primary"
                   disabled={reviewBusyId === openFeedback.id}
                   onClick={() => void reviewAnalysis(openFeedback.id, "approve")}
                 >
@@ -722,27 +723,27 @@ export function FeedbackScreen({
                     : (reviewProblemByFeedback[openFeedback.id] ?? openAnalysis.proposedProblemId ?? "__new__") === "__new__"
                       ? "Approve & create problem"
                       : "Approve & link problem"}
-                </button>
+                </Button>
               </div>
             </div>
           ) : openAnalysis?.reviewStatus === "Rejected" ? (
-            <button
+            <Button
               type="button"
-              className="btn primary"
+              variant="primary"
               disabled={busy}
               onClick={() => void classify([openFeedback.id])}
             >
               <Sparkles size={14} /> {busy ? "Analyzing…" : "Analyze again"}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
-              className="btn primary"
+              variant="primary"
               disabled={busy}
               onClick={() => void classify([openFeedback.id])}
             >
               <Sparkles size={14} /> {busy ? "Analyzing…" : `Analyze with ${providerLabel}`}
-            </button>
+            </Button>
           )}
         </footer>
       </section>
@@ -753,7 +754,7 @@ export function FeedbackScreen({
       <PageTitle
         title={WORKSPACE_LABELS.feedback}
         action={<div className="page-title-actions">
-          {proposedAnalyses.length > 0 && <span className="badge brand" role="status">{proposedAnalyses.length} {proposedAnalyses.length === 1 ? "needs" : "need"} review</span>}
+          {proposedAnalyses.length > 0 && <StatusBadge tone="info" role="status">{proposedAnalyses.length} {proposedAnalyses.length === 1 ? "needs" : "need"} review</StatusBadge>}
           {pullControls()}
           <button type="button" className="btn primary feedback-analyze-button" aria-label={`Analyze selected feedback with ${providerLabel}`} disabled={!selected.length || busy} onClick={() => void classify()}>
             <Sparkles size={14} /> {busy ? "Analyzing…" : `Analyze${selected.length ? ` (${selected.length})` : ""}`}
@@ -781,15 +782,15 @@ export function FeedbackScreen({
             ...new Set(feedbackItems.map((item) => item.source)),
           ]}
         />
-        <button
+        <Button
           type="button"
-          className="btn"
+          
           aria-expanded={advanced}
           aria-controls="feedback-advanced-filters"
           onClick={() => setAdvanced((value) => !value)}
         >
           <Filter size={14} /> More filters
-        </button>
+        </Button>
       </div>
       <div
         id="feedback-advanced-filters"
@@ -818,9 +819,9 @@ export function FeedbackScreen({
                 options={["All", "Enterprise", "Growth", "Starter", "Unknown"]}
               />
             </div>
-            <button
+            <Button
               type="button"
-              className="btn"
+              
               onClick={() => {
                 setQuery("");
                 setSource("All");
@@ -829,7 +830,7 @@ export function FeedbackScreen({
               }}
             >
               Clear filters
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -914,7 +915,7 @@ export function FeedbackScreen({
                     </time>
                   </td>
                   <td>
-                    <span className="badge">{item.source}</span>
+                    <StatusBadge>{item.source}</StatusBadge>
                   </td>
                   <td>
                     {analysis?.reviewStatus !== "Rejected" ? analysis?.classification ?? item.type : item.type}

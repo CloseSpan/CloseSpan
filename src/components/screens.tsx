@@ -2,7 +2,6 @@
 // This barrel keeps existing `@/components/screens` imports working.
 export { PageTitle, EmptyWorkspaceState } from "./screens/shared";
 export { ProblemLifecycleBoard, ProblemsScreen } from "./screens/problems-screen";
-export { OverviewScreen } from "./screens/overview-screen";
 export { classificationConfidenceLabel, feedbackInboxSubject, orderFeedbackByReportedAt, formatFeedbackReportedAt, FeedbackScreen } from "./screens/feedback-screen";
 export type { FeedbackReportedOrder } from "./screens/feedback-screen";
 export { PrioritizationScreen } from "./screens/prioritization-screen";

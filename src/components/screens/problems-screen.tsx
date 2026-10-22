@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -207,7 +208,7 @@ export function ProblemLifecycleBoard({
                           <span>{problem.count} {problem.count === 1 ? "report" : "reports"}</span>
                         </p>
                         <div className="ticket-badges">
-                          <span className="badge">{problem.type}</span>
+                          <StatusBadge>{problem.type}</StatusBadge>
                           <span className={`badge ${problem.severity.toLowerCase()}`}>
                             {problem.severity}
                           </span>
@@ -286,10 +287,10 @@ export function ProblemLifecycleBoard({
                 {transitionError && <p className="stage-transition-error" role="alert">{transitionError}</p>}
               </div>
               <footer>
-                <button type="button" className="btn" onClick={closeTransition} disabled={isSubmitting}>Cancel</button>
-                <button type="button" className="btn primary" onClick={confirmTransition} disabled={isSubmitting}>
+                <Button type="button"  onClick={closeTransition} disabled={isSubmitting}>Cancel</Button>
+                <Button type="button" variant="primary" onClick={confirmTransition} disabled={isSubmitting}>
                   {isSubmitting ? <><LoaderCircle className="spin" size={16} /> Updating stage</> : "Confirm stage update"}
-                </button>
+                </Button>
               </footer>
             </div>
           </div>,
@@ -370,12 +371,12 @@ export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) 
         title={WORKSPACE_LABELS.problems}
         action={
           reviewProblem ? (
-            <Link
-              className="btn"
+            <ButtonLink
+              
               href={`/problems/${reviewProblem.id}#evidence`}
             >
               <Sparkles size={14} /> Review issue
-            </Link>
+            </ButtonLink>
           ) : undefined
         }
       />
@@ -486,7 +487,7 @@ export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) 
                 {visibleIssues.length === 0 ? (
                   <div className="issue-empty" role="status">
                     <strong>No matching issues</strong>
-                    <button type="button" className="btn" onClick={() => setFilters({ ...EMPTY_ISSUE_FILTERS })}>Clear filters</button>
+                    <Button type="button"  onClick={() => setFilters({ ...EMPTY_ISSUE_FILTERS })}>Clear filters</Button>
                   </div>
                 ) : tableView === "board" ? (
                   <div className="problem-board-panel">

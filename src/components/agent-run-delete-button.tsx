@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { AlertTriangle, LoaderCircle, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
@@ -134,15 +135,15 @@ export function AgentRunDeleteButton({
               </p>
             ) : null}
             <div className="organization-create-actions agent-run-delete-actions">
-              <button
-                className="btn"
+              <Button
+                
                 type="button"
                 ref={cancelRef}
                 disabled={busy}
                 onClick={closeDialog}
               >
                 Cancel
-              </button>
+              </Button>
               <button
                 className="btn organization-delete-submit"
                 type="button"

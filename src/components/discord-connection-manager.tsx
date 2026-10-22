@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, LoaderCircle, RefreshCw, Server, Unplug } from "lucide-react";
 import type { IntegrationConnectionState } from "@/lib/integration-client";
@@ -145,7 +146,7 @@ export function DiscordConnectionManager({
     <div className="discord-connection-manager">
       {callbackStatus === "error" && <div className="discord-manager-alert" role="alert"><AlertTriangle size={17} /><p><strong>Discord connection was not saved</strong><span>{discordCallbackError(callbackReason)}</span></p></div>}
       <div className="discord-manager-summary"><Server size={19} /><p><strong>Connect one Discord server</strong><span>CloseSpan registers its own commands and asks for confirmation before recording feedback.</span></p></div>
-      <button className="btn primary" type="button" disabled={Boolean(busy)} onClick={() => void install()}>{busy === "install" ? <><LoaderCircle className="spin" size={16} />Opening Discord…</> : "Add CloseSpan to Discord"}</button>
+      <Button variant="primary" type="button" disabled={Boolean(busy)} onClick={() => void install()}>{busy === "install" ? <><LoaderCircle className="spin" size={16} />Opening Discord…</> : "Add CloseSpan to Discord"}</Button>
       {error && <p className="integration-import failed" role="alert"><AlertTriangle size={13} />{error}</p>}
     </div>
   );
@@ -154,7 +155,7 @@ export function DiscordConnectionManager({
     <div className="discord-connection-manager">
       <div className="discord-manager-summary connected"><Check size={18} /><p><strong>{installation.guildName || "Discord server"}</strong><span>CloseSpan bot installed</span></p></div>
       {callbackStatus === "connected" && !commandSetupIssue && <div className="discord-manager-alert connected" role="status"><Check size={16} /><p><strong>Discord connected</strong><span>This server is now linked to the current CloseSpan workspace.</span></p></div>}
-      {commandSetupIssue && <><div className="discord-manager-alert" role="alert"><AlertTriangle size={16} /><p><strong>Bot installed; commands need one retry</strong><span>The server connection was saved, but Discord did not finish registering the CloseSpan commands.</span></p></div><button className="btn" type="button" disabled={Boolean(busy)} onClick={() => void retryCommands()}>{busy === "commands" ? <><LoaderCircle className="spin" size={15} />Retrying commands…</> : <><RefreshCw size={14} />Retry command setup</>}</button></>}
+      {commandSetupIssue && <><div className="discord-manager-alert" role="alert"><AlertTriangle size={16} /><p><strong>Bot installed; commands need one retry</strong><span>The server connection was saved, but Discord did not finish registering the CloseSpan commands.</span></p></div><Button type="button" disabled={Boolean(busy)} onClick={() => void retryCommands()}>{busy === "commands" ? <><LoaderCircle className="spin" size={15} />Retrying commands…</> : <><RefreshCw size={14} />Retry command setup</>}</Button></>}
       {!status.interactionsConfigured && <div className="discord-manager-alert" role="alert"><AlertTriangle size={16} /><p><strong>Commands need one final setting</strong><span>Add the Discord public key and set the Interactions Endpoint URL.</span></p></div>}
       <fieldset className="discord-intake-modes">
         <legend>How CloseSpan should listen</legend>
@@ -171,8 +172,8 @@ export function DiscordConnectionManager({
         </div>
       )}
       <div className="discord-manager-actions">
-        <button className="btn primary" type="button" disabled={!dirty || Boolean(busy) || (mode === "channels" && !selected.length)} onClick={() => void save()}>{busy === "save" ? "Saving…" : "Save listening mode"}</button>
-        <button className="btn" type="button" disabled={Boolean(busy)} onClick={() => void load()}><RefreshCw size={14} />Refresh</button>
+        <Button variant="primary" type="button" disabled={!dirty || Boolean(busy) || (mode === "channels" && !selected.length)} onClick={() => void save()}>{busy === "save" ? "Saving…" : "Save listening mode"}</Button>
+        <Button type="button" disabled={Boolean(busy)} onClick={() => void load()}><RefreshCw size={14} />Refresh</Button>
         <ConfirmActionButton disabled={Boolean(busy)} prompt="Disconnect Discord?" confirmLabel="Confirm disconnect" onConfirm={() => void disconnect()}><Unplug size={14} />{busy === "disconnect" ? "Disconnecting…" : "Disconnect"}</ConfirmActionButton>
       </div>
       {error && <p className="integration-import failed" role="alert"><AlertTriangle size={13} />{error}</p>}

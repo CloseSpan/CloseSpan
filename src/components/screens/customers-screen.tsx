@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusBadge } from "@/components/ui";
 import type { CustomerView } from "@/lib/workspace-repository";
 import { EmptyWorkspaceState, PageTitle, money } from "./shared";
 
@@ -47,7 +48,7 @@ export function CustomersScreen({ customers }: { customers: CustomerView[] }) {
                   </small>
                 </td>
                 <td>
-                  <span className="badge">{customer.tier}</span>
+                  <StatusBadge>{customer.tier}</StatusBadge>
                 </td>
                 <td>
                   {customer.arrSource === "unknown"

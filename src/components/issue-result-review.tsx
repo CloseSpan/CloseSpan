@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
@@ -62,18 +63,18 @@ export function IssueResultReview({ problemId, initial, canReview, canManage, de
       <p>{canManage ? "Review this feedback before authorizing a follow-up run." : "An administrator can authorize a follow-up run."}</p>
     </div>}
     {review.latestDecision && !review.latestDecision.current && <p className={styles.note}>The result changed since the last review. Check this version again.</p>}
-    {demo ? <div className={styles.actions}><button className="btn primary" disabled>This works</button><button className="btn" disabled>Needs changes</button></div>
+    {demo ? <div className={styles.actions}><Button variant="primary" disabled>This works</Button><Button disabled>Needs changes</Button></div>
       : review.canReview && canReview ? <>
         {requestChanges && <label className="field">What still needs to change?
           <textarea rows={3} maxLength={4000} value={feedback} disabled={busy} onChange={(event) => setFeedback(event.target.value)} placeholder="Describe what you tried and what should happen." />
         </label>}
         <div className={styles.actions}>
           {requestChanges ? <>
-            <button className="btn primary" disabled={busy || !feedback.trim()} onClick={() => void decide("changes")}>{busy ? "Saving…" : "Send feedback"}</button>
-            <button className="btn" disabled={busy} onClick={() => setRequestChanges(false)}>Cancel</button>
+            <Button variant="primary" disabled={busy || !feedback.trim()} onClick={() => void decide("changes")}>{busy ? "Saving…" : "Send feedback"}</Button>
+            <Button disabled={busy} onClick={() => setRequestChanges(false)}>Cancel</Button>
           </> : <>
-            {!decision && <button className="btn primary" disabled={busy} onClick={() => void decide("accept")}>{busy ? "Saving…" : "This works"}</button>}
-            <button className="btn" disabled={busy} onClick={() => setRequestChanges(true)}>Needs changes</button>
+            {!decision && <Button variant="primary" disabled={busy} onClick={() => void decide("accept")}>{busy ? "Saving…" : "This works"}</Button>}
+            <Button disabled={busy} onClick={() => setRequestChanges(true)}>Needs changes</Button>
           </>}
         </div>
         <p className={styles.note}>Records your result review. Coding and merging need separate approval.</p>
@@ -81,9 +82,9 @@ export function IssueResultReview({ problemId, initial, canReview, canManage, de
     {!demo && canManage && decision?.decision === "changes" && review.rework?.available && <div className={styles.rework}>
       {confirmRework ? <>
         <p className={styles.body}>Start one coding run from commit <code>{review.binding?.commitSha.slice(0, 7)}</code>? It may incur model and sandbox costs. CloseSpan will address this feedback on the existing PR and keep the expected behavior unchanged. It will not merge.</p>
-        <div className={styles.actions}><button className="btn primary" disabled={busy} onClick={() => void authorizeRework()}>{busy ? "Authorizing…" : "Approve and start follow-up"}</button>
-          <button className="btn" disabled={busy} onClick={() => setConfirmRework(false)}>Cancel</button></div>
-      </> : <button className="btn primary" onClick={() => setConfirmRework(true)}>Approve follow-up run</button>}
+        <div className={styles.actions}><Button variant="primary" disabled={busy} onClick={() => void authorizeRework()}>{busy ? "Authorizing…" : "Approve and start follow-up"}</Button>
+          <Button disabled={busy} onClick={() => setConfirmRework(false)}>Cancel</Button></div>
+      </> : <Button variant="primary" onClick={() => setConfirmRework(true)}>Approve follow-up run</Button>}
     </div>}
     {!demo && decision?.decision === "changes" && review.rework && !review.rework.available && review.rework.unavailableReason && <p className={styles.note}>{review.rework.unavailableReason}</p>}
     {reworkNotice && <p className={styles.note} role="status">{reworkNotice}</p>}

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useState } from "react";
 import { FileCode2, GitBranch, ShieldCheck } from "lucide-react";
 import type { EngineeringWorkflowView } from "@/lib/engineering-workflow-repository";
@@ -56,7 +57,7 @@ export function EngineeringApprovalPanel({
           <div><div className="metric-label"><ShieldCheck size={13} /> Capabilities</div><p className="subtle">{approval.allowedCapabilities.join(" · ")}</p></div>
         </div>
         <p className="subtle">Expires {new Date(approval.expiresAt).toLocaleString()}. Any prompt, repository, branch, permission, or base-commit change requires a new approval.</p>
-        {approval.status === "Pending" && <div className="top-actions"><button type="button" className="btn primary" disabled={busy} onClick={() => act("approve")}>Approve one run</button><button type="button" className="btn danger" disabled={busy} onClick={() => act("reject")}>Reject</button></div>}
+        {approval.status === "Pending" && <div className="top-actions"><Button type="button" variant="primary" disabled={busy} onClick={() => act("approve")}>Approve one run</Button><Button type="button" variant="danger" disabled={busy} onClick={() => act("reject")}>Reject</Button></div>}
         {workflow.run && <div className="callout"><div className="callout-title">Run {workflow.run.status}</div><p className="subtle">{workflow.run.branchName}</p></div>}
         {error && <p className="toast error" role="alert">{error}</p>}
       </div>

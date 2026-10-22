@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Button, ButtonLink } from "@/components/ui";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { EmptyWorkspaceState } from "./screens";
@@ -86,11 +86,11 @@ export function PromptReviewNotifications({
               <small className="subtle">{new Date(notification.createdAt).toLocaleString()}</small>
             </div>
             <div className="top-actions">
-              <Link className="btn primary" href={`/pdd/${notification.problemId}#engineering-ticket`}>Review</Link>
+              <ButtonLink variant="primary" href={`/pdd/${notification.problemId}#engineering-ticket`}>Review</ButtonLink>
               {notification.status === "Unread" && (
-                <button className="btn" type="button" disabled={busyId === notification.id} onClick={() => void markRead(notification.id)}>
+                <Button type="button" disabled={busyId === notification.id} onClick={() => void markRead(notification.id)}>
                   <Check size={14} /> {busyId === notification.id ? "Saving…" : "Mark read"}
-                </button>
+                </Button>
               )}
             </div>
           </div>

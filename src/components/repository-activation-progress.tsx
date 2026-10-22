@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
@@ -274,10 +275,10 @@ export function RepositoryActivationProgress({ orgId }: { orgId: string }) {
                         <ExternalLink size={14} aria-hidden="true" />
                       </a>
                     )}
-                    <button className="btn primary" type="button" disabled={busy} onClick={() => void approve(item)}>
+                    <Button variant="primary" type="button" disabled={busy} onClick={() => void approve(item)}>
                       {busy ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <GitMerge size={16} aria-hidden="true" />}
                       {busy ? "Approving and merging…" : "Approve and merge setup"}
-                    </button>
+                    </Button>
                   </div>
                 )}
                 {state === "failed" && (
@@ -285,10 +286,10 @@ export function RepositoryActivationProgress({ orgId }: { orgId: string }) {
                     {(item.setup?.failureMessage || item.sizingProbes?.find((probe) => probe.status === "Failed")?.failureMessage || item.compatibilityDetail) && (
                       <p>{item.setup?.failureMessage || item.sizingProbes?.find((probe) => probe.status === "Failed")?.failureMessage || item.compatibilityDetail}</p>
                     )}
-                    <button className="btn" type="button" disabled={busy} onClick={() => void prepare(item.repository)}>
+                    <Button type="button" disabled={busy} onClick={() => void prepare(item.repository)}>
                       {busy ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <RotateCcw size={15} aria-hidden="true" />}
                       {busy ? "Retrying…" : "Retry setup"}
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>

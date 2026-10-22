@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusBadge } from "@/components/ui";
 import { useEffect, useRef, useState } from "react";
 import type { SettingsView } from "@/lib/workspace-repository";
 import { AiProviderSettings } from "./ai-provider-settings";
@@ -325,7 +326,7 @@ export function SettingsScreen({
               <div>
                 <h2>Prompt evaluation</h2>
               </div>
-              <span className="badge brand">Organization policy</span>
+              <StatusBadge tone="info">Organization policy</StatusBadge>
             </div>
             <div className="card-body">
               <div className="field">
@@ -366,7 +367,7 @@ export function SettingsScreen({
               <div>
                 <h2>Execution environments</h2>
               </div>
-              <span className="badge brand">Approval-bound</span>
+              <StatusBadge tone="info">Approval-bound</StatusBadge>
             </div>
             <div className="card-body">
               <ExecutionProfileSettings orgId={orgId} isAdmin={isAdmin} />
@@ -466,7 +467,7 @@ export function SettingsScreen({
           <section className="card" id="members">
             <div className="card-head">
               <h2>Members & roles</h2>
-              <span className="badge">{settings.members.length} members</span>
+              <StatusBadge>{settings.members.length} members</StatusBadge>
             </div>
             <div className="card-body">
               {settings.members.map((member) => (
@@ -489,7 +490,7 @@ export function SettingsScreen({
           <section className="card" id="usage">
             <div className="card-head">
               <h2>Usage & cost limits</h2>
-              <span className="badge success">Within policy</span>
+              <StatusBadge tone="success">Within policy</StatusBadge>
             </div>
             <div className="card-body">
               <div className="grid cols-3">

@@ -1,3 +1,4 @@
+import { ButtonLink, StatusBadge } from "@/components/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { WORKSPACE_LABELS } from "@/lib/workspace-labels";
@@ -22,7 +23,7 @@ export default async function ApprovalRecordPage({ params }: { params: Promise<{
     <Link className="text-link" href="/approvals">{WORKSPACE_LABELS.approvals}</Link>
     <header className="page-head">
       <h1>{record?.problemTitle ?? `${action} PR #${finalApproval?.pullRequestNumber}`}</h1>
-      <span className="badge">{status}</span>
+      <StatusBadge>{status}</StatusBadge>
     </header>
     <section className="card">
       <div className="card-body">
@@ -33,8 +34,8 @@ export default async function ApprovalRecordPage({ params }: { params: Promise<{
         </p>}
         {finalApproval?.remainingRisks.length ? <section aria-label="Remaining risks"><h2>Remaining risks</h2><ul>{finalApproval.remainingRisks.map((risk) => <li key={risk}>{risk}</li>)}</ul></section> : null}
         <div className="top-actions">
-          <Link className="btn" href={`/problems/${encodeURIComponent(problemId)}`}>View issue</Link>
-          <Link className="btn primary" href={`/approvals?approval=${encodeURIComponent(approvalId)}`}>{status === "Pending" ? "Review decision" : "View decision"}</Link>
+          <ButtonLink href={`/problems/${encodeURIComponent(problemId)}`}>View issue</ButtonLink>
+          <ButtonLink variant="primary" href={`/approvals?approval=${encodeURIComponent(approvalId)}`}>{status === "Pending" ? "Review decision" : "View decision"}</ButtonLink>
         </div>
       </div>
     </section>

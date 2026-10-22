@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -119,7 +120,7 @@ export function ProblemPromptReviewScreen(props: ProblemPromptReviewScreenProps)
       <h1>{props.title}</h1>
       <span className={`badge ${resultChangesRequested || progress.tone === "attention" ? "medium" : progress.tone === "success" ? "success" : ""}`}>{resultChangesRequested ? "Changes requested" : progress.label}</span>
     </header>
-    {props.presentationDemo && <span className="badge">Demo · sample data</span>}
+    {props.presentationDemo && <StatusBadge>Demo · sample data</StatusBadge>}
     {(nextSection || props.conversation) && <nav className={styles.quickActions} aria-label="Issue actions">
       {nextSection && <a className="btn" href={nextSection.href}>{nextSection.label}</a>}
       {props.conversation && <a className="text-link" href="#issue-discussion">Discuss with CloseSpan</a>}
@@ -154,15 +155,15 @@ export function ProblemPromptReviewScreen(props: ProblemPromptReviewScreenProps)
       </ul>}
       {current && review?.confirmedAt && <p className={styles.confirmed}><Check size={15} aria-hidden="true" /> Requirement confirmed</p>}
       {showSampleDecision && <div className={styles.actions}>
-        <button className="btn primary" type="button" disabled>Confirm</button>
-        <button className="btn" type="button" disabled>Needs changes</button>
+        <Button variant="primary" type="button" disabled>Confirm</Button>
+        <Button type="button" disabled>Needs changes</Button>
       </div>}
       {showDecision && <div className={styles.decision}>
         <p className={styles.note}>The requirement check passed. This is not a live application test.</p>
         {props.canReview ? <div>
           {!requestingChanges && <div className={styles.actions}>
-            <button className="btn primary" type="button" disabled={busy} onClick={() => void decide("confirm")}>{busy ? "Saving…" : "Confirm"}</button>
-            <button ref={changesButton} className="btn" type="button" disabled={busy} onClick={() => setRequestingChanges(true)}>Needs changes</button>
+            <Button variant="primary" type="button" disabled={busy} onClick={() => void decide("confirm")}>{busy ? "Saving…" : "Confirm"}</Button>
+            <Button ref={changesButton}  type="button" disabled={busy} onClick={() => setRequestingChanges(true)}>Needs changes</Button>
           </div>}
           {requestingChanges && <form onSubmit={(event) => { event.preventDefault(); void decide("changes"); }}>
             <label className="field">What needs to change?
@@ -170,12 +171,12 @@ export function ProblemPromptReviewScreen(props: ProblemPromptReviewScreenProps)
                 required disabled={busy} placeholder="Describe the outcome you need." />
             </label>
             <div className={styles.actions}>
-              <button className="btn primary" type="submit" disabled={busy || !feedback.trim()}>{busy ? "Saving…" : "Send feedback"}</button>
-              <button className="btn" type="button" disabled={busy} onClick={() => {
+              <Button variant="primary" type="submit" disabled={busy || !feedback.trim()}>{busy ? "Saving…" : "Send feedback"}</Button>
+              <Button type="button" disabled={busy} onClick={() => {
                 setRequestingChanges(false);
                 setError(null);
                 requestAnimationFrame(() => changesButton.current?.focus());
-              }}>Cancel</button>
+              }}>Cancel</Button>
             </div>
           </form>}
           <p className={styles.note}>Confirm saves the requirement. It does not approve coding, merge, or deployment.</p>
@@ -216,7 +217,7 @@ export function ProblemPromptReviewScreen(props: ProblemPromptReviewScreenProps)
       <h2 id="issue-next-heading">{finalApproval ? finalApproval.action === "deploy" ? "Review deployment" : "Human merge" : "Implementation approval"}</h2>
       <p className={styles.body}>{finalApproval ? "Review the result and any remaining risks before approving the final action." : "One coding run is waiting for approval."}</p>
       {finalApproval && (finalApproval.autoDeploy || finalApproval.action === "deploy") && <p className={styles.notice}>{finalApproval.action === "deploy" ? "Approving this action deploys to production." : "Merging this change also deploys to production."}</p>}
-      {props.canManage ? <Link className="btn primary" href={approvalHref}>{finalApproval ? finalApproval.action === "deploy" ? "Review deployment" : "Review merge" : "Review coding run"}</Link>
+      {props.canManage ? <ButtonLink variant="primary" href={approvalHref}>{finalApproval ? finalApproval.action === "deploy" ? "Review deployment" : "Review merge" : "Review coding run"}</ButtonLink>
         : <p className={styles.note}>A workspace administrator can approve this action.</p>}
     </section>}
 

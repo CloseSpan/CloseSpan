@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, ButtonLink } from "@/components/ui";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -218,9 +219,9 @@ export function WorkspaceSetupHub({
                   ? `${status.feedbackCount} feedback event${status.feedbackCount === 1 ? "" : "s"} received`
                   : "Webhook endpoint is live"}
               </span>
-              <Link className="btn" href="/feedback">
+              <ButtonLink href="/feedback">
                 Open feedback inbox
-              </Link>
+              </ButtonLink>
             </div>
           ) : (
             <div className="setup-card-body">
@@ -228,52 +229,52 @@ export function WorkspaceSetupHub({
                 Fastest path: create a webhook endpoint, paste the URL into your
                 app, and POST customer signals as they happen.
               </p>
-              <button
-                className="btn primary"
+              <Button
+                variant="primary"
                 type="button"
                 disabled={busy === "webhook"}
                 onClick={connectWebhook}
               >
                 {busy === "webhook" ? "Creating endpoint..." : "Create webhook endpoint"}
-              </button>
+              </Button>
               {(webhookSecret || status.webhook) && webhookUrl && (
                 <div className="setup-credentials">
                   <label>Webhook URL</label>
                   <div className="setup-copy-row">
                     <code>{webhookUrl}</code>
-                    <button
+                    <Button
                       type="button"
-                      className="btn"
+                      
                       onClick={() => copyValue("url", webhookUrl)}
                     >
                       <Copy size={14} />
                       {copied === "url" ? "Copied" : "Copy"}
-                    </button>
+                    </Button>
                   </div>
                   {webhookSecret && (
                     <>
                       <label>Signing secret (shown once)</label>
                       <div className="setup-copy-row">
                         <code>{webhookSecret}</code>
-                        <button
+                        <Button
                           type="button"
-                          className="btn"
+                          
                           onClick={() => copyValue("secret", webhookSecret)}
                         >
                           <Copy size={14} />
                           {copied === "secret" ? "Copied" : "Copy"}
-                        </button>
+                        </Button>
                       </div>
                     </>
                   )}
-                  <button
-                    className="btn"
+                  <Button
+                    
                     type="button"
                     disabled={busy === "test" || (!webhookSecret && !status.webhook)}
                     onClick={sendTestEvent}
                   >
                     {busy === "test" ? "Sending test..." : "Send test feedback"}
-                  </button>
+                  </Button>
                 </div>
               )}
               <Link className="text-link" href="/integrations">
@@ -299,9 +300,9 @@ export function WorkspaceSetupHub({
             <div className="setup-complete">
               <Check aria-hidden="true" size={16} />
               <span>AI provider configured</span>
-              <Link className="btn" href="/settings#ai">
+              <ButtonLink href="/settings#ai">
                 Review AI settings
-              </Link>
+              </ButtonLink>
             </div>
           ) : (
             <div className="setup-card-body">
@@ -309,9 +310,9 @@ export function WorkspaceSetupHub({
                 Add one provider key in Settings. CloseSpan encrypts it per
                 workspace and uses it only for structured analysis.
               </p>
-              <Link className="btn primary" href="/settings#ai">
+              <ButtonLink variant="primary" href="/settings#ai">
                 Configure AI provider
-              </Link>
+              </ButtonLink>
             </div>
           )}
         </article>
@@ -337,9 +338,9 @@ export function WorkspaceSetupHub({
                   ? ` · ${status.github.repositoryCount} repositor${status.github.repositoryCount === 1 ? "y" : "ies"}`
                   : ""}
               </span>
-              <Link className="btn" href="/integrations?view=connections&focus=int_github">
+              <ButtonLink href="/integrations?view=connections&focus=int_github">
                 Manage repositories
-              </Link>
+              </ButtonLink>
             </div>
           ) : (
             <div className="setup-card-body">
@@ -349,25 +350,25 @@ export function WorkspaceSetupHub({
                   : "Install the CloseSpan GitHub App, then choose the repositories this workspace may inspect and act on after approval."}
               </p>
               {status.github?.installationCount ? (
-                <Link className="btn primary" href="/integrations?view=connections&focus=int_github&select=repositories">
+                <ButtonLink variant="primary" href="/integrations?view=connections&focus=int_github&select=repositories">
                   Choose repositories
-                </Link>
+                </ButtonLink>
               ) : (
-                <button
-                  className="btn primary"
+                <Button
+                  variant="primary"
                   type="button"
                   disabled={Boolean(busy) || githubConnecting}
                   onClick={connectGithub}
                 >
                   {githubConnecting ? "Opening GitHub..." : "Connect GitHub"}
-                </button>
+                </Button>
               )}
             </div>
           )}
           {githubConnecting && (
-            <button className="btn" type="button" onClick={() => githubConnectionRef.current?.abort()}>
+            <Button type="button" onClick={() => githubConnectionRef.current?.abort()}>
               Cancel GitHub connection
-            </button>
+            </Button>
           )}
         </article>
       </div>

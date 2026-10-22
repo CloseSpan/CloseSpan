@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -34,7 +35,7 @@ export function ApprovalsScreen({
   const router = useRouter();
   const canApprove = allowApproval && !presentationDemo;
   const demoNotice = presentationDemo
-    ? <p className="subtle"><span className="badge">Demo · sample data</span> Read-only decisions. No live work is running.</p> : null;
+    ? <p className="subtle"><StatusBadge>Demo · sample data</StatusBadge> Read-only decisions. No live work is running.</p> : null;
   const [localWorkflows, setLocalWorkflows] = useState({ source: initialEngineeringWorkflows, rows: initialEngineeringWorkflows });
   const engineeringWorkflows = localWorkflows.source === initialEngineeringWorkflows ? localWorkflows.rows : initialEngineeringWorkflows;
   const approvalItems: ApprovalItem[] = engineeringWorkflows.flatMap((workflow) => [
@@ -130,8 +131,8 @@ export function ApprovalsScreen({
         <h2>Decision unavailable</h2>
         <p>This decision is no longer in the current review list. Open its record to see the original decision.</p>
         <div className="top-actions">
-          <Link className="btn" href={`/approvals/${encodeURIComponent(unavailableApprovalId)}`}>View decision record</Link>
-          <Link className="btn" href="/approvals">View current reviews</Link>
+          <ButtonLink href={`/approvals/${encodeURIComponent(unavailableApprovalId)}`}>View decision record</ButtonLink>
+          <ButtonLink href="/approvals">View current reviews</ButtonLink>
           <Link className="text-link" href="/problems">View issues</Link>
         </div>
       </section>
@@ -354,30 +355,30 @@ export function ApprovalsScreen({
                       <Link className="text-link" href={`/problems/${engineeringWorkflow.problemId}`}>View issue <ChevronRight size={14} aria-hidden="true" /></Link>
                       {!canApprove && !presentationDemo && <p role="status">An administrator must approve this action.</p>}
                       <div className="approval-actions">
-                        <button
+                        <Button
                           type="button"
-                          className="btn danger"
+                          variant="danger"
                           disabled={!canApprove || busy !== null}
                           onClick={() => decideEngineering("reject")}
                         >
                           {busy === selectedItem?.key ? "Recording…" : "Reject run"}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
-                          className="btn primary"
+                          variant="primary"
                           disabled={!canApprove || busy !== null || Boolean(approvalBlockReason)}
                           onClick={() => decideEngineering("approve")}
                         >
                           {busy === selectedItem?.key ? "Queueing run…" : "Approve one run"} <Check size={14} aria-hidden="true" />
-                        </button>
+                        </Button>
                       </div>
                     </>
                   ) : (
                     <div className="approval-result-actions">
                       {engineeringWorkflow.run ? (
-                        <Link className="btn" href={`/agent-runs/${engineeringWorkflow.run.id}`}>
+                        <ButtonLink href={`/agent-runs/${engineeringWorkflow.run.id}`}>
                           View result
-                        </Link>
+                        </ButtonLink>
                       ) : null}
                     </div>
                   )}
@@ -434,23 +435,23 @@ export function ApprovalsScreen({
                     <>
                     {!canApprove && !presentationDemo && <p role="status">An administrator must approve this action.</p>}
                     <div className="approval-actions">
-                      <button
+                      <Button
                         type="button"
-                        className="btn danger"
+                        variant="danger"
                         disabled={!canApprove || busy !== null}
                         onClick={() => decideFinalExecution("reject")}
                       >
                         {busy === selectedItem?.key ? "Recording…" : finalApproval.executionAction === "deploy" ? "Reject deployment" : "Reject merge"}
-                      </button>
+                      </Button>
                       {approvalBlockReason && (
-                        <Link className="btn primary" href={`/problems/${finalApproval.problemId}`}>
+                        <ButtonLink variant="primary" href={`/problems/${finalApproval.problemId}`}>
                           View issue
                           <ChevronRight size={14} />
-                        </Link>
+                        </ButtonLink>
                       )}
-                      <button
+                      <Button
                         type="button"
-                        className="btn primary"
+                        variant="primary"
                         disabled={!canApprove || busy !== null || Boolean(approvalBlockReason)}
                         onClick={() => decideFinalExecution("approve")}
                       >
@@ -460,7 +461,7 @@ export function ApprovalsScreen({
                             ? "Approve production deployment"
                             : "Approve and merge PR"}
                         {busy !== selectedItem?.key ? <Check size={14} /> : null}
-                      </button>
+                      </Button>
                     </div>
                     </>
                   ) : (
@@ -476,14 +477,14 @@ export function ApprovalsScreen({
                       ) : null}
                       <div className="top-actions">
                         {finalApproval.status === "Approved" && finalApproval.attempt?.status === "Failed" ? (
-                          <button
+                          <Button
                             type="button"
-                            className="btn primary"
+                            variant="primary"
                             disabled={!canApprove || busy !== null}
                             onClick={() => decideFinalExecution("approve")}
                           >
                             {busy === selectedItem?.key ? "Queueing retry…" : finalApproval.executionAction === "deploy" ? "Retry approved deployment" : "Retry approved merge"}
-                          </button>
+                          </Button>
                         ) : null}
                         {!presentationDemo && <a
                           className="btn"
@@ -493,9 +494,9 @@ export function ApprovalsScreen({
                         >
                           Open pull request
                         </a>}
-                        <Link className="btn" href={`/agent-runs/${finalApproval.agentRunId}`}>
+                        <ButtonLink href={`/agent-runs/${finalApproval.agentRunId}`}>
                           View result
-                        </Link>
+                        </ButtonLink>
                       </div>
                     </div>
                   )}
@@ -514,9 +515,9 @@ export function ApprovalsScreen({
         ) : (
           <section className="card approval-detail-empty">
             <h2>{tab === "pending" ? requirementReviews.length ? "No merge or coding approvals" : "Nothing needs your review" : "No decisions yet"}</h2>
-            <Link className="btn" href="/problems">
+            <ButtonLink href="/problems">
               View issues
-            </Link>
+            </ButtonLink>
           </section>
         )}
       </div>

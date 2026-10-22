@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, ButtonLink } from "@/components/ui";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -717,8 +718,8 @@ export function ProductProblemInvestigationPanel({
                     </span>
                   )}
                 </div>
-                <button
-                  className="btn primary"
+                <Button
+                  variant="primary"
                   type="button"
                   disabled={startingRuntimeVerification || runtimeVerificationActive}
                   onClick={runRuntimeVerification}
@@ -739,7 +740,7 @@ export function ProductProblemInvestigationPanel({
                           || runtimeVerification?.outcome === "Verification blocked"
                           ? "Retry issue verification"
                           : runtimeVerification ? "Run verification again" : "Run issue verification"}
-                </button>
+                </Button>
               </div>
 
               {runtimeVerificationError && (
@@ -785,10 +786,10 @@ export function ProductProblemInvestigationPanel({
                     />
                     <small>Use this only for trusted evidence collected outside the CloseSpan runtime run.</small>
                   </label>
-                  <button className="btn primary" type="submit" disabled={savingVerification || verificationSummary.trim().length < 20}>
+                  <Button variant="primary" type="submit" disabled={savingVerification || verificationSummary.trim().length < 20}>
                     {savingVerification ? <LoaderCircle className="spin" size={14} aria-hidden="true" /> : <ShieldCheck size={14} aria-hidden="true" />}
                     {savingVerification ? "Recording…" : "Record verification"}
-                  </button>
+                  </Button>
                 </form>
               ) : investigation.verification.status !== "Unverified"
                 && !(runtimeVerification && investigation.verification.method === "Automated check") ? (
@@ -852,9 +853,9 @@ export function ProductProblemInvestigationPanel({
                   : "Prompt Testing remains blocked until the current issue is confirmed."}</span>
               </div>
               {investigation.verification.status === "Confirmed current" && (
-                <Link className="btn primary" href={`/pdd/${encodeURIComponent(problem.id)}#engineering-ticket`}>
+                <ButtonLink variant="primary" href={`/pdd/${encodeURIComponent(problem.id)}#engineering-ticket`}>
                   Continue to prompt <ChevronRight size={14} aria-hidden="true" />
-                </Link>
+                </ButtonLink>
               )}
             </section>
 
@@ -873,9 +874,9 @@ export function ProductProblemInvestigationPanel({
               <h3>Investigate before writing the prompt</h3>
               <span className="subtle">Affected impact: {problem.revenue > 0 ? `${money(problem.revenue)} ARR across ` : ""}{problem.count} signal{problem.count === 1 ? "" : "s"}.</span>
             </div>
-            <button className="btn primary" type="button" disabled={startingInvestigation} onClick={startInvestigation}>
+            <Button variant="primary" type="button" disabled={startingInvestigation} onClick={startInvestigation}>
               {startingInvestigation ? "Starting…" : "Start investigation"}
-            </button>
+            </Button>
           </section>
         )}
         {investigationError && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { ArrowRight, LoaderCircle } from "lucide-react";
@@ -16,10 +17,10 @@ import styles from "./onboarding-welcome.module.css";
 function ContinueButton() {
   const { pending } = useFormStatus();
   return (
-    <button className="btn primary" type="submit" disabled={pending}>
+    <Button variant="primary" type="submit" disabled={pending}>
       {pending ? "Continuing…" : "Continue"}
       {pending ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <ArrowRight size={16} aria-hidden="true" />}
-    </button>
+    </Button>
   );
 }
 

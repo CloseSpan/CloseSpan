@@ -1,3 +1,4 @@
+import { ButtonLink, EmptyState } from "@/components/ui";
 import { AgentRunFinding } from "@/components/agent-run-finding";
 import { detectRunFindings } from "@/lib/agent-run-findings";
 import { readFindingIssueLinks } from "@/lib/agent-run-findings-repository";
@@ -41,24 +42,20 @@ export default async function AgentRunsPage({ searchParams }: { searchParams?: P
       <PageTitle
         title={WORKSPACE_LABELS["agent-runs"]}
         action={runs.length > 0 ? (
-          <Link className="btn" href="/approvals">
+          <ButtonLink href="/approvals">
             Review approvals
-          </Link>
+          </ButtonLink>
         ) : undefined}
       />
       {runs.length > 0 && <nav className="agent-activity-filters" aria-label="Run filters">
-        <Link className="btn" href="/agent-runs" aria-current={!attention ? "page" : undefined}>All runs ({runs.length})</Link>
-        <Link className="btn" href="/agent-runs?attention=1" aria-current={attention ? "page" : undefined}>Needs attention ({attentionIds.size})</Link>
+        <ButtonLink href="/agent-runs" aria-current={!attention ? "page" : undefined}>All runs ({runs.length})</ButtonLink>
+        <ButtonLink href="/agent-runs?attention=1" aria-current={attention ? "page" : undefined}>Needs attention ({attentionIds.size})</ButtonLink>
         <span className="subtle">Latest 100 runs · Findings update on refresh</span>
       </nav>}
-      {attention && runs.length > 0 && visibleRuns.length === 0 ? <section className="card empty-state"><h2>No runs need attention</h2><p>No unresolved failures were detected in the recent run history.</p></section> : runs.length === 0 ? (
-        <section className="card empty-state">
-          <Bot aria-hidden="true" size={28} />
-          <h2>No agent runs yet</h2>
-          <Link className="btn primary" href="/problems">
-            View issues
-          </Link>
-        </section>
+      {attention && runs.length > 0 && visibleRuns.length === 0 ? (
+        <EmptyState title="No runs need attention" description="No unresolved failures were detected in the recent run history." />
+      ) : runs.length === 0 ? (
+        <EmptyState icon={Bot} title="No agent runs yet" description="Runs appear here once an approved prompt starts an agent." action={{ href: "/problems", label: "View issues" }} />
       ) : (
         <section className="card table-wrap agent-runs-table">
           <table>

@@ -1,5 +1,5 @@
+import { ButtonLink, StatusBadge } from "@/components/ui";
 import { Info } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AgentRunAutoRefresh } from "@/components/agent-run-auto-refresh";
 import { AgentRunRetryButton } from "@/components/agent-run-retry-button";
@@ -34,10 +34,10 @@ export default async function AgentRunDetailsPage({ params }: { params: Promise<
     <>
       <div className="page-head">
         <h1>Technical details</h1>
-        <Link className="btn" href={`/agent-runs/${run.id}`}>Back to run</Link>
+        <ButtonLink href={`/agent-runs/${run.id}`}>Back to run</ButtonLink>
       </div>
       <section className="card">
-        <div className="card-head"><div><h2>Approval-bound agent run</h2><p className="subtle">{run.id}</p><AgentRunAutoRefresh active={run.status === "Queued" || run.status === "Running" || run.status === "Tests passed"} /></div><span className="badge">{run.status}</span></div>
+        <div className="card-head"><div><h2>Approval-bound agent run</h2><p className="subtle">{run.id}</p><AgentRunAutoRefresh active={run.status === "Queued" || run.status === "Running" || run.status === "Tests passed"} /></div><StatusBadge>{run.status}</StatusBadge></div>
         <div className="card-body detail-stack">
           <p>{run.implementationSummary ?? run.failureMessage ?? "The executor has not returned a report yet."}</p>
           <p className="subtle">Coding environment: Tenki Sandbox · Branch: {run.branchName}</p>
@@ -49,8 +49,8 @@ export default async function AgentRunDetailsPage({ params }: { params: Promise<
           ) : null}
           <div className="top-actions agent-run-detail-actions">
             {canRetryDirectly ? <AgentRunRetryButton runId={run.id} /> : null}
-            <Link className="btn" href={`/pdd/${problemId}#engineering-ticket`}>Open Prompt Testing preparation</Link>
-            {run.approvalId ? <Link className="btn" href={`/approvals/${run.approvalId}`}>View authorizing approval</Link> : null}
+            <ButtonLink href={`/pdd/${problemId}#engineering-ticket`}>Open Prompt Testing preparation</ButtonLink>
+            {run.approvalId ? <ButtonLink href={`/approvals/${run.approvalId}`}>View authorizing approval</ButtonLink> : null}
             {run.pullRequestUrl && <a className="btn primary agent-run-draft-pr" href={run.pullRequestUrl}>Open draft PR</a>}
           </div>
         </div>
@@ -173,7 +173,7 @@ export default async function AgentRunDetailsPage({ params }: { params: Promise<
             <article className="callout" key={criterion.criterionId}>
               <div className="split">
                 <strong>{criterion.criterionId}</strong>
-                <span className="badge">{criterion.status}</span>
+                <StatusBadge>{criterion.status}</StatusBadge>
               </div>
               <p>{criterion.statement ?? criterion.evidence}</p>
               {criterion.statement && criterion.evidence ? (

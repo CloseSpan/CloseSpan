@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, ExternalLink, Github, Unplug } from "lucide-react";
@@ -203,9 +204,9 @@ export function GithubConnectionPanel({
       </div>
 
       {githubConnecting && (
-        <button className="btn" type="button" onClick={() => githubConnectionRef.current?.abort()}>
+        <Button type="button" onClick={() => githubConnectionRef.current?.abort()}>
           Cancel GitHub connection
-        </button>
+        </Button>
       )}
 
       {callbackStatus === "connected" && (
@@ -296,9 +297,9 @@ export function GithubConnectionPanel({
                         {installationRepositories.length === 0 && (
                           <p className="subtle">No repositories are available from this installation.</p>
                         )}
-                        <button className="btn primary" type="button" disabled={busy} onClick={() => saveRepositorySelection(installation.installationId)}>
+                        <Button variant="primary" type="button" disabled={busy} onClick={() => saveRepositorySelection(installation.installationId)}>
                           {busy ? "Saving…" : "Save workspace access"}
-                        </button>
+                        </Button>
                       </div>
                     );
                   })}

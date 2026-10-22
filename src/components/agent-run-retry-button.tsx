@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { LoaderCircle, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -45,8 +46,8 @@ export function AgentRunRetryButton({ runId }: { runId: string }) {
 
   return (
     <>
-      <button
-        className="btn primary"
+      <Button
+        variant="primary"
         type="button"
         disabled={busy}
         onClick={retry}
@@ -55,7 +56,7 @@ export function AgentRunRetryButton({ runId }: { runId: string }) {
           ? <LoaderCircle className="spin" size={16} aria-hidden="true" />
           : <RotateCcw size={16} aria-hidden="true" />}
         {busy ? "Starting fresh run…" : "Retry one coding run"}
-      </button>
+      </Button>
       {error ? <p className="toast error" role="alert">{error}</p> : null}
     </>
   );

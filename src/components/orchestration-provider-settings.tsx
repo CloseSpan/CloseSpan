@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, StatusBadge } from "@/components/ui";
 import { KeyRound, LockKeyhole, Network, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import type {
@@ -130,7 +131,7 @@ export function OrchestrationProviderSettings({
         <div>
           <h2>Workflow orchestration</h2>
         </div>
-        <span className="badge success">{current.providerLabel} active</span>
+        <StatusBadge tone="success">{current.providerLabel} active</StatusBadge>
       </div>
       <div className="card-body">
         {!isAdmin && (
@@ -260,9 +261,9 @@ export function OrchestrationProviderSettings({
           </p>
         )}
         <div className="ai-config-actions section-gap-sm">
-          <button
+          <Button
             type="button"
-            className="btn primary"
+            variant="primary"
             disabled={
               busy
               || !isAdmin
@@ -276,7 +277,7 @@ export function OrchestrationProviderSettings({
               : provider === "n8n" && current.activeProvider === "n8n"
                 ? "Reverify & save n8n"
                 : provider === "n8n" ? "Verify & use n8n" : "Use Pipedream"}
-          </button>
+          </Button>
           {selectionUnchanged && (
             <span className="subtle" role="status">
               {current.providerLabel} is already active for this workspace.

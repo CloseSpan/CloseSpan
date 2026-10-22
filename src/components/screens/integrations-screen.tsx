@@ -1,8 +1,8 @@
 "use client";
 
+import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Activity, Check, Clock3, Copy, Database, GitBranch, LoaderCircle, ShieldCheck, Sparkles, X } from "lucide-react";
 import { FitText } from "../fit-text";
@@ -89,8 +89,8 @@ function IntegrationProgressDrawer({
 
       <div className="integration-progress-actions">
         {github && (
-          <button
-            className="btn primary"
+          <Button
+            variant="primary"
             type="button"
             disabled={githubBusy}
             onClick={onConnectGithub}
@@ -100,11 +100,11 @@ function IntegrationProgressDrawer({
               : connected
                 ? "Manage repositories"
                 : "Finish repository selection"}
-          </button>
+          </Button>
         )}
-        <button className="btn" type="button" onClick={onViewDetails}>
+        <Button type="button" onClick={onViewDetails}>
           View connection details
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -600,7 +600,7 @@ export function IntegrationsScreen({
       <PageTitle
         title={settingsConnections ? "Connections" : "Integrations"}
         action={
-          settingsConnections ? <Link className="btn" href="/integrations">Browse integrations</Link> :
+          settingsConnections ? <ButtonLink href="/integrations">Browse integrations</ButtonLink> :
           <div
             className="integration-view-tabs"
             role="tablist"
@@ -650,13 +650,13 @@ export function IntegrationsScreen({
             <div className="card settings-connections-empty">
               <h2>No connected tools</h2>
               <p>Tools you connect to this workspace will appear here.</p>
-              <Link className="btn" href="/integrations" prefetch={false}>Browse integrations</Link>
+              <ButtonLink href="/integrations" prefetch={false}>Browse integrations</ButtonLink>
             </div>
           ) : visibleRows.length === 0 ? (
             <div className="card settings-connections-empty" role="status">
               <h2>No {activeFilter.toLowerCase()} connections</h2>
               <p>Your connected tools in this category will appear here.</p>
-              <button className="btn" type="button" onClick={() => setActiveFilter("All")}>Show all connections</button>
+              <Button type="button" onClick={() => setActiveFilter("All")}>Show all connections</Button>
             </div>
           ) : (
             <div className="integration-group">
@@ -678,7 +678,7 @@ export function IntegrationsScreen({
                           : item.lastSync
                             ? `Synced ${new Date(item.lastSync).toLocaleDateString()}`
                             : "Connected to this workspace"}</span>
-                      <button className="btn" type="button" aria-label={`View ${item.name} connection details`} onClick={() => openIntegrationDetails(item.id)}>View details</button>
+                      <Button type="button" aria-label={`View ${item.name} connection details`} onClick={() => openIntegrationDetails(item.id)}>View details</Button>
                     </div>
                   </article>
                 ))}
@@ -803,9 +803,9 @@ export function IntegrationsScreen({
                                     ? "Ready to connect"
                                     : "Not yet available"}
                           </span>
-                          <button className="btn" type="button" onClick={() => openIntegrationDetails(item.id)}>
+                          <Button type="button" onClick={() => openIntegrationDetails(item.id)}>
                             {connected ? "View details" : available ? "Review & connect" : "View details"}
-                          </button>
+                          </Button>
                         </div>
                       </article>
                     );
@@ -859,9 +859,9 @@ export function IntegrationsScreen({
               <button ref={integrationDrawerCloseRef} type="button" className="icon-button" aria-label="Close connector details" onClick={() => setSelectedIntegrationId(null)}><X size={18} /></button>
             </div>
             {githubBusy && selectedRow.item.id === "int_github" && (
-              <button className="btn" type="button" onClick={() => githubConnectionRef.current?.abort()}>
+              <Button type="button" onClick={() => githubConnectionRef.current?.abort()}>
                 Cancel GitHub connection
-              </button>
+              </Button>
             )}
             {githubError && selectedRow.item.id === "int_github" && integrationDrawerMode === "progress" && (
               <p className="github-connection-message error" role="alert">{githubError}</p>
@@ -898,13 +898,13 @@ export function IntegrationsScreen({
                 <div className="integration-drawer-actions">
               {selectedRow.demonstration ? (
                 <div className="integration-demo-connection">
-                  <span className="badge success">Demo connection</span>
+                  <StatusBadge tone="success">Demo connection</StatusBadge>
                   <p>This presentation account is simulated; no OAuth credential or external request is used.</p>
                 </div>
               ) : settingsConnections && !canManageConnections ? (
                 <p className="subtle">Only workspace administrators can change or disconnect connections.</p>
               ) : !selectedRow.available ? (
-                <button className="btn" type="button" disabled>Coming soon</button>
+                <Button type="button" disabled>Coming soon</Button>
               ) : selectedRow.item.id === "int_github" ? (
                 <div className="integration-github-access">
                   {selectedRow.connected ? (
@@ -912,9 +912,9 @@ export function IntegrationsScreen({
                       <div className="integration-github-repository-summary">
                         <div>
                           <strong>Connected repositories</strong>
-                          <span className="badge success">
+                          <StatusBadge tone="success">
                             {connectedGithubRepositories.length}
-                          </span>
+                          </StatusBadge>
                         </div>
                         <p>
                           CloseSpan can use these repositories for testing and
@@ -950,8 +950,8 @@ export function IntegrationsScreen({
                   )}
                   {settingsConnections ? (
                     <DisconnectIntegrationButton orgId={orgId} provider="GitHub" endpoint="/api/integrations/github" onDisconnected={() => updateConnectionState("int_github", "Disconnected")} />
-                  ) : <button
-                    className="btn primary"
+                  ) : <Button
+                    variant="primary"
                     type="button"
                     disabled={githubBusy}
                     onClick={() => void connectGithub()}
@@ -961,7 +961,7 @@ export function IntegrationsScreen({
                       : selectedRow.connected
                         ? "Manage repositories"
                         : "Select repositories"}
-                  </button>}
+                  </Button>}
                   {githubError && (
                     <div className="github-connection-message error" role="alert">
                       {githubError}
@@ -1020,18 +1020,18 @@ export function IntegrationsScreen({
               ) : selectedRow.item.id === "int_webhook" && settingsConnections ? (
                 <DisconnectIntegrationButton orgId={orgId} provider="Custom webhook" endpoint="/api/integrations/webhook" onDisconnected={() => updateConnectionState("int_webhook", "Disconnected")} />
               ) : selectedRow.item.id === "int_webhook" && !selectedRow.connected ? (
-                <button className="btn primary" type="button" disabled={webhookBusy} onClick={() => void createWebhook()}>{webhookBusy ? "Creating endpoint..." : "Create webhook"}</button>
+                <Button variant="primary" type="button" disabled={webhookBusy} onClick={() => void createWebhook()}>{webhookBusy ? "Creating endpoint..." : "Create webhook"}</Button>
               ) : (
-                <span className="badge success">Connected</span>
+                <StatusBadge tone="success">Connected</StatusBadge>
               )}
               {webhookError && selectedRow.item.id === "int_webhook" && <p className="integration-import failed"><AlertTriangle size={13} />{webhookError}</p>}
                 </div>
                 {selectedRow.item.id === "int_webhook" && webhookCredentials && (
                   <div className="setup-credentials integration-webhook-credentials">
                     <label>Webhook URL</label><code className="credential-value">{webhookCredentials.webhookUrl}</code>
-                    <button type="button" className="btn" onClick={() => void copyWebhookValue("url", webhookCredentials.webhookUrl)}><Copy size={13} />{webhookCopied === "url" ? "Copied" : "Copy URL"}</button>
+                    <Button type="button"  onClick={() => void copyWebhookValue("url", webhookCredentials.webhookUrl)}><Copy size={13} />{webhookCopied === "url" ? "Copied" : "Copy URL"}</Button>
                     <label>Signing secret (shown once)</label><code className="credential-value">{webhookCredentials.signingSecret}</code>
-                    <button type="button" className="btn" onClick={() => void copyWebhookValue("secret", webhookCredentials.signingSecret)}><Copy size={13} />{webhookCopied === "secret" ? "Copied" : "Copy secret"}</button>
+                    <Button type="button"  onClick={() => void copyWebhookValue("secret", webhookCredentials.signingSecret)}><Copy size={13} />{webhookCopied === "secret" ? "Copied" : "Copy secret"}</Button>
                   </div>
                 )}
               </div>

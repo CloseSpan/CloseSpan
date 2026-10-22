@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useEffect } from "react";
 import type { GithubInstallCompletion } from "@/lib/github-installation-state";
 import { GITHUB_POPUP_RESULT_PREFIX, githubPopupFailureMessage } from "@/lib/github-installation-client";
@@ -21,7 +22,7 @@ export function GithubConnectionResult({ completion }: { completion: GithubInsta
         <div className="card-body">
           <h1>{connected ? "GitHub connected" : "GitHub connection incomplete"}</h1>
           <p>{connected ? "You can close this window and return to CloseSpan." : githubPopupFailureMessage(completion?.reason)}</p>
-          <button type="button" className="btn primary" onClick={() => window.close()}>Close window</button>
+          <Button type="button" variant="primary" onClick={() => window.close()}>Close window</Button>
         </div>
       </section>
     </main>

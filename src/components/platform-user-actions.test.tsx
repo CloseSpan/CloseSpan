@@ -1,3 +1,4 @@
+import { Button } from "./ui";
 import { Children, isValidElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlatformUserActions } from "./platform-user-actions";
@@ -25,7 +26,8 @@ type Props = {
 function find(node: ReactNode, type: string, text?: string): Props | undefined {
   for (const child of Children.toArray(node)) {
     if (!isValidElement<Props>(child)) continue;
-    if (child.type === type && (!text || Children.toArray(child.props.children).includes(text))) return child.props;
+    // Buttons render through the shared Button primitive.
+    if ((child.type === type || (type === "button" && child.type === Button)) && (!text || Children.toArray(child.props.children).includes(text))) return child.props;
     const found = find(child.props.children, type, text); if (found) return found;
   }
 }

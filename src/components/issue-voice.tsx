@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import { ExternalLink, Mic, MicOff, PhoneOff } from "lucide-react";
 import type { WebCallSession } from "retell-client-js-sdk";
@@ -222,9 +223,9 @@ export function IssueVoice({ problemId, disabled, onNotes, onActivityChange }: {
           <button type="button" className={styles.endButton} onClick={() => end(attempt.current)}><PhoneOff size={16} aria-hidden="true" />{status === "connecting" ? "Cancel" : "End"}</button>
         </div>
       </div> : <div className={styles.actions}>
-        <button ref={startButton} type="button" className="btn primary" disabled={!availability?.available || disabled} onClick={() => void start()}>
+        <Button ref={startButton} type="button" variant="primary" disabled={!availability?.available || disabled} onClick={() => void start()}>
           <Mic size={15} aria-hidden="true" />{status === "ended" ? "Talk again" : "Start conversation"}
-        </button>
+        </Button>
         {status === "ended" && <span className={styles.ended} role="status">Conversation ended</span>}
       </div>}
       {!availability && !error && <p role="status">Checking voice availability…</p>}
@@ -233,7 +234,7 @@ export function IssueVoice({ problemId, disabled, onNotes, onActivityChange }: {
         {lines.map((line) => <p key={line.id}><strong>{line.role === "user" ? "You" : "CloseSpan"}</strong>{line.content}</p>)}
       </div>}
       {captionNotice && <p role="status">{captionNotice}</p>}
-      {status === "ended" && notes && <button type="button" className="btn" onClick={() => onNotes(notes)}>Use my notes in chat</button>}
+      {status === "ended" && notes && <Button type="button"  onClick={() => onNotes(notes)}>Use my notes in chat</Button>}
       {links.length > 0 && <div className={styles.links}>{links.map((link) => <a key={link.href} href={link.href} target="_blank" rel="noreferrer">{link.label}<ExternalLink size={13} aria-hidden="true" /></a>)}</div>}
       <p className={styles.privacy}>Voice does not approve work or merge changes. Notes stay in this tab until you send them.</p>
       {error && <p className={styles.error} role="alert">{error}</p>}

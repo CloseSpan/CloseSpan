@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import {
   Building2,
   Check,
@@ -226,9 +227,9 @@ function RenameWorkspaceDialog({
             </p>
           )}
           <div className="organization-create-actions">
-            <button className="btn" type="button" onClick={closeDialog}>
+            <Button type="button" onClick={closeDialog}>
               Cancel
-            </button>
+            </Button>
             <RenameWorkspaceButton />
           </div>
         </form>
@@ -367,9 +368,9 @@ function DeleteOrganizationDialog({
             </p>
           )}
           <div className="organization-create-actions">
-            <button className="btn" type="button" onClick={closeDialog}>
+            <Button type="button" onClick={closeDialog}>
               Cancel
-            </button>
+            </Button>
             <DeleteOrganizationButton enabled={confirmed} />
           </div>
         </form>
@@ -546,9 +547,9 @@ export function OrganizationSwitcher({
             </p>
           )}
           <div className="organization-create-actions">
-            <button className="btn" type="button" onClick={closeCreateDialog}>
+            <Button type="button" onClick={closeCreateDialog}>
               Cancel
-            </button>
+            </Button>
             <CreateOrganizationButton />
           </div>
         </form>

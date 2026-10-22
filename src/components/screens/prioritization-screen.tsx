@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusBadge } from "@/components/ui";
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Filter } from "lucide-react";
@@ -153,7 +154,7 @@ export function PrioritizationScreen({
                         </div>
                       </div>
                       <div className="prioritization-decision-state">
-                        <span className="badge brand">{problem.stage}</span>
+                        <StatusBadge tone="info">{problem.stage}</StatusBadge>
                         {evidenceNeedsReview ? (
                           <small>Evidence review required</small>
                         ) : (

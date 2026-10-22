@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useRef, useState } from "react";
 import { Unplug } from "lucide-react";
 
@@ -45,10 +46,10 @@ export function DisconnectIntegrationButton({ orgId, provider, endpoint, onDisco
         <strong>Disconnect {provider}?</strong>
         <p>CloseSpan will stop using this connection. Previously imported feedback will stay in your workspace.</p>
         <div className="settings-connection-disconnect-actions">
-          <button className="btn" type="button" disabled={busy} onClick={() => { setConfirming(false); setError(null); }}>Cancel</button>
-          <button className="btn danger" type="button" disabled={busy} onClick={() => void disconnect()}>{busy ? "Disconnecting…" : "Confirm disconnect"}</button>
+          <Button type="button" disabled={busy} onClick={() => { setConfirming(false); setError(null); }}>Cancel</Button>
+          <Button variant="danger" type="button" disabled={busy} onClick={() => void disconnect()}>{busy ? "Disconnecting…" : "Confirm disconnect"}</Button>
         </div>
-      </> : <button className="btn danger" type="button" onClick={() => setConfirming(true)}><Unplug size={15} aria-hidden="true" />Disconnect {provider}</button>}
+      </> : <Button variant="danger" type="button" onClick={() => setConfirming(true)}><Unplug size={15} aria-hidden="true" />Disconnect {provider}</Button>}
       {error && <p className="integration-import failed" role="alert">{error}</p>}
     </div>
   );

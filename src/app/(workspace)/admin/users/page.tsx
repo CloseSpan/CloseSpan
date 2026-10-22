@@ -1,3 +1,4 @@
+import { StatusBadge } from "@/components/ui";
 import { notFound } from "next/navigation";
 import { ActiveUsersAdminTable } from "@/components/active-users-admin-table";
 import { listActivePlatformUsers } from "@/lib/active-user-repository";
@@ -28,7 +29,7 @@ export default async function AdminUsersPage() {
           <div className="eyebrow">Platform administration</div>
           <h1>Active users</h1>
         </div>
-        <span className="badge brand">Admin only</span>
+        <StatusBadge tone="info">Admin only</StatusBadge>
       </div>
 
       <div className="grid cols-3 page-metrics" aria-label="Active user summary">

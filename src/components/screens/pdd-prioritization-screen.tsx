@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
@@ -187,7 +188,7 @@ export function PddPrioritizationScreen({
             <h2>Test queue</h2>
             <p>{visibleRows.length === 1 ? "1 issue" : `${visibleRows.length} issues`}</p>
           </div>
-          <span className="badge brand">{rows.filter((row) => row.preparation.category === "ready").length} ready to test</span>
+          <StatusBadge tone="info">{rows.filter((row) => row.preparation.category === "ready").length} ready to test</StatusBadge>
         </div>
 
         {visibleRows.length ? (
@@ -230,9 +231,9 @@ export function PddPrioritizationScreen({
                 : "Review an issue to prepare its prompt."}
             </p>
             {rows.length ? (
-              <button className="btn" type="button" onClick={() => setReadinessFilter("all")}>Clear filter</button>
+              <Button type="button" onClick={() => setReadinessFilter("all")}>Clear filter</Button>
             ) : (
-              <Link className="btn" href="/problems">View issues</Link>
+              <ButtonLink href="/problems">View issues</ButtonLink>
             )}
           </div>
         )}

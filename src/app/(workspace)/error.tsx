@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useEffect } from "react";
 import Link from "next/link";
 
@@ -28,9 +29,9 @@ export default function WorkspaceError({
         <p className="subtle">
           Retry this page. If it still fails, return to your issues.
         </p>
-        <button className="btn primary" type="button" onClick={reset}>
+        <Button variant="primary" type="button" onClick={reset}>
           Retry page
-        </button>
+        </Button>
         <Link className="text-link" href="/problems">Back to issues</Link>
       </div>
     </section>

@@ -1,7 +1,7 @@
 "use client";
 
+import { ButtonLink } from "@/components/ui";
 import { useId } from "react";
-import Link from "next/link";
 import { ChevronLeft, Info } from "lucide-react";
 import { type OverviewAnalytics } from "@/lib/overview-analytics";
 import type { PromptDraftReadiness } from "@/lib/automated-prompt-draft-repository";
@@ -57,9 +57,9 @@ export function GenericProblemScreen({
         eyebrow={`Issue · ${problem.id.replace("prob_", "CS-").toUpperCase()}`}
         title={problem.title}
         action={<div className="page-title-actions">
-          <Link className="btn" href="/problems">
+          <ButtonLink href="/problems">
             <ChevronLeft size={14} aria-hidden="true" /> Back to issues
-          </Link>
+          </ButtonLink>
           <span className={`badge ${problem.severity.toLowerCase()}`}>
             {problem.severity}
           </span>

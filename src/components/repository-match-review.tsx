@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -412,9 +413,9 @@ export function RepositoryMatchReview({
                 {busy === "refresh" ? "Refreshing…" : "Refresh detection"}
               </button>
             )}
-            <button
+            <Button
               type="button"
-              className="btn primary"
+              variant="primary"
               disabled={confirmDisabled}
               onClick={() => void mutate("confirm")}
             >
@@ -424,17 +425,17 @@ export function RepositoryMatchReview({
                 : view.confirmedMatch?.profileId === selectedChoice?.profile.id
                   ? "Confirmed"
                   : "Confirm for this ticket"}
-            </button>
+            </Button>
             {selectedMatch?.status === "Suggested" && view.canReview && (
-              <button
+              <Button
                 type="button"
-                className="btn danger"
+                variant="danger"
                 disabled={Boolean(busy)}
                 onClick={() => void mutate("reject")}
               >
                 <XCircle size={14} />
                 {busy === "reject" ? "Rejecting…" : "Reject suggestion"}
-              </button>
+              </Button>
             )}
           </div>
         </>

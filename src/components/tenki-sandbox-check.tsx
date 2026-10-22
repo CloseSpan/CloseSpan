@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { Box, CheckCircle2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { AnimatedStatusText } from "./animated-status-text";
@@ -70,9 +71,9 @@ export function TenkiSandboxCheck({
         </span>
       </div>
       <div className="ai-config-actions section-gap-sm">
-        <button
+        <Button
           type="button"
-          className="btn primary"
+          variant="primary"
           disabled={busy || !configured || !isAdmin}
           onClick={() => void runCheck()}
         >
@@ -83,7 +84,7 @@ export function TenkiSandboxCheck({
               <ShieldCheck size={14} aria-hidden="true" /> Test Tenki sandbox
             </>
           )}
-        </button>
+        </Button>
         {!isAdmin && (
           <span className="subtle">Administrator permission is required.</span>
         )}

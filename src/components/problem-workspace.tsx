@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, StatusBadge } from "@/components/ui";
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, Download, History, LockKeyhole, Sparkles } from "lucide-react";
@@ -29,9 +30,9 @@ export function ProblemEvidence({ problem, feedbackItems: feedback }: { problem:
   const evidenceConfidence = Math.round(problem.confidence * 100);
 
   return <div className="two-col section-gap" id="evidence"><div className="detail-stack problem-main-column">
-      <section className="card"><div className="card-head"><h2>Problem intelligence</h2><span className="badge brand"><Sparkles size={12}/> AI summary · {evidenceConfidence}%</span></div><div className="card-body"><p className="summary">{problem.statement}</p><p className="subtle section-gap-sm">{problem.summary}</p><div className="grid cols-3 section-gap"><div><div className="metric-label">Affected revenue</div><strong>{revenue <= 0 ? "No revenue data" : Math.round(revenue) < 1000 ? `$${Math.round(revenue).toLocaleString("en-US")} ARR` : `$${Math.round(revenue / 1000)}k ARR`}</strong></div><div><div className="metric-label">Affected accounts</div><strong>{affectedAccounts.size} account{affectedAccounts.size === 1 ? "" : "s"}</strong></div><div><div className="metric-label">Evidence confidence</div><strong>{evidenceConfidence}%</strong></div></div></div></section>
+      <section className="card"><div className="card-head"><h2>Problem intelligence</h2><StatusBadge tone="info"><Sparkles size={12}/> AI summary · {evidenceConfidence}%</StatusBadge></div><div className="card-body"><p className="summary">{problem.statement}</p><p className="subtle section-gap-sm">{problem.summary}</p><div className="grid cols-3 section-gap"><div><div className="metric-label">Affected revenue</div><strong>{revenue <= 0 ? "No revenue data" : Math.round(revenue) < 1000 ? `$${Math.round(revenue).toLocaleString("en-US")} ARR` : `$${Math.round(revenue / 1000)}k ARR`}</strong></div><div><div className="metric-label">Affected accounts</div><strong>{affectedAccounts.size} account{affectedAccounts.size === 1 ? "" : "s"}</strong></div><div><div className="metric-label">Evidence confidence</div><strong>{evidenceConfidence}%</strong></div></div></div></section>
 
-      <section className="card"><div className="card-head"><div><h2>Supporting evidence</h2></div>{evidence.length > 0 && <button type="button" className="btn" aria-expanded={showRationale} onClick={() => setShowRationale((value) => !value)}>{showRationale ? "Hide rationale" : "Review membership"}</button>}</div><div className="card-body">{evidence.length === 0 && <p className="subtle">No customer reports are linked to this issue yet.</p>}{showRationale && <div className="callout membership-rationale"><div className="callout-title">Cluster membership rationale</div><p className="subtle">These {evidence.length} signal{evidence.length === 1 ? "" : "s"} support the same reviewed problem statement: {problem.statement} The current evidence confidence is {evidenceConfidence}%.</p></div>}{evidence.map((item) => <article className="evidence" key={item.id}><div className="split"><div className="evidence-meta"><span className="badge">{item.source}</span><strong>{item.customer}</strong><span>{item.observedAt}</span></div><span className="badge brand">{Math.round(item.confidence * 100)}% match</span></div><blockquote className="quote">“{item.quote}”</blockquote><div className="evidence-meta evidence-environment"><LockKeyhole size={11}/> PII scan complete · {item.environment}</div></article>)}</div></section>
+      <section className="card"><div className="card-head"><div><h2>Supporting evidence</h2></div>{evidence.length > 0 && <Button type="button"  aria-expanded={showRationale} onClick={() => setShowRationale((value) => !value)}>{showRationale ? "Hide rationale" : "Review membership"}</Button>}</div><div className="card-body">{evidence.length === 0 && <p className="subtle">No customer reports are linked to this issue yet.</p>}{showRationale && <div className="callout membership-rationale"><div className="callout-title">Cluster membership rationale</div><p className="subtle">These {evidence.length} signal{evidence.length === 1 ? "" : "s"} support the same reviewed problem statement: {problem.statement} The current evidence confidence is {evidenceConfidence}%.</p></div>}{evidence.map((item) => <article className="evidence" key={item.id}><div className="split"><div className="evidence-meta"><StatusBadge>{item.source}</StatusBadge><strong>{item.customer}</strong><span>{item.observedAt}</span></div><StatusBadge tone="info">{Math.round(item.confidence * 100)}% match</StatusBadge></div><blockquote className="quote">“{item.quote}”</blockquote><div className="evidence-meta evidence-environment"><LockKeyhole size={11}/> PII scan complete · {item.environment}</div></article>)}</div></section>
     </div>
 
     <aside className="detail-stack">
@@ -67,16 +68,16 @@ export function ProblemHistory({ audit }: { audit: DemoState["audit"] }) {
           </span>
         </span>
         <span className="problem-audit-summary-meta">
-          <span className="badge">{audit.length} events</span>
+          <StatusBadge>{audit.length} events</StatusBadge>
           <ChevronDown className="problem-audit-chevron" size={17} aria-hidden="true" />
         </span>
       </summary>
       <div className="card-body problem-audit-body">
         <div className="problem-audit-intro">
-          <button type="button" className="btn" onClick={exportAudit}>
+          <Button type="button"  onClick={exportAudit}>
             <Download size={13} aria-hidden="true" />
             Export CSV
-          </button>
+          </Button>
         </div>
         <div className="problem-audit-scroll" role="region" aria-label="Problem history events" tabIndex={0}>
           <ul className="timeline problem-audit-timeline">

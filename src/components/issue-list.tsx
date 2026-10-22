@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, StatusBadge } from "@/components/ui";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Filter, Search, X } from "lucide-react";
@@ -77,8 +78,8 @@ export function IssueViewControls({
             closeFilters();
           }
         }}>
-          <button
-            className="btn"
+          <Button
+            
             type="button"
             ref={filterTrigger}
             aria-expanded={filtersOpen}
@@ -86,7 +87,7 @@ export function IssueViewControls({
             onClick={() => setFiltersOpen((open) => !open)}
           >
             <Filter size={14} aria-hidden="true" /> Filters{activeCount > 0 && <span className="issue-filter-count">{activeCount}</span>}
-          </button>
+          </Button>
           {filtersOpen && (
             <div className="issue-filter-panel" id={panelId} role="region" aria-label="Issue filters">
               <div className="issue-filter-heading">
@@ -105,8 +106,8 @@ export function IssueViewControls({
                 </div>
               ))}
               <div className="issue-filter-footer">
-                <button className="btn" type="button" disabled={!activeCount} onClick={() => onFiltersChange({ ...EMPTY_ISSUE_FILTERS, query: filters.query })}>Reset</button>
-                <button className="btn" type="button" onClick={closeFilters}>Done</button>
+                <Button type="button" disabled={!activeCount} onClick={() => onFiltersChange({ ...EMPTY_ISSUE_FILTERS, query: filters.query })}>Reset</Button>
+                <Button type="button" onClick={closeFilters}>Done</Button>
               </div>
             </div>
           )}
@@ -145,7 +146,7 @@ export function IssueList({ issues, grouping }: { issues: Issue[]; grouping: Iss
                   <Link className="issue-list-title" href={`/problems/${issue.id}`}>{issue.title}</Link>
                   <div className="issue-taxonomy"><span>{issueProductArea(issue)}</span><span aria-hidden="true">·</span><span>{issue.type}</span></div>
                 </td>
-                <td><span className="badge">{issue.stage}</span></td>
+                <td><StatusBadge>{issue.stage}</StatusBadge></td>
                 <td><span className={`badge ${issue.severity.toLowerCase()}`}>{issue.severity}</span></td>
                 <td className="issue-report-count">{issue.count}</td>
               </tr>

@@ -1,5 +1,6 @@
 "use client";
 
+import { ButtonLink } from "@/components/ui";
 import Link from "next/link";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { type OverviewAnalytics } from "@/lib/overview-analytics";
@@ -56,9 +57,9 @@ export function PddScreen({
       <PageTitle
         title={WORKSPACE_LABELS.pdd}
         action={
-          <Link className="btn" href="/pdd">
+          <ButtonLink href="/pdd">
             <ChevronLeft size={14} aria-hidden="true" /> Back to Prompt Testing
-          </Link>
+          </ButtonLink>
         }
       />
 
@@ -112,14 +113,14 @@ export function PddScreen({
                 <span className="badge high">Blocked</span>
               </div>
               <div className="card-body">
-                <Link className="btn primary" href={`/problems/${encodeURIComponent(selectedProblem.id)}#investigation`}>
+                <ButtonLink variant="primary" href={`/problems/${encodeURIComponent(selectedProblem.id)}#investigation`}>
                   {selectedRuntimeVerificationActive
                     ? "View runtime verification"
                     : selected?.verification.status === "Verification blocked"
                       ? "Resolve verification blocker"
                       : "View issue"}
                   <ChevronRight size={14} aria-hidden="true" />
-                </Link>
+                </ButtonLink>
               </div>
             </section>
           )}

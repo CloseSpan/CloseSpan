@@ -1,6 +1,7 @@
 import { Children, isValidElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DisconnectIntegrationButton } from "./disconnect-integration-button";
+import { Button } from "./ui";
 
 // Component state only: these tests never contact an actual provider or workspace.
 const hooks = vi.hoisted(() => ({ values: [] as unknown[], index: 0 }));
@@ -28,7 +29,8 @@ type Control = { children?: ReactNode; onClick?: () => void; disabled?: boolean;
 function find(node: ReactNode, text: string): Control | undefined {
   for (const child of Children.toArray(node)) {
     if (!isValidElement<Control>(child)) continue;
-    if (child.type === "button" && Children.toArray(child.props.children).some((part) => part === text)) return child.props;
+    // Buttons render through the shared Button primitive.
+    if ((child.type === "button" || child.type === Button) && Children.toArray(child.props.children).some((part) => part === text)) return child.props;
     const result = find(child.props.children, text);
     if (result) return result;
   }

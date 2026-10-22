@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, StatusBadge } from "@/components/ui";
 import { useState } from "react";
 import { autonomyDescription, autonomyLevels, type AutonomyLevel } from "@/lib/autonomy-policy";
 import { CustomSelect } from "../custom-select";
@@ -42,14 +43,14 @@ export function SettingsScreen({
       <PageTitle
         title="Settings & governance"
         action={
-          <button
+          <Button
             type="button"
-            className="btn primary"
+            variant="primary"
             disabled={total !== 100 || !retentionValid}
             onClick={() => setSaved(true)}
           >
             Save demo policy
-          </button>
+          </Button>
         }
       />
       {saved && (
@@ -231,7 +232,7 @@ export function SettingsScreen({
           <section className="card" id="members">
             <div className="card-head">
               <h2>Members & roles</h2>
-              <span className="badge">{settings.members.length} members</span>
+              <StatusBadge>{settings.members.length} members</StatusBadge>
             </div>
             <div className="card-body">
               {settings.members.map((member) => (
@@ -254,7 +255,7 @@ export function SettingsScreen({
           <section className="card" id="usage">
             <div className="card-head">
               <h2>Usage & cost limits</h2>
-              <span className="badge success">Within policy</span>
+              <StatusBadge tone="success">Within policy</StatusBadge>
             </div>
             <div className="card-body">
               <div className="grid cols-3">

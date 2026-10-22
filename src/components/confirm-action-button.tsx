@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
@@ -59,9 +60,9 @@ export function ConfirmActionButton({
       }}
     >
       <strong>{prompt}</strong>
-      <button ref={cancelRef} className="btn" type="button" onClick={cancel}>Cancel</button>
-      <button
-        className="btn danger"
+      <Button ref={cancelRef}  type="button" onClick={cancel}>Cancel</Button>
+      <Button
+        variant="danger"
         type="button"
         disabled={disabled}
         onClick={() => {
@@ -71,7 +72,7 @@ export function ConfirmActionButton({
         }}
       >
         {confirmLabel}
-      </button>
+      </Button>
     </span>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
@@ -42,10 +43,10 @@ export function OnboardingWelcome() {
 function SetupButton() {
   const { pending } = useFormStatus();
   return (
-    <button className="btn" type="submit" disabled={pending}>
+    <Button type="submit" disabled={pending}>
       {pending ? "Opening setup…" : "Set up my workspace"}
       <ArrowRight size={14} aria-hidden="true" />
-    </button>
+    </Button>
   );
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, StatusBadge } from "@/components/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Github, LoaderCircle } from "lucide-react";
 import { CustomSelect } from "@/components/custom-select";
@@ -88,10 +89,10 @@ export function OnboardingGithubPicker({
           <Github size={24} aria-hidden="true" />
           <h2 id="onboarding-github-title">{loading ? "Checking GitHub…" : choices.length ? "Choose repositories" : "Connect GitHub"}</h2>
         </div>
-        {!loading && choices.length > 0 && <span className="badge success">GitHub connected</span>}
+        {!loading && choices.length > 0 && <StatusBadge tone="success">GitHub connected</StatusBadge>}
       </header>
       {loading && <p className="subtle" role="status"><LoaderCircle className="spin" size={16} aria-hidden="true" /> Loading repositories…</p>}
-      {error && <div className="onboarding-github-error" role="alert"><p>{error}</p><button type="button" className="btn" disabled={disabled} onClick={onRetry}>Try again</button></div>}
+      {error && <div className="onboarding-github-error" role="alert"><p>{error}</p><Button type="button"  disabled={disabled} onClick={onRetry}>Try again</Button></div>}
       {!loading && !canManage && <p className="subtle">Ask a workspace admin to choose repositories.</p>}
       {!loading && canManage && connection && (
         <div className="onboarding-github-picker">
@@ -121,16 +122,16 @@ export function OnboardingGithubPicker({
       )}
       <footer className="onboarding-github-actions">
         {canManage && !loading && connection && (
-          <button type="button" className="btn primary" disabled={disabled || !hasSelection} onClick={onSave}>
+          <Button type="button" variant="primary" disabled={disabled || !hasSelection} onClick={onSave}>
             {busy === "save" ? "Connecting…" : "Use selected repositories"}
-          </button>
+          </Button>
         )}
         {canManage && !loading && (
           <button type="button" className={`btn${connection ? "" : " primary"}`} disabled={disabled} onClick={onConnect}>
             {busy === "connect" ? "Connecting in popup…" : connection ? "Manage GitHub access" : "Connect GitHub"}
           </button>
         )}
-        {busy === "connect" && <button type="button" className="btn" onClick={onCancel}>Cancel</button>}
+        {busy === "connect" && <Button type="button"  onClick={onCancel}>Cancel</Button>}
         <button type="button" className="text-link" disabled={disabled} onClick={onContinue}>
           {continuing ? "Opening workspace…" : "Continue to workspace"}
         </button>

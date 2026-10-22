@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import { Ban, ShieldCheck, Trash2 } from "lucide-react";
 import type { PlatformUserAction } from "@/lib/platform-user-management";
@@ -62,11 +63,11 @@ export function PlatformUserActions({ email, displayName, status, orgId, deleteR
 
   return <>
     <div className="platform-user-actions">
-      <button type="button" className="btn" disabled={completed} aria-label={`${status === "Blocked" ? "Unblock" : "Block"} ${displayName}`} onClick={(event) => open(status === "Blocked" ? "unblock" : "block", event.currentTarget)}>
+      <Button type="button"  disabled={completed} aria-label={`${status === "Blocked" ? "Unblock" : "Block"} ${displayName}`} onClick={(event) => open(status === "Blocked" ? "unblock" : "block", event.currentTarget)}>
         {status === "Blocked" ? <ShieldCheck size={15} aria-hidden="true" /> : <Ban size={15} aria-hidden="true" />}
         {status === "Blocked" ? "Unblock" : "Block"}
-      </button>
-      <button type="button" className="btn danger" disabled={completed} aria-label={`Delete ${displayName}`} onClick={(event) => open("delete", event.currentTarget)}><Trash2 size={15} aria-hidden="true" />Delete</button>
+      </Button>
+      <Button type="button" variant="danger" disabled={completed} aria-label={`Delete ${displayName}`} onClick={(event) => open("delete", event.currentTarget)}><Trash2 size={15} aria-hidden="true" />Delete</Button>
     </div>
     <dialog ref={dialog} className="platform-user-dialog" aria-labelledby={titleId} aria-describedby={descriptionId} onCancel={(event) => { event.preventDefault(); if (!pending.current) setAction(null); }}>
       <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
@@ -81,7 +82,7 @@ export function PlatformUserActions({ email, displayName, status, orgId, deleteR
         {isDelete && !deleteRestriction && <label className="field"><span>Type <strong>{email}</strong> to confirm</span><input type="email" autoComplete="off" spellCheck={false} maxLength={320} value={confirmation} disabled={busy} onChange={(event) => setConfirmation(event.target.value)} /></label>}
         {error && <p role="alert" className="platform-user-error">{error}</p>}
         <div className="platform-user-dialog-actions">
-          <button className="btn" type="button" autoFocus disabled={busy} onClick={() => setAction(null)}>Cancel</button>
+          <Button type="button" autoFocus disabled={busy} onClick={() => setAction(null)}>Cancel</Button>
           <button className={`btn ${action === "unblock" ? "" : "danger"}`} type="submit" disabled={busy || (isDelete && (!!deleteRestriction || confirmation.trim().toLowerCase() !== email))}>{busy ? "Saving…" : label}</button>
         </div>
       </form>

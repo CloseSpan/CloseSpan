@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { ExternalLink, Globe2, LoaderCircle, Search } from "lucide-react";
 import { useRef, useState } from "react";
 import {
@@ -93,8 +94,8 @@ export function PublicSourceDiscovery({
         <div>
           <strong>Find public feedback</strong>
         </div>
-        <button
-          className="btn"
+        <Button
+          
           type="button"
           disabled={busy}
           onClick={() => void discover()}
@@ -109,7 +110,7 @@ export function PublicSourceDiscovery({
             : result?.status === "completed"
               ? "Search again"
               : "Find sources"}
-        </button>
+        </Button>
       </div>
 
       <div aria-live="polite">

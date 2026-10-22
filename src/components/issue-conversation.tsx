@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUp, MessageSquare, FlaskConical } from "lucide-react";
@@ -180,7 +181,7 @@ export function IssueConversation({ problemId, initial, currentPromptHash, canDi
         {entry.proposal && <div className={styles.proposal}>
           <strong>Suggested requirement update</strong><p>{entry.proposal.summary}</p>
           {entry.proposal.currentPromptHash === currentPromptHash && canRevise && reviewVersion !== undefined && !readOnly
-            ? <button className="btn" type="button" disabled={sending} onClick={() => void apply(entry.proposal!)}>Request this change</button>
+            ? <Button type="button" disabled={sending} onClick={() => void apply(entry.proposal!)}>Request this change</Button>
             : <span className={styles.muted}>{entry.proposal.currentPromptHash !== currentPromptHash ? "An earlier requirement version" : "Changes can be requested when the requirement is ready for review."}</span>}
         </div>}
       </article>)}
