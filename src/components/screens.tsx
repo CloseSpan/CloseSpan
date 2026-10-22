@@ -3492,7 +3492,7 @@ export function ApprovalsScreen({
         {!requirementReviews.length && <EmptyWorkspaceState
           title={reviewStorageReady ? "Nothing needs your review" : "Reviews unavailable"}
           description={reviewStorageReady
-            ? "Agent actions that need your approval will appear here."
+            ? "Requirement reviews and agent actions waiting on your decision appear here."
             : "Review history can't be loaded right now."}
           actionHref="/problems"
           actionLabel="View issues"
