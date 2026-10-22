@@ -3338,8 +3338,9 @@ export function PddScreen({
 async function workflowMutation(
   path: string,
   orgId: string,
+  problemId?: string,
 ): Promise<DemoState> {
-  const response = await fetch(path, {
+  const response = await fetch(problemId ? `${path}?problemId=${encodeURIComponent(problemId)}` : path, {
     method: "POST",
     headers: {
       "x-org-id": orgId,
@@ -4923,13 +4924,19 @@ export function IntegrationsScreen({
   );
 }
 
-export function FollowUpScreen({
+/**
+ * Customer follow-up for one issue: drafts appear once its approved work has
+ * merged, and can be approved only after the release is verified.
+ */
+export function IssueFollowUp({
   initialState,
   problem,
+  orgId,
   feedbackItems,
 }: {
-  initialState: DemoState | null;
-  problem: ProductProblem | null;
+  initialState: DemoState;
+  problem: { id: string; title: string };
+  orgId: string;
   feedbackItems: FeedbackItem[];
 }) {
   const [state, setState] = useState(initialState);
@@ -4938,22 +4945,6 @@ export function FollowUpScreen({
     kind: "success" | "error";
     text: string;
   } | null>(null);
-  if (!state || !problem) {
-    return (
-      <>
-        <PageTitle
-          title={WORKSPACE_LABELS["follow-up"]}
-        />
-        <EmptyWorkspaceState
-          title="No follow-up workflow exists"
-          description="Customer drafts become available after an issue is reviewed and its resolution is verified."
-          actionHref={problem ? `/problems/${problem.id}` : "/feedback"}
-          actionLabel={problem ? "View issue" : "Open feedback inbox"}
-        />
-      </>
-    );
-  }
-  const activeProblem = problem;
   const prepared = state.notifications !== "Not drafted";
   const verified = ["Verified", "Closed"].includes(state.problemStage);
   const affected = Array.from(
@@ -4971,7 +4962,7 @@ export function FollowUpScreen({
     setBusy(true);
     setNotice(null);
     try {
-      setState(await workflowMutation("/api/workflow/notify", activeProblem.orgId));
+      setState(await workflowMutation("/api/workflow/notify", orgId, problem.id));
       setNotice({
         kind: "success",
         text: "Customer drafts approved in the audited workflow; no external message was sent.",
@@ -4986,111 +4977,92 @@ export function FollowUpScreen({
     }
   }
   return (
-    <>
-      <PageTitle
-        title={WORKSPACE_LABELS["follow-up"]}
-        action={
-          <span className={`badge ${verified ? "success" : prepared ? "brand" : ""}`}>
-            {verified
-              ? "Verified resolution"
-              : prepared
-                ? "Follow-up prepared"
-                : "Waiting for agent merge"}
-          </span>
-        }
-      />
-      {!prepared ? (
-        <section className="card empty-state">
-          <ShieldCheck size={28} />
-          <h2>No drafts ready yet</h2>
+    <section className="card section-gap" id="follow-up" aria-labelledby="issue-follow-up-title">
+      <div className="card-head">
+        <div>
+          <h2 id="issue-follow-up-title">Customer follow-up</h2>
           <p className="subtle">
-            CloseSpan prepares affected-customer drafts after its approved pull
-            request is merged. Approval and sending remain locked until release
-            verification succeeds.
+            {!prepared
+              ? "Drafts are prepared after the approved pull request merges."
+              : verified
+                ? "Verified release · deployment evidence recorded"
+                : "Agent PR merged · awaiting release verification"}
           </p>
-          <Link className="btn primary" href={`/problems/${problem.id}`}>
-            View issue
-          </Link>
-        </section>
-      ) : (
-        <section className="card">
-          <div className="card-head">
-            <div>
-              <h2>{problem.title}</h2>
+        </div>
+        <span className={`badge ${verified ? "success" : prepared ? "brand" : ""}`}>
+          {verified
+            ? "Verified resolution"
+            : prepared
+              ? `${affected.length} draft${affected.length === 1 ? "" : "s"}`
+              : "Waiting for agent merge"}
+        </span>
+      </div>
+      {prepared && (
+        <div className="card-body">
+          {affected.length === 0 ? (
+            <div className="callout" role="status">
+              <div className="callout-title">No recipients found</div>
               <p className="subtle">
-                {verified
-                  ? "Verified release · deployment evidence recorded"
-                  : "Agent PR merged · awaiting release verification"}
+                This resolution has no distinct customer recipients yet.
+                Draft approval will become available after linked feedback is
+                imported.
               </p>
             </div>
-            <span className="badge brand">{affected.length} drafts</span>
-          </div>
-          <div className="card-body">
-            {affected.length === 0 ? (
-              <div className="callout" role="status">
-                <div className="callout-title">No recipients found</div>
-                <p className="subtle">
-                  This resolution has no distinct customer recipients yet.
-                  Draft approval will become available after linked feedback is
-                  imported.
-                </p>
-              </div>
-            ) : (
-              affected.map((customer) => (
-                <article className="follow-card" key={customer.id}>
-                  <div className="split">
-                    <div>
-                      <strong>{customer.customer}</strong>
-                      <p className="subtle">
-                        Original conversation · {customer.source}
-                      </p>
-                    </div>
-                    <span
-                      className={`badge ${state.notifications === "Approved" ? "success" : ""}`}
-                    >
-                      {state.notifications === "Approved" ? "Approved" : "Draft"}
-                    </span>
+          ) : (
+            affected.map((customer) => (
+              <article className="follow-card" key={customer.id}>
+                <div className="split">
+                  <div>
+                    <strong>{customer.customer}</strong>
+                    <p className="subtle">
+                      Original conversation · {customer.source}
+                    </p>
                   </div>
-                  <p>
-                    {verified
-                      ? `Hi ${customer.customer}, we’ve resolved ${problem.title.toLowerCase()}. The verified fix is now available.`
-                      : `Hi ${customer.customer}, we’re preparing an update about ${problem.title.toLowerCase()}. This draft will be finalized after release verification.`}
-                  </p>
-                  <small>
-                    No sensitive data included · simulated delivery only
-                  </small>
-                </article>
-              ))
-            )}
-            <button
-              type="button"
-              className="btn primary"
-              disabled={
-                busy ||
-                !verified ||
-                affected.length === 0 ||
-                state.notifications === "Approved"
-              }
-              onClick={approveDrafts}
+                  <span
+                    className={`badge ${state.notifications === "Approved" ? "success" : ""}`}
+                  >
+                    {state.notifications === "Approved" ? "Approved" : "Draft"}
+                  </span>
+                </div>
+                <p>
+                  {verified
+                    ? `Hi ${customer.customer}, we’ve resolved ${problem.title.toLowerCase()}. The verified fix is now available.`
+                    : `Hi ${customer.customer}, we’re preparing an update about ${problem.title.toLowerCase()}. This draft will be finalized after release verification.`}
+                </p>
+                <small>
+                  No sensitive data included · simulated delivery only
+                </small>
+              </article>
+            ))
+          )}
+          <button
+            type="button"
+            className="btn primary"
+            disabled={
+              busy ||
+              !verified ||
+              affected.length === 0 ||
+              state.notifications === "Approved"
+            }
+            onClick={approveDrafts}
+          >
+            {!verified
+              ? "Awaiting release verification"
+              : state.notifications === "Approved"
+              ? "Drafts approved"
+              : "Approve all drafts"}
+          </button>
+          {notice && (
+            <p
+              className={`toast ${notice.kind}`}
+              role={notice.kind === "error" ? "alert" : "status"}
             >
-              {!verified
-                ? "Awaiting release verification"
-                : state.notifications === "Approved"
-                ? "Drafts approved"
-                : "Approve all drafts"}
-            </button>
-            {notice && (
-              <p
-                className={`toast ${notice.kind}`}
-                role={notice.kind === "error" ? "alert" : "status"}
-              >
-                {notice.text}
-              </p>
-            )}
-          </div>
-        </section>
+              {notice.text}
+            </p>
+          )}
+        </div>
       )}
-    </>
+    </section>
   );
 }
 

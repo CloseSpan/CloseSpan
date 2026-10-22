@@ -1,13 +1,14 @@
 import { ProblemReviewDiagnostics } from "@/components/problem-review-diagnostics";
 import { readProblemPromptReview } from "@/lib/problem-prompt-review-repository";
 import { notFound } from "next/navigation";
-import { ProblemHistory, ProblemWorkspace } from "@/components/problem-workspace";
+import { ProblemEvidence, ProblemHistory } from "@/components/problem-workspace";
 import { GenericProblemScreen, ProductProblemInvestigationPanel } from "@/components/screens";
 import { readPromptDraftReadiness } from "@/lib/automated-prompt-draft-repository";
 import { requireWorkspaceUser } from "@/lib/auth-user";
 import { listWorkspaceInvestigations } from "@/lib/investigation-repository";
 import { findState } from "@/lib/store";
-import { getWorkspaceData } from "@/lib/workspace-repository";
+import { getWorkspaceData, getWorkspaceProblem } from "@/lib/workspace-repository";
+import { listIssueHistory } from "@/lib/issue-history-repository";
 import { getProductProblemEvidenceBundle } from "@/lib/problem-evidence-bundle";
 import { reconcileStaleIssueRuntimeVerifications } from "@/lib/issue-runtime-verification";
 
@@ -29,23 +30,17 @@ export default async function Page({ params }: { params: Promise<{ problemId: st
   const evidenceBundle = investigation
     ? await getProductProblemEvidenceBundle(user.orgId, problemId)
     : null;
-  if (
-    data.primaryProblem?.id === problemId &&
-    data.recommendation
-  ) {
-    const state = await findState(user.orgId);
-    if (state) {
-      const relatedAuditEntityIds = new Set([
-        problemId,
-        state.approval.id,
-        state.workItem?.id,
-      ].filter((id): id is string => Boolean(id)));
-      const problemAudit = state.audit.filter((event) =>
-        relatedAuditEntityIds.has(event.entityId) || event.traceId.includes(problemId),
-      );
-      return <><ProblemReviewDiagnostics problemId={problemId} review={review}/><ProblemWorkspace initialState={structuredClone(state)} problem={data.primaryProblem} feedbackItems={data.feedback}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)}/><ProblemHistory audit={structuredClone(problemAudit)}/></>;
-    }
-  }
-  const promptDraftReadiness = await readPromptDraftReadiness(user.orgId, problemId);
-  return <><ProblemReviewDiagnostics problemId={problemId} review={review}/><GenericProblemScreen problem={problem} promptDraftReadiness={structuredClone(promptDraftReadiness)} investigation={structuredClone(investigation)}/><ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)} showSummary={false}/></>;
+  const [promptDraftReadiness, domainProblem, workflow] = await Promise.all([
+    readPromptDraftReadiness(user.orgId, problemId),
+    getWorkspaceProblem(user.orgId, problemId),
+    findState(user.orgId, problemId),
+  ]);
+  const history = await listIssueHistory(user.orgId, problemId, workflow);
+  return <>
+    <ProblemReviewDiagnostics problemId={problemId} review={review}/>
+    <GenericProblemScreen problem={problem} promptDraftReadiness={structuredClone(promptDraftReadiness)} investigation={structuredClone(investigation)}/>
+    {domainProblem && <ProblemEvidence problem={structuredClone(domainProblem)} feedbackItems={data.feedback}/>}
+    <ProductProblemInvestigationPanel problem={structuredClone(problem)} investigation={structuredClone(investigation)} evidenceBundle={structuredClone(evidenceBundle)} showSummary={false}/>
+    {history.length > 0 && <ProblemHistory audit={structuredClone(history)}/>}
+  </>;
 }

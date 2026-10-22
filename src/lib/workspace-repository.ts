@@ -139,6 +139,28 @@ interface PrimaryProblemRow {
   investigation_files: string[] | null;
 }
 
+/** Full issue record: problem row, linked feedback ids and current investigation. */
+const PROBLEM_DOMAIN_SELECT = `SELECT p.*,
+      memberships.feedback_ids,
+      i.id investigation_id,i.hypothesis,i.confidence investigation_confidence,
+      i.assumptions,i.missing_information,i.proposed_action,
+      i.recommended_tests,i.suspected_files investigation_files
+      FROM product_problems p
+      LEFT JOIN workspaces w ON w.org_id=p.org_id
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(m.feedback_id ORDER BY m.created_at,m.feedback_id) AS feedback_ids
+        FROM feedback_cluster_memberships m
+        WHERE m.org_id=p.org_id AND m.problem_id=p.id
+      ) memberships ON true
+      LEFT JOIN LATERAL (
+        SELECT candidate.*
+        FROM investigations candidate
+        WHERE candidate.org_id=p.org_id AND candidate.problem_id=p.id
+        ORDER BY (candidate.status='Ready for approval') DESC,
+                 candidate.updated_at DESC,candidate.id
+        LIMIT 1
+      ) i ON true`;
+
 export function mapPrimaryWorkspaceDomain(
   row?: PrimaryProblemRow,
 ): {
@@ -204,26 +226,7 @@ export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
         LIMIT 1
       ) m ON true
       WHERE f.org_id=$1 ORDER BY f.created_at,f.id`,[orgId]),
-    pool.query<PrimaryProblemRow>(`SELECT p.*,
-      memberships.feedback_ids,
-      i.id investigation_id,i.hypothesis,i.confidence investigation_confidence,
-      i.assumptions,i.missing_information,i.proposed_action,
-      i.recommended_tests,i.suspected_files investigation_files
-      FROM product_problems p
-      LEFT JOIN workspaces w ON w.org_id=p.org_id
-      LEFT JOIN LATERAL (
-        SELECT jsonb_agg(m.feedback_id ORDER BY m.created_at,m.feedback_id) AS feedback_ids
-        FROM feedback_cluster_memberships m
-        WHERE m.org_id=p.org_id AND m.problem_id=p.id
-      ) memberships ON true
-      LEFT JOIN LATERAL (
-        SELECT candidate.*
-        FROM investigations candidate
-        WHERE candidate.org_id=p.org_id AND candidate.problem_id=p.id
-        ORDER BY (candidate.status='Ready for approval') DESC,
-                 candidate.updated_at DESC,candidate.id
-        LIMIT 1
-      ) i ON true
+    pool.query<PrimaryProblemRow>(`${PROBLEM_DOMAIN_SELECT}
       WHERE p.org_id=$1
       ORDER BY (w.primary_problem_id=p.id) DESC,
         (p.stage <> 'Closed') DESC,
@@ -325,4 +328,13 @@ export async function getWorkspaceData(orgId: string): Promise<WorkspaceData> {
     investigationQueue:investigationResult.rows.filter((item) => item.id !== recommendation?.id).map((item) => ({id:item.id,problemId:item.problem_id,title:item.title,status:item.status})),
     customers:customerResult.rows.map((item) => ({id:item.id,name:item.name,tier:item.tier,arr:item.arr,arrSource:item.arr_source,customerSince:item.customer_since,customerSinceKnown:item.customer_since_known,signals:item.signals,openProblems:item.open_problems,churnRisk:item.churn_risk,origin:item.origin,sourceNames:item.source_names})),
     settings };
+}
+
+/** One issue's full record, or null if it is not in this workspace. */
+export async function getWorkspaceProblem(orgId: string, problemId: string): Promise<ProductProblem | null> {
+  if (workspacePersistenceMode(orgId) !== "postgres") return problemId === seedProblem.id ? seedProblem : null;
+  const result = await databasePool().query<PrimaryProblemRow>(
+    `${PROBLEM_DOMAIN_SELECT}\n      WHERE p.org_id=$1 AND p.id=$2\n      LIMIT 1`, [orgId, problemId],
+  );
+  return mapPrimaryWorkspaceDomain(result.rows[0]).primaryProblem;
 }

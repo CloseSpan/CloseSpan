@@ -63,7 +63,7 @@ Target sidebar (recommended):
 
 Steps:
 1. **Vocabulary first.** Add a short glossary to DESIGN.md and use it everywhere: *Needs you* = a decision a person must make; *Needs attention* = an issue-list filter only; one list of issue statuses. Rename labels in `workspace-labels.ts` and badge counts in `app-shell.tsx`.
-2. **One issue page.** Make `GenericProblemScreen` handle every issue and retire the primary-issue `ProblemWorkspace` path. Move the Prompt Testing stepper and the Follow-up drafts into sections of that page, so they work for every issue, not just the primary one.
+2. **One issue page** (Phase 1b). Make `GenericProblemScreen` handle every issue and retire the primary-issue `ProblemWorkspace` path. Move the Prompt Testing stepper and the Follow-up drafts into sections of that page, so they work for every issue, not just the primary one.
 3. **Needs you.** Merge requirement reviews and action approvals into one queue, sorted by urgency, each row linking to the decision on the issue page.
 4. **Move secondary screens.** Agent activity → Settings › Activity (findings still appear on their issues). Integrations → Settings › Connections only. Customers becomes an Issues filter and column.
 5. **Redirect old URLs** (`/overview`, `/pdd`, `/follow-up`, `/approvals`, `/agent-runs`, `/integrations`, `/customers`) so bookmarks and notification links keep working, and update `workspace-navigation.ts` and its tests.

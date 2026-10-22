@@ -47,10 +47,16 @@ export function getMemoryState(orgId: string): DemoState {
   return current;
 }
 
-export function findMemoryState(orgId: string): DemoState | null {
-  const current = states().get(orgId);
-  if (current) return current;
-  return orgId === approval.orgId ? getMemoryState(orgId) : null;
+/** The seeded demo has one workflow; any other issue has none. */
+export function findMemoryState(orgId: string, problemId: string | null = null): DemoState | null {
+  const current = states().get(orgId) ?? (orgId === approval.orgId ? getMemoryState(orgId) : null);
+  return current && (!problemId || current.approval.problemId === problemId) ? current : null;
+}
+
+function memoryWorkflow(orgId: string, problemId: string | null): DemoState {
+  const state = getMemoryState(orgId);
+  if (problemId && state.approval.problemId !== problemId) throw new Error("No approval workflow exists for this issue");
+  return state;
 }
 
 function alreadyProcessed(state: DemoState, context: ActionContext, action: string): boolean {
@@ -59,8 +65,8 @@ function alreadyProcessed(state: DemoState, context: ActionContext, action: stri
   return processed === action;
 }
 
-export function approveMemoryAction(orgId: string, context: ActionContext): DemoState {
-  const state = getMemoryState(orgId);
+export function approveMemoryAction(orgId: string, context: ActionContext, problemId: string | null = null): DemoState {
+  const state = memoryWorkflow(orgId, problemId);
   if (alreadyProcessed(state, context, "approve")) return state;
   if (state.approval.status !== "Pending") throw new Error("Approval is no longer pending");
   state.approval.status = "Approved";
@@ -73,8 +79,8 @@ export function approveMemoryAction(orgId: string, context: ActionContext): Demo
   return state;
 }
 
-export function rejectMemoryAction(orgId: string, context: ActionContext): DemoState {
-  const state = getMemoryState(orgId);
+export function rejectMemoryAction(orgId: string, context: ActionContext, problemId: string | null = null): DemoState {
+  const state = memoryWorkflow(orgId, problemId);
   if (alreadyProcessed(state, context, "reject")) return state;
   if (state.approval.status !== "Pending") throw new Error("Approval is no longer pending");
   state.approval.status = "Rejected";
@@ -86,8 +92,8 @@ export function rejectMemoryAction(orgId: string, context: ActionContext): DemoS
   return state;
 }
 
-export function advanceMemoryLifecycle(orgId: string, context: ActionContext): DemoState {
-  const state = getMemoryState(orgId);
+export function advanceMemoryLifecycle(orgId: string, context: ActionContext, problemId: string | null = null): DemoState {
+  const state = memoryWorkflow(orgId, problemId);
   if (alreadyProcessed(state, context, "advance")) return state;
   const next: Partial<Record<Stage, Stage>> = {
     Approved: "Planned",
@@ -108,8 +114,8 @@ export function advanceMemoryLifecycle(orgId: string, context: ActionContext): D
   return state;
 }
 
-export function approveMemoryNotifications(orgId: string, context: ActionContext): DemoState {
-  const state = getMemoryState(orgId);
+export function approveMemoryNotifications(orgId: string, context: ActionContext, problemId: string | null = null): DemoState {
+  const state = memoryWorkflow(orgId, problemId);
   if (alreadyProcessed(state, context, "notify")) return state;
   if (!["Verified", "Closed"].includes(state.problemStage) || state.notifications !== "Drafted") throw new Error("Customer follow-up requires a verified resolution and drafted messages");
   state.notifications = "Approved";

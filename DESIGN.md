@@ -190,7 +190,9 @@ The frontmatter's display role records the landing hero; headline and title reco
 
 ### Issue-centered workspace
 
-The everyday sidebar contains Issues, Needs you, Feedback and Settings, and Issues is the workspace home (`/overview` redirects there; the counts dashboard was retired). It remains expanded on desktop. Routes outside the sidebar highlight their owner: Prompt Testing, Follow-up and investigations belong to Issues; Customers, Agent activity and the Integrations catalog are reached from Settings.
+The everyday sidebar contains Issues, Needs you, Feedback and Settings, and Issues is the workspace home (`/overview` redirects there; the counts dashboard was retired). It remains expanded on desktop. Routes outside the sidebar highlight their owner: Prompt Testing and investigations belong to Issues; Customers, Agent activity and the Integrations catalog are reached from Settings.
+
+Every issue opens the same page, in this order: summary and prompt readiness; evidence (statement, revenue reach, supporting customer reports and impact score); investigation; customer follow-up when the issue has an approved workflow; and its history. Sections appear only when the issue has the underlying records. Customer follow-up belongs to its issue; `/follow-up` redirects to Issues.
 
 Vocabulary is fixed across the product. **Needs you** is the queue of decisions a person must make: requirement reviews and pending action approvals; its sidebar count includes both. **Needs attention** is only an Issues filter for issue status. A legacy "Needs review" stage alone does not place an issue in Needs you. Issues uses short subjects in a searchable list or board, without readiness filters, revenue metrics, confidence percentages, or preparation steppers. A review label requires an available decision; a legacy intake stage alone is not evidence that a person needs to act.
 

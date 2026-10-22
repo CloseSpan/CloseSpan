@@ -11,11 +11,11 @@ const SCREENS = [
   { name: "feedback", path: "/feedback" },
   { name: "issues-list", path: "/problems" },
   { name: "issues-board", path: "/problems?view=board" },
-  { name: "issue-detail", path: "issue" },
+  { name: "issue-detail", path: "issue:0" },
+  { name: "issue-detail-secondary", path: "issue:1" },
   { name: "prompt-testing", path: "/pdd" },
   { name: "needs-you", path: "/approvals" },
   { name: "agent-activity", path: "/agent-runs" },
-  { name: "follow-up", path: "/follow-up" },
   { name: "integrations", path: "/integrations" },
   { name: "notifications", path: "/notifications" },
   { name: "settings", path: "/settings" },
@@ -38,11 +38,14 @@ async function signIn(page: Page) {
   await page.context().addCookies([{ name: salt, value, url: test.info().project.use.baseURL! }]);
 }
 
-async function firstIssuePath(page: Page): Promise<string> {
+async function issuePath(page: Page, index: number): Promise<string> {
   await page.goto("/problems");
-  const href = await page.locator('a[href^="/problems/prob"], a[href^="/problems/"]:not([href="/problems/"])').first().getAttribute("href");
-  if (!href) throw new Error("The demo workspace has no issues to capture.");
-  return href;
+  const hrefs = await page.locator('a[href^="/problems/prob"]').evaluateAll((links) =>
+    // One issue can have several links (anchors, query strings); compare paths.
+    [...new Set(links.map((link) => link.getAttribute("href")?.split(/[?#]/)[0]).filter(Boolean))]);
+  const href = hrefs[index];
+  if (!href) throw new Error(`The demo workspace has no issue #${index + 1} to capture.`);
+  return href as string;
 }
 
 async function settle(page: Page) {
@@ -89,7 +92,7 @@ for (const theme of THEMES) {
 
     for (const screen of SCREENS) {
       test(screen.name, async ({ page }) => {
-        const path = screen.path === "issue" ? await firstIssuePath(page) : screen.path;
+        const path = screen.path.startsWith("issue:") ? await issuePath(page, Number(screen.path.slice(6))) : screen.path;
         const response = await page.goto(path);
         expect(response?.ok(), `${path} responded ${response?.status()}`).toBe(true);
         await settle(page);

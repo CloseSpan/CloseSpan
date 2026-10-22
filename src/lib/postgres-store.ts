@@ -23,6 +23,7 @@ export class WorkflowConflictError extends Error {
 async function readState(
   orgId: string,
   client: Pool | PoolClient = databasePool(),
+  problemId: string | null = null,
 ): Promise<DemoState | null> {
   const result = await client.query<{
     version: number; stage: Stage; approval: DemoState["approval"]; work_item: DemoState["workItem"] | null;
@@ -47,9 +48,10 @@ async function readState(
       LIMIT 1
     ) e ON true
     WHERE a.org_id=$1 AND a.action_type='external_work_item'
+      AND ($2::text IS NULL OR a.problem_id=$2)
     ORDER BY coalesce(w.primary_approval_id=a.id,false) DESC,
       (a.status='Pending') DESC,a.updated_at DESC,a.id
-    LIMIT 1`, [orgId]);
+    LIMIT 1`, [orgId, problemId]);
   if (!result.rows[0]) return null;
   const audit = await client.query<AuditEvent>(`SELECT id, org_id AS "orgId", occurred_at AS "occurredAt", actor_id AS "actorId", actor_name AS "actorName", action, entity_type AS "entityType", entity_id AS "entityId", trace_id AS "traceId" FROM audit_events WHERE org_id=$1 ORDER BY occurred_at DESC`, [orgId]);
   const processed = await client.query<{ key: string; action: string }>("SELECT key, action FROM idempotency_keys WHERE org_id=$1", [orgId]);
@@ -60,6 +62,7 @@ async function readState(
 async function workflowTarget(
   client: PoolClient,
   orgId: string,
+  problemId: string | null,
 ): Promise<WorkflowTarget | null> {
   const result = await client.query<{
     approval_id:string;
@@ -70,10 +73,11 @@ async function workflowTarget(
       JOIN product_problems p ON p.org_id=a.org_id AND p.id=a.problem_id
       LEFT JOIN workspaces w ON w.org_id=a.org_id
       WHERE a.org_id=$1 AND a.action_type='external_work_item'
+        AND ($2::text IS NULL OR a.problem_id=$2)
       ORDER BY coalesce(w.primary_approval_id=a.id,false) DESC,
         (a.status='Pending') DESC,a.updated_at DESC,a.id
       LIMIT 1
-      FOR UPDATE OF a,p`,[orgId]);
+      FOR UPDATE OF a,p`,[orgId, problemId]);
   const row = result.rows[0];
   return row
     ? {
@@ -89,6 +93,7 @@ async function mutate(
   context: ActionContext,
   action: Action,
   work: (client: PoolClient,target: WorkflowTarget) => Promise<void>,
+  problemId: string | null = null,
 ): Promise<DemoState> {
   return transaction(async (client) => {
     const organization = await client.query(
@@ -97,7 +102,7 @@ async function mutate(
     );
     if (!organization.rowCount)
       throw new WorkflowNotFoundError("Workspace organization was not found");
-    const target = await workflowTarget(client,orgId);
+    const target = await workflowTarget(client,orgId,problemId);
     if (!target)
       throw new WorkflowNotFoundError(
         "No approval workflow exists in this workspace",
@@ -108,7 +113,7 @@ async function mutate(
         throw new WorkflowConflictError(
           "Idempotency key was already used for a different action",
         );
-      const replay = await readState(orgId,client);
+      const replay = await readState(orgId,client,problemId);
       if (!replay)
         throw new WorkflowNotFoundError(
           "No approval workflow exists in this workspace",
@@ -118,7 +123,7 @@ async function mutate(
     await work(client,target);
     await client.query("INSERT INTO idempotency_keys(org_id,key,action) VALUES ($1,$2,$3)", [orgId, context.idempotencyKey, action]);
     await client.query("UPDATE workspaces SET version=version+1, updated_at=now() WHERE org_id=$1", [orgId]);
-    const next = await readState(orgId,client);
+    const next = await readState(orgId,client,problemId);
     if (!next)
       throw new WorkflowNotFoundError(
         "No approval workflow exists in this workspace",
@@ -131,12 +136,13 @@ async function audit(client: PoolClient, orgId: string, context: ActionContext, 
   await client.query("INSERT INTO audit_events(id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)", [randomUUID(), orgId, context.actorId, context.actorName, action, entityType, entityId, context.traceId]);
 }
 
-export async function findPostgresState(orgId: string): Promise<DemoState | null> {
-  return readState(orgId);
+/** Without a problem id this reads the workspace's primary workflow. */
+export async function findPostgresState(orgId: string, problemId: string | null = null): Promise<DemoState | null> {
+  return readState(orgId, databasePool(), problemId);
 }
 
-export async function getPostgresState(orgId: string): Promise<DemoState> {
-  const state = await readState(orgId);
+export async function getPostgresState(orgId: string, problemId: string | null = null): Promise<DemoState> {
+  const state = await readState(orgId, databasePool(), problemId);
   if (!state)
     throw new WorkflowNotFoundError(
       "No approval workflow exists in this workspace",
@@ -144,7 +150,7 @@ export async function getPostgresState(orgId: string): Promise<DemoState> {
   return state;
 }
 
-export function approvePostgresAction(orgId: string, context: ActionContext) {
+export function approvePostgresAction(orgId: string, context: ActionContext, problemId: string | null = null) {
   return mutate(orgId, context, "approve", async (client,target) => {
     const result = await client.query("UPDATE approval_requests SET status='Approved',updated_at=now() WHERE org_id=$1 AND id=$2 AND action_type='external_work_item' AND status='Pending'", [orgId,target.approvalId]);
     if (!result.rowCount)
@@ -153,20 +159,20 @@ export function approvePostgresAction(orgId: string, context: ActionContext) {
     const externalKey = `SIM-${target.approvalId}`;
     await client.query("INSERT INTO external_work_items(id,org_id,problem_id,provider,external_key,url,simulated) VALUES ($1,$2,$3,'Simulated connector',$4,'#simulated-work-item',true) ON CONFLICT (org_id,provider,external_key) DO NOTHING", [randomUUID(),orgId,target.problemId,externalKey]);
     await audit(client, orgId, context, `Approved simulated external action ${externalKey}`, "ApprovalRequest", target.approvalId);
-  });
+  }, problemId);
 }
 
-export function rejectPostgresAction(orgId: string, context: ActionContext) {
+export function rejectPostgresAction(orgId: string, context: ActionContext, problemId: string | null = null) {
   return mutate(orgId, context, "reject", async (client,target) => {
     const result = await client.query("UPDATE approval_requests SET status='Rejected',updated_at=now() WHERE org_id=$1 AND id=$2 AND action_type='external_work_item' AND status='Pending'", [orgId,target.approvalId]);
     if (!result.rowCount)
       throw new WorkflowConflictError("Approval is no longer pending");
     await client.query("UPDATE product_problems SET stage='Needs review',updated_at=now() WHERE org_id=$1 AND id=$2", [orgId,target.problemId]);
     await audit(client, orgId, context, "Rejected simulated external action proposal", "ApprovalRequest", target.approvalId);
-  });
+  }, problemId);
 }
 
-export function advancePostgresLifecycle(orgId: string, context: ActionContext) {
+export function advancePostgresLifecycle(orgId: string, context: ActionContext, problemId: string | null = null) {
   return mutate(orgId, context, "advance", async (client,target) => {
     const next: Partial<Record<Stage, Stage>> = {
       Approved: "Planned",
@@ -221,10 +227,10 @@ export function advancePostgresLifecycle(orgId: string, context: ActionContext) 
       }
     }
     await audit(client, orgId, context, `Moved problem to ${nextStage}`, "ProductProblem", target.problemId);
-  });
+  }, problemId);
 }
 
-export function approvePostgresNotifications(orgId: string, context: ActionContext) {
+export function approvePostgresNotifications(orgId: string, context: ActionContext, problemId: string | null = null) {
   return mutate(orgId, context, "notify", async (client,target) => {
     const result = await client.query("UPDATE customer_notifications SET status='Approved',updated_at=now() WHERE org_id=$1 AND problem_id=$2 AND status='Drafted'", [orgId,target.problemId]);
     if (!result.rowCount)
@@ -232,5 +238,5 @@ export function approvePostgresNotifications(orgId: string, context: ActionConte
         "Customer follow-up requires a verified resolution and drafted messages",
       );
     await audit(client, orgId, context, `Approved ${result.rowCount} simulated customer follow-up draft${result.rowCount === 1 ? "" : "s"}`, "CustomerNotification", target.problemId);
-  });
+  }, problemId);
 }

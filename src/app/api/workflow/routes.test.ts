@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as approve } from "./approve/route";
 import { POST as advance } from "./advance/route";
+import { GET as readState } from "./state/route";
 import { POST as analyze } from "../ai/analyze/route";
 import { resetDemoState } from "@/lib/store";
 import { authorizeAdminMutation } from "@/lib/request-security";
@@ -66,6 +67,21 @@ describe("workflow API boundary", () => {
     const replay = await approve(request("/api/workflow/approve", { orgId: "org_northstar", key: "approve_001" }));
     expect(replay.status).toBe(200);
     expect((await replay.json()).state.audit.filter((item: { action: string }) => item.action.includes("GH-1842"))).toHaveLength(1);
+  });
+
+  it("scopes a workflow action to the requested issue", async () => {
+    const other = await approve(request("/api/workflow/approve?problemId=prob_saved_views", { orgId: "org_northstar", key: "approve_other" }));
+    expect(other.status).toBeGreaterThanOrEqual(400);
+    const own = await approve(request("/api/workflow/approve?problemId=prob_export", { orgId: "org_northstar", key: "approve_own" }));
+    expect(own.status).toBe(200);
+    expect((await own.json()).state.approval.problemId).toBe("prob_export");
+  });
+
+  it("reads one issue's workflow and rejects malformed issue ids", async () => {
+    const read = (query: string) => readState(new NextRequest(`http://localhost/api/workflow/state${query}`, { headers: { "x-org-id": "org_northstar" } }));
+    expect((await read("?problemId=prob_export")).status).toBe(200);
+    expect((await read("?problemId=prob_saved_views")).status).toBe(404);
+    expect((await read("?problemId=..%2Fother")).status).toBe(400);
   });
 
   it("advances only after approval", async () => {

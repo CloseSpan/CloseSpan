@@ -5,10 +5,17 @@ import { advancePostgresLifecycle, approvePostgresAction, approvePostgresNotific
 export type { DemoState } from "./memory-store";
 interface ActionContext { actorId: string; actorName: string; idempotencyKey: string; traceId: string }
 
-export async function getState(orgId: string): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? getPostgresState(orgId) : getMemoryState(orgId); }
-export async function findState(orgId: string): Promise<DemoState | null> { return workspacePersistenceMode(orgId) === "postgres" ? findPostgresState(orgId) : findMemoryState(orgId); }
-export async function approveAction(orgId: string, context: ActionContext): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? approvePostgresAction(orgId, context) : approveMemoryAction(orgId, context); }
-export async function rejectAction(orgId: string, context: ActionContext): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? rejectPostgresAction(orgId, context) : rejectMemoryAction(orgId, context); }
-export async function advanceLifecycle(orgId: string, context: ActionContext): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? advancePostgresLifecycle(orgId, context) : advanceMemoryLifecycle(orgId, context); }
-export async function approveNotifications(orgId: string, context: ActionContext): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? approvePostgresNotifications(orgId, context) : approveMemoryNotifications(orgId, context); }
+function memoryState(orgId: string, problemId: string | null): DemoState {
+  if (!problemId) return getMemoryState(orgId);
+  const state = findMemoryState(orgId, problemId);
+  if (!state) throw new Error("No approval workflow exists for this issue");
+  return state;
+}
+export async function getState(orgId: string, problemId: string | null = null): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? getPostgresState(orgId, problemId) : memoryState(orgId, problemId); }
+/** Legacy approval workflow; pass a problem id to read that issue's workflow instead of the primary one. */
+export async function findState(orgId: string, problemId: string | null = null): Promise<DemoState | null> { return workspacePersistenceMode(orgId) === "postgres" ? findPostgresState(orgId, problemId) : findMemoryState(orgId, problemId); }
+export async function approveAction(orgId: string, context: ActionContext, problemId: string | null = null): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? approvePostgresAction(orgId, context, problemId) : approveMemoryAction(orgId, context, problemId); }
+export async function rejectAction(orgId: string, context: ActionContext, problemId: string | null = null): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? rejectPostgresAction(orgId, context, problemId) : rejectMemoryAction(orgId, context, problemId); }
+export async function advanceLifecycle(orgId: string, context: ActionContext, problemId: string | null = null): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? advancePostgresLifecycle(orgId, context, problemId) : advanceMemoryLifecycle(orgId, context, problemId); }
+export async function approveNotifications(orgId: string, context: ActionContext, problemId: string | null = null): Promise<DemoState> { return workspacePersistenceMode(orgId) === "postgres" ? approvePostgresNotifications(orgId, context, problemId) : approveMemoryNotifications(orgId, context, problemId); }
 export function resetDemoState(): void { resetMemoryState(); }
