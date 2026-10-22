@@ -93,6 +93,8 @@ for (const theme of THEMES) {
         const response = await page.goto(path);
         expect(response?.ok(), `${path} responded ${response?.status()}`).toBe(true);
         await settle(page);
+        // Next's development error indicator is tooling, not product UI.
+        await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
         await fitViewportToContent(page);
         // Guard: baselines must come from the seeded demo, never a real workspace.
         await expect(page.locator("body")).toContainText("Demo");
