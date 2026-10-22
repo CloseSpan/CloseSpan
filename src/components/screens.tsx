@@ -327,12 +327,9 @@ export function OverviewScreen({
               Connect feedback <ChevronRight size={14} />
             </Link>
           ) : pendingApprovals > 0 ? (
+            // Issues already has "View issues" on the Needs attention card.
             <Link className="btn primary" href="/approvals">
               Review approvals <ChevronRight size={14} />
-            </Link>
-          ) : attentionProblems.length > 0 ? (
-            <Link className="btn primary" href="/problems">
-              Review issues <ChevronRight size={14} />
             </Link>
           ) : undefined
         }
@@ -351,7 +348,7 @@ export function OverviewScreen({
           <div>
             <h2>Needs attention</h2>
           </div>
-          <Link href="/problems" className="btn">
+          <Link href="/problems" className="btn primary">
             View issues
           </Link>
         </div>

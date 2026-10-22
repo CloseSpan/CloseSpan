@@ -21,8 +21,9 @@ describe("workspace primary action", () => {
     expect(markup).toContain('disabled=""');
     expect(markup).not.toContain('btn primary');
   });
-  it("links workspace search to issues without duplicating the issue search field", () => {
-    expect(renderAction("/approvals")).toContain('href="/problems"');
+  it("shows no header action outside workspace settings", () => {
+    expect(renderAction("/overview")).toBe("");
+    expect(renderAction("/approvals")).toBe("");
     expect(renderAction("/problems")).toBe("");
     expect(renderAction("/settings/technical")).toBe("");
     expect(renderAction("/settings/connections")).toBe("");

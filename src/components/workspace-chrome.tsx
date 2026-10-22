@@ -1,7 +1,6 @@
 "use client";
 
-import { Save, Search } from "lucide-react";
-import Link from "next/link";
+import { Save } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
   createContext,
@@ -70,18 +69,9 @@ export function WorkspacePrimaryActionControl() {
   const settingsRoute =
     pathname === "/settings" || pathname.startsWith("/settings/");
 
-  // Only the workspace-policy editor registers a Save policy action.
-  if (settingsRoute && pathname !== "/settings" && pathname !== "/settings/") return null;
-
-  if (!settingsRoute) {
-    if (pathname === "/problems") return null;
-    return (
-      <Link className="btn search-action" href="/problems" prefetch={false}>
-        <Search size={15} />
-        <span>Search issues</span>
-      </Link>
-    );
-  }
+  // Only the workspace-policy editor registers a Save policy action. Other
+  // screens have no header action; Issues is reached from the sidebar.
+  if (!settingsRoute || (pathname !== "/settings" && pathname !== "/settings/")) return null;
 
   return (
     <button

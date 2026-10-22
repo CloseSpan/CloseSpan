@@ -97,6 +97,9 @@ describe("OverviewScreen theme filter", () => {
     expect(markup).not.toContain("$0k");
     expect(markup).toContain("No revenue data");
     expect(markup).not.toContain("Review approvals");
+    // Without approvals the header adds nothing; the card already links to issues.
+    expect(markup).not.toContain("Review issues");
+    expect(markup.match(/href="\/problems"/g)?.length ?? 0).toBeGreaterThan(0);
     const small = { ...analytics, metrics: { ...analytics.metrics, affectedRevenue: 450 } };
     const withApprovals = renderToStaticMarkup(<OverviewScreen analytics={small} firstName="Sam" organizationName="CloseSpan" pendingApprovals={2} />);
     expect(withApprovals).toContain("$450");
