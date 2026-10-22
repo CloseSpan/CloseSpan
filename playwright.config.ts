@@ -19,7 +19,9 @@ export default defineConfig({
   timeout: 90_000,
   reporter: [["list"]],
   expect: {
-    toHaveScreenshot: { maxDiffPixelRatio: 0.002, animations: "disabled", caret: "hide", scale: "css" },
+    // An absolute pixel budget: a ratio lets small but real changes (a sidebar
+    // item, a header button) pass on tall full-page captures.
+    toHaveScreenshot: { maxDiffPixels: 50, animations: "disabled", caret: "hide", scale: "css" },
   },
   use: {
     baseURL,
@@ -27,6 +29,8 @@ export default defineConfig({
     deviceScaleFactor: 1,
     locale: "en-US",
     timezoneId: "UTC",
+    // Entrance motion would otherwise be captured mid-flight.
+    contextOptions: { reducedMotion: "reduce" },
   },
   webServer: {
     command: `npx next dev -p ${VISUAL_PORT}`,
