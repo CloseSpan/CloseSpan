@@ -5675,6 +5675,27 @@ pre.code-block {
   width: min(42%, 520px);
 }
 
+/* Detail pages: eyebrow and title, then a main column beside an aside. */
+.loading-page-detail .skeleton-eyebrow {
+  width: 140px;
+  height: 12px;
+  margin-bottom: var(--space-3);
+}
+.loading-page-detail .skeleton-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.loading-page-detail .skeleton-detail-main {
+  display: grid;
+  gap: var(--space-4);
+}
+.loading-page-detail .skeleton-detail .skeleton-panel {
+  margin-top: 0;
+  height: 240px;
+}
+
 .skeleton,
 .skeleton-panel,
 .skeleton-title {

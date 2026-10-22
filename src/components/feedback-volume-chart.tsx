@@ -1,6 +1,7 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useHydrationSafeReducedMotion } from "@/lib/hydration-safe-motion";
 import { ClipboardList, Layers, Mail } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -34,7 +35,7 @@ export function FeedbackVolumeChart({ analytics }: { analytics: OverviewAnalytic
   const [source, setSource] = useState("All sources");
   const [activeWeek, setActiveWeek] = useState<number | null>(null);
   const [pinnedWeek, setPinnedWeek] = useState<number | null>(null);
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydrationSafeReducedMotion();
   const values = series[source] ?? series["All sources"] ?? [];
   const weeks = analytics.feedbackWeeks;
   const total = values.reduce((sum, value) => sum + value, 0);

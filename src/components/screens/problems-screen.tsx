@@ -3,7 +3,8 @@
 import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useHydrationSafeReducedMotion } from "@/lib/hydration-safe-motion";
 import Link from "next/link";
 import { ArrowRightLeft, Boxes, ChevronRight, Info, LoaderCircle, MessageSquare, Sparkles, X } from "lucide-react";
 import { CustomSelect } from "../custom-select";
@@ -301,7 +302,7 @@ export function ProblemLifecycleBoard({
 }
 
 export function ProblemsScreen({ analytics }: { analytics: OverviewAnalytics }) {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydrationSafeReducedMotion();
   const [tableView, setTableView] = useState<ProblemView>("problems");
   const [filters, setFilters] = useState<IssueFilters>({ ...EMPTY_ISSUE_FILTERS });
   const [grouping, setGrouping] = useState<IssueGrouping>("none");

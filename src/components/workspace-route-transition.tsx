@@ -2,8 +2,10 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { usePathname } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { workspaceSection } from "@/lib/workspace-navigation";
+
+const subscribeToNothing = () => () => undefined;
 
 function resetWorkspaceScrollPosition(): void {
   // The workspace shell persists between routes, so the browser can retain the
@@ -66,6 +68,9 @@ export function WorkspaceRouteTransition({
   }, [pathname]);
 
   const enterOffset = reduceMotion ? 0 : 8;
+  // The server cannot know the motion preference, so the hydrating render
+  // must not animate: a page load starts settled and only navigations animate.
+  const hydrated = useSyncExternalStore(subscribeToNothing, () => true, () => false);
 
   return (
     <>
@@ -76,7 +81,7 @@ export function WorkspaceRouteTransition({
           key={pathname}
           className="workspace-route-stage"
           data-route-direction="none"
-          initial={reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0.86, y: enterOffset }}
+          initial={!hydrated ? false : reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0.86, y: enterOffset }}
           animate={{ opacity: 1, y: 0 }}
           transition={
             reduceMotion

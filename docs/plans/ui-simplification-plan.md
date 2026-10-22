@@ -1,6 +1,6 @@
 # UI simplification plan
 
-Status: approved · Phase 3 in progress · 2026-10-22
+Status: Phases 0–4 implemented as stacked PRs #3–#8 · 2026-10-22
 
 Two streams: **simplify the sidebar and concepts** (what users see) and **consolidate CSS and shared components** (how it is built). They are planned together because simplifying first removes screens that would otherwise need restyling.
 
@@ -113,9 +113,20 @@ Deferred, because each needs a reviewed visual decision rather than a mechanical
 
 ## Phase 4 · Finish (1 day)
 
-- Route-level `loading.tsx` skeletons for issue, approval and run detail pages.
-- Delete the empty leftover folders under `src/app/` and the reset-mode screen if it is no longer needed.
-- Final docs pass so DESIGN.md describes the shipped app.
+Done:
+- **Loading placeholders.** Issue, Prompt Testing (per issue), approval and agent-run pages show a placeholder shaped like the detail layout while loading.
+- **Hydration fix.** Reduced-motion users no longer get server/browser markup mismatches. The page transition starts settled on page load, and `useHydrationSafeReducedMotion` replaces `useReducedMotion` in eight components.
+- **Hydration guard.** The visual suite now fails any screen that logs a hydration error. It found the Integrations case.
+- **Docs.** This plan and DESIGN.md describe what shipped.
+
+Not applicable: the "empty leftover folders" under `src/app/` exist only in one local checkout; git does not track empty directories, so there is nothing to remove in the repository.
+
+## Still open after all phases
+
+- **CSS debt:** `!important`, hard-coded colours, and off-scale sizes, weights and radii. Each needs a reviewed visual decision. Ratchet tests keep it from growing.
+- **108 dynamic `btn`/`badge` class strings** still to move to the primitives.
+- **Settings › Connections and the integrations catalog** are still separate views.
+- **Customers** is not yet an Issues filter and column.
 
 ## Order and effort
 

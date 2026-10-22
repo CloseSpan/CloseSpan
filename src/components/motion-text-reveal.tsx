@@ -1,6 +1,7 @@
 "use client";
 
-import { motion, type Variants, useReducedMotion } from "framer-motion";
+import { motion, type Variants } from "framer-motion";
+import { useHydrationSafeReducedMotion } from "@/lib/hydration-safe-motion";
 import { Fragment, useSyncExternalStore } from "react";
 
 type MotionTextRevealProps = {
@@ -71,7 +72,7 @@ export function MotionTextReveal({
   text,
 }: MotionTextRevealProps) {
   const hydrated = useHydrated();
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydrationSafeReducedMotion();
   const words = text.trim().split(/\s+/u);
   const { start, end } = findHighlightRange(words, highlight);
   const shouldAnimate = hydrated && reduceMotion !== true;

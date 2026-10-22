@@ -78,8 +78,15 @@ async function fitViewportToContent(page: Page) {
   }
 }
 
+const hydrationErrors = new WeakMap<Page, string[]>();
+
 /** Configure the clock, theme and session before navigating. */
 export async function prepare(page: Page, testInfo: TestInfo, theme: Theme, signedIn: boolean) {
+  const errors: string[] = [];
+  hydrationErrors.set(page, errors);
+  page.on("console", (message) => {
+    if (message.type() === "error" && /hydrat/i.test(message.text())) errors.push(message.text().slice(0, 300));
+  });
   await page.clock.setSystemTime(new Date(VISUAL_FIXED_NOW));
   await page.addInitScript(([key, value]) => {
     try { localStorage.setItem(key, value); } catch { /* storage unavailable */ }
@@ -108,4 +115,6 @@ export async function openScreen(page: Page, screen: Screen, signedIn: boolean) 
   if (signedIn) await expect(page.locator("body")).toContainText("Demo");
   // Route error boundaries still respond 200; a baseline of one is useless.
   await expect(page.getByRole("heading", { name: "This page could not load" })).toHaveCount(0);
+  // Server and browser must render the same markup.
+  expect(hydrationErrors.get(page) ?? [], "hydration errors").toEqual([]);
 }

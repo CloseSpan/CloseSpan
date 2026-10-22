@@ -2,7 +2,8 @@
 
 import { Button, ButtonLink, StatusBadge } from "@/components/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useHydrationSafeReducedMotion } from "@/lib/hydration-safe-motion";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Activity, Check, Clock3, Copy, Database, GitBranch, LoaderCircle, ShieldCheck, Sparkles, X } from "lucide-react";
 import { FitText } from "../fit-text";
@@ -149,7 +150,7 @@ export function IntegrationsScreen({
 }) {
   const router = useRouter();
   const settingsConnections = mode === "settings";
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydrationSafeReducedMotion();
   const focusedCardRef = useRef<HTMLElement | null>(null);
   const suggestionsTabRef = useRef<HTMLButtonElement | null>(null);
   const connectionsTabRef = useRef<HTMLButtonElement | null>(null);

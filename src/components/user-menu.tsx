@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useId, useRef, useState } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useHydrationSafeReducedMotion } from "@/lib/hydration-safe-motion";
 
 type MenuPhase = "closed" | "opening" | "open" | "closing";
 
@@ -18,7 +18,7 @@ export function UserMenu({
   children: ReactNode;
 }) {
   const [phase, setPhase] = useState<MenuPhase>("closed");
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydrationSafeReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeTimerRef = useRef<number | null>(null);

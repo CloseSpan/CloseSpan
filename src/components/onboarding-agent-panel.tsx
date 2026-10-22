@@ -4,7 +4,8 @@ import { Button, ButtonLink } from "@/components/ui";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useHydrationSafeReducedMotion } from "@/lib/hydration-safe-motion";
 import {
   ArrowUp,
   Building2,
@@ -336,7 +337,7 @@ export function OnboardingAgentPanel({
   discordCallbackReason: string | null;
 }) {
   const router = useRouter();
-  const prefersReducedMotion = useReducedMotion();
+  const prefersReducedMotion = useHydrationSafeReducedMotion();
   const stageRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const shouldFollowConversationRef = useRef(true);

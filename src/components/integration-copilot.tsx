@@ -10,7 +10,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useHydrationSafeReducedMotion } from "@/lib/hydration-safe-motion";
 import type {
   IntegrationCopilotHistoryItem,
   IntegrationCopilotResult,
@@ -90,7 +91,7 @@ export function IntegrationCopilot({
   const [suggestedReplies, setSuggestedReplies] = useState(initialReplies);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydrationSafeReducedMotion();
   const [connectionProgress, setConnectionProgress] = useState<
     Partial<Record<string, PipedreamConnectState>>
   >({});

@@ -1,6 +1,7 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useHydrationSafeReducedMotion } from "@/lib/hydration-safe-motion";
 import { AlertCircle, CheckCircle2, LoaderCircle, X } from "lucide-react";
 import Link from "next/link";
 import {
@@ -410,7 +411,7 @@ function PromptTestDock({
   acknowledgeTask: (id: string) => void;
   avoidGuidedDemo: boolean;
 }) {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydrationSafeReducedMotion();
   const visibleTasks = tasks.filter((task) => !task.acknowledged);
   return (
     <aside
