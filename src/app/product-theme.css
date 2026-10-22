@@ -49,7 +49,7 @@ html { font-synthesis: none; }
 body { letter-spacing: -0.008em; }
 button, input, textarea, select { caret-color: var(--text-strong); }
 h1, h2, h3, h4 { text-wrap: balance; }
-td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
+td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 
 /* The old image component remains an API-compatible, flat wordmark. */
 .closespan-3d-logo,
@@ -171,7 +171,6 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 }
 :root[data-theme] .app-shell .nav-section-label { padding: 8px 10px; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-weight: 500; }
 :root[data-theme] .app-shell .nav-group + .nav-group { margin-top: 16px; }
-:root[data-theme] .app-shell .nav-link-indicator { display: none; }
 :root[data-theme] .app-shell .sidebar .organization-switcher-trigger {
   min-height: 54px;
   padding: 8px;
