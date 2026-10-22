@@ -60,13 +60,15 @@ export function detectRunFindings(runs: AgentRunSummaryView[]): RunFinding[] {
     }
   }
   for (const finding of groups.values()) {
-    // A later clean, verified run supersedes execution/verification findings;
-    // a failed release requires a later successful final execution instead.
+    // A later clean run supersedes execution findings. Workspaces without an
+    // independent verifier report no verification status, so only a failed
+    // verification finding demands a later passed verification. A failed
+    // release requires a later successful final execution instead.
     finding.resolved = runs.some((run) => run.problemId === finding.sourceProblemId && run.repository === finding.repository
       && run.queuedAt > finding.lastSeen && run.completedAt !== null
       && (finding.kind === "final_execution" ? run.finalExecutionStatus === "Succeeded"
-        : ["Tests passed", "Draft PR opened", "No changes"].includes(run.status)
-          && run.independentVerificationStatus === "passed" && !signals(run).length));
+        : ["Tests passed", "Draft PR opened", "No changes"].includes(run.status) && !signals(run).length
+          && (finding.kind !== "verification" || run.independentVerificationStatus === "passed")));
   }
   return [...groups.values()].sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
 }

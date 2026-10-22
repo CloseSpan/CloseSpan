@@ -23,11 +23,22 @@ describe("run findings", () => {
   it("detects failed tests and verification even when the run claims success", () => {
     expect(detectRunFindings([run({ status: "Draft PR opened", failedTestCount: 2, independentVerificationStatus: "failed" })]).map((f) => f.kind).sort()).toEqual(["tests", "verification"]);
   });
-  it("supersedes a finding only after a later clean verified run for the same issue and repository", () => {
+  it("supersedes a finding only after a later clean run for the same issue and repository", () => {
     const success = run({ id: "r2", status: "Draft PR opened", queuedAt: "2026-10-02T10:00:00.000Z", completedAt: "2026-10-02T10:01:00.000Z", independentVerificationStatus: "passed" });
     expect(detectRunFindings([run(), success])[0].resolved).toBe(true);
     expect(detectRunFindings([run(), { ...success, repository: "other" }])[0].resolved).toBe(false);
-    expect(detectRunFindings([run(), { ...success, independentVerificationStatus: null }])[0].resolved).toBe(false);
+    expect(detectRunFindings([run(), { ...success, independentVerificationStatus: "failed" }]).find((f) => f.kind === "timeout")?.resolved).toBe(false);
+  });
+  it("resolves execution findings in workspaces without an independent verifier", () => {
+    const success = run({ id: "r2", status: "Tests passed", queuedAt: "2026-10-02T10:00:00.000Z", completedAt: "2026-10-02T10:01:00.000Z" });
+    expect(detectRunFindings([run(), success])[0].resolved).toBe(true);
+    expect(detectRunFindings([run(), { ...success, failedTestCount: 1 }]).find((f) => f.kind === "timeout")?.resolved).toBe(false);
+  });
+  it("requires a later passed verification to resolve a failed verification", () => {
+    const failed = run({ status: "Draft PR opened", failureCode: null, independentVerificationStatus: "failed" });
+    const later = run({ id: "r2", status: "Draft PR opened", queuedAt: "2026-10-02T10:00:00.000Z", completedAt: "2026-10-02T10:01:00.000Z" });
+    expect(detectRunFindings([failed, later])[0].resolved).toBe(false);
+    expect(detectRunFindings([failed, { ...later, independentVerificationStatus: "passed" }])[0].resolved).toBe(true);
   });
   it("does not equate verified implementation with recovered final execution", () => {
     const first = run({ status: "Draft PR opened", finalExecutionStatus: "Failed" });

@@ -94,9 +94,9 @@ export function SettingsNavigation({ mobile = false }: { mobile?: boolean }) {
       className={`nav settings-sidebar-navigation${mobile ? " settings-mobile-navigation" : ""}`}
       aria-label="Settings sections"
     >
-      <Link className="settings-back-link" href="/problems" prefetch={false}>
+      <Link className="settings-back-link" href="/overview" prefetch={false}>
         <ArrowLeft aria-hidden="true" size={17} />
-        <span>Back to issues</span>
+        <span>Back to workspace</span>
       </Link>
       <span className="nav-section-label settings-navigation-label">
         Personal

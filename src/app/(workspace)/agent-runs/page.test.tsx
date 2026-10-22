@@ -30,6 +30,21 @@ describe("Agent Activity findings", () => {
     expect(html).not.toContain("Healthy import");
     expect(html).toContain("All runs (2)");
   });
+  it("shows a finding spanning several runs once, on its newest run", async () => {
+    mocks.list.mockResolvedValue([
+      { ...base, id: "newer", problemId: "p1", problemTitle: "Broken export", status: "Failed", failureCode: "execution_timeout", queuedAt: "2026-10-02T00:00:00Z", completedAt: "2026-10-02T00:01:00Z" },
+      { ...base, id: "older", problemId: "p1", problemTitle: "Broken export", status: "Failed", failureCode: "execution_timeout" },
+    ]);
+    const html = renderToStaticMarkup(await Page({}));
+    expect(html.match(/<details class="agent-finding">/g)).toHaveLength(1);
+    expect(html).toContain("Execution timed out · repeated from a later run");
+  });
+  it("offers no approvals shortcut when there are no runs", async () => {
+    mocks.list.mockResolvedValue([]);
+    const html = renderToStaticMarkup(await Page({}));
+    expect(html).toContain("No agent runs yet");
+    expect(html).not.toContain("Review approvals");
+  });
   it("distinguishes an empty filter from no execution history", async () => {
     mocks.list.mockResolvedValue([{ ...base, id: "clean", problemId: "p2", problemTitle: "Healthy", status: "Draft PR opened" }]);
     const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ attention: "1" }) }));

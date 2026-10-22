@@ -30,16 +30,21 @@ export default async function AgentRunsPage({ searchParams }: { searchParams?: P
   const attention = (await searchParams)?.attention === "1";
   const attentionIds = new Set(findings.filter((finding) => !finding.resolved).flatMap((finding) => finding.runIds));
   const visibleRuns = attention ? runs.filter((run) => attentionIds.has(run.id)) : runs;
+  // A finding spanning several runs is shown in full once, on its first visible row.
+  const findingRows = new Map<string, string>();
+  for (const run of visibleRuns) {
+    for (const finding of findings) if (finding.runIds.includes(run.id) && !findingRows.has(finding.id)) findingRows.set(finding.id, run.id);
+  }
 
   return (
     <>
       <PageTitle
         title={WORKSPACE_LABELS["agent-runs"]}
-        action={
+        action={runs.length > 0 ? (
           <Link className="btn" href="/approvals">
             Review approvals
           </Link>
-        }
+        ) : undefined}
       />
       {runs.length > 0 && <nav className="agent-activity-filters" aria-label="Run filters">
         <Link className="btn" href="/agent-runs" aria-current={!attention ? "page" : undefined}>All runs ({runs.length})</Link>
@@ -86,9 +91,9 @@ export default async function AgentRunsPage({ searchParams }: { searchParams?: P
                       >
                         <strong>{run.problemTitle}</strong>
                       </Link>
-                      {findings.filter((finding) => finding.runIds.includes(run.id)).map((finding) => (
+                      {findings.filter((finding) => finding.runIds.includes(run.id)).map((finding) => findingRows.get(finding.id) === run.id ? (
                         <AgentRunFinding key={finding.id} finding={finding} linkedIssue={issueLinks.links[finding.id]} canCreate={user.role === "Admin"} storageReady={issueLinks.ready} />
-                      ))}
+                      ) : <p key={finding.id} className="subtle">{finding.title} · repeated from a later run</p>)}
                     </td>
                     <td>
                       <span className={runStatus.className}>

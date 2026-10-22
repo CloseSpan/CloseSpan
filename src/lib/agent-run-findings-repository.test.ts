@@ -3,7 +3,7 @@ const mocks = vi.hoisted(() => ({ query: vi.fn(), list: vi.fn(), mode: vi.fn(() 
 vi.mock("./db", () => ({ databasePool: () => ({ query: mocks.query }), transaction: async (fn: (client: unknown) => unknown) => fn({ query: mocks.query }) }));
 vi.mock("./workspace-persistence", () => ({ workspacePersistenceMode: mocks.mode }));
 vi.mock("./engineering-workflow-repository", () => ({ listAgentRuns: mocks.list }));
-import { createFindingIssue, readFindingIssueLinks, readIssueRunFinding } from "./agent-run-findings-repository";
+import { createFindingIssue, readFindingIssueLinks, readIssueRunFindings } from "./agent-run-findings-repository";
 import { detectRunFindings } from "./agent-run-findings";
 import type { AgentRunSummaryView } from "./engineering-workflow-repository";
 import type { RequestContext } from "./request-security";
@@ -12,7 +12,14 @@ const context = { orgId: "org_alpha", actorId: "user1", actorName: "User", trace
 const fingerprint = detectRunFindings([run])[0].id;
 beforeEach(() => { mocks.query.mockReset().mockResolvedValue({ rows: [] }); mocks.list.mockReset().mockResolvedValue([run]); mocks.mode.mockReturnValue("postgres"); });
 describe("finding issue persistence", () => {
-  it("creates a review-only issue using server evidence and a tenant-scoped lock", async () => {
+  it("adds evidence to the source issue instead of creating a second one", async () => {
+    mocks.query.mockImplementation(async (sql: string) => ({ rows: sql.startsWith("SELECT id FROM product_problems") ? [{ id: "p1" }] : [] }));
+    expect(await createFindingIssue(context, fingerprint)).toEqual({ problemId: "p1", created: false });
+    expect(mocks.query.mock.calls.some(([sql]) => sql.includes("INSERT INTO product_problems"))).toBe(false);
+    const link = mocks.query.mock.calls.find(([sql]) => sql.includes("INSERT INTO agent_run_finding_issues"));
+    expect(link?.[1].slice(0, 3)).toEqual(["org_alpha", fingerprint, "p1"]);
+  });
+  it("creates a review-only issue when the source issue no longer exists", async () => {
     const result = await createFindingIssue(context, fingerprint);
     expect(result.created).toBe(true);
     expect(mocks.list).toHaveBeenCalledWith("org_alpha");
@@ -40,8 +47,19 @@ describe("finding issue persistence", () => {
   it("shows current evidence on linked issues as more matching runs arrive", async () => {
     mocks.query.mockResolvedValue({ rows: [{ fingerprint, evidence: detectRunFindings([run])[0] }] });
     mocks.list.mockResolvedValue([run, { ...run, id: "r2" }]);
-    expect((await readIssueRunFinding("org_alpha", "linked"))?.runIds).toEqual(["r1", "r2"]);
+    expect((await readIssueRunFindings("org_alpha", "linked")).map((finding) => finding.runIds)).toEqual([["r1", "r2"]]);
     expect(mocks.query.mock.calls[0][1]).toEqual(["org_alpha", "linked"]);
+  });
+  it("shows a source issue its own unresolved findings without a saved link", async () => {
+    expect((await readIssueRunFindings("org_alpha", "p1")).map((finding) => finding.id)).toEqual([fingerprint]);
+    expect(await readIssueRunFindings("org_alpha", "other")).toEqual([]);
+  });
+  it("keeps saved evidence after runs leave the recent window, and before migration", async () => {
+    mocks.query.mockResolvedValue({ rows: [{ fingerprint, evidence: detectRunFindings([run])[0] }] });
+    mocks.list.mockResolvedValue([]);
+    expect(await readIssueRunFindings("org_alpha", "linked")).toHaveLength(1);
+    mocks.query.mockRejectedValue({ code: "42P01" });
+    expect(await readIssueRunFindings("org_alpha", "other")).toEqual([]);
   });
   it("does not pretend memory demo issues can be persisted", async () => {
     mocks.mode.mockReturnValue("memory");

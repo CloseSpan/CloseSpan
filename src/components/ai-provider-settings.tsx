@@ -3,6 +3,7 @@
 import { KeyRound, LockKeyhole, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { SettingsView } from "@/lib/workspace-repository";
+import { ConfirmActionButton } from "./confirm-action-button";
 
 type ProviderId = "xai" | "openai" | "anthropic" | "openrouter";
 type AiSettings = SettingsView["ai"];
@@ -269,14 +270,14 @@ export function AiProviderSettings({
             {busy ? "Saving…" : "Save provider"}
           </button>
           {current.credentialStored && (
-            <button
-              type="button"
-              className="btn danger"
+            <ConfirmActionButton
               disabled={busy || !isAdmin}
-              onClick={removeCredential}
+              prompt="Remove the stored API key?"
+              confirmLabel="Confirm remove"
+              onConfirm={() => void removeCredential()}
             >
               <Trash2 size={14} /> Remove stored key
-            </button>
+            </ConfirmActionButton>
           )}
         </div>
         <div className="ai-security-note section-gap-sm">

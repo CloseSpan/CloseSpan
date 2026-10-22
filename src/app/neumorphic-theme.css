@@ -57,7 +57,7 @@
   --shadow-inset-sm: 0 0 0 0 transparent;
   --shadow-inset-y-sm: 0 0 0 0 transparent;
   --shadow-disabled-inset: 0 0 0 0 transparent;
-  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 20%, transparent);
+  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 40%, transparent);
   --shadow-overlay: 0 12px 36px rgba(24, 25, 28, 0.12);
   --shadow-dialog: 0 20px 60px rgba(24, 25, 28, 0.16);
   --shadow-accent-raised: 0 0 0 0 transparent;
@@ -1978,6 +1978,7 @@ input[type="radio"] {
 }
 
 .badge.medium,
+.badge.warning,
 .callout.warning {
   border-color: rgba(150, 98, 27, 0.2);
   background: var(--warning-soft);
@@ -8087,7 +8088,8 @@ pre.code-block {
   color: var(--success);
 }
 
-.app-shell .badge.medium {
+.app-shell .badge.medium,
+.app-shell .badge.warning {
   border-color: rgba(150, 98, 27, 0.2);
   background: var(--warning-soft);
   color: var(--warning);

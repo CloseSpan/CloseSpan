@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Mail } from "lucide-react";
+import { Check } from "lucide-react";
+import { EmptyWorkspaceState } from "./screens";
 import { useState } from "react";
 import type { PromptReviewNotificationView } from "@/lib/prompt-review-notification-repository";
 
@@ -58,7 +59,14 @@ export function PromptReviewNotifications({
   }
 
   if (!notifications.length)
-    return <div className="empty"><Mail size={30} /><h3>No prompt reviews yet</h3><p>Assigned implementation-prompt drafts will appear here.</p></div>;
+    return (
+      <EmptyWorkspaceState
+        title="No notifications yet"
+        description="You'll be notified here when an implementation prompt is assigned to you for review."
+        actionHref="/problems"
+        actionLabel="View issues"
+      />
+    );
 
   return (
     <div className="detail-stack">

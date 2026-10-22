@@ -3,6 +3,7 @@
 import { Check, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { PipedreamConnectButton } from "@/components/pipedream-connect-button";
+import { ConfirmActionButton } from "./confirm-action-button";
 import {
   SlackIntakeModeControl,
   type SlackIntakeModeStatus,
@@ -193,10 +194,15 @@ export function PipedreamAccountManager({
                     {pulling === account.accountId ? "Pulling..." : "Pull feedback now"}
                   </button>
                 )}
-                <button className="btn danger" type="button" disabled={removing === account.accountId} onClick={() => void remove(account.accountId)}>
+                <ConfirmActionButton
+                  disabled={removing === account.accountId}
+                  prompt={`${managementOnly ? "Disconnect" : "Remove"} ${account.accountName || "this account"}?`}
+                  confirmLabel={managementOnly ? "Confirm disconnect" : "Confirm remove"}
+                  onConfirm={() => void remove(account.accountId)}
+                >
                   {removing === account.accountId ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}
                   {managementOnly ? "Disconnect" : "Remove"}
-                </button>
+                </ConfirmActionButton>
               </div>
             </div>
           ))}

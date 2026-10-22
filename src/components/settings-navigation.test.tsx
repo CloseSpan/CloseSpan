@@ -65,7 +65,8 @@ describe("Settings navigation", () => {
     expect(markup).toContain('aria-current="page" aria-label="Appearance"');
     expect(markup.match(/aria-current=/g)).toHaveLength(1);
     expect(markup).not.toContain('aria-current="location"');
-    expect(markup).toContain('href="/problems"');
+    expect(markup).toContain('href="/overview"');
+    expect(markup).toContain("Back to workspace");
   });
 });
 

@@ -38,10 +38,10 @@ export function AgentRunFinding({ finding, linkedIssue, canCreate, storageReady 
         <div className="agent-finding-links">
           {finding.runIds.slice(0, 5).map((id, index) => <Link key={id} className="text-link" href={`/agent-runs/${id}/details`}>Evidence {index + 1}</Link>)}
           {finding.runIds.length > 5 && <span className="subtle">{finding.runIds.length - 5} more matching runs</span>}
-          <Link className="text-link" href={`/problems/${finding.sourceProblemId}`}>Source issue</Link>
-          {linkedIssue && <Link className="text-link" href={`/problems/${linkedIssue}`}>View linked issue</Link>}
+          <Link className="text-link" href={`/problems/${encodeURIComponent(finding.sourceProblemId)}`}>Source issue</Link>
+          {linkedIssue && linkedIssue !== finding.sourceProblemId && <Link className="text-link" href={`/problems/${encodeURIComponent(linkedIssue)}`}>View linked issue</Link>}
         </div>
-        {!finding.resolved && canCreate && storageReady && <button type="button" className="btn" onClick={createIssue} disabled={busy}>{busy ? "Saving…" : linkedIssue ? "Update issue evidence" : "Create issue"}</button>}
+        {!finding.resolved && canCreate && storageReady && <button type="button" className="btn" onClick={createIssue} disabled={busy}>{busy ? "Saving…" : linkedIssue ? "Update issue evidence" : "Add to issue"}</button>}
         {!finding.resolved && canCreate && !storageReady && <p className="subtle">Issue creation requires database setup.</p>}
         {error && <p role="alert">{error}</p>}
       </div>

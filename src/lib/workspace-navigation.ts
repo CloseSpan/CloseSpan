@@ -136,6 +136,9 @@ export function workspaceSection(pathname: string): string {
   ) {
     return WORKSPACE_LABELS.integrations;
   }
+  if (normalized === "/notifications" || normalized.startsWith("/notifications/")) {
+    return "Notifications";
+  }
   if (
     normalized === "/admin/users" ||
     normalized === "/admin/waitlist"

@@ -680,7 +680,7 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 :root[data-theme] .badge.success { color: var(--success); background: var(--success-soft); }
 :root[data-theme] .badge.brand { color: var(--info); background: var(--info-soft); }
 :root[data-theme] :is(.badge.high, .badge.critical) { color: var(--danger); background: var(--danger-soft); }
-:root[data-theme] .badge.medium { color: var(--warning); background: var(--warning-soft); }
+:root[data-theme] :is(.badge.medium, .badge.warning) { color: var(--warning); background: var(--warning-soft); }
 /* One issue inventory: shared search, filters and grouping; two layouts. */
 :root[data-theme] .app-shell .issue-workspace { overflow: visible; }
 :root[data-theme] .app-shell .problem-table-head > div:first-child { flex: 0 1 auto; }
@@ -814,6 +814,9 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 .app-shell .settings-connection-disconnect { display: grid; gap: 12px; }
 .app-shell .settings-connection-disconnect > p { margin: 0; color: var(--text-muted); }
 .app-shell .settings-connection-disconnect-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Inline two-step confirmation for destructive buttons (ConfirmActionButton). */
+.inline-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.inline-confirm > strong { color: var(--text-strong); font-size: 13px; font-weight: 550; }
 .platform-user-actions { display: flex; gap: 8px; }
 :root[data-theme] .platform-user-dialog {
   width: min(480px, calc(100vw - 32px));
@@ -1008,8 +1011,8 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 :root[data-theme] .feature-requests-page .feature-request-row { border-radius: var(--radius-md); padding: 20px; }
 :root[data-theme] .feature-requests-page .feature-request-votes { border-radius: var(--radius-sm); box-shadow: none; background: var(--surface-muted); }
 
-/* Links and actions retain a keyboard outline. Fields use their existing
- * boundary plus a neutral fill: no second ring or nested input highlight. */
+/* Links and actions retain a keyboard outline. Fields keep their focus
+ * boundary and fill plus a soft focus ring on the field (or its shell). */
 :root[data-theme] :is(button, a, summary, [tabindex], input, textarea, select):focus-visible {
   outline: 2px solid var(--focus-ring) !important;
   outline-offset: 3px;
@@ -1024,7 +1027,7 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
   border-color: var(--field-invalid-border, var(--field-focus-border)) !important;
   background: var(--field-focus-surface) !important;
   outline: none !important;
-  box-shadow: none !important;
+  box-shadow: var(--shadow-focus) !important;
 }
 :root[data-theme] :is(.searchbox, .secret-input, .delphi-composer, .integration-copilot-composer, .prompt-testing-composer, .feedback-reply-composer, [data-field-shell]) :is(input, textarea):is(:focus, :focus-visible) {
   outline: 0 !important;
@@ -1035,7 +1038,7 @@ td, .metric-value, .badge, .weight-value { font-variant-numeric: tabular-nums; }
 :root[data-theme] .searchbox:focus-within > svg { color: var(--icon-blue); transform: none; }
 /* The repository row must not outline its already-visible checkbox as well. */
 :root[data-theme] .onboarding-github-repository:focus-within { outline: none; }
-:root[data-theme] :is(.content, .workspace-route-stage):focus-visible { outline: 0 !important; }
+:root[data-theme] :is(.content, .workspace-route-stage):focus-visible { outline: 2px solid var(--focus-ring) !important; outline-offset: -2px; }
 
 /* Keep the sidebar visible at tablet widths, and confine document scrolling
  * to the existing main panel. Touch controls receive a larger target. */

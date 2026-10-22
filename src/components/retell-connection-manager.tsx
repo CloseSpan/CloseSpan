@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Check, Copy, LoaderCircle, RefreshCw, Unplug } from "lucide-react";
 import type { IntegrationConnectionState } from "@/lib/integration-client";
 import styles from "./retell-connection-manager.module.css";
+import { ConfirmActionButton } from "./confirm-action-button";
 
 interface RetellStatus {
   configured: boolean; connected: boolean; canManage: boolean;
@@ -108,7 +109,7 @@ export function RetellConnectionManager({ orgId, onConnectionStateChange, onImpo
               <button className="btn" disabled={disabled || !callId.trim()}>Import call</button>
             </form>
           </details>
-          <button className={`btn ${styles.disconnect}`} type="button" disabled={disabled} onClick={() => void act("disconnect")}><Unplug size={14} />{busy === "disconnect" ? "Disconnecting…" : "Disconnect"}</button>
+          <ConfirmActionButton className={`btn ${styles.disconnect}`} disabled={disabled} prompt="Disconnect Retell?" confirmLabel="Confirm disconnect" onConfirm={() => void act("disconnect")}><Unplug size={14} />{busy === "disconnect" ? "Disconnecting…" : "Disconnect"}</ConfirmActionButton>
         </> : <form className={styles.fields} onSubmit={connect}>
           <label htmlFor={`${id}-key`}>Retell API key</label>
           <input id={`${id}-key`} className={styles.input} type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} maxLength={512} required disabled={disabled} placeholder="Enter your API key" aria-describedby={`${id}-privacy`} />

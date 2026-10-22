@@ -1,5 +1,5 @@
 import { AgentRunFinding } from "@/components/agent-run-finding";
-import { readIssueRunFinding } from "@/lib/agent-run-findings-repository";
+import { readIssueRunFindings } from "@/lib/agent-run-findings-repository";
 import { notFound } from "next/navigation";
 import { ProblemHistory, ProblemWorkspace } from "@/components/problem-workspace";
 import { GenericProblemScreen, ProductProblemInvestigationPanel } from "@/components/screens";
@@ -27,8 +27,8 @@ export default async function Page({ params }: { params: Promise<{ problemId: st
   const problem = data.analytics.problems.find((item) => item.id === problemId);
   if (!problem) notFound();
   const [conversation, demo] = await Promise.all([readIssueConversation(user.orgId, problemId), readPresentationDemo(user.orgId)]);
-  const runFinding = await readIssueRunFinding(user.orgId, problemId);
-  const findingEvidence = runFinding ? <section className="card"><div className="card-body"><AgentRunFinding finding={runFinding} canCreate={false} storageReady={true} /></div></section> : null;
+  const runFindings = await readIssueRunFindings(user.orgId, problemId);
+  const findingEvidence = runFindings.length ? <section className="card"><div className="card-body">{runFindings.map((finding) => <AgentRunFinding key={finding.id} finding={finding} canCreate={false} storageReady={true} />)}</div></section> : null;
   const discussion = <ProblemDiscussion key={problemId} problemId={problemId} initial={conversation} currentPromptHash={null}
     canDiscuss={["Admin", "Contributor"].includes(user.role)} canRevise={false} canTest={false} demo={demo}
     disabledReason={process.env.APP_MODE === "demo" ? "Live conversation is off in demo mode." : undefined} />;

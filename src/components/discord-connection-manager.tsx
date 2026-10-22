@@ -5,6 +5,7 @@ import { AlertTriangle, Check, LoaderCircle, RefreshCw, Server, Unplug } from "l
 import type { IntegrationConnectionState } from "@/lib/integration-client";
 import type { DiscordGuildChannel } from "@/lib/discord-api";
 import type { DiscordInstallation, DiscordIntakeMode } from "@/lib/discord-app-repository";
+import { ConfirmActionButton } from "./confirm-action-button";
 
 interface DiscordStatus {
   configured: boolean;
@@ -172,7 +173,7 @@ export function DiscordConnectionManager({
       <div className="discord-manager-actions">
         <button className="btn primary" type="button" disabled={!dirty || Boolean(busy) || (mode === "channels" && !selected.length)} onClick={() => void save()}>{busy === "save" ? "Saving…" : "Save listening mode"}</button>
         <button className="btn" type="button" disabled={Boolean(busy)} onClick={() => void load()}><RefreshCw size={14} />Refresh</button>
-        <button className="btn danger" type="button" disabled={Boolean(busy)} onClick={() => void disconnect()}><Unplug size={14} />{busy === "disconnect" ? "Disconnecting…" : "Disconnect"}</button>
+        <ConfirmActionButton disabled={Boolean(busy)} prompt="Disconnect Discord?" confirmLabel="Confirm disconnect" onConfirm={() => void disconnect()}><Unplug size={14} />{busy === "disconnect" ? "Disconnecting…" : "Disconnect"}</ConfirmActionButton>
       </div>
       {error && <p className="integration-import failed" role="alert"><AlertTriangle size={13} />{error}</p>}
     </div>

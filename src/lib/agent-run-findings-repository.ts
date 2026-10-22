@@ -39,9 +39,15 @@ export async function createFindingIssue(context: RequestContext, fingerprint: s
     const existing = await client.query<{ problem_id: string }>(
       "SELECT problem_id FROM agent_run_finding_issues WHERE org_id=$1 AND fingerprint=$2", [context.orgId, fingerprint],
     );
-    const problemId = existing.rows[0]?.problem_id ?? `prob_${randomUUID().replaceAll("-", "")}`;
+    // Evidence belongs on the issue the failing runs were working on. A new
+    // issue is only created when that source issue no longer exists.
+    const source = existing.rows[0] ? null : await client.query<{ id: string }>(
+      "SELECT id FROM product_problems WHERE org_id=$1 AND id=$2", [context.orgId, finding.sourceProblemId],
+    );
+    const problemId = existing.rows[0]?.problem_id ?? source?.rows[0]?.id ?? `prob_${randomUUID().replaceAll("-", "")}`;
     const summary = evidenceSummary(finding);
-    if (!existing.rows[0]) {
+    const created = !existing.rows[0] && !source?.rows[0];
+    if (created) {
       await client.query(`INSERT INTO product_problems
         (id,org_id,title,statement,summary,stage,severity,confidence,product_area,team,churn_risk,suspected_repository,suspected_files,impact_factors)
         VALUES($1,$2,$3,$4,$4,'Needs review','Medium',1,'Agent execution','Unassigned',0,$5,'[]','[]')`,
@@ -55,23 +61,28 @@ export async function createFindingIssue(context: RequestContext, fingerprint: s
     await client.query(`INSERT INTO audit_events(id,org_id,actor_id,actor_name,action,entity_type,entity_id,trace_id)
       VALUES($1,$2,$3,$4,$5,'product_problem',$6,$7) ON CONFLICT(org_id,trace_id,action) DO NOTHING`,
     [randomUUID(), context.orgId, context.actorId, context.actorName, "agent_finding.issue_linked", problemId, context.traceId]);
-    return { problemId, created: !existing.rows[0] };
+    return { problemId, created };
   });
 }
 
-/** Linked issues show the latest observed evidence without rewriting user edits. */
-export async function readIssueRunFinding(orgId: string, problemId: string): Promise<RunFinding | null> {
-  if (workspacePersistenceMode(orgId) !== "postgres") return null;
+/**
+ * An issue shows its own unresolved run findings plus any saved to it, with the
+ * latest observed evidence and without rewriting user edits.
+ */
+export async function readIssueRunFindings(orgId: string, problemId: string): Promise<RunFinding[]> {
+  if (workspacePersistenceMode(orgId) !== "postgres") return [];
+  let saved: { fingerprint: string; evidence: RunFinding }[] = [];
   try {
-    const result = await databasePool().query<{ fingerprint: string; evidence: RunFinding }>(
+    saved = (await databasePool().query<{ fingerprint: string; evidence: RunFinding }>(
       "SELECT fingerprint,evidence FROM agent_run_finding_issues WHERE org_id=$1 AND problem_id=$2", [orgId, problemId],
-    );
-    const saved = result.rows[0];
-    if (!saved) return null;
-    const current = detectRunFindings(await listAgentRuns(orgId)).find((finding) => finding.id === saved.fingerprint);
-    return current ?? saved.evidence;
+    )).rows;
   } catch (error) {
-    if (typeof error === "object" && error && "code" in error && error.code === "42P01") return null;
-    throw error;
+    if (!(typeof error === "object" && error && "code" in error && error.code === "42P01")) throw error;
   }
+  const current = detectRunFindings(await listAgentRuns(orgId));
+  const linked = new Set(saved.map((row) => row.fingerprint));
+  const findings = current.filter((finding) => linked.has(finding.id) || (finding.sourceProblemId === problemId && !finding.resolved));
+  // Saved evidence outlives the recent run window.
+  const shown = new Set(findings.map((finding) => finding.id));
+  return [...findings, ...saved.filter((row) => !shown.has(row.fingerprint)).map((row) => row.evidence)];
 }

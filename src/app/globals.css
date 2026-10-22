@@ -54,7 +54,7 @@ p { margin:0; line-height:1.55; }
 .metric-delta { color:var(--success); font-size:11px; margin-top:4px; }
 .badge { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line); border-radius:999px; padding:4px 8px; font-size:11px; font-weight:650; color:#4f5e72; background:#fafbfc; white-space:nowrap; }
 .badge.high, .badge.critical { color:#a62e3a; border-color:#f1c8cd; background:#fff4f5; }
-.badge.medium { color:#946010; border-color:#ead7af; background:#fff9ed; }
+.badge.medium, .badge.warning { color:#946010; border-color:#ead7af; background:#fff9ed; }
 .badge.success { color:#117153; border-color:#b9dfd1; background:#f0faf6; }
 .badge.brand { color:#4338ca; border-color:#ced0fb; background:var(--brand-soft); }
 .two-col { display:grid; grid-template-columns:minmax(0, 1fr) 340px; gap:17px; align-items:start; }
@@ -353,7 +353,7 @@ p { margin:0; line-height:1.55; }
 .delphi-bubble.assistant.resolved{border-color:rgba(22,163,74,.28);background:#f4fbf6}
 .delphi-bubble.user{margin-left:auto;background:#1f2937;color:#f9fafb}
 .delphi-bubble.thinking p{display:flex;align-items:center;gap:8px;color:#6b7288}
-.delphi-bubble-label{display:block;margin-bottom:6px;font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:#6d66f0}
+.delphi-bubble-label{display:block;margin-bottom:6px;font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--link,#6d66f0)}
 .delphi-sync{display:grid;min-width:0;gap:14px;padding:16px;border-radius:18px;background:rgba(255,255,255,.88);border:1px solid rgba(221,227,235,.95);box-shadow:0 14px 40px rgba(21,34,56,.06)}
 .delphi-sync-head{display:flex;min-width:0;gap:12px;align-items:flex-start}
 .delphi-sync-head svg{color:var(--brand);margin-top:2px}
@@ -387,15 +387,15 @@ p { margin:0; line-height:1.55; }
 .public-source-results{display:grid;gap:10px}
 .public-source-results-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .public-source-results-head strong{font-size:12px}
-.public-source-results-head span{color:#718096;font-size:10px}
+.public-source-results-head span{color:var(--text-muted,#718096);font-size:10px}
 .public-source-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px}
 .public-source-card{display:grid;gap:6px;padding:12px;border:1px solid #dbe3ec;border-radius:12px;background:#fff}
-.public-source-card-head{display:flex;justify-content:space-between;gap:8px;color:#687d92;font-size:9px;font-weight:750;letter-spacing:.035em;text-transform:uppercase}
+.public-source-card-head{display:flex;justify-content:space-between;gap:8px;color:var(--text-muted,#687d92);font-size:9px;font-weight:750;letter-spacing:.035em;text-transform:uppercase}
 .public-source-card h3{margin:1px 0 0;font-size:13px}
-.public-source-card small{overflow:hidden;color:#748397;text-overflow:ellipsis;white-space:nowrap}
+.public-source-card small{overflow:hidden;color:var(--text-muted,#748397);text-overflow:ellipsis;white-space:nowrap}
 .public-source-card p{margin:2px 0;color:var(--muted);font-size:11px;line-height:1.45}
 .public-source-card .text-link{display:inline-flex;align-items:center;gap:5px;font-size:11px}
-.public-source-confirmation{margin:0;color:#718096;font-size:10px;line-height:1.45}
+.public-source-confirmation{margin:0;color:var(--text-muted,#718096);font-size:10px;line-height:1.45}
 .integration-controls{display:grid;gap:10px;margin-top:16px}
 .integration-unavailable p,.integration-availability{margin:0;color:#718096;font-size:11px;line-height:1.45}
 .integration-webhook-credentials{margin-top:12px}
@@ -2105,7 +2105,7 @@ p { margin:0; line-height:1.55; }
 .mobile-organizations-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:3px 8px; }
 .mobile-organizations-copy { min-width:0; display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
 .mobile-organizations-copy > span { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
-.mobile-organizations-copy small { color:#8a93a1; font-size:9px; }
+.mobile-organizations-copy small { color:var(--text-muted,#8a93a1); font-size:9px; }
 .organization-rename-mobile { width:32px; height:32px; flex:0 0 auto; border-radius:9px; }
 
 @media (max-width:1050px) {

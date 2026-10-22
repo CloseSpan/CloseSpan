@@ -63,6 +63,7 @@ describe("FeedbackScreen focus", () => {
     expect(markup).toContain("<th>Status</th>");
     expect(markup).toContain("Needs review");
     expect(markup).toContain("1 needs review");
+    expect(markup).not.toContain("1 need review");
     expect(markup).toContain("Workflow produces an empty result");
     expect(markup).not.toContain("<th>Sentiment</th>");
     expect(markup).not.toContain("<th>Severity</th>");

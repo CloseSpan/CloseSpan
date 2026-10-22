@@ -6,6 +6,7 @@ import { CheckCircle2, ExternalLink, Github, Unplug } from "lucide-react";
 import type { GithubAppInstallationRecord } from "@/lib/github-installation-repository";
 import type { GithubRepositoryAuthorization } from "@/lib/github-repository-allowlist";
 import { startGithubInstallationPopup } from "@/lib/github-installation-client";
+import { ConfirmActionButton } from "./confirm-action-button";
 
 const errorMessages: Record<string, string> = {
   authentication_required: "Sign in again, then reconnect GitHub from this workspace.",
@@ -304,10 +305,16 @@ export function GithubConnectionPanel({
                   {selectionNotice && <p className="toast success" role="status">{selectionNotice}</p>}
                 </div>
               </details>
-              <button className="btn github-disconnect-button" type="button" disabled={busy} onClick={disconnect}>
+              <ConfirmActionButton
+                className="btn github-disconnect-button"
+                disabled={busy}
+                prompt="Disconnect GitHub from this workspace?"
+                confirmLabel="Confirm disconnect"
+                onConfirm={() => void disconnect()}
+              >
                 <Unplug aria-hidden="true" size={15} />
                 {busy ? "Working..." : "Disconnect from this workspace"}
-              </button>
+              </ConfirmActionButton>
             </>
           )}
         </>

@@ -85,4 +85,21 @@ describe("OverviewScreen theme filter", () => {
       'class="card-body overview-themes-scroll" data-empty="false" role="region" aria-label="Emerging themes for the last week" aria-live="polite" tabindex="0"',
     );
   });
+
+  it("never renders $0k and matches the header action to pending approvals", () => {
+    const analytics = calculateOverviewAnalytics(new Date("2026-07-21T18:00:00.000Z"));
+    const noRevenue = {
+      ...analytics,
+      metrics: { ...analytics.metrics, affectedRevenue: 0 },
+      problems: analytics.problems.map((problem) => ({ ...problem, revenue: 0 })),
+    };
+    const markup = renderToStaticMarkup(<OverviewScreen analytics={noRevenue} firstName="Sam" organizationName="CloseSpan" />);
+    expect(markup).not.toContain("$0k");
+    expect(markup).toContain("No revenue data");
+    expect(markup).not.toContain("Review approvals");
+    const small = { ...analytics, metrics: { ...analytics.metrics, affectedRevenue: 450 } };
+    const withApprovals = renderToStaticMarkup(<OverviewScreen analytics={small} firstName="Sam" organizationName="CloseSpan" pendingApprovals={2} />);
+    expect(withApprovals).toContain("$450");
+    expect(withApprovals).toContain("Review approvals");
+  });
 });

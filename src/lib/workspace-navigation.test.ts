@@ -69,6 +69,7 @@ describe("workspace navigation", () => {
     expect(workspaceSection("/agent-runs/run_123")).toBe(
       "Agent activity",
     );
+    expect(workspaceSection("/notifications")).toBe("Notifications");
     expect(workspaceSection("/settings")).toBe("Settings");
     expect(workspaceSection("/settings#members")).toBe("Settings");
     expect(workspaceSection("/settings/appearance")).toBe("Appearance");

@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyOverviewAnalytics } from "@/lib/overview-analytics";
 
 const state = vi.hoisted(() => ({
-  analytics: vi.fn(), setup: vi.fn(), onboarding: vi.fn(), user: vi.fn(),
+  analytics: vi.fn(), setup: vi.fn(), approvals: vi.fn(async () => 0), onboarding: vi.fn(), user: vi.fn(),
   redirect: vi.fn((href: string) => { throw new Error(`redirect:${href}`); }),
 }));
 vi.mock("next/navigation", () => ({ redirect: state.redirect }));
 vi.mock("@/lib/auth-user", () => ({ requireWorkspaceUser: state.user, displayFirstName: (name: string) => name.split(" ")[0] }));
 vi.mock("@/lib/overview-repository", () => ({ getOverviewAnalytics: state.analytics }));
+vi.mock("@/lib/engineering-workflow-repository", () => ({ pendingActionApprovalCount: state.approvals }));
 vi.mock("@/lib/integration-repository", () => ({ getWorkspaceSetupStatus: state.setup }));
 vi.mock("@/lib/onboarding-repository", () => ({ getOnboardingState: state.onboarding }));
 vi.mock("@/components/screens", () => ({

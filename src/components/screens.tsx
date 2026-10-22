@@ -137,11 +137,16 @@ import {
   engineeringPreparationSteps,
 } from "./engineering-ticket-panel";
 
-const money = (value: number) => `$${Math.round(value / 1000)}k`;
+const money = (value: number) =>
+  Math.round(value) < 1000
+    ? `$${Math.max(0, Math.round(value)).toLocaleString("en-US")}`
+    : `$${Math.round(value / 1000)}k`;
 const compactMoney = (value: number) =>
   value >= 1_000_000
     ? `$${(value / 1_000_000).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}m`
     : money(value);
+/** Inline " · $Xk ARR" fragment; omitted when there is no revenue data. */
+const arrFragment = (value: number) => (value > 0 ? ` · ${compactMoney(value)} ARR` : "");
 const prioritizationStages = PRODUCT_PROBLEM_STAGES;
 const problemViews = ["problems", "board"] as const;
 type ProblemView = (typeof problemViews)[number];
@@ -228,7 +233,7 @@ export function PageTitle({
   );
 }
 
-function EmptyWorkspaceState({
+export function EmptyWorkspaceState({
   title,
   description,
   actionHref,
@@ -254,10 +259,12 @@ function EmptyWorkspaceState({
 export function OverviewScreen({
   analytics,
   firstName,
+  pendingApprovals = 0,
 }: {
   analytics: OverviewAnalytics;
   firstName: string;
   organizationName: string;
+  pendingApprovals?: number;
 }) {
   const { metrics, problems } = analytics;
   const attentionProblems = problems.filter((problem) =>
@@ -297,8 +304,8 @@ export function OverviewScreen({
     ],
     [
       "Revenue affected",
-      compactMoney(metrics.affectedRevenue),
-      `Across ${metrics.affectedAccounts} accounts`,
+      metrics.affectedRevenue > 0 ? compactMoney(metrics.affectedRevenue) : "—",
+      metrics.affectedRevenue > 0 ? `Across ${metrics.affectedAccounts} accounts` : "No revenue data",
     ],
     [
       "Avg. signal → resolution",
@@ -315,10 +322,19 @@ export function OverviewScreen({
       <PageTitle
         title={`Welcome, ${firstName}`}
         action={
-          <Link className="btn primary" href={empty ? "/integrations" : "/approvals"}>
-            {empty ? "Connect feedback" : "Review approvals"}{" "}
-            <ChevronRight size={14} />
-          </Link>
+          empty ? (
+            <Link className="btn primary" href="/integrations">
+              Connect feedback <ChevronRight size={14} />
+            </Link>
+          ) : pendingApprovals > 0 ? (
+            <Link className="btn primary" href="/approvals">
+              Review approvals <ChevronRight size={14} />
+            </Link>
+          ) : attentionProblems.length > 0 ? (
+            <Link className="btn primary" href="/problems">
+              Review issues <ChevronRight size={14} />
+            </Link>
+          ) : undefined
         }
       />
       {empty ? (
@@ -371,7 +387,7 @@ export function OverviewScreen({
                   <span className="overview-attention-copy">
                     <strong>{problem.title}</strong>
                     <small>
-                      {problem.stage} · {problem.count} {problem.count === 1 ? "signal" : "signals"} · {compactMoney(problem.revenue)} ARR
+                      {problem.stage} · {problem.count} {problem.count === 1 ? "signal" : "signals"}{arrFragment(problem.revenue)}
                     </small>
                   </span>
                   <span className={`badge ${problem.severity.toLowerCase()}`}>{problem.severity}</span>
@@ -1223,7 +1239,7 @@ export function FeedbackScreen({
       <PageTitle
         title={WORKSPACE_LABELS.feedback}
         action={<div className="page-title-actions">
-          {proposedAnalyses.length > 0 && <span className="badge brand" role="status">{proposedAnalyses.length} needs review</span>}
+          {proposedAnalyses.length > 0 && <span className="badge brand" role="status">{proposedAnalyses.length} {proposedAnalyses.length === 1 ? "needs" : "need"} review</span>}
           {pullControls()}
           <button type="button" className="btn primary feedback-analyze-button" aria-label={`Analyze selected feedback with ${providerLabel}`} disabled={!selected.length || busy} onClick={() => void classify()}>
             <Sparkles size={14} /> {busy ? "Analyzing…" : `Analyze${selected.length ? ` (${selected.length})` : ""}`}
@@ -1964,12 +1980,10 @@ export function PrioritizationScreen({
             <div>
               <span>Revenue represented</span>
               <strong>
-                {compactMoney(
-                  rows.reduce(
-                    (total, problem) => total + problem.revenue,
-                    0,
-                  ),
-                )}
+                {(() => {
+                  const represented = rows.reduce((total, problem) => total + problem.revenue, 0);
+                  return represented > 0 ? compactMoney(represented) : "—";
+                })()}
               </strong>
             </div>
             <div>
@@ -2035,9 +2049,11 @@ export function PrioritizationScreen({
                           className="prioritization-drivers"
                           aria-label="Priority drivers"
                         >
-                          <span>
-                            <strong>{compactMoney(problem.revenue)}</strong> ARR
-                          </span>
+                          {problem.revenue > 0 && (
+                            <span>
+                              <strong>{compactMoney(problem.revenue)}</strong> ARR
+                            </span>
+                          )}
                           <span>
                             <strong>{problem.count}</strong>{" "}
                             {problem.count === 1 ? "signal" : "signals"}
@@ -2942,7 +2958,7 @@ export function ProductProblemInvestigationPanel({
           <section className="investigation-next-step">
             <div>
               <h3>Investigate before writing the prompt</h3>
-              <span className="subtle">Affected impact: {money(problem.revenue)} ARR across {problem.count} signals.</span>
+              <span className="subtle">Affected impact: {problem.revenue > 0 ? `${money(problem.revenue)} ARR across ` : ""}{problem.count} signal{problem.count === 1 ? "" : "s"}.</span>
             </div>
             <button className="btn primary" type="button" disabled={startingInvestigation} onClick={startInvestigation}>
               {startingInvestigation ? "Starting…" : "Start investigation"}
@@ -3163,7 +3179,7 @@ export function PddPrioritizationScreen({
                         <span className={`badge ${pddQueueTone(preparation.label)}`}>{preparation.label}</span>
                       </div>
                       <p>
-                        {problem.productArea} · {problem.severity} severity · {compactMoney(problem.revenue)} ARR · {problem.count} signal{problem.count === 1 ? "" : "s"}
+                        {problem.productArea} · {problem.severity} severity{arrFragment(problem.revenue)} · {problem.count} signal{problem.count === 1 ? "" : "s"}
                       </p>
                     </div>
                     <span className="pdd-priority-open">
@@ -3257,7 +3273,7 @@ export function PddScreen({
           <section className="card pdd-selected-context">
             <div>
               <h2>{selectedProblem.title}</h2>
-              <p>{selectedProblem.productArea} · {selectedProblem.severity} severity · {money(selectedProblem.revenue)} ARR</p>
+              <p>{selectedProblem.productArea} · {selectedProblem.severity} severity{arrFragment(selectedProblem.revenue)}</p>
             </div>
             <Link className="text-link" href={`/problems/${encodeURIComponent(selectedProblem.id)}#investigation`}>
               View issue <ChevronRight size={13} aria-hidden="true" />
@@ -3473,10 +3489,14 @@ export function ApprovalsScreen({
         <PageTitle title={WORKSPACE_LABELS.approvals} />
         {demoNotice}
         {domainReviews}
-        {!requirementReviews.length && <section className="card approval-detail-empty">
-          <h2>{reviewStorageReady ? "Nothing needs your review" : "Reviews unavailable"}</h2>
-          <Link className="btn" href="/problems">View issues</Link>
-        </section>}
+        {!requirementReviews.length && <EmptyWorkspaceState
+          title={reviewStorageReady ? "Nothing needs your review" : "Reviews unavailable"}
+          description={reviewStorageReady
+            ? "Agent actions that need your approval will appear here."
+            : "Review history can't be loaded right now."}
+          actionHref="/problems"
+          actionLabel="View issues"
+        />}
       </>
     );
   }
@@ -5488,8 +5508,8 @@ export function GenericProblemScreen({
           </div>
           <div className="card-body detail-stack">
             <p className="summary">
-              This cluster has {problem.count} related signals representing{" "}
-              {money(problem.revenue)} in affected ARR.
+              This cluster has {problem.count} related signal{problem.count === 1 ? "" : "s"}
+              {problem.revenue > 0 ? ` representing ${money(problem.revenue)} in affected ARR` : ""}.
             </p>
             <div className="prompt-readiness-grid" aria-label="Prompt drafting confidence">
               <div className="prompt-readiness-metric">
