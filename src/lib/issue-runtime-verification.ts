@@ -470,6 +470,8 @@ export async function reconcileStaleIssueRuntimeVerifications(
   now = new Date(),
   dependencies: RuntimeVerificationReconciliationDependencies = runtimeVerificationReconciliationDependencies,
 ): Promise<{ queuedTimedOut: number; runningTimedOut: number }> {
+  // In-memory workspaces have no verification runs to time out.
+  if (orgId && workspacePersistenceMode(orgId) !== "postgres") return { queuedTimedOut: 0, runningTimedOut: 0 };
   const queuedBefore = new Date(
     now.getTime() - ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MS,
   );

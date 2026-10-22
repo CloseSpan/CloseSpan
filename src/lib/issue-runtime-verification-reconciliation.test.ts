@@ -10,6 +10,12 @@ vi.mock("./db", () => ({
   transaction: database.transaction,
 }));
 
+const persistence = vi.hoisted(() => ({ mode: vi.fn(() => "postgres") }));
+vi.mock("./workspace-persistence", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./workspace-persistence")>(),
+  workspacePersistenceMode: persistence.mode,
+}));
+
 import {
   ISSUE_RUNTIME_VERIFICATION_QUEUE_TIMEOUT_MESSAGE,
   ISSUE_RUNTIME_VERIFICATION_RUNNING_TIMEOUT_MESSAGE,
@@ -44,6 +50,7 @@ function githubClient() {
 
 describe("runtime verification timeout reconciliation", () => {
   beforeEach(() => {
+    persistence.mode.mockReset().mockReturnValue("postgres");
     database.client.query.mockReset();
     database.transaction.mockReset().mockImplementation(
       async (work: (client: typeof database.client) => Promise<unknown>) =>
@@ -198,5 +205,15 @@ describe("runtime verification timeout reconciliation", () => {
       runningTimedOut: 0,
     });
     expect(database.client.query).toHaveBeenCalledOnce();
+  });
+
+  it("skips in-memory workspaces, which have no database to query", async () => {
+    persistence.mode.mockReturnValue("memory");
+
+    await expect(reconcileStaleIssueRuntimeVerifications("org_demo")).resolves.toEqual({
+      queuedTimedOut: 0,
+      runningTimedOut: 0,
+    });
+    expect(database.client.query).not.toHaveBeenCalled();
   });
 });

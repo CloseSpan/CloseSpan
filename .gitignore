@@ -17,3 +17,7 @@ litellm_cache.sqlite/
 backups/
 
 definable-tangible-sizable_-_CLI_Quickstart-oauth-credentials.txt
+
+# Playwright run output (baselines live in e2e/__screenshots__)
+/test-results/
+/playwright-report/
