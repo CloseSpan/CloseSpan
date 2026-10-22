@@ -13,9 +13,10 @@ import "./globals.css";
 import "./theme.css";
 import "./product-theme.css";
 
-// Reuse Next's bundled Geist font; no third-party font request at build or runtime.
+// Geist (SIL OFL 1.1, see fonts/Geist-OFL-LICENSE.txt) is self-hosted: no
+// third-party font request, and no dependency on Next's private files.
 const geist = localFont({
-  src: "../../node_modules/next/dist/next-devtools/server/font/geist-latin.woff2",
+  src: "./fonts/geist-latin.woff2",
   variable: "--font-geist",
   weight: "100 900",
   display: "swap",

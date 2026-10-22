@@ -190,7 +190,7 @@ The frontmatter's display role records the landing hero; headline and title reco
 
 ### Shared components
 
-Workspace screens use the primitives in `src/components/ui/` instead of raw class strings: `Button` and `ButtonLink` (variants primary, danger, success, warning; optional large), `StatusBadge` (tones neutral, success, warning, danger, info, so callers state meaning rather than colour), `SeverityBadge`, `EmptyState` (icon, title, one sentence, at most one action), `PageHeader` and `Card`. They render the existing theme classes, so adopting them is visually neutral. A ratchet test (`src/components/ui/adoption.test.ts`) fails if raw `btn`/`badge` class strings increase; lower its budget as call sites move over. Screens live one per file in `src/components/screens/`.
+Workspace screens use the primitives in `src/components/ui/` instead of raw class strings: `Button` and `ButtonLink` (variants primary, danger, success, warning; optional large), `StatusBadge` (tones neutral, success, warning, danger, info, so callers state meaning rather than colour), `SeverityBadge`, `EmptyState` (icon, title, one sentence, at most one action), `PageHeader` and `Card`. They render the existing theme classes, so adopting them is visually neutral. A ratchet test (`src/components/ui/adoption.test.ts`) fails if raw `btn`/`badge` class strings increase; lower its budget as call sites move over. Screens live one per file in `src/components/screens/`. Global stylesheets are ratcheted by `src/app/css-guardrails.test.ts`: the counts of `!important`, hard-coded colours and raw font sizes, weights and radii may only go down.
 
 ### Issue-centered workspace
 

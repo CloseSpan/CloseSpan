@@ -1,6 +1,6 @@
 # UI simplification plan
 
-Status: approved · Phase 2 in progress · 2026-10-22
+Status: approved · Phase 3 in progress · 2026-10-22
 
 Two streams: **simplify the sidebar and concepts** (what users see) and **consolidate CSS and shared components** (how it is built). They are planned together because simplifying first removes screens that would otherwise need restyling.
 
@@ -96,6 +96,20 @@ Risk: pages being folded in carry behaviour (prompt testing, follow-up drafts) t
 6. Move the Geist font off the private `node_modules/next/dist/…` path to the `geist` package or `next/font`.
 
 Each step lands separately and must pass the Phase 0 visual diff.
+
+### Phase 3 outcome
+
+Done, all verified pixel- and computed-style-identical on 40 screens in both themes:
+- Removed 822 never-matching rules and 107 dead selectors (about 2,900 lines).
+- Renamed `neumorphic-theme.css` to `theme.css`.
+- Tokenized every value that exactly matched a token: 226 font sizes, 50 weights and 95 radii.
+- Self-hosted the Geist font with its licence.
+- Added ratchet tests for the remaining debt.
+
+Deferred, because each needs a reviewed visual decision rather than a mechanical change:
+- **Cascade layers and `!important` removal.** All 223 remaining `!important` properties are also set by hover, focus or media rules, so removing them cannot be proven safe from captured screens. Each needs checking in its interactive states.
+- **Converting the 428 hard-coded colours.** This changes dark mode.
+- **Collapsing off-scale sizes, weights and radii onto the scale.** Visible changes (for example 9–10px text up to 11px).
 
 ## Phase 4 · Finish (1 day)
 
