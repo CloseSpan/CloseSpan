@@ -9,7 +9,7 @@ The goal is one coherent product: modern, restrained, soft-neumorphic, accessibl
 Use these sources in this order:
 
 1. This guide defines design intent, component rules, responsive behavior, and review expectations.
-2. [`src/app/neumorphic-theme.css`](src/app/neumorphic-theme.css) is the executable source of truth for tokens and shared component styling.
+2. [`src/app/theme.css`](src/app/theme.css) is the executable source of truth for tokens and shared component styling.
 3. [`src/app/globals.css`](src/app/globals.css) contains structural and feature-specific layout rules. Do not add isolated colors, shadows, or component themes there when a shared token or variant can be used.
 4. Reusable components such as [`CustomSelect`](src/components/custom-select.tsx), [`ThemeToggle`](src/components/theme-toggle.tsx), [`CloseSpanLogo`](src/components/closespan-logo.tsx), and [`WorkspaceRouteTransition`](src/components/workspace-route-transition.tsx) are preferred over local recreations.
 
@@ -652,7 +652,7 @@ A UI change is complete only when:
 
 When a new recurring pattern is approved:
 
-1. Add or update a token in `src/app/neumorphic-theme.css`.
+1. Add or update a token in `src/app/theme.css`.
 2. Build or update a reusable component variant.
 3. Replace duplicate local styles where practical.
 4. Document the pattern here.

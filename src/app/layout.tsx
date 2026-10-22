@@ -10,7 +10,7 @@ import {
 import { COLOR_THEME_BOOTSTRAP_SCRIPT, DEFAULT_COLOR_THEME } from "@/lib/color-theme";
 import { ThemeController } from "@/components/theme-controller";
 import "./globals.css";
-import "./neumorphic-theme.css";
+import "./theme.css";
 import "./product-theme.css";
 
 // Reuse Next's bundled Geist font; no third-party font request at build or runtime.

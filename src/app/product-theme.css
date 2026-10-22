@@ -73,7 +73,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   text-shadow: none;
   filter: none;
 }
-.closespan-3d-logo .closespan-logo { font-size: 23px; font-weight: 650; letter-spacing: -0.04em; }
+.closespan-3d-logo .closespan-logo { font-size: 23px; font-weight: var(--weight-bold); letter-spacing: -0.04em; }
 .closespan-3d-logo--lg .closespan-logo { font-size: 30px; }
 :root[data-theme] .app-shell .brand .closespan-logo__name { display: inline-flex; }
 
@@ -102,12 +102,12 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   padding-inline: 28px;
   background: var(--surface);
 }
-:root[data-theme] .app-shell :is(.crumb, .workspace-breadcrumb) { color: var(--text-muted); font-size: 13px; font-weight: 500; }
+:root[data-theme] .app-shell :is(.crumb, .workspace-breadcrumb) { color: var(--text-muted); font-size: var(--text-sm); font-weight: var(--weight-medium); }
 :root[data-theme] .app-shell .content { padding: 30px 32px 48px; }
 :root[data-theme] .app-shell :is(.page-head, .page-title-row) { margin-bottom: 24px; gap: 20px; }
-:root[data-theme] .app-shell :is(.page-head h1, .page-title h1) { font-size: 28px; line-height: 1.2; font-weight: 550; letter-spacing: -0.03em; }
-:root[data-theme] .app-shell :is(.card-head h2, .card-body > h2) { font-size: 17px; font-weight: 550; letter-spacing: -0.02em; }
-:root[data-theme] .app-shell h3 { font-weight: 550; }
+:root[data-theme] .app-shell :is(.page-head h1, .page-title h1) { font-size: 28px; line-height: 1.2; font-weight: var(--weight-semibold); letter-spacing: -0.03em; }
+:root[data-theme] .app-shell :is(.card-head h2, .card-body > h2) { font-size: 17px; font-weight: var(--weight-semibold); letter-spacing: -0.02em; }
+:root[data-theme] .app-shell h3 { font-weight: var(--weight-semibold); }
 
 /* Navigation remains fully expanded; active state is a quiet tonal row. */
 :root[data-theme] .app-shell :is(.nav a, .settings-nav a, .mobile-menu-panel nav a) {
@@ -118,8 +118,8 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   color: var(--text);
   background: transparent;
   box-shadow: none;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   gap: 10px;
   transform: none;
 }
@@ -169,7 +169,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 @media (forced-colors: active) {
   .navigation-icon[data-icon-variant="filled"] { --navigation-icon-cutout: Canvas; }
 }
-:root[data-theme] .app-shell .nav-section-label { padding: 8px 10px; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-weight: 500; }
+:root[data-theme] .app-shell .nav-section-label { padding: 8px 10px; font-size: var(--text-2xs); letter-spacing: 0; text-transform: none; color: var(--text-muted); font-weight: var(--weight-medium); }
 :root[data-theme] .app-shell .nav-group + .nav-group { margin-top: 16px; }
 :root[data-theme] .app-shell .sidebar .organization-switcher-trigger {
   min-height: 54px;
@@ -274,7 +274,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 }
 :root[data-theme] .app-shell .pdd-priority-head h2 {
   font-size: 17px;
-  font-weight: 550;
+  font-weight: var(--weight-semibold);
 }
 :root[data-theme] .app-shell .pdd-priority-list > li + li {
   border-top: 1px solid var(--border-panel) !important;
@@ -391,7 +391,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   gap: 8px;
   min-height: 42px;
   padding: 4px 6px 14px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 :root[data-theme] .app-shell .board .board-stage-dot {
   flex: 0 0 8px;
@@ -411,7 +411,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   border-radius: var(--radius-xs);
   background: var(--surface-muted);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   line-height: 17px;
   font-variant-numeric: tabular-nums;
 }
@@ -427,7 +427,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 :root[data-theme] .app-shell .board .problem-card-title {
   margin: 0 16px 12px 0;
   color: var(--text-strong);
-  font-size: 14px;
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 :root[data-theme] .app-shell .board :is(.issue-card-area, .issue-card-reports) {
@@ -436,7 +436,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   gap: 8px;
   margin: 0 0 8px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -468,7 +468,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   :root[data-theme] .app-shell .board .problem-card-shell { border-color: CanvasText !important; }
   :root[data-theme] .app-shell .board .board-col.is-drop-target { outline-color: Highlight; }
 }
-:root[data-theme] .metric-value { font-size: 28px; font-weight: 550; letter-spacing: -0.03em; }
+:root[data-theme] .metric-value { font-size: 28px; font-weight: var(--weight-semibold); letter-spacing: -0.03em; }
 :root[data-theme] :is(.callout.warning, .setup-alert, .toast.warning) { color: var(--warning); background: var(--warning-soft); border-color: transparent !important; }
 :root[data-theme] :is(.callout.success, .toast.success) { color: var(--success); background: var(--success-soft); border-color: transparent !important; }
 :root[data-theme] :is(.callout.error, .toast.error, .login-alert) { color: var(--danger); background: var(--danger-soft); border-color: transparent !important; }
@@ -492,8 +492,8 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   background-image: none;
   color: var(--text-strong);
   box-shadow: none;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   line-height: 1.4;
   transform: none;
   text-shadow: none;
@@ -654,7 +654,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 :root[data-theme] .app-shell .searchbox { padding: 0 12px; border-radius: var(--field-radius); }
 :root[data-theme] .problem-column-filter-affix input { padding-inline-end: 36px; }
 :root[data-theme] .app-shell .custom-retention-control { padding: 0; background: transparent; box-shadow: none; }
-:root[data-theme] :is(.field > label, .field-label, .toggle-row strong) { color: var(--text-strong); font-size: 13px; font-weight: 500; }
+:root[data-theme] :is(.field > label, .field-label, .toggle-row strong) { color: var(--text-strong); font-size: var(--text-sm); font-weight: var(--weight-medium); }
 :root[data-theme] .toggle-row { padding-block: 16px; border-bottom: 1px solid var(--border-subtle); }
 :root[data-theme] .toggle-row input[type="checkbox"] { width: 44px; min-width: 44px; flex-basis: 44px; height: 26px; min-height: 26px; border: 1px solid var(--field-border-hover) !important; border-radius: var(--radius-pill); background: var(--surface-pressed); box-shadow: none; }
 :root[data-theme] .toggle-row input[type="checkbox"]::before { width: 18px; height: 18px; top: 3px; left: 3px; background: var(--text-muted); box-shadow: none; transform: none; }
@@ -668,14 +668,14 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 /* Dense, scannable records and subtle selected rows. */
 :root[data-theme] .app-shell .table-wrap { border: 1px solid var(--border-subtle) !important; border-radius: var(--radius-lg); box-shadow: none; background: var(--surface); }
 :root[data-theme] .app-shell table { background: var(--surface); border-collapse: collapse; box-shadow: none; }
-:root[data-theme] .app-shell th { padding: 12px 16px; color: var(--text-muted); background: var(--surface-muted); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; border-bottom: 1px solid var(--border-subtle) !important; }
-:root[data-theme] .app-shell td { padding: 16px; border-bottom: 1px solid var(--border-subtle) !important; font-size: 13px; }
+:root[data-theme] .app-shell th { padding: 12px 16px; color: var(--text-muted); background: var(--surface-muted); font-size: var(--text-xs); font-weight: var(--weight-medium); letter-spacing: 0; text-transform: none; border-bottom: 1px solid var(--border-subtle) !important; }
+:root[data-theme] .app-shell td { padding: 16px; border-bottom: 1px solid var(--border-subtle) !important; font-size: var(--text-sm); }
 :root[data-theme] .app-shell tbody tr:last-child td { border-bottom: 0 !important; }
 :root[data-theme] .app-shell tbody tr:hover { background: var(--table-row-hover); }
 :root[data-theme] .app-shell :is(.queue-item, .rank-row) { padding: 16px 18px; border-bottom: 1px solid var(--border-subtle) !important; border-radius: 0; box-shadow: none; }
 :root[data-theme] .app-shell .queue-item.selected { background: var(--surface-pressed); box-shadow: none; }
-:root[data-theme] .app-shell :is(.rank-title, .queue-item strong, .feedback-signal-title) { color: var(--text-strong); font-weight: 550; }
-:root[data-theme] :is(.badge, .feature-request-count) { padding: 3px 7px; border-radius: var(--radius-xs); font-size: 11px; font-weight: 500; box-shadow: none; background: var(--surface-pressed); color: var(--text-muted); }
+:root[data-theme] .app-shell :is(.rank-title, .queue-item strong, .feedback-signal-title) { color: var(--text-strong); font-weight: var(--weight-semibold); }
+:root[data-theme] :is(.badge, .feature-request-count) { padding: 3px 7px; border-radius: var(--radius-xs); font-size: var(--text-2xs); font-weight: var(--weight-medium); box-shadow: none; background: var(--surface-pressed); color: var(--text-muted); }
 :root[data-theme] .badge.success { color: var(--success); background: var(--success-soft); }
 :root[data-theme] .badge.brand { color: var(--info); background: var(--info-soft); }
 :root[data-theme] :is(.badge.high, .badge.critical) { color: var(--danger); background: var(--danger-soft); }
@@ -691,17 +691,17 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 .issue-search { display: flex; align-items: center; gap: 8px; flex: 1 1 180px; min-width: 120px; padding-inline: 12px; }
 .issue-toolbar .issue-filter-root, .issue-toolbar .issue-group-select, .issue-toolbar .issue-clear-filters { flex: 0 0 auto; }
 .issue-search > svg { flex-shrink: 0; }
-.issue-search input { width: 100%; padding: 8px 0; font-size: 13px; }
+.issue-search input { width: 100%; padding: 8px 0; font-size: var(--text-sm); }
 .issue-filter-root { position: relative; }
-.issue-filter-count { font-size: 11px; padding: 0 5px; border-radius: 4px; background: var(--surface-pressed); }
+.issue-filter-count { font-size: var(--text-2xs); padding: 0 5px; border-radius: var(--radius-xs); background: var(--surface-pressed); }
 .issue-filter-panel { position: absolute; z-index: 1000; top: calc(100% + 8px); left: 0; width: 320px; padding: 16px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface); }
 .issue-filter-heading, .issue-filter-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.issue-filter-heading { margin-bottom: 16px; color: var(--text-strong); font-size: 13px; }
-.issue-filter-field { display: grid; grid-template-columns: 94px minmax(0, 1fr); align-items: center; gap: 8px; margin-block: 10px; font-size: 12px; }
+.issue-filter-heading { margin-bottom: 16px; color: var(--text-strong); font-size: var(--text-sm); }
+.issue-filter-field { display: grid; grid-template-columns: 94px minmax(0, 1fr); align-items: center; gap: 8px; margin-block: 10px; font-size: var(--text-xs); }
 .issue-filter-field .custom-select { min-width: 0; }
 .issue-filter-field .custom-select-trigger { width: 100%; }
 .issue-filter-footer { margin-top: 16px; }
-.issue-result-count { color: var(--text-muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.issue-result-count { color: var(--text-muted); font-size: var(--text-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
 :root[data-theme] .app-shell .issue-list-wrap { border: 0 !important; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 :root[data-theme] .app-shell .issue-workspace :is(.problem-board-panel, .issue-empty) { border-top: 0; }
 .issue-list-table { width: 100%; min-width: 640px; table-layout: fixed; }
@@ -709,12 +709,12 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 .issue-list-table th:nth-child(2) { width: 20%; }
 .issue-list-table th:nth-child(3) { width: 14%; }
 .issue-list-table th:last-child { width: 10%; }
-.issue-list-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; color: var(--text-strong); font-weight: 550; line-height: 1.5; }
+.issue-list-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; color: var(--text-strong); font-weight: var(--weight-semibold); line-height: 1.5; }
 .issue-list-title:hover { text-decoration: underline; text-underline-offset: 3px; }
-.issue-taxonomy { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; color: var(--text-muted); font-size: 12px; }
+.issue-taxonomy { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; color: var(--text-muted); font-size: var(--text-xs); }
 .issue-report-count { font-variant-numeric: tabular-nums; }
-:root[data-theme] .app-shell .issue-group-heading th { background: var(--surface-pressed); color: var(--text-strong); font-weight: 550; }
-.issue-group-heading span { display: inline-block; margin-left: 8px; color: var(--text-muted); font-size: 11px; font-weight: 400; }
+:root[data-theme] .app-shell .issue-group-heading th { background: var(--surface-pressed); color: var(--text-strong); font-weight: var(--weight-semibold); }
+.issue-group-heading span { display: inline-block; margin-left: 8px; color: var(--text-muted); font-size: var(--text-2xs); font-weight: 400; }
 .issue-empty { display: flex; min-height: 220px; flex-direction: column; align-items: center; justify-content: center; gap: 16px; border-top: 1px solid var(--border-subtle); }
 :root[data-theme] .app-shell .board { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 280px; gap: 16px; }
 /* Summary columns are read-only groupings, not lifecycle transition targets. */
@@ -770,9 +770,9 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   box-shadow: none;
 }
 :root[data-theme] :is(.segmented, .tabs, .integration-view-tabs, .prompt-view-switcher) { background: var(--surface-pressed); border-radius: var(--radius-md); padding: 4px; gap: 4px; box-shadow: none; }
-:root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button) { min-height: var(--control-height); border: 1px solid transparent !important; border-radius: var(--radius-sm); padding: 7px 12px; font-size: 13px; background: transparent; color: var(--text-muted); box-shadow: none; transform: none; }
+:root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button) { min-height: var(--control-height); border: 1px solid transparent !important; border-radius: var(--radius-sm); padding: 7px 12px; font-size: var(--text-sm); background: transparent; color: var(--text-muted); box-shadow: none; transform: none; }
 :root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button):hover:not(:disabled) { background: var(--surface-hover); color: var(--text-strong); box-shadow: none; transform: none; }
-:root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button):is(.active, .is-active, [aria-selected="true"], [aria-pressed="true"]) { border-color: var(--border-strong) !important; background: var(--surface); color: var(--text-strong); font-weight: 550; box-shadow: none; }
+:root[data-theme] :is(.segmented button, .tabs button, .integration-view-tabs button, .prompt-view-switcher button):is(.active, .is-active, [aria-selected="true"], [aria-pressed="true"]) { border-color: var(--border-strong) !important; background: var(--surface); color: var(--text-strong); font-weight: var(--weight-semibold); box-shadow: none; }
 
 /* Overlays have real elevation; their contents remain flat. */
 :root[data-theme] :is(.user-menu-panel, .organization-switcher-menu, .custom-select-menu, .custom-select-options, .mobile-menu-panel, .guided-demo-panel, .feedback-drawer, .integration-drawer, .feature-request-dialog, .organization-create-panel) {
@@ -815,7 +815,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 .app-shell .settings-connection-disconnect-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 /* Inline two-step confirmation for destructive buttons (ConfirmActionButton). */
 .inline-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.inline-confirm > strong { color: var(--text-strong); font-size: 13px; font-weight: 550; }
+.inline-confirm > strong { color: var(--text-strong); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
 .platform-user-actions { display: flex; gap: 8px; }
 :root[data-theme] .platform-user-dialog {
   width: min(480px, calc(100vw - 32px));
@@ -829,14 +829,14 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   box-shadow: var(--shadow-overlay);
   overflow: auto;
   overflow-wrap: anywhere;
-  font-size: 14px;
+  font-size: var(--text-md);
   line-height: 1.55;
   white-space: normal;
 }
 .platform-user-dialog::backdrop { background: rgb(0 0 0 / 32%); }
 .platform-user-dialog form { display: grid; gap: 16px; }
 .platform-user-dialog :is(h2, p) { margin: 0; }
-.platform-user-dialog h2 { font-size: 20px; color: var(--text-strong); }
+.platform-user-dialog h2 { font-size: var(--text-xl); color: var(--text-strong); }
 .platform-user-identity { display: grid; gap: 4px; }
 .platform-user-identity span { color: var(--text-muted); }
 .platform-user-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
@@ -844,7 +844,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 .platform-user-dialog .field strong { display: inline; font-size: inherit; }
 @media (max-width: 720px) {
   :root[data-theme] .platform-user-dialog,
-  :root[data-theme] .platform-user-dialog input { font-size: 16px; }
+  :root[data-theme] .platform-user-dialog input { font-size: var(--text-lg); }
 }
 :root[data-theme] .integration-drawer-content > .integration-drawer-summary {
   margin: 0;
@@ -852,7 +852,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 :root[data-theme] .integration-drawer-content > .integration-drawer-actions {
   padding-block-start: 0;
 }
-:root[data-theme] :is(.custom-select-option, .organization-option, .user-menu-panel a, .user-menu-panel button) { border-radius: var(--radius-sm); box-shadow: none; font-size: 13px; }
+:root[data-theme] :is(.custom-select-option, .organization-option, .user-menu-panel a, .user-menu-panel button) { border-radius: var(--radius-sm); box-shadow: none; font-size: var(--text-sm); }
 /* Account actions need a visible fill now that legacy raised hovers are flat. */
 :root[data-theme] .user-menu-panel :is(.user-menu-navigation a, .theme-control-copy, form button) {
   cursor: pointer;
@@ -970,7 +970,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 :root[data-theme] :is(.delphi-glow, .login-glow) { display: none; }
 :root[data-theme] :is(.login-page, .waitlist-page, .shell-immersive, .delphi-shell) { background: var(--bg); background-image: none; }
 :root[data-theme] :is(.login-card, .waitlist-card) { padding: 32px; }
-:root[data-theme] .login-card h1 { font-size: 30px; font-weight: 550; letter-spacing: -0.03em; }
+:root[data-theme] .login-card h1 { font-size: 30px; font-weight: var(--weight-semibold); letter-spacing: -0.03em; }
 :root[data-theme] .login-google { width: 100%; min-height: 44px; }
 :root[data-theme] .login-trust { border-top: 1px solid var(--border-subtle) !important; box-shadow: none; }
 :root[data-theme] :is(.delphi-company-confirmation, .delphi-sync, .delphi-source, .delphi-product-card, .onboarding-next-step) { border-radius: var(--radius-lg); box-shadow: none; }
@@ -1006,7 +1006,7 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
   -webkit-text-fill-color: currentColor;
 }
 :root[data-theme] .feature-requests-header { margin-top: 0; border-radius: 0; }
-:root[data-theme] .feature-requests-page .feature-requests-intro h1 { font-size: clamp(32px, 4vw, 48px); font-weight: 550; }
+:root[data-theme] .feature-requests-page .feature-requests-intro h1 { font-size: clamp(32px, 4vw, 48px); font-weight: var(--weight-semibold); }
 :root[data-theme] .feature-requests-page .feature-request-row { border-radius: var(--radius-md); padding: 20px; }
 :root[data-theme] .feature-requests-page .feature-request-votes { border-radius: var(--radius-sm); box-shadow: none; background: var(--surface-muted); }
 
@@ -1076,10 +1076,10 @@ td, .metric-value, .badge { font-variant-numeric: tabular-nums; }
 .review-inbox-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 16px; align-items: center; gap: 16px; padding: 18px 20px; color: var(--text-strong); text-decoration: none; min-height: 64px; }
 .review-inbox-row + .review-inbox-row { border-top: 1px solid var(--border-subtle); }
 .review-inbox-row:hover { background: var(--surface-muted); }
-.review-inbox-row strong { overflow-wrap: anywhere; font-weight: 550; }
+.review-inbox-row strong { overflow-wrap: anywhere; font-weight: var(--weight-semibold); }
 .settings-tools-page { max-width: 900px; margin: 32px auto; }
 .settings-tools-group { margin-top: 32px; }
-.settings-tools-group h2 { font-size: 15px; font-weight: 550; margin: 0 0 12px; }
+.settings-tools-group h2 { font-size: 15px; font-weight: var(--weight-semibold); margin: 0 0 12px; }
 .settings-tools-group nav { border-top: 1px solid var(--border-subtle); }
 .settings-tool-link { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 48px; padding: 12px 0; border-bottom: 1px solid var(--border-subtle); color: var(--text); text-decoration: none; }
 .settings-tool-link:hover { color: var(--text-strong); background: var(--surface-muted); }

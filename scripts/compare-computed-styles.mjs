@@ -4,9 +4,12 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const [before, after] = process.argv.slice(2);
+const args = process.argv.slice(2);
+// --ignore=--new-token,other-property skips properties a change adds on purpose.
+const ignored = new Set(args.filter((arg) => arg.startsWith("--ignore=")).flatMap((arg) => arg.slice(9).split(",")));
+const [before, after] = args.filter((arg) => !arg.startsWith("--ignore="));
 if (!before || !after) {
-  console.error("Usage: node scripts/compare-computed-styles.mjs <before-dir> <after-dir>");
+  console.error("Usage: node scripts/compare-computed-styles.mjs <before-dir> <after-dir> [--ignore=prop,...]");
   process.exit(2);
 }
 const parse = (style) => Object.fromEntries(style.split(";").map((pair) => {
@@ -25,7 +28,7 @@ for (const file of readdirSync(before).filter((name) => name.endsWith(".json")).
     const a = parse(previous[element]);
     const b = parse(next[element]);
     for (const property of new Set([...Object.keys(a), ...Object.keys(b)]))
-      if (a[property] !== b[property]) differences.push(`${element} ${property}: ${a[property]} -> ${b[property]}`);
+      if (!ignored.has(property) && a[property] !== b[property]) differences.push(`${element} ${property}: ${a[property]} -> ${b[property]}`);
   }
   if (differences.length) {
     changedScreens++;

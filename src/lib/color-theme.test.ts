@@ -46,7 +46,7 @@ function contrast(foreground: string, background: string): number {
 }
 
 describe("accent palette", () => {
-  const themeSource = readFileSync(new URL("../app/neumorphic-theme.css", import.meta.url), "utf8");
+  const themeSource = readFileSync(new URL("../app/theme.css", import.meta.url), "utf8");
 
   function neutralTokens(theme: "light" | "dark"): Record<string, string> {
     const selector = theme === "light" ? ":root {" : ':root[data-theme="dark"] {';

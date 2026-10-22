@@ -134,7 +134,7 @@ Public pages give headlines and product demonstrations room to breathe; authenti
 - Expanded workspace navigation and quiet selected rows.
 - Semantic colors for status, feedback, and consequences.
 
-Recorded from the built CSS and real components. `src/app/neumorphic-theme.css` supplies shared tokens; `src/app/product-theme.css`, imported afterward, owns final component treatments and the field tokens. Public page modules supply local layout and typography. The frontmatter records the default light palette; runtime CSS variables supply dark overrides. Review evidence in `.impeccable/review/attio` includes live public pages and static fixtures made from real workspace components; fixtures do not verify authentication or backend workflows.
+Recorded from the built CSS and real components. `src/app/theme.css` (formerly `neumorphic-theme.css`; despite that old name it held the current flat theme) supplies shared tokens; `src/app/product-theme.css`, imported afterward, owns final component treatments and the field tokens. Public page modules supply local layout and typography. The frontmatter records the default light palette; runtime CSS variables supply dark overrides. Review evidence in `.impeccable/review/attio` includes live public pages and static fixtures made from real workspace components; fixtures do not verify authentication or backend workflows.
 
 ## Colors
 

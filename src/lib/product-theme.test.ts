@@ -6,7 +6,7 @@ import {
   DEFAULT_COLOR_THEME,
 } from "./color-theme";
 
-const themeSource = readFileSync(new URL("../app/neumorphic-theme.css", import.meta.url), "utf8");
+const themeSource = readFileSync(new URL("../app/theme.css", import.meta.url), "utf8");
 const layoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
 const trustSource = readFileSync(new URL("../components/TrustPublicPage.module.css", import.meta.url), "utf8");
 const productSource = readFileSync(new URL("../app/product-theme.css", import.meta.url), "utf8");
@@ -370,7 +370,7 @@ describe("shared product visual system", () => {
     const stylesheets = Array.from(layoutSource.matchAll(/import\s+["'](.+\.css)["']/g), ([, value]) => value);
     expect(stylesheets).toEqual([
       "./globals.css",
-      "./neumorphic-theme.css",
+      "./theme.css",
       "./product-theme.css",
     ]);
   });
